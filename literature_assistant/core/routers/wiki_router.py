@@ -5,6 +5,7 @@ import json
 import re
 from pathlib import Path
 from typing import Any, Mapping
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -40,14 +41,22 @@ from literature_assistant.core.wiki.permissions import (
     normalize_user_id,
     set_permissions,
 )
-from literature_assistant.core.wiki.query import WikiQueryIndex, WikiSearchResult, wiki_query_with_fallback
+from literature_assistant.core.wiki.query import (
+    WikiQueryIndex,
+    WikiSearchResult,
+    build_source_manifest,
+    build_knowledge_refs,
+    wiki_query_with_fallback,
+)
 from literature_assistant.core.wiki.review_queue import (
     ReviewItemKind,
     ReviewItemStatus,
     ReviewQueue,
     make_review_item,
 )
-from literature_assistant.core.wiki.source_registry import WikiRegistry
+from literature_assistant.core.wiki.source_registry import WikiRegistry, derive_chunk_id
+from harness_protocols import ArtifactType, JobKind, SessionMode
+from writing_runtime import get_writing_runtime
 
 
 router = APIRouter(prefix="/api/wiki", tags=["Wiki"])
@@ -59,16 +68,45 @@ _MAX_WIKI_IMPORT_FILE_BYTES = 1_000_000
 _MAX_WIKI_IMPORT_TOTAL_BYTES = 5_000_000
 
 
+class WikiManifestDrilldownItemPayload(BaseModel):
+    kind: str
+    page_path: str
+    source_hash: str | None = None
+    indexed_hash: str | None = None
+    redacted: bool = False
+
+
+class WikiManifestDrilldownPayload(BaseModel):
+    schema_version: str = "scholar-ai-wiki-manifest-drilldown/v1"
+    status: str = "unknown"
+    hash_algorithm: str = "sha256"
+    limit: int = 10
+    missing_count: int = 0
+    extra_count: int = 0
+    mismatched_count: int = 0
+    truncated: bool = False
+    missing_pages: list[WikiManifestDrilldownItemPayload] = Field(default_factory=list)
+    extra_pages: list[WikiManifestDrilldownItemPayload] = Field(default_factory=list)
+    mismatched_pages: list[WikiManifestDrilldownItemPayload] = Field(default_factory=list)
+
+
 class WikiStatusResponse(BaseModel):
     enabled: bool
     page_count: int = 0
     stale: bool = False
+    integrity_status: str = "unknown"
+    index_hash: str = "none"
+    source_manifest_hash: str = "unknown"
+    indexed_source_manifest_hash: str = "unknown"
+    indexed_page_count: int = 0
+    source_page_count: int | None = None
     graph_json_exists: bool = False
     graph_db_exists: bool = False
     query_index_exists: bool = False
     review_queue_exists: bool = False
     paths: dict[str, str] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
+    manifest_drilldown: WikiManifestDrilldownPayload = Field(default_factory=WikiManifestDrilldownPayload)
 
 
 class WikiPageSummaryPayload(BaseModel):
@@ -283,6 +321,7 @@ class WikiImportRequest(BaseModel):
 
     source_paths: list[str] = Field(default_factory=list)
     dry_run: bool = True
+    confirm_write: bool = False
     overwrite: bool = False
     kind: str = WikiPageKind.synthesis.value
     status: str = WikiPageStatus.draft.value
@@ -292,12 +331,24 @@ class WikiImportItemPayload(BaseModel):
     """Per-source result for local Markdown import."""
 
     source_path: str
+    import_source_hash: str = ""
+    source_hash: str = ""
+    content_hash: str = ""
+    ref_id: str = ""
+    chunk_id: str = ""
+    read_endpoint: str = ""
+    span_start: int | None = None
+    span_end: int | None = None
     title: str = ""
     kind: str = ""
     status: str = ""
     slug: str = ""
     path: str = ""
     action: str
+    review_item_id: str = ""
+    runtime_session_id: str = ""
+    runtime_job_id: str = ""
+    runtime_approval_id: str = ""
     warnings: list[str] = Field(default_factory=list)
     error: str = ""
 
@@ -307,6 +358,7 @@ class WikiImportResponse(BaseModel):
 
     enabled: bool
     dry_run: bool
+    confirm_write: bool = False
     imported: int = 0
     skipped: int = 0
     errored: int = 0
@@ -364,23 +416,69 @@ def _doctor(page_store: WikiPageStore | None = None) -> WikiDoctor:
     )
 
 
-def _status_stale(page_count: int, *, enabled: bool) -> tuple[bool, list[str]]:
+def _status_integrity(
+    page_store: WikiPageStore,
+    page_count: int,
+    *,
+    enabled: bool,
+) -> tuple[bool, list[str], dict[str, Any]]:
+    if not isinstance(page_store, WikiPageStore):
+        raise TypeError("page_store must be a WikiPageStore")
     if not enabled:
-        return False, []
+        return False, [], {
+            "integrity_status": "disabled",
+            "index_hash": "none",
+            "source_manifest_hash": "unknown",
+            "indexed_source_manifest_hash": "unknown",
+            "indexed_page_count": 0,
+            "source_page_count": None,
+            "manifest_drilldown": WikiManifestDrilldownPayload(status="disabled").model_dump(),
+        }
 
     index_path = wiki_query_index_path()
     if not index_path.exists():
-        return page_count > 0, []
+        manifest = build_source_manifest(page_store)
+        return page_count > 0, [], {
+            "integrity_status": "missing_index" if page_count > 0 else "empty_no_index",
+            "index_hash": "none",
+            "source_manifest_hash": manifest.source_manifest_hash,
+            "indexed_source_manifest_hash": "unknown",
+            "indexed_page_count": 0,
+            "source_page_count": manifest.page_count,
+            "manifest_drilldown": WikiManifestDrilldownPayload(
+                status="missing_index" if page_count > 0 else "empty_no_index"
+            ).model_dump(),
+        }
 
     index = WikiQueryIndex(index_path)
     try:
-        status = index.get_status()
+        status = index.get_status(page_store)
     except Exception:
-        return True, ["Wiki query index status could not be read; marking wiki status as stale."]
+        return True, ["Wiki query index status could not be read; marking wiki status as stale."], {
+            "integrity_status": "unreadable_index",
+            "index_hash": "unknown",
+            "source_manifest_hash": "unknown",
+            "indexed_source_manifest_hash": "unknown",
+            "indexed_page_count": 0,
+            "source_page_count": page_count,
+            "manifest_drilldown": WikiManifestDrilldownPayload(status="unreadable_index").model_dump(),
+        }
     finally:
         index.close()
 
-    return status.stale or status.page_count != page_count, []
+    stale = status.stale or status.page_count != page_count
+    warnings = list(status.warnings)
+    if status.page_count != page_count:
+        warnings.append("Wiki query index page count differs from readable wiki page count.")
+    return stale, list(dict.fromkeys(warnings)), {
+        "integrity_status": status.integrity_status,
+        "index_hash": status.index_hash,
+        "source_manifest_hash": status.source_manifest_hash,
+        "indexed_source_manifest_hash": status.indexed_source_manifest_hash,
+        "indexed_page_count": status.page_count,
+        "source_page_count": status.source_page_count,
+        "manifest_drilldown": status.manifest_drilldown.to_dict(redact_extra_pages=True),
+    }
 
 
 def _disabled_warning() -> list[str]:
@@ -1100,6 +1198,7 @@ def _strip_wiki_auto_markers(body: str) -> str:
 def _wiki_import_extra(source_path: Path, content_hash: str, owner: str) -> dict[str, Any]:
     return set_permissions(
         {
+            "entry_source": "local_markdown_import",
             "import_source": {
                 "type": "local_markdown",
                 "path": _safe_import_source_label(source_path),
@@ -1108,6 +1207,358 @@ def _wiki_import_extra(source_path: Path, content_hash: str, owner: str) -> dict
         },
         WikiPagePermissions(owner=owner, visibility=WikiPageVisibility.PRIVATE),
     )
+
+
+def _wiki_knowledge_ref_payload(
+    *,
+    page_path: str,
+    source_hash: str,
+    content: str,
+    import_source_hash: str = "",
+) -> dict[str, Any]:
+    """Return the shared wiki knowledge-ref shape for search, import, and agent reads."""
+
+    normalized_page_path = str(page_path or "").strip().replace("\\", "/")
+    normalized_source_hash = str(source_hash or "").strip().lower()
+    normalized_import_source_hash = str(import_source_hash or "").strip().lower()
+    if not normalized_page_path:
+        raise ValueError("page_path is required")
+    if not re.fullmatch(r"[0-9a-f]{64}", normalized_source_hash):
+        raise ValueError("source_hash must be a lowercase sha256 hex digest")
+    if normalized_import_source_hash and not re.fullmatch(r"[0-9a-f]{64}", normalized_import_source_hash):
+        raise ValueError("import_source_hash must be a lowercase sha256 hex digest")
+    if not isinstance(content, str):
+        raise TypeError("content must be a string")
+    ref_id = f"wiki:{normalized_page_path}"
+    payload = {
+        "source_hash": normalized_source_hash,
+        "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "ref_id": ref_id,
+        "chunk_id": f"{ref_id}#{derive_chunk_id(normalized_source_hash, 0)}",
+        "read_endpoint": f"/api/agent-bridge/resource/{ref_id}",
+        "span_start": 0,
+        "span_end": len(content),
+    }
+    if normalized_import_source_hash:
+        payload["import_source_hash"] = normalized_import_source_hash
+    return payload
+
+
+def _append_wiki_draft_review_item(
+    *,
+    item_prefix: str,
+    page_slug: str,
+    page_kind: str,
+    title: str,
+    body: str,
+    source: str,
+    metadata: Mapping[str, Any],
+) -> str:
+    """Append a pending review item for a newly written private wiki draft.
+
+    Args:
+        item_prefix: Stable review item namespace for the capture source.
+        page_slug: Wiki page stable slug.
+        page_kind: Wiki page kind directory.
+        title: Human-readable page title.
+        body: Markdown body used only for a short review summary.
+        source: Review source label.
+        metadata: Bounded provenance and approval facts for the review item.
+
+    Returns:
+        Created review item id.
+    """
+
+    if not item_prefix.strip():
+        raise ValueError("item_prefix cannot be empty")
+    if not page_slug.strip():
+        raise ValueError("page_slug cannot be empty")
+    if not page_kind.strip():
+        raise ValueError("page_kind cannot be empty")
+    queue = ReviewQueue(wiki_review_queue_path())
+    existing_ids = {item.item_id for item in queue.list_items()}
+    candidate_id = f"{item_prefix.strip()}-{page_slug.strip()}"
+    suffix = 1
+    while candidate_id in existing_ids:
+        suffix += 1
+        candidate_id = f"{item_prefix.strip()}-{page_slug.strip()}-{suffix}"
+    page_relative_path = f"{page_kind.strip()}/{page_slug.strip()}.md"
+    queue.append(
+        make_review_item(
+            item_id=candidate_id,
+            kind=ReviewItemKind.draft,
+            title=title,
+            page_path=page_relative_path,
+            summary=body.strip().splitlines()[0][:200] if body.strip() else "",
+            source=source,
+            metadata=metadata,
+        )
+    )
+    return candidate_id
+
+
+def _remove_wiki_draft_review_item(item_id: str) -> None:
+    """Remove a same-transaction import review item during rollback."""
+
+    if item_id.strip():
+        ReviewQueue(wiki_review_queue_path()).remove(item_id)
+
+
+def _restore_wiki_import_page(
+    *,
+    service: Any,
+    action: str,
+    page: Any,
+    existing_page: Any | None,
+) -> None:
+    """Restore wiki page state when import governance recording fails."""
+
+    if action == "created":
+        service.delete_page(page.stable_slug)
+        return
+    if existing_page is None:
+        return
+    service.update_page(
+        slug=existing_page.stable_slug,
+        title=existing_page.title,
+        body=existing_page.body,
+        status=existing_page.status.value,
+        evidence_refs=list(existing_page.evidence_refs),
+        source_hashes=list(existing_page.source_hashes),
+        extra=dict(existing_page.extra),
+    )
+
+
+def _rollback_wiki_import_governance(
+    *,
+    service: Any,
+    action: str,
+    page: Any,
+    existing_page: Any | None,
+    review_item_id: str = "",
+) -> Exception | None:
+    """Best-effort rollback for page and review item mutations."""
+
+    rollback_error: Exception | None = None
+    if review_item_id:
+        try:
+            _remove_wiki_draft_review_item(review_item_id)
+        except (KeyError, ValueError, OSError) as exc:
+            rollback_error = exc
+    try:
+        _restore_wiki_import_page(
+            service=service,
+            action=action,
+            page=page,
+            existing_page=existing_page,
+        )
+    except (ValueError, OSError) as exc:
+        rollback_error = exc
+    return rollback_error
+
+
+def _record_wiki_import_runtime_action(
+    *,
+    page: Any,
+    review_item_id: str,
+    source_label: str,
+    content_hash: str,
+    action: str,
+    owner: str,
+    requested_status: str,
+) -> dict[str, str]:
+    """Create runtime-visible action refs for a local Markdown wiki import.
+
+    Args:
+        page: WikiPage-like page snapshot that was written as a private draft.
+        review_item_id: Pending wiki review queue item id.
+        source_label: Safe local source label, never an arbitrary absolute path.
+        content_hash: SHA-256 of the imported Markdown source.
+        action: Import mutation action, ``created`` or ``updated``.
+        owner: Local wiki owner id.
+        requested_status: Status requested by the caller before draft forcing.
+
+    Returns:
+        Runtime session, job, and approval identifiers for recovery probes.
+
+    Raises:
+        ValueError: If any required runtime/review metadata cannot be recorded.
+    """
+
+    if not str(review_item_id or "").strip():
+        raise ValueError("review_item_id cannot be empty")
+    if not str(content_hash or "").strip():
+        raise ValueError("content_hash cannot be empty")
+    if action not in {"created", "updated"}:
+        raise ValueError("action must be created or updated")
+
+    runtime = get_writing_runtime()
+    page_path = (Path(page.kind.value) / f"{page.stable_slug}.md").as_posix()
+    request_id = f"wikiimport_{uuid4().hex[:16]}"
+    session = runtime.create_session(
+        mode=SessionMode.PROMPT,
+        user_id=owner,
+        tags=["wiki_import", "local_markdown_import"],
+        metadata={
+            "title": f"Wiki import review: {page.title}",
+            "source": "local_markdown_import",
+            "agent_request_id": request_id,
+            "intent": "wiki_import_review_candidate",
+            "review_item_id": review_item_id,
+            "wiki_page_path": page_path,
+        },
+    )
+    try:
+        metadata: dict[str, Any] = {
+            "source": "local_markdown_import",
+            "manual_wiki_import": True,
+            "agent_request_id": request_id,
+            "agent_host": "local_runtime",
+            "intent": "wiki_import_review_candidate",
+            "review_item_id": review_item_id,
+            "approval_surface": "wiki_review_queue",
+            "runtime_action_family": "wiki_candidate",
+            "requested_status": requested_status,
+            "wiki_page_path": page_path,
+            "wiki_page_slug": page.stable_slug,
+            "output_targets": {
+                "runtime_job": True,
+                "wiki_candidate": True,
+                "graph_candidate": False,
+                "smart_read_conversation": False,
+                "evolution_capture": False,
+            },
+            "knowledge_capture": {
+                "eligible": True,
+                "wiki_candidate": True,
+                "graph_candidate": False,
+                "requires_review_queue_approval": True,
+            },
+            "wiki_refs": [
+                {
+                    "ref_id": f"wiki:{page_path}",
+                    "slug": page.stable_slug,
+                    "wiki_slug": page.stable_slug,
+                    "page_path": page_path,
+                    "kind": page.kind.value,
+                    "status": page.status.value,
+                    "review_item_id": review_item_id,
+                }
+            ],
+            "resource_refs": [
+                {
+                    "resource_type": "local_markdown_source",
+                    "ref_id": f"sha256:{content_hash[:16]}",
+                    "source_path": source_label,
+                    "sha256": content_hash,
+                }
+            ],
+            "agent_result_consumers": {
+                "wiki": {
+                    "status": "private_draft_review_pending",
+                    "slug": page.stable_slug,
+                    "wiki_slug": page.stable_slug,
+                    "review_item_id": review_item_id,
+                }
+            },
+            "evidence_integrity_gate": {
+                "status": "block",
+                "blocking_claim_id": "wiki_import_review_approval",
+                "requires_user_confirmation": True,
+            },
+            "forbidden_actions": [
+                "direct_zotero_db_write",
+                "external_upload",
+                "auto_approve_import",
+            ],
+        }
+        job = runtime.create_job(
+            session_id=session.session_id,
+            kind=JobKind.AGENT_REQUEST,
+            input_text="Local Markdown wiki import pending review.",
+            tags=["wiki_import", "local_markdown_import", "requires_approval"],
+            metadata=metadata,
+        )
+        runtime.add_job_artifact(
+            job.job_id,
+            artifact_type=ArtifactType.METADATA,
+            content={
+                "kind": "wiki_import_runtime_action",
+                "schema_version": "scholar_ai_wiki_import_runtime_action_v1",
+                "review_item_id": review_item_id,
+                "wiki_page_path": page_path,
+                "source_path": source_label,
+                "source_sha256": content_hash,
+                "action": action,
+                "requires_user_confirmation": True,
+                "external_mutation": False,
+                "source_material_mutation": False,
+            },
+            created_by="wiki_router",
+            metadata={
+                "kind": "wiki_import_runtime_action",
+                "schema_version": "scholar_ai_wiki_import_runtime_action_v1",
+                "output_target": "wiki_candidate",
+                "review_item_id": review_item_id,
+                "status": "pending_review",
+            },
+        )
+        approval = runtime.request_approval(
+            job_id=job.job_id,
+            session_id=session.session_id,
+            reason="Review imported wiki draft before finalizing it as knowledge.",
+            content_preview=f"{page.title} ({page_path})",
+            metadata={
+                "approval_surface": "wiki_review_queue",
+                "review_item_id": review_item_id,
+                "wiki_page_path": page_path,
+                "requested_status": requested_status,
+                "requires_user_confirmation": True,
+            },
+        )
+        runtime.update_job_metadata(
+            job.job_id,
+            {
+                "runtime_approval_id": approval.approval_id,
+                "wiki_import": {
+                    "review_item_id": review_item_id,
+                    "wiki_page_path": page_path,
+                    "approval_id": approval.approval_id,
+                    "status": "pending_review",
+                },
+            },
+        )
+        runtime.build_action_preflight(
+            action_id="agent.wiki_candidate",
+            required_claim_id="handoff_readiness",
+            session_id=session.session_id,
+            job_id=job.job_id,
+            require_ready=False,
+            persist_refresh_receipt=True,
+        )
+        runtime.persist_agent_handoff_card(job.job_id)
+        ReviewQueue(wiki_review_queue_path()).update_metadata(
+            review_item_id,
+            {
+                "runtime_session_id": session.session_id,
+                "runtime_job_id": job.job_id,
+                "runtime_approval_id": approval.approval_id,
+                "runtime_recovery": {
+                    "research_action_lifecycle": f"/runtime/research-action-lifecycle?job_id={job.job_id}",
+                    "workflow_passport": f"/runtime/workflow-passport?job_id={job.job_id}",
+                    "evidence_integrity_gate": f"/runtime/evidence-integrity-gate?job_id={job.job_id}",
+                    "agent_handoff_card": f"/runtime/job/{job.job_id}/agent-handoff-card",
+                },
+            },
+        )
+        return {
+            "runtime_session_id": session.session_id,
+            "runtime_job_id": job.job_id,
+            "runtime_approval_id": approval.approval_id,
+        }
+    except Exception:
+        runtime.delete_session(session.session_id)
+        raise
 
 
 def _query_evidence_ref(result: WikiSearchResult) -> dict[str, Any]:
@@ -1354,8 +1805,8 @@ class _AuthorizedWikiPageStore(WikiPageStore):
 class _ReviewedWikiPageStore(_AuthorizedWikiPageStore):
     """Read-only page store view for published knowledge surfaces.
 
-    Capture drafts that still wait in the human review queue are hidden from
-    page lists, search indexes, graph exports, and Markdown exports.
+    Drafts that still wait in the human review queue are hidden from page
+    lists, search indexes, graph exports, and Markdown exports.
     """
 
     def read_page(self, relative_path: Path) -> str | None:
@@ -1363,7 +1814,7 @@ class _ReviewedWikiPageStore(_AuthorizedWikiPageStore):
         if content is None:
             return None
         frontmatter, _body = _split_frontmatter(str(content))
-        if _is_unfinalized_capture_draft(frontmatter):
+        if _is_unfinalized_review_draft(frontmatter):
             return None
         return content
 
@@ -1376,15 +1827,15 @@ def _reviewed_page_store(user_id: str) -> WikiPageStore:
     return _ReviewedWikiPageStore(_page_store(create=False), user_id)
 
 
-def _is_unfinalized_capture_draft(frontmatter: dict[str, Any]) -> bool:
-    """Return true for capture drafts that are not approved into final pages."""
+def _is_unfinalized_review_draft(frontmatter: dict[str, Any]) -> bool:
+    """Return true for draft pages that must stay hidden until review approval."""
 
     if not isinstance(frontmatter, dict):
         return False
     if str(frontmatter.get("status") or "").strip().lower() != WikiPageStatus.draft.value:
         return False
     extra = _frontmatter_extra(frontmatter)
-    return str(extra.get("entry_source") or "").strip() == "manual_frontend"
+    return str(extra.get("entry_source") or "").strip() in {"manual_frontend", "local_markdown_import"}
 
 
 @router.post("/import", response_model=WikiImportResponse)
@@ -1398,12 +1849,22 @@ def wiki_import(
     roots so a browser caller cannot use the API as a general filesystem reader.
     """
     if not wiki_enabled():
-        return WikiImportResponse(enabled=False, dry_run=request.dry_run, warnings=_disabled_warning())
+        return WikiImportResponse(
+            enabled=False,
+            dry_run=request.dry_run,
+            confirm_write=request.confirm_write,
+            warnings=_disabled_warning(),
+        )
 
     if not request.source_paths:
         raise HTTPException(status_code=400, detail="source_paths cannot be empty")
     if len(request.source_paths) > _MAX_WIKI_IMPORT_FILES:
         raise HTTPException(status_code=400, detail=f"source_paths cannot contain more than {_MAX_WIKI_IMPORT_FILES} files")
+    if not request.dry_run and not request.confirm_write:
+        raise HTTPException(
+            status_code=400,
+            detail="confirm_write=true is required when dry_run=false for local wiki import",
+        )
 
     current_user = _current_wiki_user(user_id)
     try:
@@ -1426,6 +1887,8 @@ def wiki_import(
 
     for raw_path in request.source_paths:
         source_label = str(raw_path)
+        review_item_id = ""
+        runtime_refs: dict[str, str] = {}
         try:
             source_path = _resolve_wiki_import_source(raw_path)
             source_label = _safe_import_source_label(source_path)
@@ -1473,12 +1936,14 @@ def wiki_import(
                 continue
             content_hash = hashlib.sha256(source_bytes).hexdigest()
             extra = _wiki_import_extra(source_path, content_hash, current_user)
+            forced_status = WikiPageStatus.draft.value
+            requested_status = page_status.value
             if existing_page is None:
                 page = service.create_page(
                     title=title,
                     kind=page_kind.value,
                     body=body,
-                    status=page_status.value,
+                    status=forced_status,
                     source_hashes=[content_hash],
                     extra=extra,
                 )
@@ -1489,30 +1954,138 @@ def wiki_import(
                     slug=slug,
                     title=title,
                     body=body,
-                    status=page_status.value,
+                    status=forced_status,
                     source_hashes=[content_hash],
                     extra=extra,
                 )
                 action = "updated"
+            page_path = (Path(page.kind.value) / f"{page.stable_slug}.md").as_posix()
+            rendered_content = WikiPageStore(wiki_generated_root(), create=False).read_page(Path(page_path))
+            if rendered_content is not None:
+                _frontmatter, rendered_body = _split_frontmatter(str(rendered_content))
+                ref_content = _strip_wiki_auto_markers(rendered_body)
+                knowledge_ref = _wiki_knowledge_ref_payload(
+                    page_path=page_path,
+                    source_hash=hashlib.sha256(str(rendered_content).encode("utf-8")).hexdigest(),
+                    content=ref_content,
+                    import_source_hash=content_hash,
+                )
+            else:
+                knowledge_ref = {
+                    "import_source_hash": content_hash,
+                    "source_hash": "",
+                    "content_hash": hashlib.sha256((page.body or body).encode("utf-8")).hexdigest(),
+                    "ref_id": f"wiki:{page_path}",
+                    "chunk_id": "",
+                    "read_endpoint": f"/api/agent-bridge/resource/wiki:{page_path}",
+                    "span_start": 0,
+                    "span_end": len(page.body or body),
+                }
+            try:
+                review_item_id = _append_wiki_draft_review_item(
+                    item_prefix="import",
+                    page_slug=page.stable_slug,
+                    page_kind=page.kind.value,
+                    title=page.title,
+                    body=page.body or "",
+                    source="local_markdown_import",
+                    metadata={
+                        "entry_source": "local_markdown_import",
+                        "requested_status": requested_status,
+                        "kind": page.kind.value,
+                        "owner": current_user,
+                        "source_path": source_label,
+                        "sha256": content_hash,
+                        "action": action,
+                        "dry_run_required_first": True,
+                        "approval_surface": "wiki_review_queue",
+                        "runtime_action_family": "wiki_candidate",
+                        "workflow_passport": {
+                            "stage_id": "wiki_candidate",
+                            "requires_user_confirmation": True,
+                            "source_ref": {
+                                "source_kind": "wiki_page_draft",
+                                "source_id": f"{page.kind.value}/{page.stable_slug}.md",
+                            },
+                        },
+                        "evidence_integrity_gate": {
+                            "status": "block",
+                            "blocking_claim_id": "wiki_import_review_approval",
+                            "requires_user_confirmation": True,
+                            "safe_probe": "/api/wiki/review?status=pending&kind=draft",
+                        },
+                        "agent_handoff_recovery": {
+                            "resume_tool": "literature.wiki_import",
+                            "review_queue_probe": "/api/wiki/review?status=pending&kind=draft",
+                            "forbidden_actions": [
+                                "direct_zotero_db_write",
+                                "external_upload",
+                                "auto_approve_import",
+                            ],
+                        },
+                    },
+                )
+            except (ValueError, OSError) as exc:
+                rollback_error = _rollback_wiki_import_governance(
+                    service=service,
+                    action=action,
+                    page=page,
+                    existing_page=existing_page,
+                )
+                rollback_status = "rollback attempt failed" if rollback_error is not None else "wiki page mutation was rolled back"
+                raise ValueError(f"Failed to create pending import review entry; {rollback_status}: {exc}") from exc
+            try:
+                runtime_refs = _record_wiki_import_runtime_action(
+                    page=page,
+                    review_item_id=review_item_id,
+                    source_label=source_label,
+                    content_hash=content_hash,
+                    action=action,
+                    owner=current_user,
+                    requested_status=requested_status,
+                )
+            except (ValueError, OSError, TypeError, RuntimeError) as exc:
+                rollback_error = _rollback_wiki_import_governance(
+                    service=service,
+                    action=action,
+                    page=page,
+                    existing_page=existing_page,
+                    review_item_id=review_item_id,
+                )
+                rollback_status = "rollback attempt failed" if rollback_error is not None else "wiki page mutation was rolled back"
+                raise ValueError(f"Failed to create pending import runtime action; {rollback_status}: {exc}") from exc
             imported += 1
             pages.append(
                 WikiImportItemPayload(
                     source_path=source_label,
+                    import_source_hash=content_hash,
+                    source_hash=str(knowledge_ref["source_hash"]),
+                    content_hash=str(knowledge_ref["content_hash"]),
+                    ref_id=str(knowledge_ref["ref_id"]),
+                    chunk_id=str(knowledge_ref["chunk_id"]),
+                    read_endpoint=str(knowledge_ref["read_endpoint"]),
+                    span_start=int(knowledge_ref["span_start"]),
+                    span_end=int(knowledge_ref["span_end"]),
                     title=title,
                     kind=page.kind.value,
                     status=page.status.value,
                     slug=page.stable_slug,
-                    path=(Path(page.kind.value) / f"{page.stable_slug}.md").as_posix(),
+                    path=page_path,
                     action=action,
+                    review_item_id=review_item_id,
+                    runtime_session_id=runtime_refs["runtime_session_id"],
+                    runtime_job_id=runtime_refs["runtime_job_id"],
+                    runtime_approval_id=runtime_refs["runtime_approval_id"],
                 )
             )
-        except (FileNotFoundError, OSError, UnicodeDecodeError, ValueError) as exc:
+        except (FileNotFoundError, OSError, UnicodeDecodeError, ValueError, RuntimeError) as exc:
             errored += 1
             pages.append(WikiImportItemPayload(source_path=source_label, action="error", error=str(exc)))
 
     return WikiImportResponse(
         enabled=True,
         dry_run=request.dry_run,
+        confirm_write=request.confirm_write,
         imported=imported,
         skipped=skipped,
         errored=errored,
@@ -1552,12 +2125,19 @@ def wiki_status(user_id: str | None = Query(default=None)) -> WikiStatusResponse
     store = _reviewed_page_store(current_user)
     pages = store.list_pages() if store.wiki_root.exists() else []
     page_count = len(pages) if enabled else 0
-    stale, stale_warnings = _status_stale(page_count, enabled=enabled)
+    stale, stale_warnings, integrity = _status_integrity(store, page_count, enabled=enabled)
     warnings = stale_warnings if enabled else _disabled_warning()
     return WikiStatusResponse(
         enabled=enabled,
         page_count=page_count,
         stale=stale,
+        integrity_status=str(integrity["integrity_status"]),
+        index_hash=str(integrity["index_hash"]),
+        source_manifest_hash=str(integrity["source_manifest_hash"]),
+        indexed_source_manifest_hash=str(integrity["indexed_source_manifest_hash"]),
+        indexed_page_count=int(integrity["indexed_page_count"]),
+        source_page_count=integrity["source_page_count"] if isinstance(integrity["source_page_count"], int) else None,
+        manifest_drilldown=WikiManifestDrilldownPayload(**integrity["manifest_drilldown"]),
         graph_json_exists=wiki_graph_path().exists(),
         graph_db_exists=wiki_graph_db_path().exists(),
         query_index_exists=wiki_query_index_path().exists(),
@@ -1699,11 +2279,12 @@ def _wiki_search_impl(request: WikiQueryRequest, user_id: str) -> WikiQueryRespo
         elif not hits:
             warnings.append("Wiki query returned only pages outside the current user's permissions.")
             warnings.append("Call the main RAG chain for raw-corpus fallback.")
+        knowledge_refs = build_knowledge_refs(hits, readable_store)
         return WikiQueryResponse(
             enabled=True,
             fallback_required=fallback_required,
             answer="" if fallback_required else "Wiki evidence is available; use evidence_refs for grounded context.",
-            evidence_refs=[_query_evidence_ref(hit) for hit in hits],
+            evidence_refs=[ref.to_hit(include_content=False) for ref in knowledge_refs],
             warnings=warnings,
         )
     except Exception as exc:
@@ -1929,32 +2510,21 @@ def wiki_page_create(
 
     # 把这条草稿挂到 ReviewQueue 当待确认条目。失败就回滚刚创建的 page，
     # 避免「页面有了但收件箱没有」的半成功状态。
-    page_relative_path = f"{page.kind.value}/{page.stable_slug}.md"
     try:
-        queue = ReviewQueue(wiki_review_queue_path())
-        existing_ids = {item.item_id for item in queue.list_items()}
-        candidate_id = f"capture-{page.stable_slug}"
-        # 防同名 slug 重写时撞 item_id；递增后缀。
-        suffix = 1
-        while candidate_id in existing_ids:
-            suffix += 1
-            candidate_id = f"capture-{page.stable_slug}-{suffix}"
         capture_metadata: dict[str, Any] = {
             "entry_source": request.extra.get("entry_source") or "manual_frontend",
             "requested_status": requested_status,
             "kind": page.kind.value,
             "owner": current_user,
         }
-        queue.append(
-            make_review_item(
-                item_id=candidate_id,
-                kind=ReviewItemKind.draft,
-                title=page.title,
-                page_path=page_relative_path,
-                summary=(page.body or "").strip().splitlines()[0][:200] if page.body else "",
-                source="capture",
-                metadata=capture_metadata,
-            )
+        _append_wiki_draft_review_item(
+            item_prefix="capture",
+            page_slug=page.stable_slug,
+            page_kind=page.kind.value,
+            title=page.title,
+            body=page.body or "",
+            source="capture",
+            metadata=capture_metadata,
         )
     except (ValueError, OSError) as exc:
         try:

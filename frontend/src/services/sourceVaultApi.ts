@@ -30,12 +30,25 @@ export interface SourceVaultOverview {
 }
 
 export interface SourceVaultSearchResult {
+  ref_id: string;
+  read_endpoint: string;
   chunk_id: string;
   source_id: string;
   source_hash: string;
   title: string;
+  summary: string;
   chunk_index: number;
   text: string;
+  source_type: string;
+  original_filename: string;
+  stored_path: string;
+  page: number | null;
+  span_start: number | null;
+  span_end: number | null;
+  section: string | null;
+  text_hash: string;
+  truncated: boolean;
+  metadata: Record<string, unknown>;
   score: number | null;
 }
 
@@ -128,12 +141,25 @@ export function parseSourceVaultSearchResult(value: unknown): SourceVaultSearchR
   }
   const rawScore = value.score;
   return {
+    ref_id: readString(value.ref_id, 'ref_id'),
+    read_endpoint: readString(value.read_endpoint, 'read_endpoint'),
     chunk_id: readString(value.chunk_id, 'chunk_id'),
     source_id: readString(value.source_id, 'source_id'),
     source_hash: readString(value.source_hash, 'source_hash'),
     title: readString(value.title, 'title'),
+    summary: readString(value.summary, 'summary'),
     chunk_index: readNumber(value.chunk_index, 'chunk_index'),
     text: readString(value.text, 'text'),
+    source_type: readString(value.source_type, 'source_type'),
+    original_filename: readString(value.original_filename, 'original_filename'),
+    stored_path: readString(value.stored_path, 'stored_path'),
+    page: value.page === null || value.page === undefined ? null : readNumber(value.page, 'page'),
+    span_start: value.span_start === null || value.span_start === undefined ? null : readNumber(value.span_start, 'span_start'),
+    span_end: value.span_end === null || value.span_end === undefined ? null : readNumber(value.span_end, 'span_end'),
+    section: value.section === null || value.section === undefined ? null : readString(value.section, 'section'),
+    text_hash: readString(value.text_hash, 'text_hash'),
+    truncated: readBoolean(value.truncated, 'truncated'),
+    metadata: isRecord(value.metadata) ? { ...value.metadata } : {},
     score: rawScore === null || rawScore === undefined ? null : readNumber(rawScore, 'score'),
   };
 }

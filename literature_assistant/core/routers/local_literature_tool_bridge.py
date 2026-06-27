@@ -139,6 +139,38 @@ _TOOL_SPECS: Final[tuple[_ToolSpec, ...]] = (
         method_name="agent_resource_read",
     ),
     _ToolSpec(
+        name="literature.knowledge_context_receipt",
+        description="Prove bounded knowledge refs entered model-context input.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "ref_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                    "maxItems": 20,
+                },
+                "project_id": {"type": "string"},
+                "prompt_name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "default": "knowledge_runtime_context",
+                },
+                "max_chars_per_ref": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 4000,
+                    "default": 1200,
+                },
+            },
+            "required": ["ref_ids"],
+            "additionalProperties": False,
+        },
+        capability=McpToolCapability.READ,
+        method_name="knowledge_context_receipt",
+    ),
+    _ToolSpec(
         name="literature.outline_generate",
         description="Generate an evidence-grounded writing outline.",
         input_schema={

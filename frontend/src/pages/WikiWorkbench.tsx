@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, BookMarked, CheckCircle2, ChevronDown, Download, FilePlus2, FileText, RefreshCw, Search, Settings2, ShieldCheck, Square } from 'lucide-react';
 
 import { WikiCompileDryRunPanel } from '@/components/wiki/WikiCompileDryRunPanel';
+import { WikiImportMarkdownPanel } from '@/components/wiki/WikiImportMarkdownPanel';
 import { DoctorReportPanel } from '@/components/wiki/DoctorReportPanel';
 import { GraphDebugPanel } from '@/components/wiki/GraphDebugPanel';
 import { WikiGraphSegmentedView } from '@/components/graph/WikiGraphSegmentedView';
@@ -540,6 +541,18 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
             onStopManual={handleStopManualCreate}
           />
 
+          <WikiImportMarkdownPanel
+            isWikiEnabled={status?.enabled ?? false}
+            reviewQueueCount={review?.items.length ?? 0}
+            onImported={() => {
+              void loadStatus();
+              void loadPages();
+              void loadReview();
+              void loadGraph();
+              void loadGraphPayload();
+            }}
+          />
+
           <section className="overflow-hidden rounded-md border border-outline-variant/60 bg-surface-lowest">
             <div className="flex items-center justify-between border-b border-outline-variant/60 px-4 py-2">
               <div className="flex items-center gap-2">
@@ -632,6 +645,17 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
           isLoading={isReviewLoading}
           error={reviewError}
           onRefresh={() => void loadReview()}
+        />
+        <WikiImportMarkdownPanel
+          isWikiEnabled={status?.enabled ?? false}
+          reviewQueueCount={review?.items.length ?? 0}
+          onImported={() => {
+            void loadStatus();
+            void loadPages();
+            void loadReview();
+            void loadGraph();
+            void loadGraphPayload();
+          }}
         />
         <WikiCompileDryRunPanel
           result={compileResult}

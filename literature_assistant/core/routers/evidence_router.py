@@ -6,7 +6,7 @@ and citation overlap detection (D8).
 """
 
 from fastapi import APIRouter, HTTPException, Query, Response
-from typing import Any, List, Literal, Optional
+from typing import Any, Callable, List, Literal, Optional
 from datetime import datetime, timezone
 from pathlib import Path
 from pydantic import BaseModel, Field, ValidationError
@@ -19,10 +19,20 @@ import uuid
 
 import routers.resources_router as _resources_router
 from literature_assistant.core.chunk_package_quality import default_joint_recall_policy, weighted_rrf_fuse
+from literature_assistant.core.academic_english_resources import search_academic_english
+from literature_assistant.core.config_knowledge import search_scoring_rules
+from literature_assistant.core.product_docs_knowledge import search_product_docs
+from literature_assistant.core.source_vault import (
+    SourceVault,
+    build_source_vault_chunk_read_endpoint,
+    build_source_vault_chunk_ref_id,
+    build_source_vault_search_metadata,
+)
+from literature_assistant.core.skill_package_knowledge import ACADEMIC_ENGLISH_SKILL_PACKAGE_ID, search_skill_package
 from literature_assistant.core.project_paths import wiki_generated_root, wiki_query_index_path
 from literature_assistant.core.runtime_env import wiki_enabled
 from literature_assistant.core.wiki.page_store import WikiPageStore
-from literature_assistant.core.wiki.query import WikiQueryIndex
+from literature_assistant.core.wiki.query import WikiQueryIndex, build_knowledge_refs
 from project_paths import project_data_path, runtime_state_path
 from routers.resources_router.endpoints_search_upload import (
     build_locator_coverage,
@@ -108,6 +118,22 @@ _CANONICAL_QRELS_FILENAMES: tuple[str, ...] = (
     "qrels.trec",
     "goldset.qrels",
 )
+KnowledgeRefSourceType = Literal[
+    "product_docs",
+    "scoring_rules",
+    "academic_english",
+    "skill_package",
+    "source_vault",
+]
+
+_EVIDENCE_PACK_KNOWLEDGE_REF_KINDS: tuple[KnowledgeRefSourceType, ...] = (
+    "product_docs",
+    "scoring_rules",
+    "academic_english",
+    "skill_package",
+    "source_vault",
+)
+_EVIDENCE_PACK_MAX_KNOWLEDGE_REFS = len(_EVIDENCE_PACK_KNOWLEDGE_REF_KINDS)
 
 
 def _count_trec_qrels_rows(path: Path) -> int:
@@ -1008,9 +1034,9 @@ def _resolve_hybrid_retriever_class() -> Any | None:
 def _resolve_wiki_joint_recall_searcher() -> Any | None:
     """Return a bounded wiki searcher for joint recall diagnostics.
 
-    The searcher returns wiki-ranked refs for diagnostics only. Evidence refs
-    remain project chunk refs until the agent resource reader supports wiki
-    page refs as a first-class bounded resource.
+    The searcher returns wiki-ranked bounded refs. Wiki refs remain outside the
+    project chunk store, but use the same agent resource reader contract as
+    project chunks.
     """
 
     if not wiki_enabled():
@@ -1018,6 +1044,7 @@ def _resolve_wiki_joint_recall_searcher() -> Any | None:
     index_path = wiki_query_index_path()
     if not index_path.exists():
         return None
+    integrity_gate = _wiki_joint_recall_integrity_gate()
 
     def _search(query: str, limit: int) -> list[dict[str, Any]]:
         if not isinstance(query, str) or not query.strip():
@@ -1028,26 +1055,107 @@ def _resolve_wiki_joint_recall_searcher() -> Any | None:
         store = WikiPageStore(wiki_generated_root(), create=False)
         try:
             results = index.search(query, limit=limit)
-            hits: list[dict[str, Any]] = []
-            for result in results:
-                if store.read_page(result.page_path) is None:
-                    continue
-                hits.append(
-                    {
-                        "doc_id": f"wiki:{result.page_path.as_posix()}",
-                        "ref_id": f"wiki:{result.page_path.as_posix()}",
-                        "title": result.title,
-                        "summary": _bounded_evidence_pack_summary(result.snippet),
-                        "page_path": result.page_path.as_posix(),
-                        "read_endpoint": f"/api/agent-bridge/resource/wiki:{result.page_path.as_posix()}",
-                        "source": result.source,
-                    }
-                )
-            return hits
+            refs = build_knowledge_refs(results, store, max_summary_chars=300)
+            return [ref.to_hit(include_content=False) for ref in refs]
         finally:
             index.close()
 
+    setattr(_search, "_wiki_integrity_gate", integrity_gate)
     return _search
+
+
+def _wiki_joint_recall_integrity_gate() -> dict[str, Any]:
+    """Return a read-only integrity gate for wiki joint recall."""
+
+    if not wiki_enabled():
+        return {
+            "enabled": False,
+            "allowed": False,
+            "status": "disabled",
+            "reason": "Wiki integration is disabled.",
+            "error_class": "wiki_disabled",
+        }
+    index_path = wiki_query_index_path()
+    if not index_path.exists():
+        return {
+            "enabled": True,
+            "allowed": False,
+            "status": "missing_index",
+            "reason": "Wiki query index is missing; rebuild before using wiki refs in evidence packs.",
+            "error_class": "wiki_index_missing",
+            "indexed_page_count": 0,
+            "source_page_count": None,
+            "index_hash": "none",
+            "source_manifest_hash": "unknown",
+            "indexed_source_manifest_hash": "unknown",
+        }
+    index = WikiQueryIndex(index_path)
+    store = WikiPageStore(wiki_generated_root(), create=False)
+    try:
+        status = index.get_status(store)
+    except Exception as exc:
+        return {
+            "enabled": True,
+            "allowed": False,
+            "status": "unreadable_index",
+            "reason": f"Wiki query index integrity could not be read: {type(exc).__name__}.",
+            "error_class": "wiki_index_unreadable",
+            "index_hash": "unknown",
+            "source_manifest_hash": "unknown",
+            "indexed_source_manifest_hash": "unknown",
+        }
+    finally:
+        index.close()
+
+    allowed = not status.stale and status.integrity_status == "aligned"
+    error_class = "" if allowed else f"wiki_{status.integrity_status}"
+    reason = (
+        "Wiki query index is aligned with generated wiki pages."
+        if allowed
+        else "Wiki query index is not aligned with generated wiki pages; wiki refs are excluded from this evidence pack."
+    )
+    return {
+        "enabled": True,
+        "allowed": allowed,
+        "status": status.integrity_status,
+        "reason": reason,
+        "error_class": error_class[:120],
+        "warnings": list(status.warnings),
+        "indexed_page_count": status.page_count,
+        "source_page_count": status.source_page_count,
+        "index_hash": status.index_hash,
+        "source_manifest_hash": status.source_manifest_hash,
+        "indexed_source_manifest_hash": status.indexed_source_manifest_hash,
+        "last_indexed": status.last_indexed,
+    }
+
+
+def _blocked_wiki_joint_recall_result(
+    *,
+    policy: dict[str, Any],
+    project_refs: list[EvidencePackReferencePayload],
+    top_k: int,
+    gate: dict[str, Any],
+) -> tuple[dict[str, Any], list[EvidencePackReferencePayload]]:
+    """Return project-only refs plus a blocked wiki integrity diagnostic."""
+
+    return (
+        {
+            "enabled": bool(gate.get("enabled")),
+            "status": "blocked",
+            "reason": str(gate.get("reason") or "Wiki integrity gate blocked joint recall."),
+            "fusion_method": policy["fusion"],
+            "project_weight": float(policy["project_weight"]),
+            "wiki_weight": float(policy["wiki_weight"]),
+            "project_hit_count": len(project_refs),
+            "wiki_hit_count": 0,
+            "wiki_share_after_fusion": 0.0,
+            "source_counts": {"project": min(len(project_refs), top_k), "wiki": 0},
+            "integrity_gate": gate,
+            "wiki_summaries": [],
+        },
+        project_refs[:top_k],
+    )
 
 
 def _project_hits_for_joint_recall(
@@ -1086,7 +1194,8 @@ def _wiki_hit_to_evidence_ref(project_id: str, hit: dict[str, Any]) -> EvidenceP
         return None
     source_path = str(hit.get("page_path") or ref_id.removeprefix("wiki:")).strip()[:240]
     stable_id = ref_id.removeprefix("wiki:").strip() or source_path or ref_id
-    chunk_id = f"wiki:{stable_id}"
+    hit_chunk_id = str(hit.get("chunk_id") or "").strip()
+    chunk_id = hit_chunk_id if hit_chunk_id.startswith("wiki:") else f"wiki:{stable_id}"
     return EvidencePackReferencePayload(
         project_id=project_id,
         source_type="wiki",
@@ -1105,6 +1214,283 @@ def _wiki_hit_to_evidence_ref(project_id: str, hit: dict[str, Any]) -> EvidenceP
         source_title=str(hit.get("title") or "")[:160] or None,
         source_path=source_path or None,
     )
+
+
+def _knowledge_hit_to_evidence_ref(
+    project_id: str,
+    hit: dict[str, Any],
+    *,
+    source_type: KnowledgeRefSourceType,
+) -> EvidencePackReferencePayload | None:
+    """Project one knowledge-package hit into the evidence-pack ref contract."""
+
+    if not project_id.strip() or not isinstance(hit, dict):
+        return None
+    ref_id = str(hit.get("ref_id") or "").strip()
+    read_endpoint = str(hit.get("read_endpoint") or "").strip()
+    metadata = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
+    summary = _bounded_evidence_pack_summary(str(hit.get("summary") or ""))
+    expected_read_endpoint = f"/api/agent-bridge/resource/{ref_id}"
+    chunk_id = _knowledge_chunk_id_from_ref(ref_id, source_type)
+    source_path = str(metadata.get("source_path") or "").strip()[:240]
+    content_hash = str(metadata.get("content_hash") or "").strip()
+    source_hash = str(metadata.get("source_hash") or "").strip()
+    span_start = metadata.get("span_start")
+    span_end = metadata.get("span_end")
+    if (
+        not chunk_id
+        or read_endpoint != expected_read_endpoint
+        or str(hit.get("kind") or "").strip() != source_type
+        or not summary.strip()
+        or not source_path
+        or not content_hash
+        or not source_hash
+        or not isinstance(span_start, int)
+        or not isinstance(span_end, int)
+        or span_end < span_start
+    ):
+        return None
+    lexical_score = float(hit.get("score") or 0.0)
+    return EvidencePackReferencePayload(
+        project_id=project_id,
+        source_type=source_type,
+        ref_id=ref_id,
+        read_endpoint=read_endpoint[:300],
+        chunk_id=f"{source_type}:{chunk_id}"[:260],
+        material_id=source_type,
+        page=None,
+        locator=None,
+        lexical_score=max(0.0, lexical_score),
+        rerank_score=None,
+        citation_anchor=_citation_anchor_from_ref(ref_id, source_type, chunk_id),
+        figure_candidate=None,
+        source_labels=[],
+        summary=summary,
+        suitable_for_body=True,
+        source_title=str(hit.get("title") or "")[:160] or None,
+        source_path=source_path or None,
+    )
+
+
+def _knowledge_chunk_id_from_ref(ref_id: str, source_type: KnowledgeRefSourceType) -> str:
+    """Return a stable evidence-pack chunk id suffix from a knowledge ref."""
+
+    if source_type == "product_docs" and ref_id.startswith("product_docs:chunk:"):
+        return ref_id.removeprefix("product_docs:chunk:").strip()
+    if source_type == "scoring_rules" and ref_id.startswith("scoring_rules:section:"):
+        section_id = ref_id.removeprefix("scoring_rules:section:").strip()
+        return f"section:{section_id}" if section_id else ""
+    if source_type == "academic_english" and ref_id.startswith("academic_english:"):
+        if ref_id == "academic_english:habits":
+            return "habits:habits"
+        parts = ref_id.split(":")
+        if len(parts) == 3 and parts[1] in {"habits", "chunk", "phrase"}:
+            resource_kind = parts[1].strip()
+            item_id = parts[2].strip()
+            if resource_kind and item_id:
+                return f"{resource_kind}:{item_id}"
+    if source_type == "skill_package" and ref_id.startswith("skill_package:"):
+        parts = ref_id.split(":")
+        if len(parts) == 4 and parts[2] == "chunk":
+            package_id = parts[1].strip()
+            chunk_id = parts[3].strip()
+            if package_id and chunk_id:
+                return f"{package_id}:chunk:{chunk_id}"
+    if source_type == "source_vault" and ref_id.startswith("source_vault:chunk:"):
+        return ref_id.removeprefix("source_vault:chunk:").strip()
+    return ""
+
+
+def _knowledge_summaries(
+    hits: list[dict[str, Any]],
+    top_k: int,
+    *,
+    source_type: KnowledgeRefSourceType,
+) -> list[dict[str, Any]]:
+    """Return bounded knowledge-package provenance summaries for diagnostics."""
+
+    summaries: list[dict[str, Any]] = []
+    for hit in hits[: max(0, min(top_k, _EVIDENCE_PACK_MAX_KNOWLEDGE_REFS))]:
+        if not isinstance(hit, dict):
+            continue
+        metadata = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
+        summaries.append(
+            {
+                "ref_id": str(hit.get("ref_id") or ""),
+                "read_endpoint": str(hit.get("read_endpoint") or "")[:300],
+                "title": str(hit.get("title") or "")[:160],
+                "summary": _bounded_evidence_pack_summary(str(hit.get("summary") or "")),
+                "source_path": str(metadata.get("source_path") or "")[:240],
+                "source_hash": str(metadata.get("source_hash") or "")[:80],
+                "content_hash": str(metadata.get("content_hash") or "")[:80],
+                "package_content_hash": str(metadata.get("package_content_hash") or "")[:80],
+                "span_start": metadata.get("span_start"),
+                "span_end": metadata.get("span_end"),
+            }
+        )
+        if source_type == "scoring_rules":
+            summaries[-1]["section_id"] = str(metadata.get("section_id") or "")[:120]
+        if source_type == "academic_english":
+            summaries[-1]["resource_kind"] = str(metadata.get("resource_kind") or "")[:80]
+            summaries[-1]["policy_content_hash"] = str(metadata.get("policy_content_hash") or "")[:80]
+            summaries[-1]["built_at"] = str(metadata.get("built_at") or "")[:120]
+        if source_type == "skill_package":
+            summaries[-1]["package_id"] = str(metadata.get("package_id") or "")[:120]
+            summaries[-1]["source_role"] = str(metadata.get("source_role") or "")[:80]
+        if source_type == "source_vault":
+            summaries[-1]["source_id"] = str(metadata.get("source_id") or "")[:120]
+            summaries[-1]["chunk_id"] = str(metadata.get("chunk_id") or "")[:160]
+            summaries[-1]["chunker_version"] = str(metadata.get("chunker_version") or "")[:80]
+    return summaries
+
+
+def _search_source_vault_knowledge_refs(project_id: str, query: str, top_k: int) -> list[dict[str, Any]]:
+    """Return project-scoped Source Vault refs without copying chunk text into evidence packs."""
+
+    if not project_id.strip() or not query.strip() or top_k < 1:
+        return []
+    hits: list[dict[str, Any]] = []
+    for result in SourceVault().search_chunks(query, limit=top_k, project_id=project_id):
+        ref_id = build_source_vault_chunk_ref_id(result.chunk_id)
+        metadata = build_source_vault_search_metadata(result)
+        hits.append(
+            {
+                "kind": "source_vault",
+                "ref_id": ref_id,
+                "read_endpoint": build_source_vault_chunk_read_endpoint(result.chunk_id),
+                "title": result.title,
+                "summary": _source_vault_provenance_summary(result),
+                "score": abs(float(result.score)) if result.score is not None else 0.0,
+                "metadata": metadata,
+            }
+        )
+    return hits
+
+
+def _source_vault_provenance_summary(result: Any) -> str:
+    """Return a context-safe Source Vault summary that keeps raw chunk text behind resource_read."""
+
+    title = str(getattr(result, "title", "") or "Source Vault source").strip()
+    chunk_index = getattr(result, "chunk_index", None)
+    page = getattr(result, "page", None)
+    section = str(getattr(result, "section", "") or "").strip()
+    details: list[str] = []
+    if isinstance(chunk_index, int):
+        details.append(f"chunk {chunk_index}")
+    if isinstance(page, int) and page > 0:
+        details.append(f"page {page}")
+    if section:
+        details.append(f"section {section[:80]}")
+    suffix = f" ({', '.join(details)})" if details else ""
+    return _bounded_evidence_pack_summary(f"Source Vault bounded ref from {title[:160]}{suffix}.")
+
+
+def _knowledge_ref_providers() -> tuple[
+    tuple[KnowledgeRefSourceType, Callable[[str, str, int], list[dict[str, Any]]]],
+    ...,
+]:
+    """Return evidence-pack knowledge providers in deterministic priority order."""
+
+    return (
+        ("product_docs", lambda project_id, query, limit: search_product_docs(query, top_k=limit)),
+        ("scoring_rules", lambda project_id, query, limit: search_scoring_rules(query, top_k=limit)),
+        ("academic_english", lambda project_id, query, limit: search_academic_english(query, top_k=limit)),
+        (
+            "skill_package",
+            lambda project_id, query, limit: search_skill_package(ACADEMIC_ENGLISH_SKILL_PACKAGE_ID, query, top_k=limit),
+        ),
+        ("source_vault", _search_source_vault_knowledge_refs),
+    )
+
+
+def _attach_knowledge_refs(
+    diagnostics: EvidenceRetrievalDiagnosticsPayload,
+    *,
+    project_id: str,
+    query: str,
+    evidence_refs: list[EvidencePackReferencePayload],
+    top_k: int,
+) -> tuple[EvidenceRetrievalDiagnosticsPayload, list[EvidencePackReferencePayload]]:
+    """Attach bounded knowledge-package refs after project/wiki retrieval."""
+
+    if not project_id.strip() or not query.strip() or top_k < 1:
+        return diagnostics, evidence_refs
+    if not evidence_refs:
+        diagnostics.joint_recall["knowledge_refs"] = {
+            "enabled": True,
+            "status": "skipped",
+            "reason": "Project evidence refs are required before knowledge refs are attached.",
+            "source_counts": {kind: 0 for kind in _EVIDENCE_PACK_KNOWLEDGE_REF_KINDS},
+            "product_docs_summaries": [],
+            "scoring_rules_summaries": [],
+        }
+        return diagnostics, evidence_refs
+    remaining = max(0, min(_EVIDENCE_PACK_MAX_KNOWLEDGE_REFS, top_k - len(evidence_refs)))
+    if remaining <= 0:
+        diagnostics.joint_recall["knowledge_refs"] = {
+            "enabled": True,
+            "status": "skipped",
+            "reason": "Evidence pack top_k was already filled before knowledge refs were considered.",
+            "source_counts": {kind: 0 for kind in _EVIDENCE_PACK_KNOWLEDGE_REF_KINDS},
+            "product_docs_summaries": [],
+            "scoring_rules_summaries": [],
+        }
+        return diagnostics, evidence_refs
+
+    refs: list[EvidencePackReferencePayload] = []
+    seen = {ref.ref_id for ref in evidence_refs}
+    source_counts = {kind: 0 for kind in _EVIDENCE_PACK_KNOWLEDGE_REF_KINDS}
+    summaries: dict[str, list[dict[str, Any]]] = {f"{kind}_summaries": [] for kind in _EVIDENCE_PACK_KNOWLEDGE_REF_KINDS}
+    blocked: list[str] = []
+    for source_type, searcher in _knowledge_ref_providers():
+        if len(refs) >= remaining:
+            break
+        provider_limit = 1
+        try:
+            hits = searcher(project_id, query, provider_limit)
+        except Exception as exc:
+            blocked.append(source_type)
+            diagnostics.notes = [
+                *diagnostics.notes,
+                f"{source_type} knowledge refs were blocked before entering this evidence pack.",
+            ][:12]
+            continue
+        summaries[f"{source_type}_summaries"] = _knowledge_summaries(hits, top_k, source_type=source_type)
+        for hit in hits:
+            ref = _knowledge_hit_to_evidence_ref(project_id, hit, source_type=source_type)
+            if ref is None or ref.ref_id in seen:
+                continue
+            refs.append(ref)
+            seen.add(ref.ref_id)
+            source_counts[source_type] += 1
+            if len(refs) >= remaining:
+                break
+
+    status = "active" if refs else "blocked" if blocked else "empty"
+    diagnostics.joint_recall["knowledge_refs"] = {
+        "enabled": True,
+        "status": status,
+        "reason": (
+            "Attached bounded knowledge refs that share agent resource ids with knowledge search."
+            if refs
+            else f"Knowledge ref providers were blocked: {', '.join(blocked)}."
+            if blocked
+            else "Knowledge package searches returned no bounded refs for this query."
+        ),
+        "source_counts": source_counts,
+        "blocked_sources": blocked,
+        **summaries,
+    }
+    if refs:
+        diagnostics.reasoning_trace = [
+            *diagnostics.reasoning_trace,
+            "Attached knowledge refs through the same bounded agent resource protocol used by knowledge search.",
+        ][:16]
+        diagnostics.notes = [
+            *diagnostics.notes,
+            "knowledge_refs may include non-project bounded refs; raw knowledge content stays behind resource_read.",
+        ][:12]
+    return diagnostics, [*evidence_refs, *refs]
 
 
 def _evidence_refs_from_fused_joint_hits(
@@ -1161,6 +1547,14 @@ def _joint_recall_diagnostics(
     policy = default_joint_recall_policy()
     searcher = _resolve_wiki_joint_recall_searcher()
     if searcher is None:
+        gate = _wiki_joint_recall_integrity_gate()
+        if gate.get("enabled") and not gate.get("allowed"):
+            return _blocked_wiki_joint_recall_result(
+                policy=policy,
+                project_refs=project_refs,
+                top_k=top_k,
+                gate=gate,
+            )
         return (
             {
                 "enabled": False,
@@ -1175,6 +1569,14 @@ def _joint_recall_diagnostics(
                 "source_counts": {"project": min(len(project_refs), top_k), "wiki": 0},
             },
             project_refs[:top_k],
+        )
+    gate = getattr(searcher, "_wiki_integrity_gate", None)
+    if isinstance(gate, dict) and not gate.get("allowed", False):
+        return _blocked_wiki_joint_recall_result(
+            policy=policy,
+            project_refs=project_refs,
+            top_k=top_k,
+            gate=gate,
         )
     wiki_hits = searcher(query, max(top_k, int(policy.get("per_source_caps", {}).get("wiki", top_k))))
     if not isinstance(wiki_hits, list):
@@ -1206,6 +1608,7 @@ def _joint_recall_diagnostics(
             "wiki_hit_count": fused["wiki_hit_count"],
             "wiki_share_after_fusion": fused["wiki_share_after_fusion"],
             "source_counts": source_counts,
+            "integrity_gate": gate if isinstance(gate, dict) else {"status": "unchecked"},
             "top_doc_ids": [str(hit.get("doc_id") or "") for hit in fused["hits"][: min(5, top_k)]],
             "wiki_summaries": [
                 {
@@ -1216,6 +1619,11 @@ def _joint_recall_diagnostics(
                     "summary": _bounded_evidence_pack_summary(str(hit.get("summary") or "")),
                     "page_path": str(hit.get("page_path") or "")[:240],
                     "source": str(hit.get("source") or "wiki")[:80],
+                    "chunk_id": str(hit.get("chunk_id") or "")[:260],
+                    "source_hash": str(hit.get("source_hash") or "")[:80],
+                    "content_hash": str(hit.get("content_hash") or "")[:80],
+                    "span_start": hit.get("span_start"),
+                    "span_end": hit.get("span_end"),
                 }
                 for hit in wiki_hits[: min(3, top_k)]
                 if isinstance(hit, dict)
@@ -1242,7 +1650,8 @@ def _attach_joint_recall_diagnostics(
         top_k=top_k,
     )
     diagnostics.joint_recall = joint
-    if joint.get("enabled"):
+    joint_status = str(joint.get("status") or "")
+    if joint.get("enabled") and joint_status == "active":
         diagnostics.project_weight = float(joint.get("project_weight", diagnostics.project_weight))
         diagnostics.wiki_weight = float(joint.get("wiki_weight", diagnostics.wiki_weight))
         diagnostics.reasoning_trace = [
@@ -1252,6 +1661,15 @@ def _attach_joint_recall_diagnostics(
         diagnostics.notes = [
             *diagnostics.notes,
             "joint_recall evidence_refs may include source_type=wiki bounded refs alongside project chunk refs.",
+        ][:12]
+    elif joint_status == "blocked":
+        diagnostics.reasoning_trace = [
+            *diagnostics.reasoning_trace,
+            "Skipped wiki joint recall because the wiki integrity gate blocked stale or unproven wiki refs.",
+        ][:16]
+        diagnostics.notes = [
+            *diagnostics.notes,
+            "wiki_integrity_gate blocked wiki refs from entering this evidence pack.",
         ][:12]
     return diagnostics, fused_refs
 
@@ -1439,6 +1857,97 @@ def _evidence_pack_locator_attempt(diagnostics: EvidenceRetrievalDiagnosticsPayl
     )
 
 
+def _evidence_pack_wiki_integrity_attempt(diagnostics: EvidenceRetrievalDiagnosticsPayload) -> ToolAttempt:
+    """Return a wiki integrity gate attempt for joint recall provenance."""
+
+    joint = diagnostics.joint_recall if isinstance(diagnostics.joint_recall, dict) else {}
+    gate = joint.get("integrity_gate") if isinstance(joint.get("integrity_gate"), dict) else {}
+    if not gate:
+        return ToolAttempt(
+            stage="wiki_integrity_gate",
+            status="skipped",
+            reason="Wiki integrity gate was not evaluated for this evidence pack.",
+            error_class="wiki_gate_unavailable",
+            metadata={"joint_recall_status": str(joint.get("status") or "disabled")},
+        )
+    gate_status = str(gate.get("status") or "unknown")
+    if gate.get("allowed") is True and gate_status == "aligned":
+        return ToolAttempt(
+            stage="wiki_integrity_gate",
+            status="success",
+            reason="Wiki query index is aligned with generated wiki pages.",
+            metadata={
+                "status": gate_status,
+                "indexed_page_count": gate.get("indexed_page_count"),
+                "source_page_count": gate.get("source_page_count"),
+                "index_hash": gate.get("index_hash"),
+                "source_manifest_hash": gate.get("source_manifest_hash"),
+            },
+        )
+    if gate.get("enabled") is False:
+        return ToolAttempt(
+            stage="wiki_integrity_gate",
+            status="skipped",
+            reason=str(gate.get("reason") or "Wiki integration is disabled."),
+            error_class=str(gate.get("error_class") or "wiki_disabled")[:120],
+            metadata={"status": gate_status},
+        )
+    return ToolAttempt(
+        stage="wiki_integrity_gate",
+        status="blocked",
+        reason=str(gate.get("reason") or "Wiki query index integrity blocked wiki refs.")[:240],
+        error_class=str(gate.get("error_class") or f"wiki_{gate_status}")[:120],
+        recommendation="Rebuild the wiki query index before using wiki refs in evidence-pack context.",
+        metadata={
+            "status": gate_status,
+            "warnings": list(gate.get("warnings") or [])[:8],
+            "indexed_page_count": gate.get("indexed_page_count"),
+            "source_page_count": gate.get("source_page_count"),
+            "index_hash": gate.get("index_hash"),
+            "source_manifest_hash": gate.get("source_manifest_hash"),
+            "indexed_source_manifest_hash": gate.get("indexed_source_manifest_hash"),
+        },
+    )
+
+
+def _evidence_pack_knowledge_refs_attempt(diagnostics: EvidenceRetrievalDiagnosticsPayload) -> ToolAttempt:
+    """Return a bounded knowledge-ref attempt for non-project context sources."""
+
+    joint = diagnostics.joint_recall if isinstance(diagnostics.joint_recall, dict) else {}
+    knowledge_refs = joint.get("knowledge_refs") if isinstance(joint.get("knowledge_refs"), dict) else {}
+    if not knowledge_refs:
+        return ToolAttempt(
+            stage="knowledge_refs",
+            status="skipped",
+            reason="No non-project knowledge refs were evaluated for this evidence pack.",
+            metadata={"enabled": False, "source_counts": {}},
+        )
+    status = str(knowledge_refs.get("status") or "skipped")
+    source_counts = knowledge_refs.get("source_counts") if isinstance(knowledge_refs.get("source_counts"), dict) else {}
+    if status == "active":
+        return ToolAttempt(
+            stage="knowledge_refs",
+            status="success",
+            reason="Non-project knowledge refs contributed bounded agent resources.",
+            metadata={"enabled": True, "status": status, "source_counts": dict(source_counts)},
+        )
+    if status == "blocked":
+        return ToolAttempt(
+            stage="knowledge_refs",
+            status="blocked",
+            reason=str(knowledge_refs.get("reason") or "Knowledge refs were blocked.")[:240],
+            error_class=str(knowledge_refs.get("error_class") or "knowledge_refs_blocked")[:120],
+            recommendation="Repair the knowledge package manifest/search path before loading these refs into model context.",
+            metadata={"enabled": True, "status": status, "source_counts": dict(source_counts)},
+        )
+    return ToolAttempt(
+        stage="knowledge_refs",
+        status="skipped",
+        reason=str(knowledge_refs.get("reason") or "No non-project knowledge refs contributed.")[:240],
+        metadata={"enabled": True, "status": status, "source_counts": dict(source_counts)},
+    )
+
+
 def _evidence_pack_next_action(
     *,
     project_id: str,
@@ -1537,12 +2046,15 @@ def _evidence_pack_outcome(
     attempts.append(
         ToolAttempt(
             stage="joint_recall",
-            status="success" if joint_status == "active" else "skipped",
+            status="success" if joint_status == "active" else "blocked" if joint_status == "blocked" else "skipped",
             reason=(
                 "Wiki+project joint recall contributed bounded refs."
                 if joint_status == "active"
+                else "Wiki+project joint recall was blocked by the wiki integrity gate."
+                if joint_status == "blocked"
                 else "Wiki+project joint recall did not contribute refs."
             ),
+            error_class="wiki_integrity_blocked" if joint_status == "blocked" else "",
             metadata={
                 "enabled": bool(diagnostics.joint_recall.get("enabled")),
                 "status": joint_status,
@@ -1551,6 +2063,8 @@ def _evidence_pack_outcome(
             },
         )
     )
+    attempts.append(_evidence_pack_wiki_integrity_attempt(diagnostics))
+    attempts.append(_evidence_pack_knowledge_refs_attempt(diagnostics))
     attempts.append(_evidence_pack_locator_attempt(diagnostics))
     attempts.append(_evidence_pack_qrels_attempt(qrels_status))
 
@@ -1627,6 +2141,13 @@ async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePack
                     evidence_refs.append(evidence_ref)
 
     diagnostics, evidence_refs = _attach_joint_recall_diagnostics(
+        diagnostics,
+        project_id=project_id,
+        query=query,
+        evidence_refs=evidence_refs,
+        top_k=request.top_k,
+    )
+    diagnostics, evidence_refs = _attach_knowledge_refs(
         diagnostics,
         project_id=project_id,
         query=query,

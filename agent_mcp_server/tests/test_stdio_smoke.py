@@ -75,6 +75,10 @@ def test_stdio_wrapper_initialize_list_and_call() -> None:
         assert "literature.config_status" in tool_names
         assert "literature.health_check" in tool_names
         assert "literature.zotero_attachment_health" in tool_names
+        assert "literature.knowledge_packages" in tool_names
+        assert "literature.source_vault_status" in tool_names
+        assert "literature.source_vault_search" in tool_names
+        assert "literature.source_vault_read" in tool_names
         assert "literature.agent_request_create" in tool_names
         assert "literature.single_paper_task_create" in tool_names
         assert "literature.single_paper_completion_check" in tool_names

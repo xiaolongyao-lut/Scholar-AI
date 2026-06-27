@@ -13,6 +13,9 @@ from ..backend_client import BackendClient
 from ..result import safe_result
 
 
+SUPPORTED_SKILL_PACKAGE_IDS = frozenset({"academic-english-discourse"})
+
+
 class BackendGetClient(Protocol):
     """Minimal HTTP client shape used by runtime tools."""
 
@@ -220,6 +223,488 @@ class RuntimeTools:
         )
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.search_refs", args, result, started, endpoint)
+
+    def academic_english_status(self) -> dict[str, Any]:
+        """Return academic-English knowledge manifest and artifact status."""
+        started = time.perf_counter()
+        endpoint = "/api/knowledge/academic-english/status"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.academic_english_status", {}, result, started, endpoint)
+
+    def knowledge_packages(self) -> dict[str, Any]:
+        """Return the unified read-only runtime knowledge package registry."""
+        started = time.perf_counter()
+        endpoint = "/api/knowledge/packages"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.knowledge_packages", {}, result, started, endpoint)
+
+    def knowledge_runtime_conformance(self) -> dict[str, Any]:
+        """Return read-only Knowledge Runtime Pipeline conformance status."""
+        started = time.perf_counter()
+        endpoint = "/api/knowledge/runtime-conformance"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.knowledge_runtime_conformance", {}, result, started, endpoint)
+
+    def ocr_status(self) -> dict[str, Any]:
+        """Return the redacted OCR runtime status without running OCR."""
+        started = time.perf_counter()
+        endpoint = "/api/pdf-backend/ocr-status"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.ocr_status", {}, result, started, endpoint)
+
+    def ocr_engines(self) -> dict[str, Any]:
+        """Return registered OCR engine metadata without running OCR."""
+        started = time.perf_counter()
+        endpoint = "/api/pdf-backend/ocr-engines"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.ocr_engines", {}, result, started, endpoint)
+
+    def ocr_health(
+        self,
+        engine: str | None = None,
+        engine_config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run a lightweight OCR engine readiness probe without OCR content upload."""
+
+        started = time.perf_counter()
+        normalized_engine = None
+        if engine is not None and str(engine).strip():
+            normalized_engine = self._bounded_text(str(engine), "engine", max_chars=120)
+        normalized_engine_config = self._bounded_json_object(
+            engine_config,
+            "engine_config",
+            max_chars=8000,
+        )
+        payload = {
+            "engine": normalized_engine,
+            "engine_config": normalized_engine_config,
+        }
+        args = {
+            "engine": normalized_engine,
+            "engine_config_present": bool(normalized_engine_config),
+        }
+        endpoint = "/api/pdf-backend/ocr-health"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.ocr_health", args, result, started, endpoint)
+
+    def ocr_execution_probe(
+        self,
+        confirm_execution: bool = False,
+        image_base64: str | None = None,
+        image_path: str | None = None,
+        engine: str | None = None,
+        engine_config: dict[str, Any] | None = None,
+        language: str = "en",
+        preview_chars: int = 240,
+    ) -> dict[str, Any]:
+        """Run one explicit OCR execution probe and return bounded proof.
+
+        Args:
+            confirm_execution: Must be true because OCR may execute heavy local
+                runtimes or upload image bytes for remote engines.
+            image_base64: Optional base64 image payload, mutually exclusive with
+                image_path.
+            image_path: Optional local image path, mutually exclusive with
+                image_base64.
+            engine: Optional OCR engine id.
+            engine_config: Optional engine config forwarded to the backend.
+            language: OCR language tag.
+            preview_chars: Maximum text preview characters, 0 through 1000.
+        """
+
+        started = time.perf_counter()
+        if confirm_execution is not True:
+            raise ValueError("confirm_execution=true is required before OCR execution")
+        has_base64 = isinstance(image_base64, str) and bool(image_base64.strip())
+        has_path = isinstance(image_path, str) and bool(image_path.strip())
+        if has_base64 == has_path:
+            raise ValueError("provide exactly one of image_base64 or image_path")
+        normalized_engine = None
+        if engine is not None and str(engine).strip():
+            normalized_engine = self._bounded_text(str(engine), "engine", max_chars=120)
+        normalized_image_base64 = None
+        if has_base64:
+            normalized_image_base64 = self._bounded_text(
+                str(image_base64),
+                "image_base64",
+                max_chars=16 * 1024 * 1024,
+            )
+        normalized_image_path = None
+        if has_path:
+            normalized_image_path = self._bounded_text(
+                str(image_path),
+                "image_path",
+                max_chars=1000,
+            )
+        normalized_engine_config = self._bounded_json_object(
+            engine_config,
+            "engine_config",
+            max_chars=8000,
+        )
+        language = self._bounded_text(language, "language", max_chars=32)
+        preview_chars = self._bounded_int(preview_chars, "preview_chars", minimum=0, maximum=1000)
+        payload = {
+            "confirm_execution": True,
+            "image_base64": normalized_image_base64,
+            "image_path": normalized_image_path,
+            "engine": normalized_engine,
+            "engine_config": normalized_engine_config,
+            "language": language,
+            "preview_chars": preview_chars,
+        }
+        args = {
+            "engine": normalized_engine,
+            "engine_config_present": bool(normalized_engine_config),
+            "image_base64_present": normalized_image_base64 is not None,
+            "image_path_present": normalized_image_path is not None,
+            "language": language,
+            "preview_chars": preview_chars,
+        }
+        endpoint = "/api/pdf-backend/ocr-execution-probe"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.ocr_execution_probe", args, result, started, endpoint)
+
+    def knowledge_context_receipt(
+        self,
+        ref_ids: list[str],
+        project_id: str | None = None,
+        prompt_name: str = "knowledge_runtime_context",
+        max_chars_per_ref: int = 1200,
+    ) -> dict[str, Any]:
+        """Prove bounded knowledge refs entered model-context input.
+
+        Args:
+            ref_ids: Agent-resource refs to read through the backend bounded reader.
+            project_id: Optional project id for project-scoped chunk refs.
+            prompt_name: Short caller label included in the hashed prompt receipt.
+            max_chars_per_ref: Maximum characters read per ref, 100 through 4000.
+        """
+        started = time.perf_counter()
+        if not isinstance(ref_ids, list) or not all(isinstance(item, str) for item in ref_ids):
+            raise ValueError("ref_ids must be a list of strings")
+        if not ref_ids:
+            raise ValueError("ref_ids must contain at least one ref")
+        if len(ref_ids) > 20:
+            raise ValueError("ref_ids must contain at most 20 refs")
+        normalized_ref_ids = [
+            self._bounded_text(item, "ref_ids", max_chars=300)
+            for item in ref_ids
+        ]
+        normalized_project_id = None
+        if isinstance(project_id, str) and project_id.strip():
+            normalized_project_id = self._bounded_text(project_id, "project_id", max_chars=200)
+        normalized_prompt_name = self._bounded_text(prompt_name, "prompt_name", max_chars=120)
+        max_chars_per_ref = self._bounded_int(
+            max_chars_per_ref,
+            "max_chars_per_ref",
+            minimum=100,
+            maximum=4000,
+        )
+        payload = {
+            "ref_ids": normalized_ref_ids,
+            "project_id": normalized_project_id,
+            "prompt_name": normalized_prompt_name,
+            "max_chars_per_ref": max_chars_per_ref,
+        }
+        endpoint = "/api/knowledge/context-receipt"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.knowledge_context_receipt", payload, result, started, endpoint)
+
+    def wiki_status(self, user_id: str | None = None) -> dict[str, Any]:
+        """Return the wiki package runtime status and manifest drilldown.
+
+        Args:
+            user_id: Optional local wiki user scope. The value is forwarded only
+                to the read-only backend status route.
+        """
+        started = time.perf_counter()
+        params: dict[str, Any] | None = None
+        args: dict[str, Any] = {}
+        if isinstance(user_id, str) and user_id.strip():
+            normalized_user_id = self._bounded_text(user_id, "user_id", max_chars=200)
+            params = {"user_id": normalized_user_id}
+            args["user_id"] = normalized_user_id
+        endpoint = "/api/wiki/status"
+        backend_result = self.backend.get(endpoint, params=params)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.wiki_status", args, result, started, endpoint)
+
+    def wiki_search(
+        self,
+        query: str,
+        top_k: int = 8,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Search wiki knowledge and return bounded refs without page bodies.
+
+        Args:
+            query: Wiki query text.
+            top_k: Maximum refs, 1 through 50.
+            user_id: Optional local wiki user scope for permission-aware search.
+        """
+        started = time.perf_counter()
+        query = self._require_non_empty(query, "query")
+        top_k = self._bounded_int(top_k, "top_k", minimum=1, maximum=50)
+        payload: dict[str, Any] = {
+            "query": query,
+            "limit": top_k,
+        }
+        normalized_user_id = None
+        if isinstance(user_id, str) and user_id.strip():
+            normalized_user_id = self._bounded_text(user_id, "user_id", max_chars=200)
+            payload["user_id"] = normalized_user_id
+        args = {"query": query[:200], "top_k": top_k, "user_id": normalized_user_id}
+        endpoint = "/api/wiki/search"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.wiki_search", args, result, started, endpoint)
+
+    def skill_package_status(self, package_id: str = "academic-english-discourse") -> dict[str, Any]:
+        """Return one supported repo-local Skill package provenance status.
+
+        Args:
+            package_id: Supported Skill package id. MCP callers receive status
+                only; Skill scripts are never executed by this read-only tool.
+        """
+        started = time.perf_counter()
+        normalized_package_id = self._skill_package_id(package_id)
+        args = {"package_id": normalized_package_id}
+        endpoint = f"/api/knowledge/skill-packages/{normalized_package_id}/status"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.skill_package_status", args, result, started, endpoint)
+
+    def source_vault_status(self, limit: int = 50) -> dict[str, Any]:
+        """Return Source Vault package status and recent source records.
+
+        Args:
+            limit: Maximum recent sources to include, 1 through 200.
+        """
+        started = time.perf_counter()
+        limit = self._bounded_int(limit, "limit", minimum=1, maximum=200)
+        args = {"limit": limit}
+        endpoint = "/api/knowledge/source-vault"
+        backend_result = self.backend.get(endpoint, params=args)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.source_vault_status", args, result, started, endpoint)
+
+    def bridge_lexicon_status(self) -> dict[str, Any]:
+        """Return CJK bridge lexicon provenance and runtime consumer status."""
+        started = time.perf_counter()
+        endpoint = "/api/knowledge/bridge-lexicon/status"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.bridge_lexicon_status", {}, result, started, endpoint)
+
+    def bridge_lexicon_read(self) -> dict[str, Any]:
+        """Read the bounded CJK bridge lexicon runtime artifact."""
+        started = time.perf_counter()
+        endpoint = "/api/knowledge/bridge-lexicon/read"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.bridge_lexicon_read", {}, result, started, endpoint)
+
+    def bridge_lexicon_search(
+        self,
+        query: str,
+        top_k: int = 8,
+    ) -> dict[str, Any]:
+        """Search bridge-lexicon entries and return bounded refs only."""
+        started = time.perf_counter()
+        query = self._require_non_empty(query, "query")
+        top_k = self._bounded_int(top_k, "top_k", minimum=1, maximum=50)
+        args = {"query": query[:200], "top_k": top_k}
+        endpoint = "/api/knowledge/bridge-lexicon/search"
+        backend_result = self.backend.get(endpoint, params={"q": query, "top_k": top_k})
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.bridge_lexicon_search", args, result, started, endpoint)
+
+    def scoring_rules_status(self) -> dict[str, Any]:
+        """Return scoring-rules JSON config provenance and runtime consumer status."""
+        started = time.perf_counter()
+        endpoint = "/api/knowledge/scoring-rules/status"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.scoring_rules_status", {}, result, started, endpoint)
+
+    def scoring_rules_read(self) -> dict[str, Any]:
+        """Read the bounded scoring-rules JSON config runtime artifact."""
+        started = time.perf_counter()
+        endpoint = "/api/knowledge/scoring-rules/read"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.scoring_rules_read", {}, result, started, endpoint)
+
+    def product_docs_status(self) -> dict[str, Any]:
+        """Return product-docs Markdown provenance and runtime consumer status."""
+        started = time.perf_counter()
+        endpoint = "/api/knowledge/product-docs/status"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.product_docs_status", {}, result, started, endpoint)
+
+    def product_docs_read(self) -> dict[str, Any]:
+        """Read the bounded product-docs runtime artifact."""
+        started = time.perf_counter()
+        endpoint = "/api/knowledge/product-docs/read"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.product_docs_read", {}, result, started, endpoint)
+
+    def skill_package_search(
+        self,
+        query: str,
+        package_id: str = "academic-english-discourse",
+        top_k: int = 8,
+    ) -> dict[str, Any]:
+        """Search one supported Skill package and return bounded refs only.
+
+        Args:
+            query: Skill package knowledge query.
+            package_id: Supported Skill package id.
+            top_k: Maximum refs, 1 through 50.
+        """
+        started = time.perf_counter()
+        normalized_package_id = self._skill_package_id(package_id)
+        query = self._require_non_empty(query, "query")
+        top_k = self._bounded_int(top_k, "top_k", minimum=1, maximum=50)
+        args = {
+            "package_id": normalized_package_id,
+            "query": query[:200],
+            "top_k": top_k,
+        }
+        endpoint = f"/api/knowledge/skill-packages/{normalized_package_id}/search"
+        backend_result = self.backend.get(endpoint, params={"q": query, "top_k": top_k})
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.skill_package_search", args, result, started, endpoint)
+
+    def academic_english_search(
+        self,
+        query: str,
+        top_k: int = 8,
+    ) -> dict[str, Any]:
+        """Search academic-English knowledge and return bounded refs only.
+
+        Args:
+            query: Academic-writing, discourse, or translation query.
+            top_k: Maximum refs, 1 through 50.
+        """
+        started = time.perf_counter()
+        query = self._require_non_empty(query, "query")
+        top_k = self._bounded_int(top_k, "top_k", minimum=1, maximum=50)
+        args = {"query": query[:200], "top_k": top_k}
+        endpoint = "/api/knowledge/academic-english/search"
+        backend_result = self.backend.get(endpoint, params={"q": query, "top_k": top_k})
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.academic_english_search", args, result, started, endpoint)
+
+    def source_vault_search(
+        self,
+        query: str,
+        top_k: int = 8,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Search Source Vault chunks and return knowledge refs.
+
+        Args:
+            query: Source title or chunk text query.
+            top_k: Maximum refs, 1 through 100.
+            project_id: Optional project id used to narrow Source Vault links.
+        """
+        started = time.perf_counter()
+        query = self._require_non_empty(query, "query")
+        top_k = self._bounded_int(top_k, "top_k", minimum=1, maximum=100)
+        params: dict[str, Any] = {"q": query, "limit": top_k}
+        normalized_project_id = None
+        if isinstance(project_id, str) and project_id.strip():
+            normalized_project_id = self._bounded_text(project_id, "project_id", max_chars=200)
+            params["project_id"] = normalized_project_id
+        args = {"query": query[:200], "top_k": top_k, "project_id": normalized_project_id}
+        endpoint = "/api/knowledge/source-vault/search"
+        backend_result = self.backend.get(endpoint, params=params)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.source_vault_search", args, result, started, endpoint)
+
+    def source_vault_read(
+        self,
+        ref_id: str,
+        project_id: str | None = None,
+        max_chars: int = 6000,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """Read one bounded Source Vault chunk resource.
+
+        Args:
+            ref_id: Source Vault resource ref in ``source_vault:chunk:<chunk_id>`` form.
+            project_id: Optional project id copied into resource metadata.
+            max_chars: Maximum text characters, 100 through 20000.
+            cursor: Optional pagination cursor returned by a previous read.
+        """
+        started = time.perf_counter()
+        ref_id = self._bounded_text(ref_id, "ref_id", max_chars=240)
+        if not ref_id.startswith("source_vault:chunk:"):
+            raise ValueError("ref_id must use source_vault:chunk:<chunk_id>")
+        chunk_id = ref_id.removeprefix("source_vault:chunk:").strip()
+        if not chunk_id:
+            raise ValueError("ref_id must include a Source Vault chunk id")
+        max_chars = self._bounded_int(max_chars, "max_chars", minimum=100, maximum=20000)
+        params: dict[str, Any] = {"max_chars": max_chars}
+        normalized_project_id = None
+        if isinstance(project_id, str) and project_id.strip():
+            normalized_project_id = self._bounded_text(project_id, "project_id", max_chars=200)
+            params["project_id"] = normalized_project_id
+        normalized_cursor = None
+        if isinstance(cursor, str) and cursor.strip():
+            normalized_cursor = self._bounded_text(cursor, "cursor", max_chars=120)
+            params["cursor"] = normalized_cursor
+        args = {
+            "ref_id": ref_id,
+            "project_id": normalized_project_id,
+            "max_chars": max_chars,
+            "cursor": normalized_cursor,
+        }
+        endpoint = f"/api/agent-bridge/resource/{ref_id}"
+        backend_result = self.backend.get(endpoint, params=params)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.source_vault_read", args, result, started, endpoint)
+
+    def scoring_rules_search(
+        self,
+        query: str,
+        top_k: int = 8,
+    ) -> dict[str, Any]:
+        """Search scoring-rules JSON config knowledge and return bounded refs."""
+        started = time.perf_counter()
+        query = self._require_non_empty(query, "query")
+        top_k = self._bounded_int(top_k, "top_k", minimum=1, maximum=50)
+        args = {"query": query[:200], "top_k": top_k}
+        endpoint = "/api/knowledge/scoring-rules/search"
+        backend_result = self.backend.get(endpoint, params={"q": query, "top_k": top_k})
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.scoring_rules_search", args, result, started, endpoint)
+
+    def product_docs_search(
+        self,
+        query: str,
+        top_k: int = 8,
+    ) -> dict[str, Any]:
+        """Search product-docs Markdown knowledge and return bounded refs."""
+        started = time.perf_counter()
+        query = self._require_non_empty(query, "query")
+        top_k = self._bounded_int(top_k, "top_k", minimum=1, maximum=50)
+        args = {"query": query[:200], "top_k": top_k}
+        endpoint = "/api/knowledge/product-docs/search"
+        backend_result = self.backend.get(endpoint, params={"q": query, "top_k": top_k})
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.product_docs_search", args, result, started, endpoint)
 
     def evidence_pack_build(
         self,
@@ -976,6 +1461,57 @@ class RuntimeTools:
         backend_result = self.backend.post_json(endpoint, payload=payload)
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.agent_request_create", args, result, started, endpoint)
+
+    def wiki_import(
+        self,
+        source_paths: list[str],
+        *,
+        dry_run: bool = True,
+        confirm_write: bool = False,
+        overwrite: bool = False,
+        kind: str = "synthesis",
+        status: str = "draft",
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Import local Markdown files into private wiki pages.
+
+        Args:
+            source_paths: Local Markdown source paths inside the workspace roots.
+            dry_run: When True, only return the planned import actions.
+            confirm_write: Must be True together with dry_run=False to write a local draft.
+            overwrite: When True, permit updating existing wiki pages.
+            kind: Wiki page kind passed through to the backend route.
+            status: Wiki page status passed through to the backend route.
+            user_id: Optional local wiki user id for private page ownership.
+        """
+        started = time.perf_counter()
+        bounded_paths = self._bounded_text_list(source_paths, "source_paths", maximum=20, max_chars=1000)
+        if not bounded_paths:
+            raise ValueError("source_paths must contain at least one non-empty path")
+        payload: dict[str, Any] = {
+            "source_paths": bounded_paths,
+            "dry_run": bool(dry_run),
+            "confirm_write": bool(confirm_write),
+            "overwrite": bool(overwrite),
+            "kind": self._bounded_text(kind, "kind", max_chars=80),
+            "status": self._bounded_text(status, "status", max_chars=80),
+        }
+        params: dict[str, Any] = {}
+        if isinstance(user_id, str) and user_id.strip():
+            params["user_id"] = self._bounded_text(user_id, "user_id", max_chars=120)
+        args = {
+            "source_path_count": len(bounded_paths),
+            "dry_run": bool(dry_run),
+            "confirm_write": bool(confirm_write),
+            "overwrite": bool(overwrite),
+            "kind": payload["kind"],
+            "status": payload["status"],
+            "user_id": params.get("user_id"),
+        }
+        endpoint = "/api/wiki/import"
+        backend_result = self.backend.post_json(endpoint, payload=payload, params=params or None)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.wiki_import", args, result, started, endpoint)
 
     def single_paper_task_create(
         self,
@@ -1896,12 +2432,37 @@ class RuntimeTools:
             raise ValueError(f"{name} must be at most {max_chars} characters")
         return cleaned
 
+    def _skill_package_id(self, value: str) -> str:
+        """Return an allowlisted Skill package id safe for URL path use."""
+
+        package_id = self._bounded_text(value, "package_id", max_chars=128).lower()
+        if package_id not in SUPPORTED_SKILL_PACKAGE_IDS:
+            raise ValueError(f"package_id must be one of {sorted(SUPPORTED_SKILL_PACKAGE_IDS)}")
+        if not all(char.isalnum() or char in "._-" for char in package_id):
+            raise ValueError("package_id contains unsupported characters")
+        return package_id
+
     def _optional_dict(self, value: dict[str, Any] | None, name: str) -> dict[str, Any]:
         if value is None:
             return {}
         if not isinstance(value, dict):
             raise ValueError(f"{name} must be an object")
         return dict(value)
+
+    def _bounded_json_object(
+        self,
+        value: dict[str, Any] | None,
+        name: str,
+        max_chars: int,
+    ) -> dict[str, Any]:
+        obj = self._optional_dict(value, name)
+        try:
+            serialized = json.dumps(obj, ensure_ascii=False, sort_keys=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be JSON-serializable") from exc
+        if len(serialized) > max_chars:
+            raise ValueError(f"{name} must serialize to at most {max_chars} characters")
+        return obj
 
     def _dict_list(
         self,

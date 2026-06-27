@@ -223,8 +223,8 @@ class EvidencePackReferencePayload(BaseModel):
 
     Args:
         project_id: Project that owns the chunk ref.
-        source_type: Evidence source family; wiki refs are bounded resources
-            and are not copied into project chunks.
+        source_type: Evidence source family; non-project refs are bounded
+            resources and are not copied into project chunks.
         ref_id: Agent bridge resource id in ``kind:id`` form.
         read_endpoint: Bounded reader endpoint with explicit project scope.
         chunk_id: Stable chunk identifier in the project chunk store.
@@ -247,7 +247,15 @@ class EvidencePackReferencePayload(BaseModel):
     _locator_quality: dict[str, Any] = PrivateAttr(default_factory=dict)
 
     project_id: str = Field(min_length=1)
-    source_type: Literal["project", "wiki"] = "project"
+    source_type: Literal[
+        "project",
+        "wiki",
+        "product_docs",
+        "scoring_rules",
+        "academic_english",
+        "skill_package",
+        "source_vault",
+    ] = "project"
     ref_id: str = Field(min_length=1)
     read_endpoint: str = Field(min_length=1)
     chunk_id: str = Field(min_length=1)

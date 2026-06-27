@@ -8,7 +8,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol, Sequence
+from typing import Any, Callable, Mapping, Protocol, Sequence, cast
 
 from fastapi import UploadFile
 
@@ -18,6 +18,11 @@ except ImportError:  # pragma: no cover - package import fallback
     from literature_assistant.core.routers.resources_router._document_extraction import (
         ExtractedDocumentPayload,
     )
+
+try:
+    from pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed
+except ImportError:  # pragma: no cover - package import fallback
+    from literature_assistant.core.pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed
 
 try:
     from services.smart_filter_engine import SmartFilterEngine, SmartFilterReport
@@ -433,10 +438,18 @@ class UnifiedBatchUploadService:
                         results[source.source_path] = parsed
                     else:
                         text, blocks, markdown_full = parsed
-                        results[source.source_path] = ExtractedDocumentPayload(
+                        payload = ExtractedDocumentPayload(
                             content=text,
                             blocks=blocks,
                             markdown_full=markdown_full,
+                        )
+                        results[source.source_path] = cast(
+                            ExtractedDocumentPayload,
+                            apply_pdf_ocr_if_needed(
+                                source.display_name,
+                                source.source_path,
+                                payload,
+                            ),
                         )
 
         for source in sources:

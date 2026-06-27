@@ -1,6 +1,177 @@
 {
   "components": {
     "schemas": {
+      "AcademicEnglishSearchHitResponse": {
+        "description": "One bounded academic-English knowledge hit.",
+        "properties": {
+          "kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "rank": {
+            "minimum": 1.0,
+            "title": "Rank",
+            "type": "integer"
+          },
+          "read_endpoint": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "resource_kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Resource Kind",
+            "type": "string"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "summary": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "ref_id",
+          "kind",
+          "resource_kind",
+          "title",
+          "rank",
+          "read_endpoint"
+        ],
+        "title": "AcademicEnglishSearchHitResponse",
+        "type": "object"
+      },
+      "AcademicEnglishSearchResponse": {
+        "description": "Search results for generated academic-English knowledge refs.",
+        "properties": {
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AcademicEnglishSearchHitResponse"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "AcademicEnglishSearchResponse",
+        "type": "object"
+      },
+      "AcademicEnglishStatusResponse": {
+        "description": "Status for the generated academic-English runtime knowledge package.",
+        "properties": {
+          "artifacts": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Artifacts",
+            "type": "object"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "builder_version": {
+            "default": "",
+            "title": "Builder Version",
+            "type": "string"
+          },
+          "built_at": {
+            "default": "",
+            "title": "Built At",
+            "type": "string"
+          },
+          "counts": {
+            "additionalProperties": true,
+            "title": "Counts",
+            "type": "object"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "knowledge_sources": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Knowledge Sources",
+            "type": "object"
+          },
+          "manifest_loaded": {
+            "title": "Manifest Loaded",
+            "type": "boolean"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_version",
+          "available",
+          "manifest_loaded"
+        ],
+        "title": "AcademicEnglishStatusResponse",
+        "type": "object"
+      },
       "AcademicWritingAuditContext": {
         "description": "Caller-supplied provenance for writing-quality audit.\n\nArgs:\n    invocation_surface: Stable caller class. Unknown custom values are\n        rejected to keep audit dashboards machine-filterable.\n    agent_host: Optional external agent or chat surface identifier.\n    source: Optional workflow source label.\n    project_id: Optional Literature Assistant project id.\n    tool_chain: Ordered high-level steps used before linting.\n    used_mcp_tools: Tool names already invoked by the agent/tool loop.\n    retrieval_diagnostics: Prior retrieval visibility payload, typically\n        copied from an evidence-pack response.\n    reasoning_trace: Safe, user-visible reasoning summary. This is not\n        private model chain-of-thought.",
         "properties": {
@@ -1503,6 +1674,215 @@
         "title": "AgentWorkspaceAuditRecord",
         "type": "object"
       },
+      "AgentWorkspaceDesktopSmokeState": {
+        "description": "Latest local desktop acceptance smoke evidence for recovery decisions.\n\nArgs:\n    available: Whether a desktop smoke summary was found and parsed.\n    run_id: Stable run directory id under generated desktop smoke artifacts.\n    status: Smoke result status from the local summary.\n    initial_path: App route used when launching the source desktop window.\n    expected_initial_path: App route required for Agent Workspace acceptance evidence.\n    candidate_count: Number of desktop smoke summaries inspected.\n    ignored_count: Number of summaries ignored because they were not Agent Workspace acceptance runs.\n    summary_path: Repository-relative summary artifact label.\n    screenshot_path: Repository-relative screenshot artifact label.\n    accessibility_tree_path: Repository-relative UIA tree artifact label.\n    screenshot_nonblank: Whether the captured desktop image was nonblank.\n    accessibility_tree_available: Whether a UIA tree was captured.\n    accessibility_tree_root_name: Root accessible object name.\n    accessibility_tree_root_control_type: Root accessible object type.\n    accessibility_tree_node_count: Total captured UIA node count.\n    accessibility_tree_named_node_count: Captured named-node count.\n    warnings: Bounded local smoke warnings.\n    errors: Bounded local smoke errors.\n    error: Redacted read/parse error when unavailable.",
+        "properties": {
+          "accessibility_tree_available": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accessibility Tree Available"
+          },
+          "accessibility_tree_named_node_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accessibility Tree Named Node Count"
+          },
+          "accessibility_tree_node_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accessibility Tree Node Count"
+          },
+          "accessibility_tree_path": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accessibility Tree Path"
+          },
+          "accessibility_tree_root_control_type": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accessibility Tree Root Control Type"
+          },
+          "accessibility_tree_root_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accessibility Tree Root Name"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "candidate_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "expected_initial_path": {
+            "default": "/__desktop_acceptance/agent-workspace",
+            "title": "Expected Initial Path",
+            "type": "string"
+          },
+          "ignored_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Ignored Count",
+            "type": "integer"
+          },
+          "initial_path": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Path"
+          },
+          "read_only": {
+            "default": true,
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "schema_version": {
+            "default": "scholar_ai_desktop_smoke_state_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "screenshot_nonblank": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Screenshot Nonblank"
+          },
+          "screenshot_path": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Screenshot Path"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "summary_path": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Path"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "AgentWorkspaceDesktopSmokeState",
+        "type": "object"
+      },
       "AgentWorkspaceDirectoryState": {
         "description": "Bounded local directory summary for workspace recovery checks.",
         "properties": {
@@ -1658,6 +2038,207 @@
           }
         },
         "title": "AgentWorkspaceGoalCompletionClaim",
+        "type": "object"
+      },
+      "AgentWorkspaceGoalLifecycleBlocker": {
+        "description": "One bounded goal-level blocker from the longrun lifecycle rollup.\n\nArgs:\n    id: Stable blocker id.\n    status: Current blocker state.\n    requirement_surface: Short product or workflow surface affected.\n    missing_evidence: Missing proof needed before completion can be claimed.\n    current_boundary: Current authorization, tooling, or evidence boundary.",
+        "properties": {
+          "current_boundary": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Boundary"
+          },
+          "id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "missing_evidence": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing Evidence"
+          },
+          "requirement_surface": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirement Surface"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AgentWorkspaceGoalLifecycleBlocker",
+        "type": "object"
+      },
+      "AgentWorkspaceGoalLifecycleRollup": {
+        "description": "Machine-readable longrun goal lifecycle summary for recovery decisions.\n\nArgs:\n    schema_version: Source rollup schema identifier.\n    updated_at: Timestamp from the rollup.\n    status: Goal-level lifecycle status, distinct from requirement rows.\n    is_goal_complete: Whether the longrun goal itself is complete.\n    can_mark_goal_complete: Whether a resumed agent may mark it complete.\n    requirements_all_proved: Whether all rows are currently proved.\n    requirements_all_proved_or_out_of_scope: Whether every row is proved or\n        explicitly outside scope.\n    latest_requirement_id: Latest requirement row id recorded by the rollup.\n    latest_slice_id: Latest slice id recorded by the rollup.\n    completion_blockers: Bounded unresolved goal-level blockers.\n    machine_readable_completion_rule: Compact rule for completion claims.\n    why_not_complete: Bounded explanation list when the goal remains active.",
+        "properties": {
+          "can_mark_goal_complete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Can Mark Goal Complete"
+          },
+          "completion_blockers": {
+            "items": {
+              "$ref": "#/components/schemas/AgentWorkspaceGoalLifecycleBlocker"
+            },
+            "title": "Completion Blockers",
+            "type": "array"
+          },
+          "is_goal_complete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Goal Complete"
+          },
+          "latest_requirement_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Requirement Id"
+          },
+          "latest_slice_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Slice Id"
+          },
+          "machine_readable_completion_rule": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Machine Readable Completion Rule"
+          },
+          "requirements_all_proved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirements All Proved"
+          },
+          "requirements_all_proved_or_out_of_scope": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirements All Proved Or Out Of Scope"
+          },
+          "schema_version": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Version"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "why_not_complete": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Why Not Complete",
+            "type": "array"
+          }
+        },
+        "title": "AgentWorkspaceGoalLifecycleRollup",
         "type": "object"
       },
       "AgentWorkspaceGoalOpenRequirement": {
@@ -1926,7 +2507,7 @@
         "type": "object"
       },
       "AgentWorkspaceGoalState": {
-        "description": "Bounded longrun goal-state summary for recovery decisions.\n\nArgs:\n    available: Whether a local goal-state JSON record was found and parsed.\n    path: Repository-relative or redacted label for the selected record.\n    updated_at: Timestamp from the selected goal-state record.\n    checkpoint_id: Rollback checkpoint id, without local checkpoint path.\n    requirement_count: Number of requirement-to-evidence rows.\n    proved_count: Number of rows currently proved.\n    incomplete_count: Number of incomplete rows.\n    out_of_scope_count: Number of rows explicitly outside current scope.\n    latest_requirement_id: Last requirement id in the matrix.\n    requirement_status: Compact requirement-to-evidence status summary.\n    open_requirements: Bounded non-proved requirement rows for recovery.\n    completion_claim: Bounded slice/full-goal completion summary.\n    next_authorized_local_actions: Bounded action labels from the record.\n    stop_boundaries: Bounded stop-boundary labels from the record.\n    error: Redacted parse/read error when unavailable.",
+        "description": "Bounded longrun goal-state summary for recovery decisions.\n\nArgs:\n    available: Whether a local goal-state JSON record was found and parsed.\n    path: Repository-relative or redacted label for the selected record.\n    updated_at: Timestamp from the selected goal-state record.\n    checkpoint_id: Rollback checkpoint id, without local checkpoint path.\n    requirement_count: Number of requirement-to-evidence rows.\n    proved_count: Number of rows currently proved.\n    incomplete_count: Number of incomplete rows.\n    out_of_scope_count: Number of rows explicitly outside current scope.\n    latest_requirement_id: Last requirement id in the matrix.\n    requirement_status: Compact requirement-to-evidence status summary.\n    open_requirements: Bounded non-proved requirement rows for recovery.\n    lifecycle_rollup: Machine-readable goal-level completion boundary.\n    completion_claim: Bounded slice/full-goal completion summary.\n    next_authorized_local_actions: Bounded action labels from the record.\n    stop_boundaries: Bounded stop-boundary labels from the record.\n    error: Redacted parse/read error when unavailable.",
         "properties": {
           "available": {
             "title": "Available",
@@ -1976,6 +2557,9 @@
               }
             ],
             "title": "Latest Requirement Id"
+          },
+          "lifecycle_rollup": {
+            "$ref": "#/components/schemas/AgentWorkspaceGoalLifecycleRollup"
           },
           "next_authorized_local_actions": {
             "items": {
@@ -2127,6 +2711,9 @@
             "title": "Boundaries",
             "type": "array"
           },
+          "desktop_smoke": {
+            "$ref": "#/components/schemas/AgentWorkspaceDesktopSmokeState"
+          },
           "generated_at": {
             "title": "Generated At",
             "type": "string"
@@ -2179,7 +2766,8 @@
           "runtime_state_root",
           "output_root",
           "git",
-          "goal_state"
+          "goal_state",
+          "desktop_smoke"
         ],
         "title": "AgentWorkspaceState",
         "type": "object"
@@ -3353,6 +3941,256 @@
           "files"
         ],
         "title": "Body_post_resources_upload_batch",
+        "type": "object"
+      },
+      "BridgeLexiconReadResponse": {
+        "description": "Read-only bridge lexicon payload for bounded runtime context loading.",
+        "properties": {
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "entries": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Entries",
+            "type": "object"
+          },
+          "entry_count": {
+            "minimum": 0.0,
+            "title": "Entry Count",
+            "type": "integer"
+          },
+          "load_status": {
+            "minLength": 1,
+            "title": "Load Status",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "runtime_consumers": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Runtime Consumers",
+            "type": "array"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_hash": {
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_path": {
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "updated_at": {
+            "minLength": 1,
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "source_path",
+          "source_hash",
+          "content_hash",
+          "loaded",
+          "load_status",
+          "entry_count",
+          "updated_at"
+        ],
+        "title": "BridgeLexiconReadResponse",
+        "type": "object"
+      },
+      "BridgeLexiconSearchHitResponse": {
+        "description": "One bridge-lexicon entry ref with agent-readable metadata.",
+        "properties": {
+          "kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "rank": {
+            "minimum": 1.0,
+            "title": "Rank",
+            "type": "integer"
+          },
+          "read_endpoint": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "resource_kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Resource Kind",
+            "type": "string"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "summary": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "ref_id",
+          "kind",
+          "resource_kind",
+          "title",
+          "rank",
+          "read_endpoint"
+        ],
+        "title": "BridgeLexiconSearchHitResponse",
+        "type": "object"
+      },
+      "BridgeLexiconSearchResponse": {
+        "description": "Search results for bridge-lexicon entries.",
+        "properties": {
+          "package_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BridgeLexiconSearchHitResponse"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "query",
+          "package_id"
+        ],
+        "title": "BridgeLexiconSearchResponse",
+        "type": "object"
+      },
+      "BridgeLexiconStatusResponse": {
+        "description": "Status for the CJK bridge lexicon runtime knowledge asset.",
+        "properties": {
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "entry_count": {
+            "minimum": 0.0,
+            "title": "Entry Count",
+            "type": "integer"
+          },
+          "load_status": {
+            "minLength": 1,
+            "title": "Load Status",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "runtime_consumers": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Runtime Consumers",
+            "type": "array"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_hash": {
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_path": {
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "updated_at": {
+            "minLength": 1,
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "source_path",
+          "source_hash",
+          "content_hash",
+          "loaded",
+          "load_status",
+          "entry_count",
+          "updated_at"
+        ],
+        "title": "BridgeLexiconStatusResponse",
         "type": "object"
       },
       "BudgetStatusPayload": {
@@ -5816,6 +6654,136 @@
           }
         },
         "title": "ConfigPayload",
+        "type": "object"
+      },
+      "ConfigSectionResponse": {
+        "description": "One bounded JSON config section ref.",
+        "properties": {
+          "char_count": {
+            "minimum": 0.0,
+            "title": "Char Count",
+            "type": "integer"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "read_endpoint": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "section_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Section Id",
+            "type": "string"
+          },
+          "source_hash": {
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "span_end": {
+            "minimum": 0.0,
+            "title": "Span End",
+            "type": "integer"
+          },
+          "span_start": {
+            "minimum": 0.0,
+            "title": "Span Start",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_id",
+          "ref_id",
+          "read_endpoint",
+          "title",
+          "source_path",
+          "source_hash",
+          "content_hash",
+          "span_start",
+          "span_end",
+          "char_count"
+        ],
+        "title": "ConfigSectionResponse",
+        "type": "object"
+      },
+      "ConfigSourceResponse": {
+        "description": "One authoritative JSON config source loaded into runtime knowledge.",
+        "properties": {
+          "byte_count": {
+            "minimum": 0.0,
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "char_count": {
+            "minimum": 0.0,
+            "title": "Char Count",
+            "type": "integer"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "relative_path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "updated_at": {
+            "minLength": 1,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "relative_path",
+          "loaded",
+          "content_hash",
+          "char_count",
+          "byte_count",
+          "updated_at"
+        ],
+        "title": "ConfigSourceResponse",
         "type": "object"
       },
       "ConfigUpdate": {
@@ -9463,7 +10431,7 @@
         "type": "object"
       },
       "EvidencePackReferencePayload": {
-        "description": "MCP-safe evidence ref derived from a backend search ref.\n\nArgs:\n    project_id: Project that owns the chunk ref.\n    source_type: Evidence source family; wiki refs are bounded resources\n        and are not copied into project chunks.\n    ref_id: Agent bridge resource id in ``kind:id`` form.\n    read_endpoint: Bounded reader endpoint with explicit project scope.\n    chunk_id: Stable chunk identifier in the project chunk store.\n    material_id: Material that owns the chunk.\n    page: One-based source page when persisted in metadata.\n    locator: Optional compact locator that can jump back to a material,\n        page, and bbox without exposing source text.\n    lexical_score: Score from the local lexical retrieval path.\n    rerank_score: Optional rerank score; ``None`` when rerank did not run.\n    citation_anchor: Stable local citation anchor for draft traceability.\n    figure_candidate: Optional future figure/table candidate id.\n    source_labels: Retrieval/source labels used to explain provenance.\n    summary: Bounded summary safe for model context.\n    suitable_for_body: Whether the ref is safe to cite in body prose.\n    source_title: Optional display title for non-project resources.\n    source_path: Optional bounded source path for non-project resources.\n    joint_score: Optional fused project/wiki score from weighted RRF.",
+        "description": "MCP-safe evidence ref derived from a backend search ref.\n\nArgs:\n    project_id: Project that owns the chunk ref.\n    source_type: Evidence source family; non-project refs are bounded\n        resources and are not copied into project chunks.\n    ref_id: Agent bridge resource id in ``kind:id`` form.\n    read_endpoint: Bounded reader endpoint with explicit project scope.\n    chunk_id: Stable chunk identifier in the project chunk store.\n    material_id: Material that owns the chunk.\n    page: One-based source page when persisted in metadata.\n    locator: Optional compact locator that can jump back to a material,\n        page, and bbox without exposing source text.\n    lexical_score: Score from the local lexical retrieval path.\n    rerank_score: Optional rerank score; ``None`` when rerank did not run.\n    citation_anchor: Stable local citation anchor for draft traceability.\n    figure_candidate: Optional future figure/table candidate id.\n    source_labels: Retrieval/source labels used to explain provenance.\n    summary: Bounded summary safe for model context.\n    suitable_for_body: Whether the ref is safe to cite in body prose.\n    source_title: Optional display title for non-project resources.\n    source_path: Optional bounded source path for non-project resources.\n    joint_score: Optional fused project/wiki score from weighted RRF.",
         "properties": {
           "chunk_id": {
             "minLength": 1,
@@ -9597,7 +10565,12 @@
             "default": "project",
             "enum": [
               "project",
-              "wiki"
+              "wiki",
+              "product_docs",
+              "scoring_rules",
+              "academic_english",
+              "skill_package",
+              "source_vault"
             ],
             "title": "Source Type",
             "type": "string"
@@ -12550,6 +13523,992 @@
         "title": "JournalStyleSpecDraftRequest",
         "type": "object"
       },
+      "KnowledgeContextReceiptRequest": {
+        "description": "Bounded knowledge refs to assemble into a model-context receipt.",
+        "properties": {
+          "max_chars_per_ref": {
+            "default": 1200,
+            "maximum": 4000.0,
+            "minimum": 100.0,
+            "title": "Max Chars Per Ref",
+            "type": "integer"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "prompt_name": {
+            "default": "knowledge_runtime_context",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Prompt Name",
+            "type": "string"
+          },
+          "ref_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Ref Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ref_ids"
+        ],
+        "title": "KnowledgeContextReceiptRequest",
+        "type": "object"
+      },
+      "KnowledgeContextReceiptResponse": {
+        "description": "Hash-only proof that selected knowledge refs entered bounded context.",
+        "properties": {
+          "assembled_context_char_count": {
+            "minimum": 0.0,
+            "title": "Assembled Context Char Count",
+            "type": "integer"
+          },
+          "assembled_context_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Assembled Context Hash",
+            "type": "string"
+          },
+          "assembled_context_preview": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Assembled Context Preview",
+            "type": "string"
+          },
+          "generated_at": {
+            "minLength": 1,
+            "title": "Generated At",
+            "type": "string"
+          },
+          "prompt_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Prompt Hash",
+            "type": "string"
+          },
+          "prompt_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Prompt Name",
+            "type": "string"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "resource_read_receipts": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeContextResourceReceiptResponse"
+            },
+            "title": "Resource Read Receipts",
+            "type": "array"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "generated_at",
+          "prompt_name",
+          "prompt_hash",
+          "assembled_context_hash",
+          "assembled_context_char_count"
+        ],
+        "title": "KnowledgeContextReceiptResponse",
+        "type": "object"
+      },
+      "KnowledgeContextResourceReceiptResponse": {
+        "description": "One bounded resource-read proof row included in a context receipt.",
+        "properties": {
+          "content_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_chars": {
+            "maximum": 4000.0,
+            "minimum": 100.0,
+            "title": "Max Chars",
+            "type": "integer"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "package_content_hash": {
+            "default": "unknown",
+            "minLength": 1,
+            "title": "Package Content Hash",
+            "type": "string"
+          },
+          "read_endpoint": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "returned_chars": {
+            "minimum": 0.0,
+            "title": "Returned Chars",
+            "type": "integer"
+          },
+          "source_hash": {
+            "default": "unknown",
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "span_end": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span End"
+          },
+          "span_start": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span Start"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "total_chars": {
+            "minimum": 0.0,
+            "title": "Total Chars",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ref_id",
+          "kind",
+          "read_endpoint",
+          "content_hash",
+          "returned_chars",
+          "total_chars",
+          "max_chars",
+          "truncated"
+        ],
+        "title": "KnowledgeContextResourceReceiptResponse",
+        "type": "object"
+      },
+      "KnowledgePackageProjectionResponse": {
+        "description": "One normalized runtime knowledge package projection.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "wiki",
+              "source_vault",
+              "academic_english",
+              "bridge_lexicon",
+              "skill_package",
+              "config",
+              "product_docs"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "manifest_loaded": {
+            "title": "Manifest Loaded",
+            "type": "boolean"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "package_id": {
+            "minLength": 1,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "read_endpoint": {
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "search_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search Endpoint"
+          },
+          "source_hash": {
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_label": {
+            "minLength": 1,
+            "title": "Source Label",
+            "type": "string"
+          },
+          "source_path": {
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "loaded",
+              "missing",
+              "disabled",
+              "stale",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "minLength": 1,
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "package_id",
+          "kind",
+          "title",
+          "source_label",
+          "status",
+          "available",
+          "loaded",
+          "manifest_loaded",
+          "source_path",
+          "source_hash",
+          "content_hash",
+          "updated_at",
+          "read_endpoint"
+        ],
+        "title": "KnowledgePackageProjectionResponse",
+        "type": "object"
+      },
+      "KnowledgePackagesResponse": {
+        "description": "Normalized registry of runtime knowledge packages.",
+        "properties": {
+          "packages": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgePackageProjectionResponse"
+            },
+            "title": "Packages",
+            "type": "array"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version"
+        ],
+        "title": "KnowledgePackagesResponse",
+        "type": "object"
+      },
+      "KnowledgeRuntimeActualLoadingGateResponse": {
+        "description": "Top-level proof gate for live QA/model context loading.\n\nWhy: deterministic context receipts prove bounded local prompt assembly, but\nonly an explicitly authorized live smoke can prove a provider turn received\nand echoed the receipt hash.",
+        "properties": {
+          "artifact_checked_at": {
+            "minLength": 1,
+            "title": "Artifact Checked At",
+            "type": "string"
+          },
+          "artifact_contract": {
+            "default": "scholar-ai-live-context-receipt-smoke/v1",
+            "minLength": 1,
+            "title": "Artifact Contract",
+            "type": "string"
+          },
+          "artifact_contract_valid": {
+            "title": "Artifact Contract Valid",
+            "type": "boolean"
+          },
+          "artifact_exists": {
+            "title": "Artifact Exists",
+            "type": "boolean"
+          },
+          "artifact_path": {
+            "minLength": 1,
+            "title": "Artifact Path",
+            "type": "string"
+          },
+          "artifact_ref": {
+            "minLength": 1,
+            "title": "Artifact Ref",
+            "type": "string"
+          },
+          "artifact_schema_valid": {
+            "title": "Artifact Schema Valid",
+            "type": "boolean"
+          },
+          "claim_boundary": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Claim Boundary",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_level": {
+            "default": "runtime_projection",
+            "enum": [
+              "runtime_projection",
+              "contract_evidence",
+              "focused_test_evidence",
+              "not_applicable"
+            ],
+            "title": "Evidence Level",
+            "type": "string"
+          },
+          "evidence_scope": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Scope",
+            "type": "array"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
+          "provider_preflight": {
+            "$ref": "#/components/schemas/KnowledgeRuntimeProviderPreflightResponse"
+          },
+          "required_checks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Checks",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "proved",
+              "pending",
+              "blocked",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "validation_errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Validation Errors",
+            "type": "array"
+          },
+          "verdict": {
+            "minLength": 1,
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "artifact_path",
+          "artifact_ref",
+          "artifact_exists",
+          "artifact_schema_valid",
+          "artifact_contract_valid",
+          "artifact_checked_at",
+          "verdict",
+          "provider_preflight"
+        ],
+        "title": "KnowledgeRuntimeActualLoadingGateResponse",
+        "type": "object"
+      },
+      "KnowledgeRuntimeConformanceItemResponse": {
+        "description": "One requirement-level proof row for a runtime knowledge package.",
+        "properties": {
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_level": {
+            "default": "runtime_projection",
+            "enum": [
+              "runtime_projection",
+              "contract_evidence",
+              "focused_test_evidence",
+              "not_applicable"
+            ],
+            "title": "Evidence Level",
+            "type": "string"
+          },
+          "evidence_scope": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Scope",
+            "type": "array"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "requirement": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Requirement",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "proved",
+              "pending",
+              "blocked",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requirement",
+          "status"
+        ],
+        "title": "KnowledgeRuntimeConformanceItemResponse",
+        "type": "object"
+      },
+      "KnowledgeRuntimeConformancePackageResponse": {
+        "description": "Machine-readable source-to-context conformance projection for one package.",
+        "properties": {
+          "conformance": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeRuntimeConformanceItemResponse"
+            },
+            "title": "Conformance",
+            "type": "array"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "wiki",
+              "source_vault",
+              "academic_english",
+              "bridge_lexicon",
+              "skill_package",
+              "config",
+              "product_docs"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "mcp_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Mcp Tools",
+            "type": "array"
+          },
+          "overall_status": {
+            "enum": [
+              "proved",
+              "pending",
+              "blocked",
+              "not_applicable"
+            ],
+            "title": "Overall Status",
+            "type": "string"
+          },
+          "package_id": {
+            "minLength": 1,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "read_endpoint": {
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "runtime_consumers": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Runtime Consumers",
+            "type": "array"
+          },
+          "search_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search Endpoint"
+          },
+          "source_hash": {
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_path": {
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "test_evidence": {
+            "$ref": "#/components/schemas/KnowledgeRuntimeTestEvidenceResponse"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "package_id",
+          "kind",
+          "title",
+          "overall_status",
+          "loaded",
+          "source_path",
+          "source_hash",
+          "content_hash",
+          "read_endpoint"
+        ],
+        "title": "KnowledgeRuntimeConformancePackageResponse",
+        "type": "object"
+      },
+      "KnowledgeRuntimeConformanceResponse": {
+        "description": "Read-only audit surface for the Knowledge Runtime Pipeline contract.",
+        "properties": {
+          "actual_loading_gate": {
+            "$ref": "#/components/schemas/KnowledgeRuntimeActualLoadingGateResponse"
+          },
+          "generated_at": {
+            "minLength": 1,
+            "title": "Generated At",
+            "type": "string"
+          },
+          "packages": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeRuntimeConformancePackageResponse"
+            },
+            "title": "Packages",
+            "type": "array"
+          },
+          "pipeline": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pipeline",
+            "type": "array"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Summary",
+            "type": "object"
+          }
+        },
+        "required": [
+          "schema_version",
+          "generated_at",
+          "actual_loading_gate"
+        ],
+        "title": "KnowledgeRuntimeConformanceResponse",
+        "type": "object"
+      },
+      "KnowledgeRuntimeProviderPreflightRecordResponse": {
+        "description": "One redacted provider tool-call preflight record.",
+        "properties": {
+          "base_url_host": {
+            "default": "",
+            "maxLength": 240,
+            "title": "Base Url Host",
+            "type": "string"
+          },
+          "failure_class": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Failure Class",
+            "type": "string"
+          },
+          "fingerprint": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "forced_tool_choice_ok": {
+            "default": false,
+            "title": "Forced Tool Choice Ok",
+            "type": "boolean"
+          },
+          "last_probe_at": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Last Probe At",
+            "type": "string"
+          },
+          "masked_error": {
+            "default": "",
+            "maxLength": 320,
+            "title": "Masked Error",
+            "type": "string"
+          },
+          "model": {
+            "default": "",
+            "maxLength": 240,
+            "title": "Model",
+            "type": "string"
+          },
+          "ordinary_chat_ok": {
+            "default": false,
+            "title": "Ordinary Chat Ok",
+            "type": "boolean"
+          },
+          "provider": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "default": "unknown",
+            "maxLength": 80,
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fingerprint"
+        ],
+        "title": "KnowledgeRuntimeProviderPreflightRecordResponse",
+        "type": "object"
+      },
+      "KnowledgeRuntimeProviderPreflightResponse": {
+        "description": "Provider readiness gate for live Knowledge Runtime actual-loading proof.\n\nWhy: a provider that has not proven forced tool calls cannot prove that the\nQA/model turn actually received bounded Knowledge Runtime resources.",
+        "properties": {
+          "artifact_exists": {
+            "title": "Artifact Exists",
+            "type": "boolean"
+          },
+          "artifact_path": {
+            "minLength": 1,
+            "title": "Artifact Path",
+            "type": "string"
+          },
+          "artifact_ref": {
+            "default": "workspace_artifacts/runtime_state/provider-capabilities.json",
+            "minLength": 1,
+            "title": "Artifact Ref",
+            "type": "string"
+          },
+          "artifact_schema_valid": {
+            "title": "Artifact Schema Valid",
+            "type": "boolean"
+          },
+          "checked_at": {
+            "minLength": 1,
+            "title": "Checked At",
+            "type": "string"
+          },
+          "claim_boundary": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Claim Boundary",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_level": {
+            "default": "runtime_projection",
+            "enum": [
+              "runtime_projection",
+              "contract_evidence",
+              "focused_test_evidence",
+              "not_applicable"
+            ],
+            "title": "Evidence Level",
+            "type": "string"
+          },
+          "evidence_scope": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Scope",
+            "type": "array"
+          },
+          "latest_status": {
+            "default": "unknown",
+            "maxLength": 80,
+            "title": "Latest Status",
+            "type": "string"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
+          "record_count": {
+            "minimum": 0.0,
+            "title": "Record Count",
+            "type": "integer"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeRuntimeProviderPreflightRecordResponse"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "proved",
+              "pending",
+              "blocked",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "validation_errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Validation Errors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "artifact_path",
+          "artifact_exists",
+          "artifact_schema_valid",
+          "checked_at",
+          "record_count"
+        ],
+        "title": "KnowledgeRuntimeProviderPreflightResponse",
+        "type": "object"
+      },
+      "KnowledgeRuntimeTestEvidenceResponse": {
+        "description": "Static local-test evidence known to protect one runtime knowledge package.",
+        "properties": {
+          "agent_resource_read_test": {
+            "default": false,
+            "title": "Agent Resource Read Test",
+            "type": "boolean"
+          },
+          "context_receipt_test": {
+            "default": false,
+            "title": "Context Receipt Test",
+            "type": "boolean"
+          },
+          "evidence_pack_test": {
+            "default": false,
+            "title": "Evidence Pack Test",
+            "type": "boolean"
+          },
+          "focused_test_exists": {
+            "default": false,
+            "title": "Focused Test Exists",
+            "type": "boolean"
+          },
+          "mcp_tool_test": {
+            "default": false,
+            "title": "Mcp Tool Test",
+            "type": "boolean"
+          },
+          "source_edit_hash_test": {
+            "default": false,
+            "title": "Source Edit Hash Test",
+            "type": "boolean"
+          },
+          "test_nodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Test Nodes",
+            "type": "array"
+          }
+        },
+        "title": "KnowledgeRuntimeTestEvidenceResponse",
+        "type": "object"
+      },
       "LLMConfig": {
         "properties": {
           "api_key": {
@@ -15150,6 +17109,432 @@
         "title": "MultiProjectSearchRequest",
         "type": "object"
       },
+      "OcrEnginePublicInfo": {
+        "description": "Public metadata for one OCR engine.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "engine_type": {
+            "enum": [
+              "local",
+              "remote"
+            ],
+            "title": "Engine Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "readiness_blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Readiness Blockers",
+            "type": "array"
+          },
+          "readiness_status": {
+            "default": "ready",
+            "enum": [
+              "ready",
+              "dependency_missing",
+              "configuration_required",
+              "adapter_not_wired",
+              "platform_unsupported",
+              "unavailable"
+            ],
+            "title": "Readiness Status",
+            "type": "string"
+          },
+          "requires_network": {
+            "title": "Requires Network",
+            "type": "boolean"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "name",
+          "display_name",
+          "engine_type",
+          "available",
+          "requires_network"
+        ],
+        "title": "OcrEnginePublicInfo",
+        "type": "object"
+      },
+      "OcrEngineSelectionRequest": {
+        "description": "Request body for local OCR engine selection.",
+        "properties": {
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine"
+          },
+          "engine_config": {
+            "additionalProperties": true,
+            "title": "Engine Config",
+            "type": "object"
+          },
+          "language": {
+            "default": "en",
+            "title": "Language",
+            "type": "string"
+          },
+          "policy": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "none",
+              "engine"
+            ],
+            "title": "Policy",
+            "type": "string"
+          }
+        },
+        "title": "OcrEngineSelectionRequest",
+        "type": "object"
+      },
+      "OcrEngineSelectionResponse": {
+        "description": "Result of writing OCR runtime selection.",
+        "properties": {
+          "config_path": {
+            "title": "Config Path",
+            "type": "string"
+          },
+          "saved": {
+            "title": "Saved",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OcrStatusResponse"
+          }
+        },
+        "required": [
+          "saved",
+          "config_path",
+          "status"
+        ],
+        "title": "OcrEngineSelectionResponse",
+        "type": "object"
+      },
+      "OcrExecutionProbeRequest": {
+        "description": "Request body for an explicit OCR execution proof.\n\nArgs:\n    confirm_execution: Must be true because OCR may run local heavy\n        runtimes or upload page images for remote engines.\n    image_base64: Optional PNG/JPEG/etc. payload encoded as base64.\n    image_path: Optional local image path under allowed workspace roots.\n    engine: Optional engine id. Omitted means use resolved runtime policy.\n    engine_config: Engine-specific options; secrets never return.\n    language: OCR language tag forwarded to the selected engine.\n    preview_chars: Maximum OCR text preview characters returned.",
+        "properties": {
+          "confirm_execution": {
+            "default": false,
+            "title": "Confirm Execution",
+            "type": "boolean"
+          },
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine"
+          },
+          "engine_config": {
+            "additionalProperties": true,
+            "title": "Engine Config",
+            "type": "object"
+          },
+          "image_base64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Base64"
+          },
+          "image_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Path"
+          },
+          "language": {
+            "default": "en",
+            "title": "Language",
+            "type": "string"
+          },
+          "preview_chars": {
+            "default": 240,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Preview Chars",
+            "type": "integer"
+          }
+        },
+        "title": "OcrExecutionProbeRequest",
+        "type": "object"
+      },
+      "OcrExecutionProbeResponse": {
+        "description": "Bounded proof that one OCR engine executed on one image payload.",
+        "properties": {
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "engine_type": {
+            "enum": [
+              "local",
+              "remote"
+            ],
+            "title": "Engine Type",
+            "type": "string"
+          },
+          "input_bytes": {
+            "title": "Input Bytes",
+            "type": "integer"
+          },
+          "input_kind": {
+            "enum": [
+              "image_base64",
+              "image_path"
+            ],
+            "title": "Input Kind",
+            "type": "string"
+          },
+          "input_sha256": {
+            "title": "Input Sha256",
+            "type": "string"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "requires_network": {
+            "title": "Requires Network",
+            "type": "boolean"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "text_length": {
+            "title": "Text Length",
+            "type": "integer"
+          },
+          "text_preview": {
+            "title": "Text Preview",
+            "type": "string"
+          },
+          "text_sha256": {
+            "title": "Text Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "confirmed",
+          "engine",
+          "engine_type",
+          "requires_network",
+          "language",
+          "input_kind",
+          "input_bytes",
+          "input_sha256",
+          "text_length",
+          "text_sha256",
+          "text_preview",
+          "duration_ms"
+        ],
+        "title": "OcrExecutionProbeResponse",
+        "type": "object"
+      },
+      "OcrHealthRequest": {
+        "description": "Request body for a lightweight OCR engine readiness probe.",
+        "properties": {
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine"
+          },
+          "engine_config": {
+            "additionalProperties": true,
+            "title": "Engine Config",
+            "type": "object"
+          }
+        },
+        "title": "OcrHealthRequest",
+        "type": "object"
+      },
+      "OcrHealthResponse": {
+        "description": "OCR engine health-check response.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "readiness_blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Readiness Blockers",
+            "type": "array"
+          },
+          "readiness_status": {
+            "default": "ready",
+            "enum": [
+              "ready",
+              "dependency_missing",
+              "configuration_required",
+              "adapter_not_wired",
+              "platform_unsupported",
+              "unavailable"
+            ],
+            "title": "Readiness Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "detail",
+          "engine"
+        ],
+        "title": "OcrHealthResponse",
+        "type": "object"
+      },
+      "OcrStatusResponse": {
+        "description": "Current OCR runtime selection and registered engine inventory.",
+        "properties": {
+          "available_engines": {
+            "items": {
+              "$ref": "#/components/schemas/OcrEnginePublicInfo"
+            },
+            "title": "Available Engines",
+            "type": "array"
+          },
+          "configured_engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configured Engine"
+          },
+          "engine_config": {
+            "additionalProperties": true,
+            "title": "Engine Config",
+            "type": "object"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "policy": {
+            "enum": [
+              "auto",
+              "none",
+              "engine"
+            ],
+            "title": "Policy",
+            "type": "string"
+          },
+          "selected_engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Engine"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "policy",
+          "language",
+          "source"
+        ],
+        "title": "OcrStatusResponse",
+        "type": "object"
+      },
       "OutlineItemPayload": {
         "description": "Outline item (section/subsection) in hierarchical structure.",
         "properties": {
@@ -15285,6 +17670,51 @@
           "install_hint": {
             "title": "Install Hint",
             "type": "string"
+          },
+          "ocr_config_source": {
+            "title": "Ocr Config Source",
+            "type": "string"
+          },
+          "ocr_configured_engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Configured Engine"
+          },
+          "ocr_language": {
+            "title": "Ocr Language",
+            "type": "string"
+          },
+          "ocr_policy": {
+            "title": "Ocr Policy",
+            "type": "string"
+          },
+          "ocr_selected_engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Selected Engine"
+          },
+          "ocr_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Warning"
           }
         },
         "required": [
@@ -15293,7 +17723,13 @@
           "env_var_name",
           "env_var_value",
           "external_backends_supported",
-          "install_hint"
+          "install_hint",
+          "ocr_policy",
+          "ocr_configured_engine",
+          "ocr_selected_engine",
+          "ocr_language",
+          "ocr_config_source",
+          "ocr_warning"
         ],
         "title": "PDFBackendStatus",
         "type": "object"
@@ -15740,6 +18176,499 @@
           "ok"
         ],
         "title": "ProbeResult",
+        "type": "object"
+      },
+      "ProductDocsChunkResponse": {
+        "description": "One bounded product-doc chunk ref.",
+        "properties": {
+          "char_count": {
+            "minimum": 0.0,
+            "title": "Char Count",
+            "type": "integer"
+          },
+          "chunk_id": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "read_endpoint": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "source_hash": {
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "source_role": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Source Role",
+            "type": "string"
+          },
+          "span_end": {
+            "minimum": 0.0,
+            "title": "Span End",
+            "type": "integer"
+          },
+          "span_start": {
+            "minimum": 0.0,
+            "title": "Span Start",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "ref_id",
+          "read_endpoint",
+          "title",
+          "source_path",
+          "source_role",
+          "source_hash",
+          "content_hash",
+          "span_start",
+          "span_end",
+          "char_count"
+        ],
+        "title": "ProductDocsChunkResponse",
+        "type": "object"
+      },
+      "ProductDocsReadResponse": {
+        "description": "Read-only product-doc chunks for bounded runtime context loading.",
+        "properties": {
+          "chunk_count": {
+            "minimum": 0.0,
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/ProductDocsChunkResponse"
+            },
+            "title": "Chunks",
+            "type": "array"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "entries": {
+            "additionalProperties": true,
+            "title": "Entries",
+            "type": "object"
+          },
+          "load_status": {
+            "minLength": 1,
+            "title": "Load Status",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "manifest_loaded": {
+            "title": "Manifest Loaded",
+            "type": "boolean"
+          },
+          "package_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "runtime_consumers": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Runtime Consumers",
+            "type": "array"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_files": {
+            "items": {
+              "$ref": "#/components/schemas/ProductDocsSourceResponse"
+            },
+            "title": "Source Files",
+            "type": "array"
+          },
+          "source_hash": {
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "minLength": 1,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_version",
+          "package_id",
+          "source_path",
+          "source_hash",
+          "content_hash",
+          "loaded",
+          "manifest_loaded",
+          "load_status",
+          "updated_at",
+          "title",
+          "chunk_count"
+        ],
+        "title": "ProductDocsReadResponse",
+        "type": "object"
+      },
+      "ProductDocsSearchHitResponse": {
+        "description": "One product-doc search result with a bounded agent-readable ref.",
+        "properties": {
+          "kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "rank": {
+            "minimum": 1.0,
+            "title": "Rank",
+            "type": "integer"
+          },
+          "read_endpoint": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "resource_kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Resource Kind",
+            "type": "string"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "summary": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "ref_id",
+          "kind",
+          "resource_kind",
+          "title",
+          "rank",
+          "read_endpoint"
+        ],
+        "title": "ProductDocsSearchHitResponse",
+        "type": "object"
+      },
+      "ProductDocsSearchResponse": {
+        "description": "Search results for repo-local product-doc refs.",
+        "properties": {
+          "package_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ProductDocsSearchHitResponse"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "query",
+          "package_id"
+        ],
+        "title": "ProductDocsSearchResponse",
+        "type": "object"
+      },
+      "ProductDocsSourceResponse": {
+        "description": "One authoritative product-doc source loaded into runtime knowledge.",
+        "properties": {
+          "byte_count": {
+            "minimum": 0.0,
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "char_count": {
+            "minimum": 0.0,
+            "title": "Char Count",
+            "type": "integer"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "relative_path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "role": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "updated_at": {
+            "minLength": 1,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "relative_path",
+          "role",
+          "loaded",
+          "content_hash",
+          "char_count",
+          "byte_count",
+          "updated_at"
+        ],
+        "title": "ProductDocsSourceResponse",
+        "type": "object"
+      },
+      "ProductDocsStatusResponse": {
+        "description": "Read-only status for repo-local product documentation knowledge.",
+        "properties": {
+          "chunk_count": {
+            "minimum": 0.0,
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/ProductDocsChunkResponse"
+            },
+            "title": "Chunks",
+            "type": "array"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "load_status": {
+            "minLength": 1,
+            "title": "Load Status",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "manifest_loaded": {
+            "title": "Manifest Loaded",
+            "type": "boolean"
+          },
+          "package_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "runtime_consumers": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Runtime Consumers",
+            "type": "array"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_files": {
+            "items": {
+              "$ref": "#/components/schemas/ProductDocsSourceResponse"
+            },
+            "title": "Source Files",
+            "type": "array"
+          },
+          "source_hash": {
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "minLength": 1,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_version",
+          "package_id",
+          "source_path",
+          "source_hash",
+          "content_hash",
+          "loaded",
+          "manifest_loaded",
+          "load_status",
+          "updated_at",
+          "title",
+          "chunk_count"
+        ],
+        "title": "ProductDocsStatusResponse",
         "type": "object"
       },
       "ProjectExportBibliographyEntryPayload": {
@@ -18788,6 +21717,391 @@
         "title": "SavedInspirationUpdateRequest",
         "type": "object"
       },
+      "ScoringRulesReadResponse": {
+        "description": "Read-only scoring rules JSON sections for bounded runtime loading.",
+        "properties": {
+          "config_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Config Id",
+            "type": "string"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "entries": {
+            "additionalProperties": true,
+            "title": "Entries",
+            "type": "object"
+          },
+          "last_updated": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Last Updated",
+            "type": "string"
+          },
+          "load_status": {
+            "minLength": 1,
+            "title": "Load Status",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "manifest_loaded": {
+            "title": "Manifest Loaded",
+            "type": "boolean"
+          },
+          "package_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "runtime_consumers": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Runtime Consumers",
+            "type": "array"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "section_count": {
+            "minimum": 0.0,
+            "title": "Section Count",
+            "type": "integer"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigSectionResponse"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ConfigSourceResponse"
+          },
+          "source_hash": {
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "minLength": 1,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_version",
+          "package_id",
+          "config_id",
+          "source_path",
+          "source_hash",
+          "content_hash",
+          "loaded",
+          "manifest_loaded",
+          "load_status",
+          "updated_at",
+          "title",
+          "version",
+          "last_updated",
+          "source",
+          "section_count"
+        ],
+        "title": "ScoringRulesReadResponse",
+        "type": "object"
+      },
+      "ScoringRulesSearchHitResponse": {
+        "description": "One scoring-rules search result with a bounded agent-readable ref.",
+        "properties": {
+          "kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "rank": {
+            "minimum": 1.0,
+            "title": "Rank",
+            "type": "integer"
+          },
+          "read_endpoint": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "resource_kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Resource Kind",
+            "type": "string"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "summary": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "ref_id",
+          "kind",
+          "resource_kind",
+          "title",
+          "rank",
+          "read_endpoint"
+        ],
+        "title": "ScoringRulesSearchHitResponse",
+        "type": "object"
+      },
+      "ScoringRulesSearchResponse": {
+        "description": "Search results for scoring-rules JSON config refs.",
+        "properties": {
+          "package_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ScoringRulesSearchHitResponse"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "query",
+          "package_id"
+        ],
+        "title": "ScoringRulesSearchResponse",
+        "type": "object"
+      },
+      "ScoringRulesStatusResponse": {
+        "description": "Read-only status for the scoring rules JSON config knowledge asset.",
+        "properties": {
+          "config_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Config Id",
+            "type": "string"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "last_updated": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Last Updated",
+            "type": "string"
+          },
+          "load_status": {
+            "minLength": 1,
+            "title": "Load Status",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "manifest_loaded": {
+            "title": "Manifest Loaded",
+            "type": "boolean"
+          },
+          "package_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "runtime_consumers": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Runtime Consumers",
+            "type": "array"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "section_count": {
+            "minimum": 0.0,
+            "title": "Section Count",
+            "type": "integer"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigSectionResponse"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ConfigSourceResponse"
+          },
+          "source_hash": {
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "minLength": 1,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_version",
+          "package_id",
+          "config_id",
+          "source_path",
+          "source_hash",
+          "content_hash",
+          "loaded",
+          "manifest_loaded",
+          "load_status",
+          "updated_at",
+          "title",
+          "version",
+          "last_updated",
+          "source",
+          "section_count"
+        ],
+        "title": "ScoringRulesStatusResponse",
+        "type": "object"
+      },
       "ScriptPolicyPayload": {
         "description": "Script safety payload for imported skills.",
         "properties": {
@@ -19915,6 +23229,397 @@
         "title": "SkillPackPayload",
         "type": "object"
       },
+      "SkillPackageChunkResponse": {
+        "description": "One bounded Skill package knowledge ref.",
+        "properties": {
+          "char_count": {
+            "minimum": 0.0,
+            "title": "Char Count",
+            "type": "integer"
+          },
+          "chunk_id": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "read_endpoint": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "source_hash": {
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "source_role": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Source Role",
+            "type": "string"
+          },
+          "span_end": {
+            "minimum": 0.0,
+            "title": "Span End",
+            "type": "integer"
+          },
+          "span_start": {
+            "minimum": 0.0,
+            "title": "Span Start",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "ref_id",
+          "read_endpoint",
+          "title",
+          "source_path",
+          "source_role",
+          "source_hash",
+          "content_hash",
+          "span_start",
+          "span_end",
+          "char_count"
+        ],
+        "title": "SkillPackageChunkResponse",
+        "type": "object"
+      },
+      "SkillPackageSearchHitResponse": {
+        "description": "One Skill package search result with a bounded agent-readable ref.",
+        "properties": {
+          "kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "rank": {
+            "minimum": 1.0,
+            "title": "Rank",
+            "type": "integer"
+          },
+          "read_endpoint": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "resource_kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Resource Kind",
+            "type": "string"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "summary": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "ref_id",
+          "kind",
+          "resource_kind",
+          "title",
+          "rank",
+          "read_endpoint"
+        ],
+        "title": "SkillPackageSearchHitResponse",
+        "type": "object"
+      },
+      "SkillPackageSearchResponse": {
+        "description": "Search results for repo-local Skill package knowledge refs.",
+        "properties": {
+          "package_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SkillPackageSearchHitResponse"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "query",
+          "package_id"
+        ],
+        "title": "SkillPackageSearchResponse",
+        "type": "object"
+      },
+      "SkillPackageSourceResponse": {
+        "description": "One source file loaded from a read-only Skill package.",
+        "properties": {
+          "byte_count": {
+            "minimum": 0.0,
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "char_count": {
+            "minimum": 0.0,
+            "title": "Char Count",
+            "type": "integer"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "relative_path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "role": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "updated_at": {
+            "minLength": 1,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "relative_path",
+          "role",
+          "loaded",
+          "content_hash",
+          "char_count",
+          "byte_count",
+          "updated_at"
+        ],
+        "title": "SkillPackageSourceResponse",
+        "type": "object"
+      },
+      "SkillPackageStatusResponse": {
+        "description": "Read-only status for one repo-local Skill package knowledge asset.",
+        "properties": {
+          "chunk_count": {
+            "minimum": 0.0,
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/SkillPackageChunkResponse"
+            },
+            "title": "Chunks",
+            "type": "array"
+          },
+          "content_hash": {
+            "minLength": 1,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "load_status": {
+            "minLength": 1,
+            "title": "Load Status",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "manifest_loaded": {
+            "title": "Manifest Loaded",
+            "type": "boolean"
+          },
+          "package_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "package_root": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Package Root",
+            "type": "string"
+          },
+          "runtime_consumers": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Runtime Consumers",
+            "type": "array"
+          },
+          "schema_version": {
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "skill_kind": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Skill Kind",
+            "type": "string"
+          },
+          "source_files": {
+            "items": {
+              "$ref": "#/components/schemas/SkillPackageSourceResponse"
+            },
+            "title": "Source Files",
+            "type": "array"
+          },
+          "source_hash": {
+            "minLength": 1,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_path": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Source Path",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "minLength": 1,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_version",
+          "package_id",
+          "package_root",
+          "source_path",
+          "source_hash",
+          "content_hash",
+          "loaded",
+          "manifest_loaded",
+          "load_status",
+          "updated_at",
+          "title",
+          "version",
+          "skill_kind",
+          "chunk_count"
+        ],
+        "title": "SkillPackageStatusResponse",
+        "type": "object"
+      },
       "SkillRollbackRequest": {
         "description": "Request body for restoring a managed user skill from a rollback snapshot.",
         "properties": {
@@ -20545,6 +24250,37 @@
             "title": "Chunk Index",
             "type": "integer"
           },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "original_filename": {
+            "minLength": 1,
+            "title": "Original Filename",
+            "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "read_endpoint": {
+            "minLength": 1,
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "minLength": 1,
+            "title": "Ref Id",
+            "type": "string"
+          },
           "score": {
             "anyOf": [
               {
@@ -20555,6 +24291,17 @@
               }
             ],
             "title": "Score"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
           },
           "source_hash": {
             "maxLength": 64,
@@ -20567,24 +24314,79 @@
             "title": "Source Id",
             "type": "string"
           },
+          "source_type": {
+            "minLength": 1,
+            "title": "Source Type",
+            "type": "string"
+          },
+          "span_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span End"
+          },
+          "span_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span Start"
+          },
+          "stored_path": {
+            "minLength": 1,
+            "title": "Stored Path",
+            "type": "string"
+          },
+          "summary": {
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
           "text": {
             "minLength": 1,
             "title": "Text",
+            "type": "string"
+          },
+          "text_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Text Hash",
             "type": "string"
           },
           "title": {
             "minLength": 1,
             "title": "Title",
             "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
           }
         },
         "required": [
+          "ref_id",
+          "read_endpoint",
           "chunk_id",
           "source_id",
           "source_hash",
           "title",
+          "summary",
           "chunk_index",
-          "text"
+          "text",
+          "source_type",
+          "original_filename",
+          "stored_path",
+          "text_hash",
+          "truncated"
         ],
         "title": "SourceVaultSearchResultResponse",
         "type": "object"
@@ -21967,9 +25769,24 @@
             "title": "Action",
             "type": "string"
           },
+          "chunk_id": {
+            "default": "",
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "content_hash": {
+            "default": "",
+            "title": "Content Hash",
+            "type": "string"
+          },
           "error": {
             "default": "",
             "title": "Error",
+            "type": "string"
+          },
+          "import_source_hash": {
+            "default": "",
+            "title": "Import Source Hash",
             "type": "string"
           },
           "kind": {
@@ -21982,14 +25799,71 @@
             "title": "Path",
             "type": "string"
           },
+          "read_endpoint": {
+            "default": "",
+            "title": "Read Endpoint",
+            "type": "string"
+          },
+          "ref_id": {
+            "default": "",
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "review_item_id": {
+            "default": "",
+            "title": "Review Item Id",
+            "type": "string"
+          },
+          "runtime_approval_id": {
+            "default": "",
+            "title": "Runtime Approval Id",
+            "type": "string"
+          },
+          "runtime_job_id": {
+            "default": "",
+            "title": "Runtime Job Id",
+            "type": "string"
+          },
+          "runtime_session_id": {
+            "default": "",
+            "title": "Runtime Session Id",
+            "type": "string"
+          },
           "slug": {
             "default": "",
             "title": "Slug",
             "type": "string"
           },
+          "source_hash": {
+            "default": "",
+            "title": "Source Hash",
+            "type": "string"
+          },
           "source_path": {
             "title": "Source Path",
             "type": "string"
+          },
+          "span_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span End"
+          },
+          "span_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span Start"
           },
           "status": {
             "default": "",
@@ -22019,6 +25893,11 @@
       "WikiImportRequest": {
         "description": "Local Markdown import request for the wiki sidecar.",
         "properties": {
+          "confirm_write": {
+            "default": false,
+            "title": "Confirm Write",
+            "type": "boolean"
+          },
           "dry_run": {
             "default": true,
             "title": "Dry Run",
@@ -22053,6 +25932,11 @@
       "WikiImportResponse": {
         "description": "Response for local Markdown wiki import.",
         "properties": {
+          "confirm_write": {
+            "default": false,
+            "title": "Confirm Write",
+            "type": "boolean"
+          },
           "dry_run": {
             "title": "Dry Run",
             "type": "boolean"
@@ -22096,6 +25980,118 @@
           "dry_run"
         ],
         "title": "WikiImportResponse",
+        "type": "object"
+      },
+      "WikiManifestDrilldownItemPayload": {
+        "properties": {
+          "indexed_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexed Hash"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "page_path": {
+            "title": "Page Path",
+            "type": "string"
+          },
+          "redacted": {
+            "default": false,
+            "title": "Redacted",
+            "type": "boolean"
+          },
+          "source_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hash"
+          }
+        },
+        "required": [
+          "kind",
+          "page_path"
+        ],
+        "title": "WikiManifestDrilldownItemPayload",
+        "type": "object"
+      },
+      "WikiManifestDrilldownPayload": {
+        "properties": {
+          "extra_count": {
+            "default": 0,
+            "title": "Extra Count",
+            "type": "integer"
+          },
+          "extra_pages": {
+            "items": {
+              "$ref": "#/components/schemas/WikiManifestDrilldownItemPayload"
+            },
+            "title": "Extra Pages",
+            "type": "array"
+          },
+          "hash_algorithm": {
+            "default": "sha256",
+            "title": "Hash Algorithm",
+            "type": "string"
+          },
+          "limit": {
+            "default": 10,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "mismatched_count": {
+            "default": 0,
+            "title": "Mismatched Count",
+            "type": "integer"
+          },
+          "mismatched_pages": {
+            "items": {
+              "$ref": "#/components/schemas/WikiManifestDrilldownItemPayload"
+            },
+            "title": "Mismatched Pages",
+            "type": "array"
+          },
+          "missing_count": {
+            "default": 0,
+            "title": "Missing Count",
+            "type": "integer"
+          },
+          "missing_pages": {
+            "items": {
+              "$ref": "#/components/schemas/WikiManifestDrilldownItemPayload"
+            },
+            "title": "Missing Pages",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": "scholar-ai-wiki-manifest-drilldown/v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "default": "unknown",
+            "title": "Status",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "title": "WikiManifestDrilldownPayload",
         "type": "object"
       },
       "WikiOkfInspectRequest": {
@@ -22828,6 +26824,29 @@
             "title": "Graph Json Exists",
             "type": "boolean"
           },
+          "index_hash": {
+            "default": "none",
+            "title": "Index Hash",
+            "type": "string"
+          },
+          "indexed_page_count": {
+            "default": 0,
+            "title": "Indexed Page Count",
+            "type": "integer"
+          },
+          "indexed_source_manifest_hash": {
+            "default": "unknown",
+            "title": "Indexed Source Manifest Hash",
+            "type": "string"
+          },
+          "integrity_status": {
+            "default": "unknown",
+            "title": "Integrity Status",
+            "type": "string"
+          },
+          "manifest_drilldown": {
+            "$ref": "#/components/schemas/WikiManifestDrilldownPayload"
+          },
           "page_count": {
             "default": 0,
             "title": "Page Count",
@@ -22849,6 +26868,22 @@
             "default": false,
             "title": "Review Queue Exists",
             "type": "boolean"
+          },
+          "source_manifest_hash": {
+            "default": "unknown",
+            "title": "Source Manifest Hash",
+            "type": "string"
+          },
+          "source_page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Page Count"
           },
           "stale": {
             "default": false,
@@ -29903,6 +33938,593 @@
         ]
       }
     },
+    "/api/knowledge/academic-english/search": {
+      "get": {
+        "description": "Search academic-English knowledge and return bounded agent-readable refs.",
+        "operationId": "get_api_knowledge_academic_english_search",
+        "parameters": [
+          {
+            "description": "Academic-English knowledge query.",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Academic-English knowledge query.",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "top_k",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Top K",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcademicEnglishSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Academic English Runtime Search",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/academic-english/status": {
+      "get": {
+        "description": "Return source/artifact status for the academic-English knowledge package.",
+        "operationId": "get_api_knowledge_academic_english_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcademicEnglishStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Academic English Runtime Status",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/bridge-lexicon/read": {
+      "get": {
+        "description": "Return the normalized bridge lexicon entries for runtime context loading.",
+        "operationId": "get_api_knowledge_bridge_lexicon_read",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BridgeLexiconReadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Bridge Lexicon Runtime Read",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/bridge-lexicon/search": {
+      "get": {
+        "description": "Search bridge lexicon entries and return bounded agent-readable refs.",
+        "operationId": "get_api_knowledge_bridge_lexicon_search",
+        "parameters": [
+          {
+            "description": "Bridge lexicon entry query.",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Bridge lexicon entry query.",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "top_k",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Top K",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BridgeLexiconSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bridge Lexicon Runtime Search",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/bridge-lexicon/status": {
+      "get": {
+        "description": "Return status for the CJK bridge lexicon runtime knowledge asset.",
+        "operationId": "get_api_knowledge_bridge_lexicon_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BridgeLexiconStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Bridge Lexicon Runtime Status",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/context-receipt": {
+      "post": {
+        "description": "Return proof that selected knowledge refs entered bounded context input.",
+        "operationId": "post_api_knowledge_context_receipt",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeContextReceiptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeContextReceiptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Knowledge Context Receipt",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/packages": {
+      "get": {
+        "description": "Return a normalized registry of runtime knowledge packages.",
+        "operationId": "get_api_knowledge_packages",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgePackagesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Knowledge Packages",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/product-docs/read": {
+      "get": {
+        "description": "Return bounded product-doc chunks for runtime context loading.",
+        "operationId": "get_api_knowledge_product_docs_read",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductDocsReadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Product Docs Runtime Read",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/product-docs/search": {
+      "get": {
+        "description": "Search repo-local product docs and return bounded agent-readable refs.",
+        "operationId": "get_api_knowledge_product_docs_search",
+        "parameters": [
+          {
+            "description": "Product documentation query.",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Product documentation query.",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "top_k",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Top K",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductDocsSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Product Docs Runtime Search",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/product-docs/status": {
+      "get": {
+        "description": "Return source/ref/provenance status for repo-local product docs.",
+        "operationId": "get_api_knowledge_product_docs_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductDocsStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Product Docs Runtime Status",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/runtime-conformance": {
+      "get": {
+        "description": "Return a read-only Knowledge Runtime Pipeline conformance projection.",
+        "operationId": "get_api_knowledge_runtime_conformance",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeRuntimeConformanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Knowledge Runtime Conformance",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/scoring-rules/read": {
+      "get": {
+        "description": "Return the normalized scoring-rules JSON sections for runtime context loading.",
+        "operationId": "get_api_knowledge_scoring_rules_read",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoringRulesReadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scoring Rules Runtime Read",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/scoring-rules/search": {
+      "get": {
+        "description": "Search scoring-rules config sections and return bounded agent-readable refs.",
+        "operationId": "get_api_knowledge_scoring_rules_search",
+        "parameters": [
+          {
+            "description": "Scoring-rules config query.",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Scoring-rules config query.",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "top_k",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Top K",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoringRulesSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scoring Rules Runtime Search",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/scoring-rules/status": {
+      "get": {
+        "description": "Return source/ref/provenance status for scoring_rules.json.",
+        "operationId": "get_api_knowledge_scoring_rules_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoringRulesStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scoring Rules Runtime Status",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/skill-packages/{package_id}/search": {
+      "get": {
+        "description": "Search one Skill package and return bounded agent-readable refs.",
+        "operationId": "get_api_knowledge_skill_packages_package_id_search",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "package_id",
+            "required": true,
+            "schema": {
+              "title": "Package Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Skill package knowledge query.",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Skill package knowledge query.",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "top_k",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Top K",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillPackageSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Skill Package Runtime Search",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
+    "/api/knowledge/skill-packages/{package_id}/status": {
+      "get": {
+        "description": "Return read-only source/ref/provenance status for one Skill package.",
+        "operationId": "get_api_knowledge_skill_packages_package_id_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "package_id",
+            "required": true,
+            "schema": {
+              "title": "Package Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillPackageStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Skill Package Runtime Status",
+        "tags": [
+          "Knowledge Workbench"
+        ]
+      }
+    },
     "/api/knowledge/source-vault": {
       "get": {
         "description": "Return Source Vault status and recent sources for the workbench UI.",
@@ -31345,6 +35967,180 @@
         "summary": "Search Memory Palace",
         "tags": [
           "Memory"
+        ]
+      }
+    },
+    "/api/pdf-backend/ocr-engine": {
+      "post": {
+        "description": "Persist local OCR policy/engine selection.\n\nSecrets are accepted only as local runtime config values and are redacted\nfrom the response.",
+        "operationId": "post_api_pdf_backend_ocr_engine",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OcrEngineSelectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OcrEngineSelectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Select Ocr Engine Endpoint",
+        "tags": [
+          "PDF Backend"
+        ]
+      }
+    },
+    "/api/pdf-backend/ocr-engines": {
+      "get": {
+        "description": "Return registered OCR engines with availability metadata.",
+        "operationId": "get_api_pdf_backend_ocr_engines",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OcrEnginePublicInfo"
+                  },
+                  "title": "Response Get Api Pdf Backend Ocr Engines",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Ocr Engines",
+        "tags": [
+          "PDF Backend"
+        ]
+      }
+    },
+    "/api/pdf-backend/ocr-execution-probe": {
+      "post": {
+        "description": "Run one explicit OCR execution probe and return bounded proof only.",
+        "operationId": "post_api_pdf_backend_ocr_execution_probe",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OcrExecutionProbeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OcrExecutionProbeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Ocr Execution Probe",
+        "tags": [
+          "PDF Backend"
+        ]
+      }
+    },
+    "/api/pdf-backend/ocr-health": {
+      "post": {
+        "description": "Run a lightweight readiness probe for one OCR engine.",
+        "operationId": "post_api_pdf_backend_ocr_health",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OcrHealthRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OcrHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check Ocr Engine Health",
+        "tags": [
+          "PDF Backend"
+        ]
+      }
+    },
+    "/api/pdf-backend/ocr-status": {
+      "get": {
+        "description": "Return the redacted OCR runtime status.",
+        "operationId": "get_api_pdf_backend_ocr_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OcrStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Ocr Status",
+        "tags": [
+          "PDF Backend"
         ]
       }
     },

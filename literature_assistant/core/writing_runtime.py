@@ -3182,6 +3182,11 @@ def _agent_handoff_current_replay_lineage(
     if limit < 1 or limit > 50:
         raise ValueError("limit must be between 1 and 50")
     receipts, receipt_counts = _collect_job_preflight_receipts(job, artifacts)
+    readable_receipt_ids = {
+        str(receipt.get("receipt_id"))
+        for receipt in receipts
+        if _safe_projection_string(receipt.get("receipt_id")) is not None
+    }
     receipt_id = _safe_projection_string(refresh_receipt.get("receipt_id"))
     if receipt_id is not None and all(receipt.get("receipt_id") != receipt_id for receipt in receipts):
         receipts.append(dict(_json_safe_copy(refresh_receipt)))
@@ -3223,7 +3228,7 @@ def _agent_handoff_current_replay_lineage(
         _handoff_resume_probe("Read runtime snapshot", f"/runtime/job/{job.job_id}/snapshot"),
         _handoff_resume_probe("Read workflow replay lineage", f"/runtime/job/{job.job_id}/workflow-replay-lineage"),
     ]
-    if latest_row and latest_row.get("receipt_id"):
+    if latest_row and latest_row.get("receipt_id") in readable_receipt_ids:
         resume_probes.append(
             _handoff_resume_probe(
                 "Read latest workflow refresh receipt",
@@ -8260,6 +8265,17 @@ class WritingRuntime:
             job_id=job.job_id,
             project_id=project_id,
         )
+        receipt_probe_is_readable = self.get_preflight_refresh_receipt(
+            job.job_id,
+            receipt_id=str(refresh_receipt.get("receipt_id") or ""),
+        ) is not None
+        if persist:
+            refresh_receipt = self.persist_preflight_refresh_receipt(job.job_id, refresh_receipt)
+            receipt_probe_is_readable = True
+            refreshed_job = self.get_job(normalized_job_id)
+            if refreshed_job is not None:
+                job = refreshed_job
+                metadata = dict(job.metadata)
         receipt_ref = {
             "ref_type": "preflight_refresh_receipt",
             "ref_id": refresh_receipt["receipt_id"],
@@ -8412,7 +8428,7 @@ class WritingRuntime:
                 "limit": 10,
             }),
         ]
-        if refresh_receipt.get("receipt_id"):
+        if receipt_probe_is_readable and refresh_receipt.get("receipt_id"):
             resume_probes.append(
                 _handoff_resume_probe(
                     "Inspect preflight refresh receipt",
@@ -8438,7 +8454,7 @@ class WritingRuntime:
             "Resume Scholar AI / 文献助手 MCP-first local work from this handoff card.",
             f"Request id: {request_id or 'unknown'}; runtime job id: {job.job_id}; status: {status}.",
             f"Current stage: {current_stage_label}.",
-            "Before any mutating action, run the read-only replay lineage, replay index, workflow passport, and integrity-gate probes listed in this card; then re-check git status plus rollback discipline.",
+            "Before any mutating action, run the read-only resume probes listed in this card, including replay lineage, replay index, workflow passport, and integrity-gate; then re-check git status plus rollback discipline.",
             "Keep unresolved evidence/integrity checks visible; only proceed with local code, docs, tests, and runtime artifacts inside the authorized boundaries.",
         ]
         highest_priority = replay_recovery.get("highest_priority_attempt")
@@ -8539,7 +8555,13 @@ class WritingRuntime:
             raise ValueError("agent handoff card schema_version is invalid")
         action_preflight = normalized_card.get("action_preflight")
         if isinstance(action_preflight, dict) and isinstance(action_preflight.get("refresh_receipt"), dict):
-            self.persist_preflight_refresh_receipt(job.job_id, dict(action_preflight["refresh_receipt"]))
+            receipt = dict(action_preflight["refresh_receipt"])
+            existing_receipt = self.get_preflight_refresh_receipt(
+                job.job_id,
+                receipt_id=str(receipt.get("receipt_id") or ""),
+            )
+            if existing_receipt is None:
+                self.persist_preflight_refresh_receipt(job.job_id, receipt)
             refreshed_job = self.get_job(normalized_job_id)
             if refreshed_job is not None:
                 job = refreshed_job

@@ -313,21 +313,33 @@ class WikiDoctor:
                 summary="Wiki query index database exists.",
                 metrics={"db_path": str(db_path), "page_count": page_count},
             )
-        status = self.query_index.get_status()
-        stale = status.page_count != page_count
+        status = self.query_index.get_status(self.page_store)
+        stale = status.stale or status.page_count != page_count
+        manifest_drilldown = status.manifest_drilldown.to_dict()
+        warning_detail = "\n".join(status.warnings)
         return DoctorCheck(
             id="retrieval",
             label="Retrieval",
             status=DoctorStatus.warning if stale else DoctorStatus.ok,
             summary=(
-                f"Wiki query index has {status.page_count} pages but page store has {page_count}."
+                f"Wiki query index is stale: {status.integrity_status}."
                 if stale
                 else f"Wiki query index is aligned with {status.page_count} pages."
             ),
+            detail=warning_detail,
             metrics={
                 "indexed_pages": status.page_count,
                 "page_count": page_count,
                 "index_hash": status.index_hash,
+                "integrity_status": status.integrity_status,
+                "source_manifest_hash": status.source_manifest_hash,
+                "indexed_source_manifest_hash": status.indexed_source_manifest_hash,
+                "source_page_count": status.source_page_count,
+                "indexed_source_page_count": status.indexed_source_page_count,
+                "manifest_missing_count": manifest_drilldown["missing_count"],
+                "manifest_extra_count": manifest_drilldown["extra_count"],
+                "manifest_mismatched_count": manifest_drilldown["mismatched_count"],
+                "manifest_drilldown": manifest_drilldown,
                 "last_indexed": status.last_indexed,
             },
             actions=(

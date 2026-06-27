@@ -59,9 +59,15 @@ import {
   type WorkflowPassportStage,
   type ZoteroAttachmentHealth,
 } from '@/services/agentWorkspaceApi';
+import {
+  getKnowledgeRuntimeConformance,
+  type KnowledgeRuntimeActualLoadingGate,
+  type KnowledgeRuntimeConformancePackage,
+  type KnowledgeRuntimeConformanceResponse,
+} from '@/services/knowledgeApi';
 import { getWikiReview } from '@/services/wikiApi';
 import type { WritingJob } from '@/types/runtime';
-import type { WikiReviewListModel } from '@/types/wiki';
+import type { WikiReviewItemModel, WikiReviewListModel } from '@/types/wiki';
 
 type WorkspaceTab = 'agents' | 'artifacts' | 'audit';
 
@@ -318,6 +324,22 @@ interface ReadinessCard {
   metrics: string[];
 }
 
+interface WikiImportRecoveryItem {
+  itemId: string;
+  title: string;
+  status: string;
+  pagePath: string;
+  requestedStatus: string;
+  runtimeSessionId: string;
+  runtimeJobId: string;
+  runtimeApprovalId: string;
+  gateStatus: string;
+  hasRuntimeRefs: boolean;
+  hasHandoffCard: boolean;
+  hasReviewQueueProbe: boolean;
+  forbiddenActions: string[];
+}
+
 type ReadinessPanelDensity = 'default' | 'desktop-acceptance';
 
 type WorkflowSpineDensity = 'default' | 'desktop-acceptance';
@@ -347,6 +369,8 @@ function readOptionalBooleanField(record: Record<string, unknown>, key: string):
 
 function sanitizeInspectorText(value: string): string {
   return value
+    .replace(/[A-Za-z]:\\(?:Users|Documents and Settings)\\(?:[^\\,;'"`<>)]*\\)*[^\\,;'"`<>)]*\.[A-Za-z0-9]{1,12}(?=$|[\s,;'"`<>)]|$)/g, '[redacted-local-path]')
+    .replace(/\/(?:Users|home)\/(?:[^/,;'"`<>)]*\/)*[^/,;'"`<>)]*\.[A-Za-z0-9]{1,12}(?=$|[\s,;'"`<>)]|$)/g, '[redacted-local-path]')
     .replace(/[A-Za-z]:\\(?:Users|Documents and Settings)\\[^\s,;'"`<>)]*/g, '[redacted-local-path]')
     .replace(/\/(?:Users|home)\/[^\s,;'"`<>)]*/g, '[redacted-local-path]')
     .replace(/workspace_artifacts[\\/]private[^\s,;'"`<>)]*/g, '[redacted-workspace-path]')
@@ -376,6 +400,63 @@ function displayInspectorJson(value: unknown): string {
   } catch {
     return 'unreadable';
   }
+}
+
+function hasTextField(record: Record<string, unknown>, key: string): boolean {
+  return readTextField(record, key).length > 0;
+}
+
+function readTextArrayField(record: Record<string, unknown>, key: string): string[] {
+  const value = record[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .map((item) => sanitizeInspectorText(item.trim()));
+}
+
+function isWikiImportReviewItem(item: WikiReviewItemModel): boolean {
+  const metadata = isRecord(item.metadata) ? item.metadata : {};
+  const source = readTextField(metadata, 'source') || item.source;
+  const entrySource = readTextField(metadata, 'entry_source');
+  return item.source === 'local_markdown_import'
+    || source === 'local_markdown_import'
+    || entrySource === 'local_markdown_import'
+    || readBooleanField(metadata, 'manual_wiki_import')
+    || (
+      readTextField(metadata, 'runtime_action_family') === 'wiki_candidate'
+      && readTextField(metadata, 'approval_surface') === 'wiki_review_queue'
+    );
+}
+
+function buildWikiImportRecoveryItems(wikiReview: WikiReviewListModel | null): WikiImportRecoveryItem[] {
+  return (wikiReview?.items ?? [])
+    .filter(isWikiImportReviewItem)
+    .map((item) => {
+      const metadata = isRecord(item.metadata) ? item.metadata : {};
+      const runtimeRecovery = readRecordField(metadata, 'runtime_recovery');
+      const handoffRecovery = readRecordField(metadata, 'agent_handoff_recovery');
+      const gate = readRecordField(metadata, 'evidence_integrity_gate');
+      const runtimeSessionId = sanitizeInspectorText(readTextField(metadata, 'runtime_session_id'));
+      const runtimeJobId = sanitizeInspectorText(readTextField(metadata, 'runtime_job_id'));
+      const runtimeApprovalId = sanitizeInspectorText(readTextField(metadata, 'runtime_approval_id'));
+      return {
+        itemId: sanitizeInspectorText(item.item_id),
+        title: sanitizeInspectorText(item.title || 'Untitled import'),
+        status: sanitizeInspectorText(item.status || 'unknown'),
+        pagePath: sanitizeInspectorText(item.page_path || readTextField(metadata, 'wiki_page_path') || 'page pending'),
+        requestedStatus: sanitizeInspectorText(readTextField(metadata, 'requested_status') || 'draft'),
+        runtimeSessionId,
+        runtimeJobId,
+        runtimeApprovalId,
+        gateStatus: sanitizeInspectorText(readTextField(gate, 'status') || 'unresolved'),
+        hasRuntimeRefs: Boolean(runtimeSessionId || runtimeJobId || runtimeApprovalId),
+        hasHandoffCard: hasTextField(runtimeRecovery, 'agent_handoff_card'),
+        hasReviewQueueProbe: hasTextField(handoffRecovery, 'review_queue_probe'),
+        forbiddenActions: readTextArrayField(handoffRecovery, 'forbidden_actions').slice(0, 3),
+      } satisfies WikiImportRecoveryItem;
+    });
 }
 
 function actionMessage(action: ToolNextActionLike | null | undefined): string {
@@ -463,6 +544,41 @@ function gateStatusLabel(status: string | null | undefined): string {
     return '暂不适用';
   }
   return '未读取';
+}
+
+function knowledgeRuntimeTone(status: string | null | undefined): StatusTone {
+  if (status === 'blocked') {
+    return 'danger';
+  }
+  if (status === 'pending') {
+    return 'warning';
+  }
+  if (status === 'proved') {
+    return 'success';
+  }
+  return 'neutral';
+}
+
+function shortHashLabel(value: string): string {
+  const sanitized = sanitizeInspectorText(value.trim());
+  if (!sanitized || sanitized === 'none' || sanitized === 'missing') {
+    return sanitized || 'missing';
+  }
+  return sanitized.length > 18 ? `${sanitized.slice(0, 18)}...` : sanitized;
+}
+
+function actualLoadingGateSummary(gate: KnowledgeRuntimeActualLoadingGate): string {
+  return `${sanitizeInspectorText(gate.verdict)} · evidence ${gate.evidence.length} · missing ${gate.missing.length} · errors ${gate.validation_errors.length} · checks ${gate.required_checks.length}`;
+}
+
+function packageEvidenceSummary(pkg: KnowledgeRuntimeConformancePackage): string {
+  const flags = [
+    pkg.test_evidence.focused_test_exists ? 'focused-test' : '',
+    pkg.test_evidence.context_receipt_test ? 'context-receipt' : '',
+    pkg.test_evidence.agent_resource_read_test ? 'agent-resource' : '',
+    pkg.test_evidence.mcp_tool_test ? 'mcp-tool' : '',
+  ].filter(Boolean);
+  return flags.length > 0 ? flags.join(' · ') : 'test proof pending';
 }
 
 function claimTone(status: string | null | undefined): StatusTone {
@@ -1659,7 +1775,10 @@ function workspaceGoalStateSummary(state: AgentWorkspaceStatus['workspace_state'
   const outOfScope = status?.out_of_scope ?? goal.out_of_scope_count;
   const latestId = status?.latest_id ?? goal.latest_requirement_id;
   const latest = latestId ? ` · latest ${sanitizeInspectorText(latestId)}` : '';
-  return `goal-state ${total} rows · proved ${proved} · incomplete ${incomplete} · out-of-scope ${outOfScope}${latest}`;
+  const lifecycle = goal.lifecycle_rollup?.status
+    ? ` · lifecycle ${sanitizeInspectorText(goal.lifecycle_rollup.status)}`
+    : '';
+  return `goal-state ${total} rows · proved ${proved} · incomplete ${incomplete} · out-of-scope ${outOfScope}${latest}${lifecycle}`;
 }
 
 function workspaceGoalCompletionClaimSummary(goal: AgentWorkspaceStatus['workspace_state']['goal_state']): {
@@ -1681,6 +1800,19 @@ function workspaceGoalOpenRequirementLabel(
   const requirement = item.requirement ? ` · ${sanitizeInspectorText(item.requirement)}` : '';
   const residualRisk = item.residual_risk ? ` · risk ${sanitizeInspectorText(item.residual_risk)}` : '';
   return `${id} · ${status}${requirement}${residualRisk}`;
+}
+
+function workspaceDesktopSmokeSummary(state: AgentWorkspaceStatus['workspace_state']): string {
+  const smoke = state.desktop_smoke;
+  if (!smoke.available) {
+    return `desktop smoke unavailable${smoke.error ? ` · ${sanitizeInspectorText(smoke.error)}` : ''}`;
+  }
+  const status = smoke.status ? sanitizeInspectorText(smoke.status) : 'unknown';
+  const runId = smoke.run_id ? sanitizeInspectorText(smoke.run_id) : 'run pending';
+  const screenshot = smoke.screenshot_nonblank ? 'screenshot nonblank' : 'screenshot unresolved';
+  const tree = smoke.accessibility_tree_available ? 'a11y tree yes' : 'a11y tree no';
+  const filter = `candidates ${smoke.candidate_count} · ignored ${smoke.ignored_count}`;
+  return `${runId} · ${status} · ${screenshot} · ${tree} · ${filter}`;
 }
 
 function firstRecommendationMessage(healthCheck: AgentWorkflowHealthCheck | null): string {
@@ -3329,8 +3461,115 @@ export function ReadinessPanel({
   );
 }
 
+export function WikiImportRecoveryPanel({
+  wikiReview,
+}: {
+  wikiReview: WikiReviewListModel | null;
+}) {
+  const importItems = buildWikiImportRecoveryItems(wikiReview);
+  if (importItems.length === 0) {
+    return null;
+  }
+
+  const pendingItems = importItems.filter((item) => item.status === 'pending');
+  const runtimeRefCount = importItems.filter((item) => item.hasRuntimeRefs).length;
+  const blockedGateCount = importItems.filter((item) => item.gateStatus === 'block').length;
+
+  return (
+    <section
+      aria-label="Wiki import recovery"
+      className="mb-4 min-w-0 max-w-full overflow-hidden rounded-md border border-outline-variant/60 bg-surface-lowest px-4 py-3"
+    >
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="font-display text-sm font-semibold text-foreground">Wiki Import Recovery</h2>
+          <p className="mt-0.5 text-xs leading-5 text-foreground/50">
+            Local Markdown imports stay in the private review queue until runtime recovery and approval gates are inspected.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <StatusPill tone={pendingItems.length > 0 ? 'warning' : 'success'}>pending {pendingItems.length}</StatusPill>
+          <StatusPill tone="info">runtime refs {runtimeRefCount}</StatusPill>
+          <StatusPill tone={blockedGateCount > 0 ? 'danger' : 'neutral'}>gate block {blockedGateCount}</StatusPill>
+          <StatusPill tone="neutral">read-only true</StatusPill>
+        </div>
+      </div>
+
+      <div className="grid gap-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+        <article className="min-w-0 overflow-hidden rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
+          <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+            <h3 className="truncate font-label text-xs font-semibold text-foreground">Review Queue Imports</h3>
+            <StatusPill tone="neutral">items {importItems.length}</StatusPill>
+          </div>
+          <div className="flex flex-col gap-2">
+            {importItems.slice(0, 4).map((item) => (
+              <div
+                key={item.itemId}
+                className="min-w-0 rounded-md border border-outline-variant/35 bg-surface-lowest px-2.5 py-2"
+              >
+                <div className="mb-1.5 flex min-w-0 items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h4 className="truncate font-label text-xs font-semibold text-foreground">{item.title}</h4>
+                    <p className="mt-0.5 break-words text-[11px] leading-4 text-foreground/55">
+                      {item.itemId}
+                    </p>
+                  </div>
+                  <StatusPill tone={item.status === 'pending' ? 'warning' : 'neutral'}>{item.status}</StatusPill>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <StatusPill tone="neutral">{item.pagePath}</StatusPill>
+                  <StatusPill tone="neutral">requested {item.requestedStatus}</StatusPill>
+                  <StatusPill tone={item.gateStatus === 'block' ? 'danger' : 'neutral'}>gate {item.gateStatus}</StatusPill>
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="min-w-0 overflow-hidden rounded-md border border-outline-variant/45 bg-surface-low px-3 py-3">
+          <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+            <h3 className="truncate font-label text-xs font-semibold text-foreground">Runtime Recovery</h3>
+            <StatusPill tone="neutral">review queue only</StatusPill>
+          </div>
+          <div className="flex flex-col gap-2">
+            {importItems.slice(0, 4).map((item) => (
+              <div
+                key={`${item.itemId}:runtime`}
+                className="min-w-0 rounded-md border border-outline-variant/35 bg-surface-lowest px-2.5 py-2"
+              >
+                <div className="flex flex-wrap gap-1.5">
+                  {item.runtimeJobId ? <StatusPill tone="info">{item.runtimeJobId}</StatusPill> : <StatusPill tone="warning">job pending</StatusPill>}
+                  {item.runtimeSessionId ? <StatusPill tone="neutral">{item.runtimeSessionId}</StatusPill> : null}
+                  {item.runtimeApprovalId ? <StatusPill tone="warning">{item.runtimeApprovalId}</StatusPill> : <StatusPill tone="warning">approval pending</StatusPill>}
+                  <StatusPill tone={item.hasHandoffCard ? 'success' : 'neutral'}>
+                    handoff card {item.hasHandoffCard ? 'available' : 'pending'}
+                  </StatusPill>
+                  <StatusPill tone={item.hasReviewQueueProbe ? 'success' : 'neutral'}>
+                    review probe {item.hasReviewQueueProbe ? 'available' : 'pending'}
+                  </StatusPill>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {item.forbiddenActions.length > 0
+                    ? item.forbiddenActions.map((action) => (
+                      <StatusPill key={`${item.itemId}:${action}`} tone="warning">{action}</StatusPill>
+                    ))
+                    : <StatusPill tone="warning">no auto approval</StatusPill>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 break-words rounded-md border border-outline-variant/35 bg-surface-lowest px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+            No auto approval, external upload, Zotero DB mutation, or published knowledge write is exposed from Agent Workspace.
+          </p>
+        </article>
+      </div>
+    </section>
+  );
+}
+
 export function WorkspaceStatePanel({
   workspaceStatus,
+  knowledgeRuntime,
   requirementDrilldown,
   selectedRequirementId,
   requirementQuery,
@@ -3338,6 +3577,7 @@ export function WorkspaceStatePanel({
   onSelectRequirement,
 }: {
   workspaceStatus: AgentWorkspaceStatus | null;
+  knowledgeRuntime: KnowledgeRuntimeConformanceResponse | null;
   requirementDrilldown: AgentWorkspaceGoalRequirementDrilldown | null;
   selectedRequirementId: string | null;
   requirementQuery: string;
@@ -3350,16 +3590,21 @@ export function WorkspaceStatePanel({
   }
   const git = state.git;
   const dirtyPaths = git.dirty_paths.slice(0, 6);
-  const probes = state.recovery_probes.slice(0, 5);
+  const probes = state.recovery_probes.slice(0, 6);
   const boundaries = state.boundaries.slice(0, 3).map(sanitizeInspectorText);
   const nextActions = state.next_safe_local_actions.slice(0, 3).map(sanitizeInspectorText);
   const goalCompletionClaim = workspaceGoalCompletionClaimSummary(state.goal_state);
+  const goalLifecycle = state.goal_state.lifecycle_rollup ?? null;
+  const desktopSmoke = state.desktop_smoke;
   const allOpenRequirements = state.goal_state.open_requirements ?? [];
   const matchingOpenRequirements = allOpenRequirements.filter((item) => matchesOpenRequirementQuery(requirementQuery, item));
   const openRequirements = matchingOpenRequirements.slice(0, 5);
   const openRequirementResultLabel = requirementQuery.trim()
     ? `requirement matches ${matchingOpenRequirements.length} / total ${allOpenRequirements.length}`
     : `requirements shown ${openRequirements.length} / total ${allOpenRequirements.length}`;
+  const knowledgePackages = knowledgeRuntime?.packages.slice(0, 4) ?? [];
+  const knowledgeSummary = knowledgeRuntime?.summary ?? { proved: 0, pending: 0, blocked: 0, not_applicable: 0 };
+  const actualLoadingGate = knowledgeRuntime?.actual_loading_gate ?? null;
   return (
     <section
       aria-label="Workspace state visibility"
@@ -3444,6 +3689,11 @@ export function WorkspaceStatePanel({
                   full goal status visible
                 </StatusPill>
               ) : null}
+              {goalLifecycle?.status ? (
+                <StatusPill tone={goalLifecycle.is_goal_complete ? 'success' : 'warning'}>
+                  lifecycle {sanitizeInspectorText(goalLifecycle.status)}
+                </StatusPill>
+              ) : null}
               {state.goal_state.checkpoint_id ? (
                 <StatusPill tone="neutral">checkpoint {sanitizeInspectorText(state.goal_state.checkpoint_id)}</StatusPill>
               ) : null}
@@ -3451,7 +3701,7 @@ export function WorkspaceStatePanel({
                 <StatusPill tone="neutral">{sanitizeInspectorText(state.goal_state.path)}</StatusPill>
               ) : null}
             </div>
-            {goalCompletionClaim.thisSlice || goalCompletionClaim.fullGoal ? (
+            {goalCompletionClaim.thisSlice || goalCompletionClaim.fullGoal || goalLifecycle?.completion_blockers?.length ? (
               <div className="mt-2 grid gap-1.5">
                 {goalCompletionClaim.thisSlice ? (
                   <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
@@ -3461,6 +3711,11 @@ export function WorkspaceStatePanel({
                 {goalCompletionClaim.fullGoal ? (
                   <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
                     full goal {goalCompletionClaim.fullGoal}
+                  </p>
+                ) : null}
+                {goalLifecycle?.completion_blockers?.length ? (
+                  <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    lifecycle blockers {goalLifecycle.completion_blockers.length} · can complete {String(goalLifecycle.can_mark_goal_complete)}
                   </p>
                 ) : null}
               </div>
@@ -3598,6 +3853,171 @@ export function WorkspaceStatePanel({
             ))}
           </div>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <div
+              role="region"
+              aria-label="Desktop smoke evidence"
+              className="min-w-0 rounded-md border border-outline-variant/35 bg-surface-lowest px-2 py-2 md:col-span-2"
+            >
+              <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                <h4 className="mr-auto font-label text-[11px] font-semibold text-foreground/45">Desktop Smoke Evidence</h4>
+                <StatusPill tone={desktopSmoke.available ? 'success' : 'warning'}>
+                  desktop smoke {desktopSmoke.available ? 'visible' : 'missing'}
+                </StatusPill>
+                <StatusPill tone="neutral">read-only {String(desktopSmoke.read_only)}</StatusPill>
+                {desktopSmoke.status ? (
+                  <StatusPill tone={desktopSmoke.status === 'passed' ? 'success' : 'warning'}>
+                    status {sanitizeInspectorText(desktopSmoke.status)}
+                  </StatusPill>
+                ) : null}
+              </div>
+              <p className="break-words text-[11px] leading-4 text-foreground/60">
+                {workspaceDesktopSmokeSummary(state)}
+              </p>
+              {desktopSmoke.available ? (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {desktopSmoke.initial_path ? <StatusPill tone="neutral">{sanitizeInspectorText(desktopSmoke.initial_path)}</StatusPill> : null}
+                  <StatusPill tone="neutral">expected {sanitizeInspectorText(desktopSmoke.expected_initial_path)}</StatusPill>
+                  <StatusPill tone={desktopSmoke.ignored_count > 0 ? 'warning' : 'neutral'}>ignored {desktopSmoke.ignored_count}</StatusPill>
+                  {desktopSmoke.accessibility_tree_root_name ? <StatusPill tone="info">root {sanitizeInspectorText(desktopSmoke.accessibility_tree_root_name)}</StatusPill> : null}
+                  {desktopSmoke.accessibility_tree_root_control_type ? <StatusPill tone="info">control {sanitizeInspectorText(desktopSmoke.accessibility_tree_root_control_type)}</StatusPill> : null}
+                  {desktopSmoke.accessibility_tree_node_count !== null ? <StatusPill tone="neutral">nodes {desktopSmoke.accessibility_tree_node_count}</StatusPill> : null}
+                  {desktopSmoke.accessibility_tree_named_node_count !== null ? <StatusPill tone="neutral">named {desktopSmoke.accessibility_tree_named_node_count}</StatusPill> : null}
+                  {desktopSmoke.screenshot_path ? <StatusPill tone="neutral">{sanitizeInspectorText(desktopSmoke.screenshot_path)}</StatusPill> : null}
+                  {desktopSmoke.accessibility_tree_path ? <StatusPill tone="neutral">{sanitizeInspectorText(desktopSmoke.accessibility_tree_path)}</StatusPill> : null}
+                </div>
+              ) : null}
+              {desktopSmoke.warnings.length > 0 || desktopSmoke.errors.length > 0 ? (
+                <div className="mt-1.5 grid gap-1">
+                  {desktopSmoke.warnings.slice(0, 2).map((warning) => (
+                    <p key={`desktop-smoke-warning:${warning}`} className="break-words rounded-md border border-outline-variant/25 bg-surface px-2 py-1 text-[11px] leading-4 text-foreground/60">
+                      warning {sanitizeInspectorText(warning)}
+                    </p>
+                  ))}
+                  {desktopSmoke.errors.slice(0, 2).map((error) => (
+                    <p key={`desktop-smoke-error:${error}`} className="break-words rounded-md border border-danger/20 bg-danger/5 px-2 py-1 text-[11px] leading-4 text-danger">
+                      error {sanitizeInspectorText(error)}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div
+              role="region"
+              aria-label="Knowledge runtime conformance"
+              className="min-w-0 rounded-md border border-outline-variant/35 bg-surface-lowest px-2 py-2 md:col-span-2"
+            >
+              <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                <h4 className="mr-auto font-label text-[11px] font-semibold text-foreground/45">Knowledge Runtime</h4>
+                <StatusPill tone={knowledgeRuntime ? 'success' : 'warning'}>
+                  conformance {knowledgeRuntime ? 'visible' : 'missing'}
+                </StatusPill>
+                <StatusPill tone="neutral">read-only true</StatusPill>
+                <StatusPill tone="info">packages {knowledgeRuntime?.packages.length ?? 0}</StatusPill>
+                <StatusPill tone={knowledgeSummary.blocked > 0 ? 'danger' : 'neutral'}>blocked {knowledgeSummary.blocked}</StatusPill>
+                <StatusPill tone={knowledgeSummary.pending > 0 ? 'warning' : 'neutral'}>pending {knowledgeSummary.pending}</StatusPill>
+                <StatusPill tone="success">proved {knowledgeSummary.proved}</StatusPill>
+                {actualLoadingGate ? (
+                  <StatusPill tone={knowledgeRuntimeTone(actualLoadingGate.status)}>
+                    live gate {sanitizeInspectorText(actualLoadingGate.status)}
+                  </StatusPill>
+                ) : null}
+              </div>
+              {knowledgeRuntime ? (
+                <>
+                  <p className="break-words text-[11px] leading-4 text-foreground/60">
+                    {knowledgeRuntime.pipeline.map(sanitizeInspectorText).join(' -> ')}
+                  </p>
+                  {actualLoadingGate ? (
+                    <div className="mt-1.5 min-w-0 rounded-md border border-outline-variant/25 bg-surface px-2 py-1.5">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <span className="mr-auto min-w-0 truncate font-label text-[11px] font-semibold text-foreground/70">
+                          Actual loading gate
+                        </span>
+                        <StatusPill tone={knowledgeRuntimeTone(actualLoadingGate.status)}>
+                          {sanitizeInspectorText(actualLoadingGate.status)}
+                        </StatusPill>
+                        <StatusPill tone="neutral">{actualLoadingGateSummary(actualLoadingGate)}</StatusPill>
+                        <StatusPill tone="neutral">
+                          contract {sanitizeInspectorText(actualLoadingGate.artifact_contract)}
+                        </StatusPill>
+                        <StatusPill tone={actualLoadingGate.validation_errors.length > 0 ? 'danger' : 'success'}>
+                          validation errors {actualLoadingGate.validation_errors.length}
+                        </StatusPill>
+                        <StatusPill tone={actualLoadingGate.required_checks.length > 0 ? 'info' : 'warning'}>
+                          required checks {actualLoadingGate.required_checks.length}
+                        </StatusPill>
+                      </div>
+                      <p className="mt-1 break-words text-[11px] leading-4 text-foreground/55">
+                        {sanitizeInspectorText(actualLoadingGate.claim_boundary || 'Live QA/model loading requires an authorized smoke artifact.')}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        <StatusPill tone="neutral">{sanitizeInspectorText(actualLoadingGate.artifact_path)}</StatusPill>
+                        {actualLoadingGate.missing.slice(0, 2).map((item) => (
+                          <StatusPill key={`actual-loading-missing:${item}`} tone="warning">
+                            missing {sanitizeInspectorText(item)}
+                          </StatusPill>
+                        ))}
+                        {actualLoadingGate.evidence.slice(0, 2).map((item) => (
+                          <StatusPill key={`actual-loading-evidence:${item}`} tone="info">
+                            proof {sanitizeInspectorText(item)}
+                          </StatusPill>
+                        ))}
+                        {actualLoadingGate.validation_errors.slice(0, 2).map((item) => (
+                          <StatusPill key={`actual-loading-validation:${item}`} tone="danger">
+                            validation {sanitizeInspectorText(item)}
+                          </StatusPill>
+                        ))}
+                        {actualLoadingGate.required_checks.slice(0, 3).map((item) => (
+                          <StatusPill key={`actual-loading-required:${item}`} tone="neutral">
+                            check {sanitizeInspectorText(item)}
+                          </StatusPill>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="mt-1.5 grid gap-1.5">
+                    {knowledgePackages.map((pkg) => (
+                      <div
+                        key={pkg.package_id}
+                        className="min-w-0 rounded-md border border-outline-variant/25 bg-surface px-2 py-1.5"
+                      >
+                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <span className="mr-auto min-w-0 truncate font-label text-[11px] font-semibold text-foreground/70">
+                            {sanitizeInspectorText(pkg.title)}
+                          </span>
+                          <StatusPill tone={knowledgeRuntimeTone(pkg.overall_status)}>{pkg.overall_status}</StatusPill>
+                          <StatusPill tone={pkg.loaded ? 'success' : 'warning'}>loaded {String(pkg.loaded)}</StatusPill>
+                          <StatusPill tone="neutral">{sanitizeInspectorText(pkg.kind)}</StatusPill>
+                        </div>
+                        <p className="mt-1 break-words text-[11px] leading-4 text-foreground/55">
+                          {sanitizeInspectorText(pkg.package_id)} · source {shortHashLabel(pkg.source_hash)} · content {shortHashLabel(pkg.content_hash)}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          <StatusPill tone={pkg.runtime_consumers.length > 0 ? 'info' : 'warning'}>
+                            consumers {pkg.runtime_consumers.length}
+                          </StatusPill>
+                          <StatusPill tone={pkg.mcp_tools.length > 0 ? 'info' : 'warning'}>
+                            mcp {pkg.mcp_tools.length}
+                          </StatusPill>
+                          <StatusPill tone={pkg.test_evidence.context_receipt_test ? 'success' : 'warning'}>
+                            {packageEvidenceSummary(pkg)}
+                          </StatusPill>
+                          {pkg.conformance.some((item) => item.status === 'blocked') ? (
+                            <StatusPill tone="danger">
+                              blocked rows {pkg.conformance.filter((item) => item.status === 'blocked').length}
+                            </StatusPill>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="break-words text-[11px] leading-4 text-foreground/60">
+                  Knowledge Runtime conformance was not loaded in this recovery pass.
+                </p>
+              )}
+            </div>
             <div className="min-w-0">
               <h4 className="font-label text-[11px] font-semibold text-foreground/45">Next Safe Local Actions</h4>
               <div className="mt-1 flex flex-col gap-1.5">
@@ -3639,6 +4059,7 @@ export function AgentWorkspace() {
   const [workflowReplayIndex, setWorkflowReplayIndex] = useState<WorkflowReplayIndexProjection | null>(null);
   const [workflowReplayLineage, setWorkflowReplayLineage] = useState<WorkflowReplayLineageProjection | null>(null);
   const [behaviorEvalPack, setBehaviorEvalPack] = useState<BehaviorEvalPackProjection | null>(null);
+  const [knowledgeRuntime, setKnowledgeRuntime] = useState<KnowledgeRuntimeConformanceResponse | null>(null);
   const [requirementDrilldown, setRequirementDrilldown] = useState<AgentWorkspaceGoalRequirementDrilldown | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -3654,7 +4075,7 @@ export function AgentWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      const [next, bridge, runtimeJobs, workflowHealth, zotero, review, passport, gate, lifecycle, replayIndex, behaviorEval] = await Promise.all([
+      const [next, bridge, runtimeJobs, workflowHealth, zotero, review, passport, gate, lifecycle, replayIndex, behaviorEval, knowledge] = await Promise.all([
         getAgentWorkspaceStatus(),
         getAgentBridgeStatus({ limit: 50 }).catch(() => null),
         listRuntimeJobs({ limit: 100 }).catch(() => null),
@@ -3666,6 +4087,7 @@ export function AgentWorkspace() {
         getResearchActionLifecycle({ limit: 50 }).catch(() => null),
         getWorkflowReplayIndex({ limit: 25 }).catch(() => null),
         getBehaviorEvalPack({ includeCases: true }).catch(() => null),
+        getKnowledgeRuntimeConformance().catch(() => null),
       ]);
       setStatus(next);
       setBridgeStatus(bridge);
@@ -3678,6 +4100,7 @@ export function AgentWorkspace() {
       setActionLifecycle(lifecycle);
       setWorkflowReplayIndex(replayIndex);
       setBehaviorEvalPack(behaviorEval);
+      setKnowledgeRuntime(knowledge);
       setSelectedArtifactPath((current) => {
         if (current && next.artifacts.some((artifact) => artifact.path === current)) {
           return current;
@@ -3720,6 +4143,7 @@ export function AgentWorkspace() {
       setWorkflowReplayIndex(null);
       setWorkflowReplayLineage(null);
       setBehaviorEvalPack(null);
+      setKnowledgeRuntime(null);
       setRequirementDrilldown(null);
       setSelectedRequirementId(null);
     } finally {
@@ -3878,8 +4302,11 @@ export function AgentWorkspace() {
           auditRecords={status?.audit_records ?? []}
         />
 
+        <WikiImportRecoveryPanel wikiReview={wikiReview} />
+
         <WorkspaceStatePanel
           workspaceStatus={status}
+          knowledgeRuntime={knowledgeRuntime}
           requirementDrilldown={requirementDrilldown}
           selectedRequirementId={selectedRequirementId}
           requirementQuery={requirementQuery}

@@ -3,12 +3,21 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 import pytest
 
 import routers.resources_router as resources_router
+import routers.agent_bridge_router as agent_bridge_router
+from literature_assistant.core import academic_english_resources
+from literature_assistant.core import product_docs_knowledge
+from literature_assistant.core.source_vault import SourceChunkInput, SourceVault, derive_chunk_id
+from literature_assistant.core.skill_package_knowledge import search_skill_package
+from literature_assistant.core.wiki.page_store import WikiPageStore, render_page
+from literature_assistant.core.wiki.query import WikiQueryIndex, build_wiki_index
 from python_adapter_server import app
 
 
@@ -69,6 +78,121 @@ def _write_chunk_fixture(project_id: str) -> None:
             ]
         },
     )
+
+
+def _seed_academic_english_output(root: Path) -> None:
+    """Create a minimal generated academic-English package for evidence-pack tests."""
+
+    root.mkdir(parents=True, exist_ok=True)
+    text = "Evidence-bound claim scope and hedging keep academic prose aligned with source support. " * 12
+    chunk = {
+        "chunk_id": "chunk-evidence-bound-claim-scope",
+        "source_id": "academic-habits",
+        "source_type": "markdown_policy",
+        "source_path": "references/english_discourse_habits.md",
+        "source_hash": "a" * 64,
+        "title": "Evidence Bound Claim Scope",
+        "section": "claims",
+        "text": text,
+        "summary": "Evidence-bound claim scope and hedging.",
+        "content_hash": "b" * 64,
+        "span_start": 10,
+        "span_end": 10 + len(text),
+        "rhetorical_moves": ["hedging"],
+        "features": ["evidence_bound"],
+        "keywords": ["evidence-bound", "claim", "scope", "hedging"],
+    }
+    (root / "chunks.jsonl").write_text(json.dumps(chunk, ensure_ascii=False) + "\n", encoding="utf-8")
+    (root / "phrases.jsonl").write_text("", encoding="utf-8")
+    (root / "academic_english_habits.json").write_text(
+        json.dumps(
+            {
+                "knowledge_type": "academic_english_habits",
+                "purpose": "Academic English discourse policy.",
+                "policy_markdown": "MODEL_CONTEXT_SHOULD_STAY_BEHIND_RESOURCE_READ",
+                "policy_loaded": True,
+                "policy_content_hash": "c" * 64,
+                "policy_char_count": 48,
+                "source_label": "references/english_discourse_habits.md",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (root / "manifest.json").write_text(
+        json.dumps(
+            {
+                "builder_version": "0.2.0",
+                "built_at": "2026-06-24T00:00:00+00:00",
+                "counts": {"chunks": 1, "phrases": 0},
+                "knowledge_sources": {
+                    "academic_english_habits": {
+                        "source_label": "references/english_discourse_habits.md",
+                        "loaded": True,
+                        "load_status": "loaded",
+                        "content_hash": "c" * 64,
+                        "char_count": 48,
+                    }
+                },
+                "output_artifacts": {
+                    "chunks_jsonl": {
+                        "exists": True,
+                        "bytes": (root / "chunks.jsonl").stat().st_size,
+                        "sha256": "d" * 64,
+                        "status": "written",
+                        "rows": 1,
+                    },
+                    "phrases_jsonl": {
+                        "exists": True,
+                        "bytes": 0,
+                        "sha256": "e" * 64,
+                        "status": "written",
+                        "rows": 0,
+                    },
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _seed_source_vault(tmp_path: Path, project_id: str) -> tuple[SourceVault, str]:
+    """Create one project-linked Source Vault chunk for evidence-pack tests."""
+
+    vault = SourceVault(
+        db_path=tmp_path / "source_vault" / "source_vault.sqlite3",
+        storage_root=tmp_path / "source_vault",
+    )
+    source = vault.upsert_source_bytes(
+        b"source vault original bytes",
+        filename="source-vault-paper.pdf",
+        source_type="pdf",
+        title="Source Vault Evidence Paper",
+        parser_version="parser-v1",
+        chunker_version="chunker-v1",
+        project_id=project_id,
+        now_iso="2026-06-24T00:00:00Z",
+    ).source
+    vault.register_chunks(
+        source.source_id,
+        [
+            SourceChunkInput(
+                text=(
+                    "Source Vault molten pool evidence stays behind bounded resource reads. "
+                    "MODEL_CONTEXT_SHOULD_STAY_BEHIND_SOURCE_VAULT_RESOURCE_READ. "
+                    "Molten pool porosity fatigue context is project scoped."
+                ),
+                chunk_index=0,
+                page=3,
+                span_start=40,
+                span_end=207,
+                section="results",
+            )
+        ],
+        now_iso="2026-06-24T00:01:00Z",
+    )
+    return vault, derive_chunk_id(source.source_hash, "chunker-v1", 0)
 
 
 def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
@@ -363,6 +487,11 @@ def test_evidence_pack_build_reports_wiki_project_joint_recall(
                 "summary": f"Wiki note {index} about porosity and fatigue.",
                 "page_path": f"synthesis/alsi10mg-{index}.md",
                 "source": "wiki_fts",
+                "chunk_id": f"wiki:synthesis/alsi10mg-{index}.md#hash{index}",
+                "source_hash": f"source-hash-{index}",
+                "content_hash": f"content-hash-{index}",
+                "span_start": 0,
+                "span_end": 120 + index,
             }
             for index in range(1, 8)
         ]
@@ -401,6 +530,11 @@ def test_evidence_pack_build_reports_wiki_project_joint_recall(
     assert joint["source_counts"]["wiki"] <= 3
     assert joint["wiki_summaries"][0]["ref_id"] == "wiki:synthesis/alsi10mg-1.md"
     assert joint["wiki_summaries"][0]["read_endpoint"] == "/api/agent-bridge/resource/wiki:synthesis/alsi10mg-1.md"
+    assert joint["wiki_summaries"][0]["chunk_id"] == "wiki:synthesis/alsi10mg-1.md#hash1"
+    assert joint["wiki_summaries"][0]["source_hash"] == "source-hash-1"
+    assert joint["wiki_summaries"][0]["content_hash"] == "content-hash-1"
+    assert joint["wiki_summaries"][0]["span_start"] == 0
+    assert joint["wiki_summaries"][0]["span_end"] == 121
     assert diagnostics["project_weight"] == 0.4
     assert diagnostics["wiki_weight"] == 0.6
     locator_coverage = diagnostics["locator_coverage"]
@@ -418,6 +552,7 @@ def test_evidence_pack_build_reports_wiki_project_joint_recall(
     assert wiki_refs[0]["read_endpoint"].startswith("/api/agent-bridge/resource/wiki:synthesis/alsi10mg-")
     assert wiki_refs[0]["material_id"] == "wiki"
     assert wiki_refs[0]["chunk_id"].startswith("wiki:synthesis/alsi10mg-")
+    assert "#" in wiki_refs[0]["chunk_id"]
     assert wiki_refs[0]["source_title"].startswith("AlSi10Mg wiki note")
     assert wiki_refs[0]["source_path"].startswith("synthesis/alsi10mg-")
     assert wiki_refs[0]["joint_score"] is not None
@@ -428,6 +563,453 @@ def test_evidence_pack_build_reports_wiki_project_joint_recall(
     assert "Wiki note 1" in serialized
     assert "content" not in wiki_refs[0]
     assert "SHOULD_NOT_LEAK" not in serialized
+
+
+def test_evidence_pack_build_adds_product_docs_shared_resource_refs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Product docs refs should enter evidence packs through bounded resource ids."""
+
+    root = tmp_path / "repo"
+    docs = root / "docs"
+    docs.mkdir(parents=True)
+    (root / "README.md").write_text(
+        "# Scholar AI\n\n"
+        "Knowledge Runtime Pipeline turns authoritative sources into bounded refs.\n",
+        encoding="utf-8",
+    )
+    (docs / "USAGE.md").write_text(
+        "# Knowledge Runtime Pipeline\n\n"
+        "Agent resource readers consume the same product_docs chunk refs that search returns. "
+        + ("Bounded context keeps provenance small. " * 20)
+        + "MODEL_CONTEXT_SHOULD_STAY_BEHIND_RESOURCE_READ.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(product_docs_knowledge, "REPO_ROOT", root)
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    _write_chunk_fixture(project_id)
+
+    response = client.post(
+        "/api/evidence-pack/build",
+        json={
+            "project_id": project_id,
+            "query": "AlSi10Mg porosity fatigue Knowledge Runtime Pipeline Agent resource readers",
+            "top_k": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    refs = payload["evidence_refs"]
+    product_refs = [ref for ref in refs if ref["source_type"] == "product_docs"]
+    assert product_refs
+    first = product_refs[0]
+    assert first["project_id"] == project_id
+    assert first["ref_id"].startswith("product_docs:chunk:")
+    assert first["read_endpoint"] == f"/api/agent-bridge/resource/{first['ref_id']}"
+    assert first["chunk_id"].startswith("product_docs:")
+    assert first["material_id"] == "product_docs"
+    assert first["locator"] is None
+    assert first["source_path"] in {"README.md", "docs/USAGE.md"}
+    assert len(first["summary"]) <= 300
+    assert "content" not in first
+
+    diagnostics = payload["retrieval_diagnostics"]
+    knowledge_refs = diagnostics["joint_recall"]["knowledge_refs"]
+    assert knowledge_refs["enabled"] is True
+    assert knowledge_refs["status"] == "active"
+    assert knowledge_refs["source_counts"]["product_docs"] >= 1
+    summary = knowledge_refs["product_docs_summaries"][0]
+    assert summary["ref_id"].startswith("product_docs:chunk:")
+    assert summary["read_endpoint"] == f"/api/agent-bridge/resource/{summary['ref_id']}"
+    assert summary["source_path"] in {"README.md", "docs/USAGE.md"}
+    assert len(summary["source_hash"]) == 64
+    assert len(summary["content_hash"]) == 64
+    assert isinstance(summary["span_start"], int)
+    assert isinstance(summary["span_end"], int)
+    assert diagnostics["locator_coverage"]["non_project_ref_count"] >= 1
+    attempts = {attempt["stage"]: attempt for attempt in payload["outcome"]["attempts"]}
+    assert attempts["knowledge_refs"]["status"] == "success"
+    assert attempts["knowledge_refs"]["metadata"]["source_counts"]["product_docs"] >= 1
+
+    resource_response = client.get(first["read_endpoint"])
+    assert resource_response.status_code == 200
+    resource = resource_response.json()
+    assert resource["kind"] == "product_docs"
+    assert resource["ref_id"] == first["ref_id"]
+    assert resource["metadata"]["ref_id"] == first["ref_id"]
+    assert resource["metadata"]["read_endpoint"] == first["read_endpoint"]
+    assert resource["metadata"]["source_hash"] == summary["source_hash"]
+    assert resource["metadata"]["content_hash"] == summary["content_hash"]
+    assert "MODEL_CONTEXT_SHOULD_STAY_BEHIND_RESOURCE_READ" in resource["content"]
+
+    serialized = str(payload)
+    assert "MODEL_CONTEXT_SHOULD_STAY_BEHIND_RESOURCE_READ" not in serialized
+
+
+def test_evidence_pack_build_adds_scoring_rules_shared_resource_refs() -> None:
+    """Scoring rules should share the same bounded refs used by knowledge search."""
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    _write_chunk_fixture(project_id)
+
+    response = client.post(
+        "/api/evidence-pack/build",
+        json={
+            "project_id": project_id,
+            "query": "AlSi10Mg porosity fatigue direct_evidence high_quality",
+            "top_k": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    refs = payload["evidence_refs"]
+    scoring_refs = [ref for ref in refs if ref["source_type"] == "scoring_rules"]
+    assert scoring_refs
+    first = scoring_refs[0]
+    assert first["project_id"] == project_id
+    assert first["ref_id"].startswith("scoring_rules:section:")
+    assert first["read_endpoint"] == f"/api/agent-bridge/resource/{first['ref_id']}"
+    assert first["chunk_id"].startswith("scoring_rules:section:")
+    assert first["material_id"] == "scoring_rules"
+    assert first["locator"] is None
+    assert first["source_path"] == "literature_assistant/core/config/scoring_rules.json"
+    assert len(first["summary"]) <= 300
+    assert "content" not in first
+
+    diagnostics = payload["retrieval_diagnostics"]
+    knowledge_refs = diagnostics["joint_recall"]["knowledge_refs"]
+    assert knowledge_refs["enabled"] is True
+    assert knowledge_refs["status"] == "active"
+    assert knowledge_refs["source_counts"]["scoring_rules"] >= 1
+    summary = knowledge_refs["scoring_rules_summaries"][0]
+    assert summary["ref_id"].startswith("scoring_rules:section:")
+    assert summary["read_endpoint"] == f"/api/agent-bridge/resource/{summary['ref_id']}"
+    assert summary["source_path"] == "literature_assistant/core/config/scoring_rules.json"
+    assert len(summary["source_hash"]) == 64
+    assert len(summary["content_hash"]) == 64
+    assert summary["section_id"] in {"weights", "thresholds"}
+    assert isinstance(summary["span_start"], int)
+    assert isinstance(summary["span_end"], int)
+    assert diagnostics["locator_coverage"]["non_project_ref_count"] >= 1
+    attempts = {attempt["stage"]: attempt for attempt in payload["outcome"]["attempts"]}
+    assert attempts["knowledge_refs"]["status"] == "success"
+    assert attempts["knowledge_refs"]["metadata"]["source_counts"]["scoring_rules"] >= 1
+
+    resource_response = client.get(first["read_endpoint"], params={"max_chars": 500, "cursor": "0"})
+    assert resource_response.status_code == 200
+    resource = resource_response.json()
+    assert resource["kind"] == "scoring_rules"
+    assert resource["ref_id"] == first["ref_id"]
+    assert resource["metadata"]["ref_id"] == first["ref_id"]
+    assert resource["metadata"]["read_endpoint"] == first["read_endpoint"]
+    assert resource["metadata"]["source_hash"] == summary["source_hash"]
+    assert resource["metadata"]["content_hash"] == summary["content_hash"]
+    assert "direct_evidence" in resource["content"] or "high_quality" in resource["content"]
+
+
+def test_evidence_pack_build_adds_academic_english_shared_resource_refs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Academic-English knowledge should enter evidence packs through shared bounded refs."""
+
+    root = tmp_path / "english_discourse"
+    _seed_academic_english_output(root)
+    monkeypatch.setattr(academic_english_resources, "output_path", lambda *parts: tmp_path.joinpath(*parts))
+
+    search_hits = academic_english_resources.search_academic_english(
+        "evidence-bound claim scope hedging",
+        top_k=1,
+    )
+    assert search_hits
+    expected_ref_id = search_hits[0]["ref_id"]
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    _write_chunk_fixture(project_id)
+
+    response = client.post(
+        "/api/evidence-pack/build",
+        json={
+            "project_id": project_id,
+            "query": "AlSi10Mg porosity fatigue evidence-bound claim scope hedging",
+            "top_k": 6,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    refs = payload["evidence_refs"]
+    academic_refs = [ref for ref in refs if ref["source_type"] == "academic_english"]
+    assert academic_refs
+    first = academic_refs[0]
+    assert first["project_id"] == project_id
+    assert first["ref_id"] == expected_ref_id
+    assert first["read_endpoint"] == f"/api/agent-bridge/resource/{first['ref_id']}"
+    assert first["chunk_id"].startswith("academic_english:chunk:")
+    assert first["material_id"] == "academic_english"
+    assert first["locator"] is None
+    assert first["source_path"] == "references/english_discourse_habits.md"
+    assert len(first["summary"]) <= 300
+    assert "content" not in first
+
+    diagnostics = payload["retrieval_diagnostics"]
+    knowledge_refs = diagnostics["joint_recall"]["knowledge_refs"]
+    assert knowledge_refs["enabled"] is True
+    assert knowledge_refs["status"] == "active"
+    assert knowledge_refs["source_counts"]["academic_english"] >= 1
+    summary = knowledge_refs["academic_english_summaries"][0]
+    assert summary["ref_id"] == first["ref_id"]
+    assert summary["read_endpoint"] == first["read_endpoint"]
+    assert summary["source_path"] == first["source_path"]
+    assert summary["resource_kind"] == "chunk"
+    assert summary["policy_content_hash"] == "c" * 64
+    assert summary["built_at"] == "2026-06-24T00:00:00+00:00"
+    assert len(summary["source_hash"]) == 64
+    assert len(summary["content_hash"]) == 64
+    assert isinstance(summary["span_start"], int)
+    assert isinstance(summary["span_end"], int)
+    assert diagnostics["locator_coverage"]["non_project_ref_count"] >= 1
+    attempts = {attempt["stage"]: attempt for attempt in payload["outcome"]["attempts"]}
+    assert attempts["knowledge_refs"]["status"] == "success"
+    assert attempts["knowledge_refs"]["metadata"]["source_counts"]["academic_english"] >= 1
+
+    resource_response = client.get(first["read_endpoint"], params={"max_chars": 500, "cursor": "0"})
+    assert resource_response.status_code == 200
+    resource = resource_response.json()
+    assert resource["kind"] == "academic_english"
+    assert resource["ref_id"] == first["ref_id"]
+    assert resource["metadata"]["ref_id"] == first["ref_id"]
+    assert resource["metadata"]["read_endpoint"] == first["read_endpoint"]
+    assert resource["metadata"]["source_hash"] == summary["source_hash"]
+    assert resource["metadata"]["content_hash"] == summary["content_hash"]
+    assert "evidence-bound claim scope" in resource["content"].lower()
+
+    serialized = str(payload)
+    assert "MODEL_CONTEXT_SHOULD_STAY_BEHIND_RESOURCE_READ" not in serialized
+
+
+def test_evidence_pack_build_adds_skill_package_shared_resource_refs() -> None:
+    """Skill package knowledge should enter evidence packs through shared bounded refs."""
+
+    search_hits = search_skill_package("academic-english-discourse", "discourse move evidence-bound", top_k=1)
+    assert search_hits
+    expected_ref_id = search_hits[0]["ref_id"]
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    _write_chunk_fixture(project_id)
+
+    response = client.post(
+        "/api/evidence-pack/build",
+        json={
+            "project_id": project_id,
+            "query": "AlSi10Mg porosity fatigue discourse move evidence-bound",
+            "top_k": 6,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    refs = payload["evidence_refs"]
+    skill_refs = [ref for ref in refs if ref["source_type"] == "skill_package"]
+    assert skill_refs
+    first = skill_refs[0]
+    assert first["project_id"] == project_id
+    assert first["ref_id"] == expected_ref_id
+    assert first["read_endpoint"] == f"/api/agent-bridge/resource/{first['ref_id']}"
+    assert first["chunk_id"].startswith("skill_package:academic-english-discourse:chunk:")
+    assert first["material_id"] == "skill_package"
+    assert first["locator"] is None
+    assert first["source_path"] in {"SKILL.md", "references/english_discourse_habits.md", "references/schema.md", "prompts/main.txt"}
+    assert len(first["summary"]) <= 300
+    assert "content" not in first
+
+    diagnostics = payload["retrieval_diagnostics"]
+    knowledge_refs = diagnostics["joint_recall"]["knowledge_refs"]
+    assert knowledge_refs["enabled"] is True
+    assert knowledge_refs["status"] == "active"
+    assert knowledge_refs["source_counts"]["skill_package"] >= 1
+    summary = knowledge_refs["skill_package_summaries"][0]
+    assert summary["ref_id"] == first["ref_id"]
+    assert summary["read_endpoint"] == first["read_endpoint"]
+    assert summary["source_path"] == first["source_path"]
+    assert summary["package_id"] == "academic-english-discourse"
+    assert summary["source_role"] in {"manifest", "reference", "prompt"}
+    assert len(summary["source_hash"]) == 64
+    assert len(summary["content_hash"]) == 64
+    assert len(summary["package_content_hash"]) == 64
+    assert isinstance(summary["span_start"], int)
+    assert isinstance(summary["span_end"], int)
+    assert diagnostics["locator_coverage"]["non_project_ref_count"] >= 1
+    attempts = {attempt["stage"]: attempt for attempt in payload["outcome"]["attempts"]}
+    assert attempts["knowledge_refs"]["status"] == "success"
+    assert attempts["knowledge_refs"]["metadata"]["source_counts"]["skill_package"] >= 1
+
+    resource_response = client.get(first["read_endpoint"], params={"max_chars": 500, "cursor": "0"})
+    assert resource_response.status_code == 200
+    resource = resource_response.json()
+    assert resource["kind"] == "skill_package"
+    assert resource["ref_id"] == first["ref_id"]
+    assert resource["metadata"]["ref_id"] == first["ref_id"]
+    assert resource["metadata"]["read_endpoint"] == first["read_endpoint"]
+    assert resource["metadata"]["source_hash"] == summary["source_hash"]
+    assert resource["metadata"]["content_hash"] == summary["content_hash"]
+    assert "discourse" in resource["content"].lower() or "academic english" in resource["content"].lower()
+
+    serialized = str(payload)
+    assert "Build or refresh the local database with" not in serialized
+
+
+def test_evidence_pack_build_adds_source_vault_shared_resource_refs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Source Vault chunks should share the search/resource/evidence-pack ref contract."""
+
+    import routers.evidence_router as evidence_router
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    _write_chunk_fixture(project_id)
+    vault, chunk_id = _seed_source_vault(tmp_path, project_id)
+    monkeypatch.setattr(evidence_router, "SourceVault", lambda: vault)
+    monkeypatch.setattr(agent_bridge_router, "SourceVault", lambda: vault)
+
+    response = client.post(
+        "/api/evidence-pack/build",
+        json={
+            "project_id": project_id,
+            "query": "AlSi10Mg porosity fatigue Source Vault molten pool evidence",
+            "top_k": 7,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    refs = payload["evidence_refs"]
+    source_vault_refs = [ref for ref in refs if ref["source_type"] == "source_vault"]
+    assert source_vault_refs
+    first = source_vault_refs[0]
+    assert first["project_id"] == project_id
+    assert first["ref_id"] == f"source_vault:chunk:{chunk_id}"
+    assert first["read_endpoint"] == f"/api/agent-bridge/resource/{first['ref_id']}"
+    assert first["chunk_id"] == f"source_vault:{chunk_id}"
+    assert first["material_id"] == "source_vault"
+    assert first["locator"] is None
+    assert first["source_title"] == "Source Vault Evidence Paper"
+    assert first["source_path"].endswith("source-vault-paper.pdf")
+    assert len(first["summary"]) <= 300
+    assert "content" not in first
+
+    diagnostics = payload["retrieval_diagnostics"]
+    knowledge_refs = diagnostics["joint_recall"]["knowledge_refs"]
+    assert knowledge_refs["enabled"] is True
+    assert knowledge_refs["status"] == "active"
+    assert knowledge_refs["source_counts"]["source_vault"] >= 1
+    summary = knowledge_refs["source_vault_summaries"][0]
+    assert summary["ref_id"] == first["ref_id"]
+    assert summary["read_endpoint"] == first["read_endpoint"]
+    assert summary["source_path"] == first["source_path"]
+    assert summary["source_id"]
+    assert summary["chunk_id"] == chunk_id
+    assert summary["chunker_version"] == "chunker-v1"
+    assert len(summary["source_hash"]) == 64
+    assert len(summary["content_hash"]) == 64
+    assert isinstance(summary["span_start"], int)
+    assert isinstance(summary["span_end"], int)
+    assert diagnostics["locator_coverage"]["non_project_ref_count"] >= 1
+    attempts = {attempt["stage"]: attempt for attempt in payload["outcome"]["attempts"]}
+    assert attempts["knowledge_refs"]["status"] == "success"
+    assert attempts["knowledge_refs"]["metadata"]["source_counts"]["source_vault"] >= 1
+
+    resource_response = client.get(first["read_endpoint"], params={"project_id": project_id, "max_chars": 500, "cursor": "0"})
+    assert resource_response.status_code == 200
+    resource = resource_response.json()
+    assert resource["kind"] == "source_vault"
+    assert resource["ref_id"] == first["ref_id"]
+    assert resource["metadata"]["source_hash"] == summary["source_hash"]
+    assert resource["metadata"]["content_hash"] == summary["content_hash"]
+    assert resource["metadata"]["source_path"] == first["source_path"]
+    assert "MODEL_CONTEXT_SHOULD_STAY_BEHIND_SOURCE_VAULT_RESOURCE_READ" in resource["content"]
+
+    serialized = str(payload)
+    assert "MODEL_CONTEXT_SHOULD_STAY_BEHIND_SOURCE_VAULT_RESOURCE_READ" not in serialized
+
+
+def test_evidence_pack_build_blocks_stale_wiki_joint_recall(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Stale wiki source manifests must block wiki refs from model context."""
+
+    import routers.evidence_router as evidence_router
+
+    wiki_root = tmp_path / "wiki"
+    runtime_root = tmp_path / "runtime"
+    page_path = Path("synthesis/alsi10mg-stale.md")
+    page_store = WikiPageStore(wiki_root)
+    page_store.write_rendered(
+        render_page(
+            page_path,
+            {"id": "synthesis/alsi10mg-stale", "kind": "synthesis", "title": "AlSi10Mg stale wiki"},
+            "AlSi10Mg porosity fatigue wiki source before indexing.",
+        )
+    )
+    query_index = WikiQueryIndex(runtime_root / "wiki_query_index.db")
+    build_wiki_index(page_store, query_index)
+    query_index.close()
+    page_store.write_rendered(
+        render_page(
+            page_path,
+            {"id": "synthesis/alsi10mg-stale", "kind": "synthesis", "title": "AlSi10Mg stale wiki"},
+            "AlSi10Mg porosity fatigue wiki source changed after indexing.",
+        )
+    )
+    monkeypatch.setattr(evidence_router, "wiki_enabled", lambda: True)
+    monkeypatch.setattr(evidence_router, "wiki_generated_root", lambda *parts: wiki_root.joinpath(*parts))
+    monkeypatch.setattr(evidence_router, "wiki_query_index_path", lambda: runtime_root / "wiki_query_index.db")
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    _write_chunk_fixture(project_id)
+
+    response = client.post(
+        "/api/evidence-pack/build",
+        json={
+            "project_id": project_id,
+            "query": "AlSi10Mg porosity fatigue",
+            "top_k": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    joint = payload["retrieval_diagnostics"]["joint_recall"]
+    assert joint["enabled"] is True
+    assert joint["status"] == "blocked"
+    assert joint["integrity_gate"]["status"] == "source_hash_mismatch"
+    assert joint["wiki_hit_count"] == 0
+    assert all(ref["source_type"] == "project" for ref in payload["evidence_refs"])
+    attempts = {attempt["stage"]: attempt for attempt in payload["outcome"]["attempts"]}
+    assert attempts["joint_recall"]["status"] == "blocked"
+    assert attempts["wiki_integrity_gate"]["status"] == "blocked"
+    assert attempts["wiki_integrity_gate"]["error_class"] == "wiki_source_hash_mismatch"
+    assert attempts["wiki_integrity_gate"]["metadata"]["source_manifest_hash"] != (
+        attempts["wiki_integrity_gate"]["metadata"]["indexed_source_manifest_hash"]
+    )
 
 
 def test_evidence_pack_build_reports_canonical_qrels_quality_gate() -> None:

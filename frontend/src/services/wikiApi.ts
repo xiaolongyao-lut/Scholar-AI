@@ -10,10 +10,15 @@ import type {
   WikiDoctorModel,
   WikiDoctorStructuredReportModel,
   WikiGraphEdgeModel,
+  WikiImportItemModel,
+  WikiImportRequestModel,
+  WikiImportResponseModel,
   WikiManualPageInputModel,
   WikiGraphModel,
   WikiGraphNodeModel,
   WikiGraphStructuredModel,
+  WikiManifestDrilldownItemModel,
+  WikiManifestDrilldownModel,
   WikiPageDetailModel,
   WikiPageListModel,
   WikiPageMutationModel,
@@ -67,6 +72,17 @@ function readOptionalNumber(record: Record<string, unknown>, key: string, fallba
   }
   if (typeof value !== 'number') {
     throw new WikiApiError(`Wiki payload contains invalid numeric field: ${key}`, 500);
+  }
+  return value;
+}
+
+function readNullableNumber(record: Record<string, unknown>, key: string): number | null {
+  const value = record[key];
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'number') {
+    throw new WikiApiError(`Wiki payload contains invalid nullable numeric field: ${key}`, 500);
   }
   return value;
 }
@@ -129,6 +145,17 @@ function readArray<T>(record: Record<string, unknown>, key: string, mapper: (ite
   const value = record[key];
   if (!Array.isArray(value)) {
     throw new WikiApiError(`Wiki payload is missing array field: ${key}`, 500);
+  }
+  return value.map((item, index) => mapper(item, index));
+}
+
+function readOptionalArray<T>(record: Record<string, unknown>, key: string, mapper: (item: unknown, index: number) => T): T[] {
+  const value = record[key];
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new WikiApiError(`Wiki payload contains invalid optional array field: ${key}`, 500);
   }
   return value.map((item, index) => mapper(item, index));
 }
@@ -402,18 +429,72 @@ function parseWikiCompileBudgetCheck(payload: unknown): WikiCompileBudgetCheckMo
   };
 }
 
+function defaultWikiManifestDrilldown(): WikiManifestDrilldownModel {
+  return {
+    schema_version: 'scholar-ai-wiki-manifest-drilldown/v1',
+    status: 'unknown',
+    hash_algorithm: 'sha256',
+    limit: 10,
+    missing_count: 0,
+    extra_count: 0,
+    mismatched_count: 0,
+    truncated: false,
+    missing_pages: [],
+    extra_pages: [],
+    mismatched_pages: [],
+  } satisfies WikiManifestDrilldownModel;
+}
+
+function parseWikiManifestDrilldownItem(payload: unknown): WikiManifestDrilldownItemModel {
+  const record = asRecord(payload);
+  return {
+    kind: readString(record, 'kind'),
+    page_path: readString(record, 'page_path'),
+    source_hash: readNullableString(record, 'source_hash'),
+    indexed_hash: readNullableString(record, 'indexed_hash'),
+    redacted: readBoolean(record, 'redacted'),
+  } satisfies WikiManifestDrilldownItemModel;
+}
+
+function parseWikiManifestDrilldown(payload: unknown): WikiManifestDrilldownModel {
+  if (payload === undefined || payload === null) {
+    return defaultWikiManifestDrilldown();
+  }
+  const record = asRecord(payload);
+  return {
+    schema_version: readString(record, 'schema_version'),
+    status: readString(record, 'status'),
+    hash_algorithm: readString(record, 'hash_algorithm'),
+    limit: readNumber(record, 'limit'),
+    missing_count: readNumber(record, 'missing_count'),
+    extra_count: readNumber(record, 'extra_count'),
+    mismatched_count: readNumber(record, 'mismatched_count'),
+    truncated: readBoolean(record, 'truncated'),
+    missing_pages: readOptionalArray(record, 'missing_pages', parseWikiManifestDrilldownItem),
+    extra_pages: readOptionalArray(record, 'extra_pages', parseWikiManifestDrilldownItem),
+    mismatched_pages: readOptionalArray(record, 'mismatched_pages', parseWikiManifestDrilldownItem),
+  } satisfies WikiManifestDrilldownModel;
+}
+
 export function parseWikiStatus(payload: unknown): WikiStatusModel {
   const record = asRecord(payload);
   return {
     enabled: readBoolean(record, 'enabled'),
     page_count: readNumber(record, 'page_count'),
     stale: readBoolean(record, 'stale'),
+    integrity_status: readString(record, 'integrity_status'),
+    index_hash: readString(record, 'index_hash'),
+    source_manifest_hash: readString(record, 'source_manifest_hash'),
+    indexed_source_manifest_hash: readString(record, 'indexed_source_manifest_hash'),
+    indexed_page_count: readNumber(record, 'indexed_page_count'),
+    source_page_count: readNullableNumber(record, 'source_page_count'),
     graph_json_exists: readBoolean(record, 'graph_json_exists'),
     graph_db_exists: readBoolean(record, 'graph_db_exists'),
     query_index_exists: readBoolean(record, 'query_index_exists'),
     review_queue_exists: readBoolean(record, 'review_queue_exists'),
     paths: readStringRecord(record, 'paths'),
     warnings: readStringArray(record, 'warnings'),
+    manifest_drilldown: parseWikiManifestDrilldown(record.manifest_drilldown),
   } satisfies WikiStatusModel;
 }
 
@@ -486,6 +567,47 @@ export function parseWikiCompileDryRun(payload: unknown): WikiCompileDryRunModel
     errors: readOptionalStringArray(record, 'errors'),
     warnings: readOptionalStringArray(record, 'warnings'),
   } satisfies WikiCompileDryRunModel;
+}
+
+function parseWikiImportItem(payload: unknown): WikiImportItemModel {
+  const record = asRecord(payload);
+  return {
+    source_path: readString(record, 'source_path'),
+    import_source_hash: readString(record, 'import_source_hash'),
+    source_hash: readString(record, 'source_hash'),
+    content_hash: readString(record, 'content_hash'),
+    ref_id: readString(record, 'ref_id'),
+    chunk_id: readString(record, 'chunk_id'),
+    read_endpoint: readString(record, 'read_endpoint'),
+    span_start: readNullableNumber(record, 'span_start'),
+    span_end: readNullableNumber(record, 'span_end'),
+    title: readString(record, 'title'),
+    kind: readString(record, 'kind'),
+    status: readString(record, 'status'),
+    slug: readString(record, 'slug'),
+    path: readString(record, 'path'),
+    action: readString(record, 'action'),
+    review_item_id: readString(record, 'review_item_id'),
+    runtime_session_id: readString(record, 'runtime_session_id'),
+    runtime_job_id: readString(record, 'runtime_job_id'),
+    runtime_approval_id: readString(record, 'runtime_approval_id'),
+    warnings: readOptionalStringArray(record, 'warnings'),
+    error: typeof record.error === 'string' ? record.error : '',
+  } satisfies WikiImportItemModel;
+}
+
+export function parseWikiImport(payload: unknown): WikiImportResponseModel {
+  const record = asRecord(payload);
+  return {
+    enabled: readBoolean(record, 'enabled'),
+    dry_run: readBoolean(record, 'dry_run'),
+    confirm_write: readBoolean(record, 'confirm_write'),
+    imported: readNumber(record, 'imported'),
+    skipped: readNumber(record, 'skipped'),
+    errored: readNumber(record, 'errored'),
+    pages: readArray(record, 'pages', parseWikiImportItem),
+    warnings: readOptionalStringArray(record, 'warnings'),
+  } satisfies WikiImportResponseModel;
 }
 
 export function parseWikiSearch(payload: unknown): WikiSearchModel {
@@ -597,6 +719,32 @@ export async function createWikiManualPage(
         evidence_refs: [],
         source_hashes: [],
         extra: { entry_source: 'manual_frontend' },
+      }),
+    }, options.signal),
+  );
+}
+
+export async function createWikiImportMarkdown(
+  input: WikiImportRequestModel,
+  timeoutMs: number = 30000,
+  options: { signal?: AbortSignal } = {},
+): Promise<WikiImportResponseModel> {
+  const sourcePaths = Array.isArray(input.source_paths)
+    ? input.source_paths.map((item) => item.trim()).filter((item) => item.length > 0)
+    : [];
+  if (sourcePaths.length === 0) {
+    throw new WikiApiError('导入路径不能为空。', 400);
+  }
+  return parseWikiImport(
+    await fetchWikiJson('/api/wiki/import', timeoutMs, {
+      method: 'POST',
+      body: JSON.stringify({
+        source_paths: sourcePaths,
+        dry_run: input.dry_run,
+        confirm_write: input.confirm_write,
+        overwrite: input.overwrite,
+        kind: input.kind,
+        status: input.status,
       }),
     }, options.signal),
   );

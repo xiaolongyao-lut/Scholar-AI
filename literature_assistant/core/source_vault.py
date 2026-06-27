@@ -30,6 +30,10 @@ JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 JsonObject: TypeAlias = Mapping[str, JsonValue]
 SourceStorageStatus: TypeAlias = Literal["stored", "referenced", "missing"]
 
+SOURCE_VAULT_KNOWLEDGE_REF_SCHEMA_VERSION = "scholar-ai-source-vault-knowledge-ref/v1"
+MAX_SOURCE_VAULT_SEARCH_PREVIEW_CHARS = 320
+MAX_SOURCE_VAULT_RESOURCE_SUMMARY_CHARS = 6000
+
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _SEARCH_TOKEN_RE = re.compile(r"[\w\u4e00-\u9fff]+", re.UNICODE)
@@ -117,8 +121,18 @@ class SourceChunkSearchResult:
     source_id: str
     source_hash: str
     title: str
+    source_type: str
+    original_filename: str
+    stored_path: str
     chunk_index: int
+    chunker_version: str
     text: str
+    page: int | None
+    span_start: int | None
+    span_end: int | None
+    section: str | None
+    text_hash: str
+    metadata: Mapping[str, JsonValue]
     score: float | None
 
 
@@ -129,6 +143,25 @@ class SourceUpsertResult:
     source: SourceAssetRecord
     created: bool
     original_written: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SourceVaultManifestSummary:
+    """Bounded manifest facts for the runtime knowledge registry.
+
+    Args:
+        source_count: Number of registered source entities.
+        chunk_count: Number of registered chunk entities.
+        artifact_count: Number of chunk sidecar artifacts currently present.
+        chunk_artifact_hash: SHA-256 digest over chunk sidecar artifact identities.
+        latest_updated_at: Newest source/chunk timestamp or ``unknown``.
+    """
+
+    source_count: int
+    chunk_count: int
+    artifact_count: int
+    chunk_artifact_hash: str
+    latest_updated_at: str
 
 
 def utc_now_iso() -> str:
@@ -547,6 +580,25 @@ class SourceVault:
             ).fetchall()
             return [_chunk_from_row(row) for row in rows]
 
+    def get_chunk(self, chunk_id: str) -> SourceChunkRecord | None:
+        """Return one chunk by chunk id."""
+
+        normalized_chunk_id = _require_non_empty_text(chunk_id, "chunk_id")
+        with closing(open_sqlite_connection(self.db_path)) as conn:
+            row = conn.execute(
+                """
+                SELECT chunk_id, source_id, source_hash, chunk_index, chunker_version,
+                       text_hash, text, page, span_start, span_end, bbox_json, section,
+                       metadata_json, created_at, updated_at
+                FROM source_chunks
+                WHERE chunk_id = ?
+                """,
+                (normalized_chunk_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return _chunk_from_row(row)
+
     def search_chunks(
         self,
         query: str,
@@ -582,6 +634,54 @@ class SourceVault:
         lines = [_json_dumps_line(_chunk_to_sidecar_payload(chunk)) for chunk in chunks]
         _write_text_atomic(path, "".join(f"{line}\n" for line in lines))
         return path
+
+    def manifest_summary(self) -> SourceVaultManifestSummary:
+        """Return read-only manifest facts for Source Vault knowledge status."""
+
+        sources = self.list_sources()
+        with closing(open_sqlite_connection(self.db_path)) as conn:
+            chunk_row = conn.execute("SELECT COUNT(*) AS chunk_count FROM source_chunks").fetchone()
+            updated_row = conn.execute(
+                """
+                SELECT MAX(updated_at) AS latest_chunk_updated_at
+                FROM source_chunks
+                """
+            ).fetchone()
+
+        chunk_count = _row_int(chunk_row, "chunk_count") if chunk_row is not None else 0
+        latest_source_updated_at = max((source.last_indexed_at for source in sources), default="unknown")
+        latest_chunk_updated_at = _row_optional_text(updated_row, "latest_chunk_updated_at") if updated_row else None
+        latest_updated_at = max(
+            value for value in (latest_source_updated_at, latest_chunk_updated_at or "unknown") if value
+        )
+        artifact_rows = []
+        for source in sources:
+            sidecar_path = self.chunks_sidecar_path(source.source_id)
+            if not sidecar_path.is_file():
+                continue
+            artifact_hash = _hash_existing_text_file(sidecar_path)
+            artifact_rows.append(
+                {
+                    "source_id": source.source_id,
+                    "path": str(sidecar_path),
+                    "hash": artifact_hash,
+                }
+            )
+        chunk_artifact_hash = hashlib.sha256(
+            json.dumps(
+                artifact_rows,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        return SourceVaultManifestSummary(
+            source_count=len(sources),
+            chunk_count=chunk_count,
+            artifact_count=len(artifact_rows),
+            chunk_artifact_hash=chunk_artifact_hash,
+            latest_updated_at=latest_updated_at,
+        )
 
     def _ensure_schema(self) -> bool:
         with closing(open_sqlite_connection(self.db_path)) as conn:
@@ -827,7 +927,10 @@ class SourceVault:
             params.append(limit)
             rows = conn.execute(
                 f"""
-                SELECT c.chunk_id, c.source_id, c.source_hash, s.title, c.chunk_index, c.text,
+                SELECT
+                    c.chunk_id, c.source_id, c.source_hash, s.title, s.source_type,
+                    s.original_filename, s.stored_path, c.chunk_index, c.chunker_version, c.text,
+                    c.page, c.span_start, c.span_end, c.section, c.text_hash, c.metadata_json,
                        bm25(source_chunks_fts) AS score
                 FROM source_chunks_fts
                 JOIN source_chunks c ON c.chunk_id = source_chunks_fts.chunk_id
@@ -860,7 +963,10 @@ class SourceVault:
             params.append(limit)
             rows = conn.execute(
                 f"""
-                SELECT c.chunk_id, c.source_id, c.source_hash, s.title, c.chunk_index, c.text
+                SELECT
+                    c.chunk_id, c.source_id, c.source_hash, s.title, s.source_type,
+                    s.original_filename, s.stored_path, c.chunk_index, c.chunker_version, c.text,
+                    c.page, c.span_start, c.span_end, c.section, c.text_hash, c.metadata_json
                 FROM source_chunks c
                 JOIN source_assets s ON s.source_id = c.source_id
                 {project_join}
@@ -977,6 +1083,12 @@ def _write_text_atomic(path: Path, content: str) -> None:
         os.replace(tmp_name, path)
     finally:
         _unlink_if_exists(tmp_name)
+
+
+def _hash_existing_text_file(path: Path) -> str:
+    if not path.is_file():
+        raise FileNotFoundError(f"text artifact is not a file: {path}")
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _copy_file_atomic(source: Path, destination: Path) -> None:
@@ -1148,6 +1260,86 @@ def _json_dumps_line(value: Mapping[str, JsonValue]) -> str:
     return json.dumps(dict(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def bounded_text(text: str, *, max_chars: int) -> tuple[str, bool]:
+    """Return a trimmed preview and truncation flag for bounded resource reads."""
+
+    if max_chars <= 0:
+        raise ValueError("max_chars must be positive")
+    normalized = _require_non_empty_text(text, "text")
+    if len(normalized) <= max_chars:
+        return normalized, False
+    return normalized[:max_chars].rstrip(), True
+
+
+def build_source_vault_chunk_ref_id(chunk_id: str) -> str:
+    """Return the stable MCP ref id for one Source Vault chunk."""
+
+    normalized_chunk_id = _require_non_empty_text(chunk_id, "chunk_id")
+    return f"source_vault:chunk:{normalized_chunk_id}"
+
+
+def build_source_vault_chunk_read_endpoint(chunk_id: str) -> str:
+    """Return the agent-bridge read endpoint for one Source Vault chunk."""
+
+    return f"/api/agent-bridge/resource/{build_source_vault_chunk_ref_id(chunk_id)}"
+
+
+def build_source_vault_search_metadata(result: SourceChunkSearchResult) -> dict[str, JsonValue]:
+    """Return provenance metadata for a bounded Source Vault search hit."""
+
+    metadata: dict[str, JsonValue] = dict(result.metadata)
+    metadata.update(
+        {
+            "knowledge_ref_schema_version": SOURCE_VAULT_KNOWLEDGE_REF_SCHEMA_VERSION,
+            "source": "source_vault",
+            "source_id": result.source_id,
+            "source_type": result.source_type,
+            "source_path": result.stored_path,
+            "source_hash": result.source_hash,
+            "original_filename": result.original_filename,
+            "chunk_id": result.chunk_id,
+            "chunk_index": result.chunk_index,
+            "content_hash": result.text_hash,
+            "page": result.page,
+            "span_start": result.span_start,
+            "span_end": result.span_end,
+            "section": result.section,
+            "chunker_version": result.chunker_version,
+            "resource_kind": "chunk",
+        }
+    )
+    return {key: value for key, value in metadata.items() if value is not None}
+
+
+def build_source_vault_chunk_metadata(source: SourceAssetRecord, chunk: SourceChunkRecord) -> dict[str, JsonValue]:
+    """Return provenance metadata for a bounded Source Vault chunk resource."""
+
+    metadata: dict[str, JsonValue] = dict(chunk.metadata)
+    metadata.update(
+        {
+            "knowledge_ref_schema_version": SOURCE_VAULT_KNOWLEDGE_REF_SCHEMA_VERSION,
+            "source": "source_vault",
+            "source_id": source.source_id,
+            "source_type": source.source_type,
+            "source_title": source.title,
+            "source_path": str(source.stored_path),
+            "source_hash": source.source_hash,
+            "original_filename": source.original_filename,
+            "chunk_id": chunk.chunk_id,
+            "chunk_index": chunk.chunk_index,
+            "content_hash": chunk.text_hash,
+            "page": chunk.page,
+            "span_start": chunk.span_start,
+            "span_end": chunk.span_end,
+            "section": chunk.section,
+            "parser_version": source.parser_version,
+            "chunker_version": chunk.chunker_version,
+            "resource_kind": "chunk",
+        }
+    )
+    return {key: value for key, value in metadata.items() if value is not None}
+
+
 def _search_result_from_row(row: sqlite3.Row, *, include_score: bool) -> SourceChunkSearchResult:
     score: float | None = None
     if include_score and row["score"] is not None:
@@ -1157,8 +1349,18 @@ def _search_result_from_row(row: sqlite3.Row, *, include_score: bool) -> SourceC
         source_id=_row_text(row, "source_id"),
         source_hash=_row_text(row, "source_hash"),
         title=_row_text(row, "title"),
+        source_type=_row_text(row, "source_type"),
+        original_filename=_row_text(row, "original_filename"),
+        stored_path=_row_text(row, "stored_path"),
         chunk_index=_row_int(row, "chunk_index"),
+        chunker_version=_row_text(row, "chunker_version"),
         text=_row_text(row, "text"),
+        page=_row_optional_int(row, "page"),
+        span_start=_row_optional_int(row, "span_start"),
+        span_end=_row_optional_int(row, "span_end"),
+        section=_row_optional_text(row, "section"),
+        text_hash=_row_text(row, "text_hash"),
+        metadata=_json_loads_object(row["metadata_json"]),
         score=score,
     )
 
@@ -1227,8 +1429,14 @@ __all__ = [
     "SourceUpsertResult",
     "SourceVault",
     "SourceVaultError",
+    "SOURCE_VAULT_KNOWLEDGE_REF_SCHEMA_VERSION",
     "default_source_vault_db_path",
     "default_source_vault_root",
+    "bounded_text",
+    "build_source_vault_chunk_metadata",
+    "build_source_vault_search_metadata",
+    "build_source_vault_chunk_read_endpoint",
+    "build_source_vault_chunk_ref_id",
     "derive_chunk_id",
     "derive_source_id",
     "sha256_bytes",

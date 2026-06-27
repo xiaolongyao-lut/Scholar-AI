@@ -30,6 +30,7 @@ from provider_capabilities import (
 _TOOL_NAME_SEARCH_REFS = "mcp__literature__literature.search_refs"
 _TOOL_NAME_EVIDENCE_PACK = "mcp__literature__literature.evidence_pack_build"
 _TOOL_NAME_AGENT_RESOURCE_READ = "mcp__literature__literature.agent_resource_read"
+_TOOL_NAME_KNOWLEDGE_CONTEXT_RECEIPT = "mcp__literature__literature.knowledge_context_receipt"
 _TOOL_NAME_OUTLINE_GENERATE = "mcp__literature__literature.outline_generate"
 _TOOL_NAME_EXPORT_DOCX = "mcp__literature__literature.export_docx"
 _TOOL_NAME_ACADEMIC_LINT = "mcp__literature__literature.academic_writing_lint"
@@ -334,6 +335,7 @@ def _assert_initial_prompt_does_not_script_tool_sequence(payload: dict[str, Any]
         "search_refs",
         "evidence_pack_build",
         "agent_resource_read",
+        "knowledge_context_receipt",
         "outline_generate",
         "journal_style_spec_draft",
         "journal_style_spec_confirm",
@@ -941,6 +943,186 @@ def test_chat_ask_local_literature_tool_result_returns_body_beyond_preview(
     assert sentinel in _latest_tool_text(captured_payloads[1])
 
 
+def test_chat_ask_local_literature_tools_context_receipt_enters_provider_context(
+    monkeypatch: Any,
+) -> None:
+    """Chat tool loops should return Knowledge Runtime context receipts to the provider."""
+
+    marker = "Context receipt anchor proves bounded knowledge entered the provider-visible prompt."
+    captured_payloads: list[dict[str, Any]] = []
+
+    class _ReceiptRuntimeTools:
+        def agent_resource_read(
+            self,
+            ref_id: str,
+            project_id: str | None = None,
+            max_chars: int = 6000,
+            cursor: str | None = None,
+        ) -> dict[str, Any]:
+            assert ref_id == "product_docs:chunk:readme"
+            assert project_id is None
+            assert max_chars == 900
+            assert cursor is None
+            return {
+                "is_error": False,
+                "error_code": None,
+                "message": None,
+                "data": {
+                    "ref_id": ref_id,
+                    "kind": "product_docs",
+                    "title": "README",
+                    "content": marker,
+                    "metadata": {
+                        "knowledge_ref_schema_version": "scholar-ai-product-docs-knowledge-ref/v1",
+                        "source_path": "README.md",
+                        "source_hash": "a" * 64,
+                        "package_content_hash": "b" * 64,
+                    },
+                    "truncated": False,
+                    "max_chars": max_chars,
+                    "total_chars": len(marker),
+                },
+            }
+
+        def knowledge_context_receipt(
+            self,
+            ref_ids: list[str],
+            project_id: str | None = None,
+            prompt_name: str = "knowledge_runtime_context",
+            max_chars_per_ref: int = 1200,
+        ) -> dict[str, Any]:
+            assert ref_ids == ["product_docs:chunk:readme"]
+            assert project_id is None
+            assert prompt_name == "api_chat_context_receipt_probe"
+            assert max_chars_per_ref == 900
+            return {
+                "is_error": False,
+                "error_code": None,
+                "message": None,
+                "data": {
+                    "schema_version": "scholar-ai-knowledge-context-receipt/v1",
+                    "prompt_name": prompt_name,
+                    "prompt_hash": "c" * 64,
+                    "assembled_context_hash": "d" * 64,
+                    "assembled_context_char_count": len(marker),
+                    "assembled_context_preview": marker,
+                    "resource_read_receipts": [
+                        {
+                            "ref_id": "product_docs:chunk:readme",
+                            "kind": "product_docs",
+                            "read_endpoint": "/api/agent-bridge/resource/product_docs:chunk:readme",
+                            "content_hash": "e" * 64,
+                            "source_hash": "a" * 64,
+                            "package_content_hash": "b" * 64,
+                            "source_path": "README.md",
+                            "returned_chars": len(marker),
+                            "total_chars": len(marker),
+                            "max_chars": max_chars_per_ref,
+                            "truncated": False,
+                            "metadata": {
+                                "knowledge_ref_schema_version": "scholar-ai-product-docs-knowledge-ref/v1",
+                            },
+                        }
+                    ],
+                    "provenance": {
+                        "mcp_tool": "literature.knowledge_context_receipt",
+                        "resource_reader": "literature_assistant.core.routers.agent_bridge_router",
+                        "hash_algorithm": "sha256",
+                    },
+                },
+            }
+
+    async def _fake_post_chat_with_retry(
+        *,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+        telemetry_model: str,
+        started_at: float,
+    ) -> dict[str, Any]:
+        captured_payloads.append(copy.deepcopy(payload))
+        assert url.startswith("https://chat.example")
+        assert headers.get("Authorization") == "Bearer test-key"
+        assert telemetry_model
+        assert started_at >= 0
+        if len(captured_payloads) == 1:
+            _assert_provider_tool_aliases(payload)
+            return _tool_call_response(
+                call_id="call_agent_resource_read",
+                function_name=_provider_tool_name(payload, _TOOL_NAME_AGENT_RESOURCE_READ),
+                arguments={
+                    "ref_id": "product_docs:chunk:readme",
+                    "max_chars": 900,
+                },
+            )
+        if len(captured_payloads) == 2:
+            assert marker in _latest_tool_text(payload)
+            return _tool_call_response(
+                call_id="call_context_receipt",
+                function_name=_provider_tool_name(payload, _TOOL_NAME_KNOWLEDGE_CONTEXT_RECEIPT),
+                arguments={
+                    "ref_ids": ["product_docs:chunk:readme"],
+                    "prompt_name": "api_chat_context_receipt_probe",
+                    "max_chars_per_ref": 900,
+                },
+            )
+        receipt_text = _latest_tool_text(payload)
+        assert "scholar-ai-knowledge-context-receipt/v1" in receipt_text
+        assert "assembled_context_hash" in receipt_text
+        assert "resource_read_receipts" in receipt_text
+        assert marker in receipt_text
+        return _final_response("已生成可复验的知识上下文 receipt。")
+
+    _configure_test_llm(monkeypatch)
+    monkeypatch.setattr(chat_router, "_post_chat_with_retry", _fake_post_chat_with_retry)
+    monkeypatch.setattr(
+        chat_router.chat_mcp_integration,
+        "make_local_literature_runner",
+        lambda *, allow_high_risk_tools, caps=None: chat_router.chat_mcp_integration.LocalLiteratureToolUseRunner(
+            provider_runner=chat_router.chat_mcp_integration.McpToolUseRunner(
+                manager=chat_router.chat_mcp_integration.get_mcp_client_manager(),
+                catalog=chat_router.chat_mcp_integration.local_literature_catalog(),
+                servers=[chat_router.chat_mcp_integration.local_literature_server_config()],
+                catalog_snapshot=chat_router.chat_mcp_integration.local_literature_catalog_snapshot(),
+                caps=caps,
+                allow_high_risk_tools=allow_high_risk_tools,
+            ),
+            allow_high_risk_tools=allow_high_risk_tools,
+            manager=LocalLiteratureToolManager(
+                runtime_tools=_ReceiptRuntimeTools(),
+            ),
+        ),
+    )
+
+    response = TestClient(app).post(
+        "/chat/ask",
+        json={
+            "query": "读取产品文档知识 ref，并生成可复验的 context receipt。",
+            "context": [],
+            "llm": _llm_payload(),
+            "use_local_literature_tools": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "已生成可复验的知识上下文 receipt。"
+    assert len(captured_payloads) == 3
+    first_tool_names = _tool_names(captured_payloads[0])
+    assert _provider_tool_name(captured_payloads[0], _TOOL_NAME_AGENT_RESOURCE_READ) in first_tool_names
+    assert _provider_tool_name(captured_payloads[0], _TOOL_NAME_KNOWLEDGE_CONTEXT_RECEIPT) in first_tool_names
+    tool_calls = payload["mcp_run"]["tool_calls"]
+    assert [call["tool_name"] for call in tool_calls] == [
+        "literature.agent_resource_read",
+        "literature.knowledge_context_receipt",
+    ]
+    assert all(call["is_error"] is False for call in tool_calls)
+    assert tool_calls[1]["source_provenance"]["tool_name"] == "literature.knowledge_context_receipt"
+    assert "assembled_context_hash" in _latest_tool_text(captured_payloads[2])
+    assert "resource_read_receipts" in _latest_tool_text(captured_payloads[2])
+    assert marker in _latest_tool_text(captured_payloads[2])
+
+
 def test_chat_ask_local_literature_tools_execute_full_writing_chain_when_allowed(
     monkeypatch: Any,
 ) -> None:
@@ -1116,6 +1298,193 @@ def test_api_chat_local_literature_tools_run_through_smart_read(
     _assert_provider_tool_aliases(captured_payloads[0])
     assert _provider_tool_name(captured_payloads[0], _TOOL_NAME_SEARCH_REFS) in _tool_names(captured_payloads[0])
     _assert_tool_result_payload_contains_ref(captured_payloads[1], "alsi10mg_defects_chunk_0")
+
+
+def test_api_chat_local_literature_tools_context_receipt_enters_provider_context(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """SmartRead `/api/chat` should carry context receipt tool output into provider context."""
+
+    client = TestClient(app)
+    source = tmp_path / "paper.txt"
+    source.write_text(
+        "Context receipt anchor proves bounded knowledge entered SmartRead provider context.",
+        encoding="utf-8",
+    )
+    marker = "SmartRead context receipt anchor proves bounded knowledge entered the provider-visible prompt."
+    captured_payloads: list[dict[str, Any]] = []
+
+    class _SmartReadReceiptRuntimeTools:
+        def agent_resource_read(
+            self,
+            ref_id: str,
+            project_id: str | None = None,
+            max_chars: int = 6000,
+            cursor: str | None = None,
+        ) -> dict[str, Any]:
+            assert ref_id == "product_docs:chunk:readme"
+            assert project_id is None
+            assert max_chars == 850
+            assert cursor is None
+            return {
+                "is_error": False,
+                "error_code": None,
+                "message": None,
+                "data": {
+                    "ref_id": ref_id,
+                    "kind": "product_docs",
+                    "title": "README",
+                    "content": marker,
+                    "metadata": {
+                        "knowledge_ref_schema_version": "scholar-ai-product-docs-knowledge-ref/v1",
+                        "source_path": "README.md",
+                        "source_hash": "a" * 64,
+                        "package_content_hash": "b" * 64,
+                    },
+                    "truncated": False,
+                    "max_chars": max_chars,
+                    "total_chars": len(marker),
+                },
+            }
+
+        def knowledge_context_receipt(
+            self,
+            ref_ids: list[str],
+            project_id: str | None = None,
+            prompt_name: str = "knowledge_runtime_context",
+            max_chars_per_ref: int = 1200,
+        ) -> dict[str, Any]:
+            assert ref_ids == ["product_docs:chunk:readme"]
+            assert project_id is None
+            assert prompt_name == "smart_read_context_receipt_probe"
+            assert max_chars_per_ref == 850
+            return {
+                "is_error": False,
+                "error_code": None,
+                "message": None,
+                "data": {
+                    "schema_version": "scholar-ai-knowledge-context-receipt/v1",
+                    "prompt_name": prompt_name,
+                    "prompt_hash": "c" * 64,
+                    "assembled_context_hash": "d" * 64,
+                    "assembled_context_char_count": len(marker),
+                    "assembled_context_preview": marker,
+                    "resource_read_receipts": [
+                        {
+                            "ref_id": "product_docs:chunk:readme",
+                            "kind": "product_docs",
+                            "read_endpoint": "/api/agent-bridge/resource/product_docs:chunk:readme",
+                            "content_hash": "e" * 64,
+                            "source_hash": "a" * 64,
+                            "package_content_hash": "b" * 64,
+                            "source_path": "README.md",
+                            "returned_chars": len(marker),
+                            "total_chars": len(marker),
+                            "max_chars": max_chars_per_ref,
+                            "truncated": False,
+                            "metadata": {
+                                "knowledge_ref_schema_version": "scholar-ai-product-docs-knowledge-ref/v1",
+                            },
+                        }
+                    ],
+                    "provenance": {
+                        "mcp_tool": "literature.knowledge_context_receipt",
+                        "resource_reader": "literature_assistant.core.routers.agent_bridge_router",
+                        "hash_algorithm": "sha256",
+                    },
+                },
+            }
+
+    async def _fake_post_chat_with_retry(
+        *,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+        telemetry_model: str,
+        started_at: float,
+    ) -> dict[str, Any]:
+        captured_payloads.append(copy.deepcopy(payload))
+        assert url.startswith("https://chat.example")
+        assert headers.get("Authorization") == "Bearer test-key"
+        assert telemetry_model
+        assert started_at >= 0
+        if len(captured_payloads) == 1:
+            _assert_provider_tool_aliases(payload)
+            return _tool_call_response(
+                call_id="call_agent_resource_read",
+                function_name=_provider_tool_name(payload, _TOOL_NAME_AGENT_RESOURCE_READ),
+                arguments={
+                    "ref_id": "product_docs:chunk:readme",
+                    "max_chars": 850,
+                },
+            )
+        if len(captured_payloads) == 2:
+            assert marker in _latest_tool_text(payload)
+            return _tool_call_response(
+                call_id="call_context_receipt",
+                function_name=_provider_tool_name(payload, _TOOL_NAME_KNOWLEDGE_CONTEXT_RECEIPT),
+                arguments={
+                    "ref_ids": ["product_docs:chunk:readme"],
+                    "prompt_name": "smart_read_context_receipt_probe",
+                    "max_chars_per_ref": 850,
+                },
+            )
+        receipt_text = _latest_tool_text(payload)
+        assert "scholar-ai-knowledge-context-receipt/v1" in receipt_text
+        assert "assembled_context_hash" in receipt_text
+        assert "resource_read_receipts" in receipt_text
+        assert marker in receipt_text
+        return _final_response("SmartRead 已生成可复验的知识上下文 receipt。")
+
+    _configure_test_llm(monkeypatch)
+    monkeypatch.setenv("LITERATURE_SOURCE_PATHS", str(tmp_path))
+    monkeypatch.setattr(chat_router, "_post_chat_with_retry", _fake_post_chat_with_retry)
+    monkeypatch.setattr(
+        chat_router.chat_mcp_integration,
+        "make_local_literature_runner",
+        lambda *, allow_high_risk_tools, caps=None: chat_router.chat_mcp_integration.LocalLiteratureToolUseRunner(
+            provider_runner=chat_router.chat_mcp_integration.McpToolUseRunner(
+                manager=chat_router.chat_mcp_integration.get_mcp_client_manager(),
+                catalog=chat_router.chat_mcp_integration.local_literature_catalog(),
+                servers=[chat_router.chat_mcp_integration.local_literature_server_config()],
+                catalog_snapshot=chat_router.chat_mcp_integration.local_literature_catalog_snapshot(),
+                caps=caps,
+                allow_high_risk_tools=allow_high_risk_tools,
+            ),
+            allow_high_risk_tools=allow_high_risk_tools,
+            manager=LocalLiteratureToolManager(
+                runtime_tools=_SmartReadReceiptRuntimeTools(),
+            ),
+        ),
+    )
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "query": "读取产品文档知识 ref，并生成 SmartRead context receipt。",
+            "tier": "fast",
+            "use_local_literature_tools": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["response"] == "SmartRead 已生成可复验的知识上下文 receipt。"
+    assert payload["context_chunks_used"] >= 1
+    assert len(captured_payloads) == 3
+    assert _provider_tool_name(captured_payloads[0], _TOOL_NAME_AGENT_RESOURCE_READ) in _tool_names(captured_payloads[0])
+    assert _provider_tool_name(captured_payloads[0], _TOOL_NAME_KNOWLEDGE_CONTEXT_RECEIPT) in _tool_names(captured_payloads[0])
+    tool_calls = payload["mcp_run"]["tool_calls"]
+    assert [call["tool_name"] for call in tool_calls] == [
+        "literature.agent_resource_read",
+        "literature.knowledge_context_receipt",
+    ]
+    assert all(call["is_error"] is False for call in tool_calls)
+    assert tool_calls[1]["source_provenance"]["tool_name"] == "literature.knowledge_context_receipt"
+    assert "assembled_context_hash" in _latest_tool_text(captured_payloads[2])
+    assert "resource_read_receipts" in _latest_tool_text(captured_payloads[2])
+    assert marker in _latest_tool_text(captured_payloads[2])
 
 
 def test_api_chat_local_literature_tools_surface_full_writing_chain_transcript(

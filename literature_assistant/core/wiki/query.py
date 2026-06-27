@@ -6,14 +6,71 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from literature_assistant.core.project_paths import ensure_directory, wiki_trace_path
 from literature_assistant.core.wiki.evidence_adapter import build_synthesis_body, coerce_evidence_refs
 from literature_assistant.core.wiki.models import WikiPageKind, WikiPageStatus
 from literature_assistant.core.wiki.observability import WikiObservabilitySink
-from literature_assistant.core.wiki.page_store import WikiPageStore, render_page, stable_slug
+from literature_assistant.core.wiki.page_store import AUTO_END, AUTO_START, WikiPageStore, render_page, stable_slug
+from literature_assistant.core.wiki.source_registry import derive_chunk_id
+
+_MANIFEST_DRILLDOWN_LIMIT = 10
+_SOURCE_MANIFEST_ENTRIES_KEY = "source_manifest_entries_json"
+
+
+@dataclass(frozen=True)
+class WikiManifestDiffItem:
+    """One bounded source-manifest delta for page-level integrity diagnostics."""
+
+    kind: str
+    page_path: str
+    source_hash: str | None = None
+    indexed_hash: str | None = None
+    redacted: bool = False
+
+    def to_dict(self, *, redacted: bool | None = None) -> dict[str, Any]:
+        should_redact = self.redacted if redacted is None else redacted
+        return {
+            "kind": self.kind,
+            "page_path": "<redacted>" if should_redact else self.page_path,
+            "source_hash": None if should_redact else self.source_hash,
+            "indexed_hash": None if should_redact else self.indexed_hash,
+            "redacted": should_redact,
+        }
+
+
+@dataclass(frozen=True)
+class WikiManifestDrilldown:
+    """Bounded page-level manifest diff for source-to-index traceability."""
+
+    status: str
+    missing_count: int = 0
+    extra_count: int = 0
+    mismatched_count: int = 0
+    missing_pages: tuple[WikiManifestDiffItem, ...] = ()
+    extra_pages: tuple[WikiManifestDiffItem, ...] = ()
+    mismatched_pages: tuple[WikiManifestDiffItem, ...] = ()
+    truncated: bool = False
+    limit: int = 10
+    schema_version: str = "scholar-ai-wiki-manifest-drilldown/v1"
+    hash_algorithm: str = "sha256"
+
+    def to_dict(self, *, redact_extra_pages: bool = False) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "status": self.status,
+            "hash_algorithm": self.hash_algorithm,
+            "limit": self.limit,
+            "missing_count": self.missing_count,
+            "extra_count": self.extra_count,
+            "mismatched_count": self.mismatched_count,
+            "truncated": self.truncated,
+            "missing_pages": [item.to_dict() for item in self.missing_pages],
+            "extra_pages": [item.to_dict(redacted=redact_extra_pages) for item in self.extra_pages],
+            "mismatched_pages": [item.to_dict() for item in self.mismatched_pages],
+        }
 
 
 @dataclass(frozen=True)
@@ -22,6 +79,22 @@ class WikiRetrievalStatus:
     page_count: int
     stale: bool
     last_indexed: str
+    integrity_status: str = "unknown"
+    source_manifest_hash: str = "unknown"
+    indexed_source_manifest_hash: str = "unknown"
+    source_page_count: int | None = None
+    indexed_source_page_count: int | None = None
+    warnings: tuple[str, ...] = ()
+    manifest_drilldown: WikiManifestDrilldown = WikiManifestDrilldown(status="unknown")
+
+
+@dataclass(frozen=True)
+class WikiSourceManifest:
+    """Hash summary for the authoritative generated wiki Markdown source set."""
+
+    source_manifest_hash: str
+    page_count: int
+    entries: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -31,6 +104,81 @@ class WikiSearchResult:
     score: float
     snippet: str
     source: str = "wiki_fts"
+
+
+@dataclass(frozen=True)
+class WikiKnowledgeRef:
+    """Bounded, machine-readable knowledge ref for a generated wiki page.
+
+    The ref keeps the agent-readable page resource separate from the
+    hash-derived chunk id so QA and agent callers can share one retrieval
+    contract without copying wiki page bodies into project chunk stores.
+    """
+
+    schema_version: str
+    ref_id: str
+    chunk_id: str
+    title: str
+    source_type: str
+    source: str
+    source_path: str
+    page_path: str
+    source_hash: str
+    content_hash: str
+    span_start: int
+    span_end: int
+    content: str
+    summary: str
+    read_endpoint: str
+    score: float
+    rank: int
+    truncated: bool
+
+    def to_hit(self, *, include_content: bool = False) -> dict[str, Any]:
+        """Return a retrieval-hit payload safe for fusion diagnostics."""
+
+        metadata: dict[str, Any] = {
+            "knowledge_ref_schema_version": self.schema_version,
+            "ref_id": self.ref_id,
+            "chunk_id": self.chunk_id,
+            "resource_kind": "chunk",
+            "page_path": self.page_path,
+            "source_path": self.source_path,
+            "source": self.source_type,
+            "source_type": self.source_type,
+            "retrieval_source": self.source,
+            "source_hash": self.source_hash,
+            "content_hash": self.content_hash,
+            "span_start": self.span_start,
+            "span_end": self.span_end,
+            "read_endpoint": self.read_endpoint,
+            "bounded": True,
+            "truncated": self.truncated,
+        }
+        payload: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "doc_id": self.ref_id,
+            "ref_id": self.ref_id,
+            "chunk_id": self.chunk_id,
+            "title": self.title,
+            "summary": self.summary,
+            "page_path": self.page_path,
+            "source_path": self.source_path,
+            "read_endpoint": self.read_endpoint,
+            "source_type": self.source_type,
+            "source": self.source,
+            "source_hash": self.source_hash,
+            "content_hash": self.content_hash,
+            "span_start": self.span_start,
+            "span_end": self.span_end,
+            "score": self.score,
+            "rank": self.rank,
+            "truncated": self.truncated,
+            "metadata": metadata,
+        }
+        if include_content:
+            payload["content"] = self.content
+        return payload
 
 
 class WikiQueryIndex:
@@ -161,7 +309,15 @@ class WikiQueryIndex:
                 else:
                     span.__exit__(type(span_error), span_error, span_error.__traceback__)
 
-    def get_status(self) -> WikiRetrievalStatus:
+    def get_status(self, page_store: WikiPageStore | None = None) -> WikiRetrievalStatus:
+        """Return retrieval index state, optionally checked against source pages.
+
+        Args:
+            page_store: Optional authoritative wiki page store. When supplied,
+                the returned status proves whether the current source manifest
+                still matches the manifest recorded when the FTS index was built.
+        """
+
         conn = self._get_conn()
         cursor = conn.execute("SELECT COUNT(*) as count FROM wiki_pages_fts")
         page_count = cursor.fetchone()["count"]
@@ -171,12 +327,98 @@ class WikiQueryIndex:
         cursor = conn.execute("SELECT value FROM wiki_index_status WHERE key = 'last_indexed'")
         row = cursor.fetchone()
         last_indexed = row["value"] if row else "never"
+        indexed_source_manifest_hash = self._status_value("source_manifest_hash", default="unknown")
+        indexed_source_page_count = _parse_optional_int(self._status_value("source_page_count", default=""))
+        indexed_manifest_entries = self._status_manifest_entries()
+        source_manifest_hash = indexed_source_manifest_hash
+        source_page_count = indexed_source_page_count
+        integrity_status = "unknown"
+        stale = False
+        warnings: list[str] = []
+        manifest_drilldown = WikiManifestDrilldown(status=integrity_status)
+
+        if indexed_source_page_count is not None and indexed_source_page_count != page_count:
+            stale = True
+            integrity_status = "index_count_mismatch"
+            warnings.append(
+                "Wiki query index row count differs from the source page count recorded during indexing."
+            )
+
+        if page_store is not None:
+            manifest = build_source_manifest(page_store)
+            source_manifest_entries = _manifest_entries_to_map(manifest.entries)
+            source_manifest_hash = manifest.source_manifest_hash
+            source_page_count = manifest.page_count
+            if indexed_source_manifest_hash in {"", "none", "unknown"}:
+                stale = manifest.page_count > 0 or page_count > 0
+                integrity_status = "missing_manifest" if stale else "empty_unproven"
+                warnings.append(
+                    "Wiki query index does not record a source manifest hash; rebuild before treating it as current."
+                )
+            elif manifest.page_count != page_count:
+                stale = True
+                integrity_status = "page_count_mismatch"
+                warnings.append(
+                    "Wiki query index page count differs from the current generated wiki page count."
+                )
+            elif manifest.source_manifest_hash != indexed_source_manifest_hash:
+                stale = True
+                integrity_status = "source_hash_mismatch"
+                warnings.append(
+                    "Wiki query index source manifest hash differs from the current generated wiki pages."
+                )
+            elif not stale:
+                integrity_status = "aligned"
+
+            if indexed_manifest_entries is None:
+                drilldown_status = (
+                    "missing_indexed_entries"
+                    if indexed_source_manifest_hash not in {"", "none", "unknown"}
+                    else integrity_status
+                )
+                if stale and drilldown_status == "missing_indexed_entries":
+                    warnings.append(
+                        "Wiki query index does not record page-level source manifest entries; rebuild for page-level drift details."
+                    )
+                manifest_drilldown = WikiManifestDrilldown(status=drilldown_status)
+            else:
+                manifest_drilldown = _build_manifest_drilldown(
+                    source_manifest_entries,
+                    indexed_manifest_entries,
+                    status=integrity_status,
+                    limit=_MANIFEST_DRILLDOWN_LIMIT,
+                )
+        elif not stale and indexed_source_manifest_hash not in {"", "none", "unknown"}:
+            integrity_status = "indexed_manifest_recorded"
+            manifest_drilldown = WikiManifestDrilldown(status=integrity_status)
+        else:
+            manifest_drilldown = WikiManifestDrilldown(status=integrity_status)
+
         return WikiRetrievalStatus(
             index_hash=index_hash,
             page_count=page_count,
-            stale=False,
+            stale=stale,
             last_indexed=last_indexed,
+            integrity_status=integrity_status,
+            source_manifest_hash=source_manifest_hash,
+            indexed_source_manifest_hash=indexed_source_manifest_hash,
+            source_page_count=source_page_count,
+            indexed_source_page_count=indexed_source_page_count,
+            warnings=tuple(dict.fromkeys(warnings)),
+            manifest_drilldown=manifest_drilldown,
         )
+
+    def _status_value(self, key: str, *, default: str) -> str:
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("key must be non-empty")
+        conn = self._get_conn()
+        cursor = conn.execute("SELECT value FROM wiki_index_status WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        return str(row["value"]) if row else default
+
+    def _status_manifest_entries(self) -> dict[str, str] | None:
+        raw_entries = self._status_value(_SOURCE_MANIFEST_ENTRIES_KEY, default="")
+        return _decode_manifest_entries(raw_entries)
 
     def close(self) -> None:
         if self._conn:
@@ -190,42 +432,20 @@ class WikiQueryIndex:
 
 
 def build_wiki_index(page_store: WikiPageStore, index: WikiQueryIndex) -> None:
+    if not isinstance(page_store, WikiPageStore):
+        raise TypeError("page_store must be a WikiPageStore")
+    if not isinstance(index, WikiQueryIndex):
+        raise TypeError("index must be a WikiQueryIndex")
     index.initialize()
     conn = index._get_conn()
     conn.execute("DELETE FROM wiki_pages_fts")
     conn.commit()
-    pages = page_store.list_pages()
+    manifest = build_source_manifest(page_store)
     indexed_payload: list[str] = []
-    for page_path in pages:
+    for page_path in page_store.list_pages():
         content = page_store.read_page(page_path)
         if content:
-            lines = content.split("\n")
-            title = "Untitled"
-            body_start = 0
-            in_frontmatter = False
-            frontmatter_lines: list[str] = []
-            for i, line in enumerate(lines):
-                if i == 0 and line.strip() == "---json":
-                    in_frontmatter = True
-                    continue
-                if in_frontmatter:
-                    if line.strip() == "---":
-                        in_frontmatter = False
-                        body_start = i + 1
-                        try:
-                            fm = json.loads("\n".join(frontmatter_lines))
-                            if "title" in fm:
-                                title = fm["title"]
-                        except json.JSONDecodeError:
-                            pass
-                        continue
-                    frontmatter_lines.append(line)
-                if not in_frontmatter and line.startswith("# "):
-                    if title == "Untitled":
-                        title = line[2:].strip()
-                    body_start = i + 1
-                    break
-            body = "\n".join(lines[body_start:])
+            title, body = _extract_indexable_page(content)
             index.index_page(page_path, title, body)
             indexed_payload.append(f"{page_path.as_posix()}:{title}:{hashlib.sha256(body.encode('utf-8')).hexdigest()}")
     index_hash = hashlib.sha256("\n".join(sorted(indexed_payload)).encode("utf-8")).hexdigest()
@@ -237,7 +457,227 @@ def build_wiki_index(page_store: WikiPageStore, index: WikiQueryIndex) -> None:
         "INSERT OR REPLACE INTO wiki_index_status (key, value) VALUES (?, datetime('now'))",
         ("last_indexed",),
     )
+    conn.execute(
+        "INSERT OR REPLACE INTO wiki_index_status (key, value) VALUES (?, ?)",
+        ("source_manifest_hash", manifest.source_manifest_hash),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO wiki_index_status (key, value) VALUES (?, ?)",
+        ("source_page_count", str(manifest.page_count)),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO wiki_index_status (key, value) VALUES (?, ?)",
+        ("source_manifest_schema", "scholar-ai-wiki-source-manifest/v1"),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO wiki_index_status (key, value) VALUES (?, ?)",
+        (_SOURCE_MANIFEST_ENTRIES_KEY, _encode_manifest_entries(manifest)),
+    )
     conn.commit()
+
+
+def build_source_manifest(page_store: WikiPageStore) -> WikiSourceManifest:
+    """Build a deterministic manifest for generated wiki Markdown pages.
+
+    Args:
+        page_store: Authoritative generated wiki page store.
+
+    Returns:
+        Manifest hash over relative page paths and raw Markdown content hashes.
+    """
+
+    if not isinstance(page_store, WikiPageStore):
+        raise TypeError("page_store must be a WikiPageStore")
+    entries: list[str] = []
+    for page_path in page_store.list_pages():
+        content = page_store.read_page(page_path)
+        if content is None:
+            continue
+        content_hash = hashlib.sha256(str(content).encode("utf-8")).hexdigest()
+        entries.append(f"{page_path.as_posix()}:{content_hash}")
+    sorted_entries = tuple(sorted(entries))
+    source_manifest_hash = hashlib.sha256("\n".join(sorted_entries).encode("utf-8")).hexdigest()
+    return WikiSourceManifest(
+        source_manifest_hash=source_manifest_hash,
+        page_count=len(sorted_entries),
+        entries=sorted_entries,
+    )
+
+
+def _parse_optional_int(value: str) -> int | None:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return None
+    try:
+        return int(normalized)
+    except ValueError:
+        return None
+
+
+def _encode_manifest_entries(manifest: WikiSourceManifest) -> str:
+    if not isinstance(manifest, WikiSourceManifest):
+        raise TypeError("manifest must be a WikiSourceManifest")
+    entries = [
+        {"page_path": page_path, "source_hash": source_hash}
+        for page_path, source_hash in _manifest_entries_to_map(manifest.entries).items()
+    ]
+    return json.dumps(
+        {
+            "schema_version": "scholar-ai-wiki-source-manifest-entries/v1",
+            "hash_algorithm": "sha256",
+            "entries": entries,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _decode_manifest_entries(raw_entries: str) -> dict[str, str] | None:
+    if not str(raw_entries or "").strip():
+        return None
+    try:
+        payload = json.loads(raw_entries)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        return None
+    decoded: dict[str, str] = {}
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        page_path = _safe_manifest_page_path(item.get("page_path"))
+        source_hash = item.get("source_hash")
+        if page_path is None or not _is_sha256_hex(source_hash):
+            continue
+        decoded[page_path] = str(source_hash)
+    return decoded
+
+
+def _manifest_entries_to_map(entries: tuple[str, ...]) -> dict[str, str]:
+    if not isinstance(entries, tuple):
+        raise TypeError("entries must be a tuple")
+    mapped: dict[str, str] = {}
+    for entry in entries:
+        page_path_raw, separator, content_hash = str(entry).rpartition(":")
+        page_path = _safe_manifest_page_path(page_path_raw)
+        if separator != ":" or page_path is None or not _is_sha256_hex(content_hash):
+            continue
+        mapped[page_path] = content_hash
+    return dict(sorted(mapped.items()))
+
+
+def _build_manifest_drilldown(
+    source_entries: dict[str, str],
+    indexed_entries: dict[str, str],
+    *,
+    status: str,
+    limit: int,
+) -> WikiManifestDrilldown:
+    if limit < 0:
+        raise ValueError("limit must be non-negative")
+    missing_paths = sorted(set(source_entries) - set(indexed_entries))
+    extra_paths = sorted(set(indexed_entries) - set(source_entries))
+    mismatched_paths = sorted(
+        page_path
+        for page_path in set(source_entries).intersection(indexed_entries)
+        if source_entries[page_path] != indexed_entries[page_path]
+    )
+    return WikiManifestDrilldown(
+        status=status,
+        missing_count=len(missing_paths),
+        extra_count=len(extra_paths),
+        mismatched_count=len(mismatched_paths),
+        missing_pages=tuple(
+            WikiManifestDiffItem(
+                kind="missing",
+                page_path=page_path,
+                source_hash=source_entries[page_path],
+            )
+            for page_path in missing_paths[:limit]
+        ),
+        extra_pages=tuple(
+            WikiManifestDiffItem(
+                kind="extra",
+                page_path=page_path,
+                indexed_hash=indexed_entries[page_path],
+            )
+            for page_path in extra_paths[:limit]
+        ),
+        mismatched_pages=tuple(
+            WikiManifestDiffItem(
+                kind="mismatched",
+                page_path=page_path,
+                source_hash=source_entries[page_path],
+                indexed_hash=indexed_entries[page_path],
+            )
+            for page_path in mismatched_paths[:limit]
+        ),
+        truncated=(
+            len(missing_paths) > limit
+            or len(extra_paths) > limit
+            or len(mismatched_paths) > limit
+        ),
+        limit=limit,
+    )
+
+
+def _safe_manifest_page_path(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().replace("\\", "/")
+    if (
+        not normalized
+        or normalized.startswith("/")
+        or ":" in normalized
+        or any(ord(character) < 32 for character in normalized)
+    ):
+        return None
+    path = PurePosixPath(normalized)
+    if any(part in {"", ".", ".."} for part in path.parts):
+        return None
+    return path.as_posix()
+
+
+def _is_sha256_hex(value: object) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    return all(character in "0123456789abcdefABCDEF" for character in value)
+
+
+def _extract_indexable_page(content: str) -> tuple[str, str]:
+    if not isinstance(content, str):
+        raise TypeError("content must be a string")
+    lines = content.split("\n")
+    title = "Untitled"
+    body_start = 0
+    in_frontmatter = False
+    frontmatter_lines: list[str] = []
+    for i, line in enumerate(lines):
+        if i == 0 and line.strip() == "---json":
+            in_frontmatter = True
+            continue
+        if in_frontmatter:
+            if line.strip() == "---":
+                in_frontmatter = False
+                body_start = i + 1
+                try:
+                    fm = json.loads("\n".join(frontmatter_lines))
+                    if isinstance(fm, dict) and isinstance(fm.get("title"), str):
+                        title = fm["title"]
+                except json.JSONDecodeError:
+                    pass
+                continue
+            frontmatter_lines.append(line)
+        if not in_frontmatter and line.startswith("# "):
+            if title == "Untitled":
+                title = line[2:].strip()
+            body_start = i + 1
+            break
+    return title, "\n".join(lines[body_start:])
 
 
 def wiki_first_search(
@@ -428,6 +868,96 @@ def _strip_frontmatter(content: str) -> str:
             if line.strip() == "---":
                 return "\n".join(lines[i + 1 :])
     return content
+
+
+def _strip_runtime_markers(content: str) -> str:
+    lines: list[str] = []
+    for line in str(content or "").splitlines():
+        if line.strip() in {AUTO_START, AUTO_END}:
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def _bounded_ref_text(text: str, *, max_chars: int) -> tuple[str, bool]:
+    if max_chars <= 0:
+        raise ValueError("max_chars must be positive")
+    normalized = str(text or "").strip()
+    if len(normalized) <= max_chars:
+        return normalized, False
+    return normalized[:max_chars].rstrip(), True
+
+
+def build_knowledge_refs(
+    results: list[WikiSearchResult],
+    page_store: WikiPageStore,
+    *,
+    max_chars: int = 1200,
+    max_summary_chars: int = 300,
+) -> list[WikiKnowledgeRef]:
+    """Project wiki search results into bounded knowledge refs.
+
+    Args:
+        results: Ranked wiki search results from FTS or linked-page expansion.
+        page_store: Store used to resolve generated wiki Markdown pages.
+        max_chars: Maximum body characters embedded in each ref payload.
+        max_summary_chars: Maximum summary characters used in evidence packs.
+
+    Returns:
+        Wiki refs with stable page resource ids, hash-derived chunk ids,
+        source/content hashes, and span bounds into the normalized page body.
+    """
+
+    if not isinstance(results, list):
+        raise TypeError("results must be a list")
+    if not isinstance(page_store, WikiPageStore):
+        raise TypeError("page_store must be a WikiPageStore")
+    if max_chars <= 0:
+        raise ValueError("max_chars must be positive")
+    if max_summary_chars <= 0:
+        raise ValueError("max_summary_chars must be positive")
+
+    refs: list[WikiKnowledgeRef] = []
+    for rank, result in enumerate(results, start=1):
+        if not isinstance(result, WikiSearchResult):
+            raise TypeError(f"results[{rank - 1}] must be a WikiSearchResult")
+        raw_content = page_store.read_page(result.page_path)
+        if raw_content is None:
+            continue
+        body = _strip_runtime_markers(_strip_frontmatter(str(raw_content)))
+        if not body:
+            continue
+        content, truncated = _bounded_ref_text(body, max_chars=max_chars)
+        summary_source = result.snippet.strip() or content
+        summary, _ = _bounded_ref_text(summary_source, max_chars=max_summary_chars)
+        source_hash = hashlib.sha256(str(raw_content).encode("utf-8")).hexdigest()
+        content_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        page_path = result.page_path.as_posix()
+        legacy_chunk = derive_chunk_id(source_hash, 0)
+        ref_id = f"wiki:{page_path}"
+        refs.append(
+            WikiKnowledgeRef(
+                schema_version="scholar-ai-wiki-knowledge-ref/v1",
+                ref_id=ref_id,
+                chunk_id=f"{ref_id}#{legacy_chunk}",
+                title=result.title,
+                source_type="wiki",
+                source=result.source,
+                source_path=page_path,
+                page_path=page_path,
+                source_hash=source_hash,
+                content_hash=content_hash,
+                span_start=0,
+                span_end=len(body),
+                content=content,
+                summary=summary or content[:max_summary_chars],
+                read_endpoint=f"/api/agent-bridge/resource/{ref_id}",
+                score=float(result.score),
+                rank=rank,
+                truncated=truncated,
+            )
+        )
+    return refs
 
 
 def _fit_context_text(

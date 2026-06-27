@@ -2110,6 +2110,326 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/knowledge/academic-english/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Academic English Runtime Search
+         * @description Search academic-English knowledge and return bounded agent-readable refs.
+         */
+        get: operations["get_api_knowledge_academic_english_search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/academic-english/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Academic English Runtime Status
+         * @description Return source/artifact status for the academic-English knowledge package.
+         */
+        get: operations["get_api_knowledge_academic_english_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/bridge-lexicon/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Lexicon Runtime Read
+         * @description Return the normalized bridge lexicon entries for runtime context loading.
+         */
+        get: operations["get_api_knowledge_bridge_lexicon_read"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/bridge-lexicon/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Lexicon Runtime Search
+         * @description Search bridge lexicon entries and return bounded agent-readable refs.
+         */
+        get: operations["get_api_knowledge_bridge_lexicon_search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/bridge-lexicon/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Lexicon Runtime Status
+         * @description Return status for the CJK bridge lexicon runtime knowledge asset.
+         */
+        get: operations["get_api_knowledge_bridge_lexicon_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/context-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Knowledge Context Receipt
+         * @description Return proof that selected knowledge refs entered bounded context input.
+         */
+        post: operations["post_api_knowledge_context_receipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Knowledge Packages
+         * @description Return a normalized registry of runtime knowledge packages.
+         */
+        get: operations["get_api_knowledge_packages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/product-docs/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Product Docs Runtime Read
+         * @description Return bounded product-doc chunks for runtime context loading.
+         */
+        get: operations["get_api_knowledge_product_docs_read"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/product-docs/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Product Docs Runtime Search
+         * @description Search repo-local product docs and return bounded agent-readable refs.
+         */
+        get: operations["get_api_knowledge_product_docs_search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/product-docs/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Product Docs Runtime Status
+         * @description Return source/ref/provenance status for repo-local product docs.
+         */
+        get: operations["get_api_knowledge_product_docs_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/runtime-conformance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Knowledge Runtime Conformance
+         * @description Return a read-only Knowledge Runtime Pipeline conformance projection.
+         */
+        get: operations["get_api_knowledge_runtime_conformance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/scoring-rules/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scoring Rules Runtime Read
+         * @description Return the normalized scoring-rules JSON sections for runtime context loading.
+         */
+        get: operations["get_api_knowledge_scoring_rules_read"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/scoring-rules/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scoring Rules Runtime Search
+         * @description Search scoring-rules config sections and return bounded agent-readable refs.
+         */
+        get: operations["get_api_knowledge_scoring_rules_search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/scoring-rules/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scoring Rules Runtime Status
+         * @description Return source/ref/provenance status for scoring_rules.json.
+         */
+        get: operations["get_api_knowledge_scoring_rules_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/skill-packages/{package_id}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Skill Package Runtime Search
+         * @description Search one Skill package and return bounded agent-readable refs.
+         */
+        get: operations["get_api_knowledge_skill_packages_package_id_search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/skill-packages/{package_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Skill Package Runtime Status
+         * @description Return read-only source/ref/provenance status for one Skill package.
+         */
+        get: operations["get_api_knowledge_skill_packages_package_id_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/knowledge/source-vault": {
         parameters: {
             query?: never;
@@ -2650,6 +2970,109 @@ export interface paths {
          * @description Compatibility alias for matrix-era MemPalace search clients.
          */
         post: operations["post_api_memory_palace_search"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pdf-backend/ocr-engine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Select Ocr Engine Endpoint
+         * @description Persist local OCR policy/engine selection.
+         *
+         *     Secrets are accepted only as local runtime config values and are redacted
+         *     from the response.
+         */
+        post: operations["post_api_pdf_backend_ocr_engine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pdf-backend/ocr-engines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ocr Engines
+         * @description Return registered OCR engines with availability metadata.
+         */
+        get: operations["get_api_pdf_backend_ocr_engines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pdf-backend/ocr-execution-probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Ocr Execution Probe
+         * @description Run one explicit OCR execution probe and return bounded proof only.
+         */
+        post: operations["post_api_pdf_backend_ocr_execution_probe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pdf-backend/ocr-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Ocr Engine Health
+         * @description Run a lightweight readiness probe for one OCR engine.
+         */
+        post: operations["post_api_pdf_backend_ocr_health"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pdf-backend/ocr-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ocr Status
+         * @description Return the redacted OCR runtime status.
+         */
+        get: operations["get_api_pdf_backend_ocr_status"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6665,6 +7088,89 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AcademicEnglishSearchHitResponse
+         * @description One bounded academic-English knowledge hit.
+         */
+        AcademicEnglishSearchHitResponse: {
+            /** Kind */
+            kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Rank */
+            rank: number;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Ref Id */
+            ref_id: string;
+            /** Resource Kind */
+            resource_kind: string;
+            /** Schema Version */
+            schema_version: string;
+            /** Score */
+            score?: number | null;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * AcademicEnglishSearchResponse
+         * @description Search results for generated academic-English knowledge refs.
+         */
+        AcademicEnglishSearchResponse: {
+            /** Query */
+            query: string;
+            /** Results */
+            results?: components["schemas"]["AcademicEnglishSearchHitResponse"][];
+        };
+        /**
+         * AcademicEnglishStatusResponse
+         * @description Status for the generated academic-English runtime knowledge package.
+         */
+        AcademicEnglishStatusResponse: {
+            /** Artifacts */
+            artifacts?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /** Available */
+            available: boolean;
+            /**
+             * Builder Version
+             * @default
+             */
+            builder_version: string;
+            /**
+             * Built At
+             * @default
+             */
+            built_at: string;
+            /** Counts */
+            counts?: {
+                [key: string]: unknown;
+            };
+            /** Errors */
+            errors?: string[];
+            /** Knowledge Sources */
+            knowledge_sources?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /** Manifest Loaded */
+            manifest_loaded: boolean;
+            /** Schema Version */
+            schema_version: string;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
          * AcademicWritingAuditContext
          * @description Caller-supplied provenance for writing-quality audit.
          *
@@ -7364,6 +7870,90 @@ export interface components {
             touched_paths?: string[];
         };
         /**
+         * AgentWorkspaceDesktopSmokeState
+         * @description Latest local desktop acceptance smoke evidence for recovery decisions.
+         *
+         *     Args:
+         *         available: Whether a desktop smoke summary was found and parsed.
+         *         run_id: Stable run directory id under generated desktop smoke artifacts.
+         *         status: Smoke result status from the local summary.
+         *         initial_path: App route used when launching the source desktop window.
+         *         expected_initial_path: App route required for Agent Workspace acceptance evidence.
+         *         candidate_count: Number of desktop smoke summaries inspected.
+         *         ignored_count: Number of summaries ignored because they were not Agent Workspace acceptance runs.
+         *         summary_path: Repository-relative summary artifact label.
+         *         screenshot_path: Repository-relative screenshot artifact label.
+         *         accessibility_tree_path: Repository-relative UIA tree artifact label.
+         *         screenshot_nonblank: Whether the captured desktop image was nonblank.
+         *         accessibility_tree_available: Whether a UIA tree was captured.
+         *         accessibility_tree_root_name: Root accessible object name.
+         *         accessibility_tree_root_control_type: Root accessible object type.
+         *         accessibility_tree_node_count: Total captured UIA node count.
+         *         accessibility_tree_named_node_count: Captured named-node count.
+         *         warnings: Bounded local smoke warnings.
+         *         errors: Bounded local smoke errors.
+         *         error: Redacted read/parse error when unavailable.
+         */
+        AgentWorkspaceDesktopSmokeState: {
+            /** Accessibility Tree Available */
+            accessibility_tree_available?: boolean | null;
+            /** Accessibility Tree Named Node Count */
+            accessibility_tree_named_node_count?: number | null;
+            /** Accessibility Tree Node Count */
+            accessibility_tree_node_count?: number | null;
+            /** Accessibility Tree Path */
+            accessibility_tree_path?: string | null;
+            /** Accessibility Tree Root Control Type */
+            accessibility_tree_root_control_type?: string | null;
+            /** Accessibility Tree Root Name */
+            accessibility_tree_root_name?: string | null;
+            /** Available */
+            available: boolean;
+            /**
+             * Candidate Count
+             * @default 0
+             */
+            candidate_count: number;
+            /** Error */
+            error?: string | null;
+            /** Errors */
+            errors?: string[];
+            /**
+             * Expected Initial Path
+             * @default /__desktop_acceptance/agent-workspace
+             */
+            expected_initial_path: string;
+            /**
+             * Ignored Count
+             * @default 0
+             */
+            ignored_count: number;
+            /** Initial Path */
+            initial_path?: string | null;
+            /**
+             * Read Only
+             * @default true
+             */
+            read_only: boolean;
+            /** Run Id */
+            run_id?: string | null;
+            /**
+             * Schema Version
+             * @default scholar_ai_desktop_smoke_state_v1
+             */
+            schema_version: string;
+            /** Screenshot Nonblank */
+            screenshot_nonblank?: boolean | null;
+            /** Screenshot Path */
+            screenshot_path?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Summary Path */
+            summary_path?: string | null;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
          * AgentWorkspaceDirectoryState
          * @description Bounded local directory summary for workspace recovery checks.
          */
@@ -7452,6 +8042,74 @@ export interface components {
             full_goal?: string | null;
             /** This Slice */
             this_slice?: string | null;
+        };
+        /**
+         * AgentWorkspaceGoalLifecycleBlocker
+         * @description One bounded goal-level blocker from the longrun lifecycle rollup.
+         *
+         *     Args:
+         *         id: Stable blocker id.
+         *         status: Current blocker state.
+         *         requirement_surface: Short product or workflow surface affected.
+         *         missing_evidence: Missing proof needed before completion can be claimed.
+         *         current_boundary: Current authorization, tooling, or evidence boundary.
+         */
+        AgentWorkspaceGoalLifecycleBlocker: {
+            /** Current Boundary */
+            current_boundary?: string | null;
+            /** Id */
+            id: string;
+            /** Missing Evidence */
+            missing_evidence?: string | null;
+            /** Requirement Surface */
+            requirement_surface?: string | null;
+            /** Status */
+            status?: string | null;
+        };
+        /**
+         * AgentWorkspaceGoalLifecycleRollup
+         * @description Machine-readable longrun goal lifecycle summary for recovery decisions.
+         *
+         *     Args:
+         *         schema_version: Source rollup schema identifier.
+         *         updated_at: Timestamp from the rollup.
+         *         status: Goal-level lifecycle status, distinct from requirement rows.
+         *         is_goal_complete: Whether the longrun goal itself is complete.
+         *         can_mark_goal_complete: Whether a resumed agent may mark it complete.
+         *         requirements_all_proved: Whether all rows are currently proved.
+         *         requirements_all_proved_or_out_of_scope: Whether every row is proved or
+         *             explicitly outside scope.
+         *         latest_requirement_id: Latest requirement row id recorded by the rollup.
+         *         latest_slice_id: Latest slice id recorded by the rollup.
+         *         completion_blockers: Bounded unresolved goal-level blockers.
+         *         machine_readable_completion_rule: Compact rule for completion claims.
+         *         why_not_complete: Bounded explanation list when the goal remains active.
+         */
+        AgentWorkspaceGoalLifecycleRollup: {
+            /** Can Mark Goal Complete */
+            can_mark_goal_complete?: boolean | null;
+            /** Completion Blockers */
+            completion_blockers?: components["schemas"]["AgentWorkspaceGoalLifecycleBlocker"][];
+            /** Is Goal Complete */
+            is_goal_complete?: boolean | null;
+            /** Latest Requirement Id */
+            latest_requirement_id?: string | null;
+            /** Latest Slice Id */
+            latest_slice_id?: string | null;
+            /** Machine Readable Completion Rule */
+            machine_readable_completion_rule?: string | null;
+            /** Requirements All Proved */
+            requirements_all_proved?: boolean | null;
+            /** Requirements All Proved Or Out Of Scope */
+            requirements_all_proved_or_out_of_scope?: boolean | null;
+            /** Schema Version */
+            schema_version?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Why Not Complete */
+            why_not_complete?: string[];
         };
         /**
          * AgentWorkspaceGoalOpenRequirement
@@ -7607,6 +8265,7 @@ export interface components {
          *         latest_requirement_id: Last requirement id in the matrix.
          *         requirement_status: Compact requirement-to-evidence status summary.
          *         open_requirements: Bounded non-proved requirement rows for recovery.
+         *         lifecycle_rollup: Machine-readable goal-level completion boundary.
          *         completion_claim: Bounded slice/full-goal completion summary.
          *         next_authorized_local_actions: Bounded action labels from the record.
          *         stop_boundaries: Bounded stop-boundary labels from the record.
@@ -7627,6 +8286,7 @@ export interface components {
             incomplete_count: number;
             /** Latest Requirement Id */
             latest_requirement_id?: string | null;
+            lifecycle_rollup?: components["schemas"]["AgentWorkspaceGoalLifecycleRollup"];
             /** Next Authorized Local Actions */
             next_authorized_local_actions?: string[];
             /** Open Requirements */
@@ -7698,6 +8358,7 @@ export interface components {
             artifact_root: components["schemas"]["AgentWorkspaceDirectoryState"];
             /** Boundaries */
             boundaries?: string[];
+            desktop_smoke: components["schemas"]["AgentWorkspaceDesktopSmokeState"];
             /** Generated At */
             generated_at: string;
             git: components["schemas"]["AgentWorkspaceGitState"];
@@ -8353,6 +9014,105 @@ export interface components {
             files: string[];
             /** Project Id */
             project_id: string;
+        };
+        /**
+         * BridgeLexiconReadResponse
+         * @description Read-only bridge lexicon payload for bounded runtime context loading.
+         */
+        BridgeLexiconReadResponse: {
+            /** Content Hash */
+            content_hash: string;
+            /** Entries */
+            entries?: {
+                [key: string]: string[];
+            };
+            /** Entry Count */
+            entry_count: number;
+            /** Load Status */
+            load_status: string;
+            /** Loaded */
+            loaded: boolean;
+            /** Runtime Consumers */
+            runtime_consumers?: {
+                [key: string]: string;
+            }[];
+            /** Schema Version */
+            schema_version: string;
+            /** Source Hash */
+            source_hash: string;
+            /** Source Path */
+            source_path: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * BridgeLexiconSearchHitResponse
+         * @description One bridge-lexicon entry ref with agent-readable metadata.
+         */
+        BridgeLexiconSearchHitResponse: {
+            /** Kind */
+            kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Rank */
+            rank: number;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Ref Id */
+            ref_id: string;
+            /** Resource Kind */
+            resource_kind: string;
+            /** Schema Version */
+            schema_version: string;
+            /** Score */
+            score?: number | null;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BridgeLexiconSearchResponse
+         * @description Search results for bridge-lexicon entries.
+         */
+        BridgeLexiconSearchResponse: {
+            /** Package Id */
+            package_id: string;
+            /** Query */
+            query: string;
+            /** Results */
+            results?: components["schemas"]["BridgeLexiconSearchHitResponse"][];
+        };
+        /**
+         * BridgeLexiconStatusResponse
+         * @description Status for the CJK bridge lexicon runtime knowledge asset.
+         */
+        BridgeLexiconStatusResponse: {
+            /** Content Hash */
+            content_hash: string;
+            /** Entry Count */
+            entry_count: number;
+            /** Load Status */
+            load_status: string;
+            /** Loaded */
+            loaded: boolean;
+            /** Runtime Consumers */
+            runtime_consumers?: {
+                [key: string]: string;
+            }[];
+            /** Schema Version */
+            schema_version: string;
+            /** Source Hash */
+            source_hash: string;
+            /** Source Path */
+            source_path: string;
+            /** Updated At */
+            updated_at: string;
         };
         /**
          * BudgetStatusPayload
@@ -9444,6 +10204,52 @@ export interface components {
              * @default
              */
             updated_at: string;
+        };
+        /**
+         * ConfigSectionResponse
+         * @description One bounded JSON config section ref.
+         */
+        ConfigSectionResponse: {
+            /** Char Count */
+            char_count: number;
+            /** Content Hash */
+            content_hash: string;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Ref Id */
+            ref_id: string;
+            /** Section Id */
+            section_id: string;
+            /** Source Hash */
+            source_hash: string;
+            /** Source Path */
+            source_path: string;
+            /** Span End */
+            span_end: number;
+            /** Span Start */
+            span_start: number;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ConfigSourceResponse
+         * @description One authoritative JSON config source loaded into runtime knowledge.
+         */
+        ConfigSourceResponse: {
+            /** Byte Count */
+            byte_count: number;
+            /** Char Count */
+            char_count: number;
+            /** Content Hash */
+            content_hash: string;
+            /** Loaded */
+            loaded: boolean;
+            /** Relative Path */
+            relative_path: string;
+            /** Updated At */
+            updated_at: string;
+            /** Warning */
+            warning?: string | null;
         };
         /**
          * ConfigUpdate
@@ -11096,8 +11902,8 @@ export interface components {
          *
          *     Args:
          *         project_id: Project that owns the chunk ref.
-         *         source_type: Evidence source family; wiki refs are bounded resources
-         *             and are not copied into project chunks.
+         *         source_type: Evidence source family; non-project refs are bounded
+         *             resources and are not copied into project chunks.
          *         ref_id: Agent bridge resource id in ``kind:id`` form.
          *         read_endpoint: Bounded reader endpoint with explicit project scope.
          *         chunk_id: Stable chunk identifier in the project chunk store.
@@ -11154,7 +11960,7 @@ export interface components {
              * @default project
              * @enum {string}
              */
-            source_type: "project" | "wiki";
+            source_type: "project" | "wiki" | "product_docs" | "scoring_rules" | "academic_english" | "skill_package" | "source_vault";
             /**
              * Suitable For Body
              * @default true
@@ -12412,6 +13218,454 @@ export interface components {
             /** Spec Text */
             spec_text: string;
         };
+        /**
+         * KnowledgeContextReceiptRequest
+         * @description Bounded knowledge refs to assemble into a model-context receipt.
+         */
+        KnowledgeContextReceiptRequest: {
+            /**
+             * Max Chars Per Ref
+             * @default 1200
+             */
+            max_chars_per_ref: number;
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Prompt Name
+             * @default knowledge_runtime_context
+             */
+            prompt_name: string;
+            /** Ref Ids */
+            ref_ids: string[];
+        };
+        /**
+         * KnowledgeContextReceiptResponse
+         * @description Hash-only proof that selected knowledge refs entered bounded context.
+         */
+        KnowledgeContextReceiptResponse: {
+            /** Assembled Context Char Count */
+            assembled_context_char_count: number;
+            /** Assembled Context Hash */
+            assembled_context_hash: string;
+            /**
+             * Assembled Context Preview
+             * @default
+             */
+            assembled_context_preview: string;
+            /** Generated At */
+            generated_at: string;
+            /** Prompt Hash */
+            prompt_hash: string;
+            /** Prompt Name */
+            prompt_name: string;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Resource Read Receipts */
+            resource_read_receipts?: components["schemas"]["KnowledgeContextResourceReceiptResponse"][];
+            /** Schema Version */
+            schema_version: string;
+        };
+        /**
+         * KnowledgeContextResourceReceiptResponse
+         * @description One bounded resource-read proof row included in a context receipt.
+         */
+        KnowledgeContextResourceReceiptResponse: {
+            /** Content Hash */
+            content_hash: string;
+            /** Cursor */
+            cursor?: string | null;
+            /** Kind */
+            kind: string;
+            /** Max Chars */
+            max_chars: number;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /**
+             * Package Content Hash
+             * @default unknown
+             */
+            package_content_hash: string;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Ref Id */
+            ref_id: string;
+            /** Returned Chars */
+            returned_chars: number;
+            /**
+             * Source Hash
+             * @default unknown
+             */
+            source_hash: string;
+            /** Source Path */
+            source_path?: string | null;
+            /** Span End */
+            span_end?: number | null;
+            /** Span Start */
+            span_start?: number | null;
+            /** Title */
+            title?: string | null;
+            /** Total Chars */
+            total_chars: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
+         * KnowledgePackageProjectionResponse
+         * @description One normalized runtime knowledge package projection.
+         */
+        KnowledgePackageProjectionResponse: {
+            /** Available */
+            available: boolean;
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "wiki" | "source_vault" | "academic_english" | "bridge_lexicon" | "skill_package" | "config" | "product_docs";
+            /** Loaded */
+            loaded: boolean;
+            /** Manifest */
+            manifest?: {
+                [key: string]: unknown;
+            };
+            /** Manifest Loaded */
+            manifest_loaded: boolean;
+            /** Notes */
+            notes?: string[];
+            /** Package Id */
+            package_id: string;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Search Endpoint */
+            search_endpoint?: string | null;
+            /** Source Hash */
+            source_hash: string;
+            /** Source Label */
+            source_label: string;
+            /** Source Path */
+            source_path: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "loaded" | "missing" | "disabled" | "stale" | "unknown";
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * KnowledgePackagesResponse
+         * @description Normalized registry of runtime knowledge packages.
+         */
+        KnowledgePackagesResponse: {
+            /** Packages */
+            packages?: components["schemas"]["KnowledgePackageProjectionResponse"][];
+            /** Schema Version */
+            schema_version: string;
+        };
+        /**
+         * KnowledgeRuntimeActualLoadingGateResponse
+         * @description Top-level proof gate for live QA/model context loading.
+         *
+         *     Why: deterministic context receipts prove bounded local prompt assembly, but
+         *     only an explicitly authorized live smoke can prove a provider turn received
+         *     and echoed the receipt hash.
+         */
+        KnowledgeRuntimeActualLoadingGateResponse: {
+            /** Artifact Checked At */
+            artifact_checked_at: string;
+            /**
+             * Artifact Contract
+             * @default scholar-ai-live-context-receipt-smoke/v1
+             */
+            artifact_contract: string;
+            /** Artifact Contract Valid */
+            artifact_contract_valid: boolean;
+            /** Artifact Exists */
+            artifact_exists: boolean;
+            /** Artifact Path */
+            artifact_path: string;
+            /** Artifact Ref */
+            artifact_ref: string;
+            /** Artifact Schema Valid */
+            artifact_schema_valid: boolean;
+            /**
+             * Claim Boundary
+             * @default
+             */
+            claim_boundary: string;
+            /** Evidence */
+            evidence?: string[];
+            /**
+             * Evidence Level
+             * @default runtime_projection
+             * @enum {string}
+             */
+            evidence_level: "runtime_projection" | "contract_evidence" | "focused_test_evidence" | "not_applicable";
+            /** Evidence Scope */
+            evidence_scope?: string[];
+            /** Missing */
+            missing?: string[];
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
+            provider_preflight: components["schemas"]["KnowledgeRuntimeProviderPreflightResponse"];
+            /** Required Checks */
+            required_checks?: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proved" | "pending" | "blocked" | "not_applicable";
+            /** Validation Errors */
+            validation_errors?: string[];
+            /** Verdict */
+            verdict: string;
+        };
+        /**
+         * KnowledgeRuntimeConformanceItemResponse
+         * @description One requirement-level proof row for a runtime knowledge package.
+         */
+        KnowledgeRuntimeConformanceItemResponse: {
+            /** Evidence */
+            evidence?: string[];
+            /**
+             * Evidence Level
+             * @default runtime_projection
+             * @enum {string}
+             */
+            evidence_level: "runtime_projection" | "contract_evidence" | "focused_test_evidence" | "not_applicable";
+            /** Evidence Scope */
+            evidence_scope?: string[];
+            /** Missing */
+            missing?: string[];
+            /** Requirement */
+            requirement: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proved" | "pending" | "blocked" | "not_applicable";
+        };
+        /**
+         * KnowledgeRuntimeConformancePackageResponse
+         * @description Machine-readable source-to-context conformance projection for one package.
+         */
+        KnowledgeRuntimeConformancePackageResponse: {
+            /** Conformance */
+            conformance?: components["schemas"]["KnowledgeRuntimeConformanceItemResponse"][];
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "wiki" | "source_vault" | "academic_english" | "bridge_lexicon" | "skill_package" | "config" | "product_docs";
+            /** Loaded */
+            loaded: boolean;
+            /** Manifest */
+            manifest?: {
+                [key: string]: unknown;
+            };
+            /** Mcp Tools */
+            mcp_tools?: string[];
+            /**
+             * Overall Status
+             * @enum {string}
+             */
+            overall_status: "proved" | "pending" | "blocked" | "not_applicable";
+            /** Package Id */
+            package_id: string;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Runtime Consumers */
+            runtime_consumers?: {
+                [key: string]: string;
+            }[];
+            /** Search Endpoint */
+            search_endpoint?: string | null;
+            /** Source Hash */
+            source_hash: string;
+            /** Source Path */
+            source_path: string;
+            test_evidence?: components["schemas"]["KnowledgeRuntimeTestEvidenceResponse"];
+            /** Title */
+            title: string;
+        };
+        /**
+         * KnowledgeRuntimeConformanceResponse
+         * @description Read-only audit surface for the Knowledge Runtime Pipeline contract.
+         */
+        KnowledgeRuntimeConformanceResponse: {
+            actual_loading_gate: components["schemas"]["KnowledgeRuntimeActualLoadingGateResponse"];
+            /** Generated At */
+            generated_at: string;
+            /** Packages */
+            packages?: components["schemas"]["KnowledgeRuntimeConformancePackageResponse"][];
+            /** Pipeline */
+            pipeline?: string[];
+            /** Schema Version */
+            schema_version: string;
+            /** Summary */
+            summary?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * KnowledgeRuntimeProviderPreflightRecordResponse
+         * @description One redacted provider tool-call preflight record.
+         */
+        KnowledgeRuntimeProviderPreflightRecordResponse: {
+            /**
+             * Base Url Host
+             * @default
+             */
+            base_url_host: string;
+            /**
+             * Failure Class
+             * @default
+             */
+            failure_class: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /**
+             * Forced Tool Choice Ok
+             * @default false
+             */
+            forced_tool_choice_ok: boolean;
+            /**
+             * Last Probe At
+             * @default
+             */
+            last_probe_at: string;
+            /**
+             * Masked Error
+             * @default
+             */
+            masked_error: string;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Ordinary Chat Ok
+             * @default false
+             */
+            ordinary_chat_ok: boolean;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            /**
+             * Status
+             * @default unknown
+             */
+            status: string;
+        };
+        /**
+         * KnowledgeRuntimeProviderPreflightResponse
+         * @description Provider readiness gate for live Knowledge Runtime actual-loading proof.
+         *
+         *     Why: a provider that has not proven forced tool calls cannot prove that the
+         *     QA/model turn actually received bounded Knowledge Runtime resources.
+         */
+        KnowledgeRuntimeProviderPreflightResponse: {
+            /** Artifact Exists */
+            artifact_exists: boolean;
+            /** Artifact Path */
+            artifact_path: string;
+            /**
+             * Artifact Ref
+             * @default workspace_artifacts/runtime_state/provider-capabilities.json
+             */
+            artifact_ref: string;
+            /** Artifact Schema Valid */
+            artifact_schema_valid: boolean;
+            /** Checked At */
+            checked_at: string;
+            /**
+             * Claim Boundary
+             * @default
+             */
+            claim_boundary: string;
+            /** Evidence */
+            evidence?: string[];
+            /**
+             * Evidence Level
+             * @default runtime_projection
+             * @enum {string}
+             */
+            evidence_level: "runtime_projection" | "contract_evidence" | "focused_test_evidence" | "not_applicable";
+            /** Evidence Scope */
+            evidence_scope?: string[];
+            /**
+             * Latest Status
+             * @default unknown
+             */
+            latest_status: string;
+            /** Missing */
+            missing?: string[];
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
+            /** Record Count */
+            record_count: number;
+            /** Records */
+            records?: components["schemas"]["KnowledgeRuntimeProviderPreflightRecordResponse"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proved" | "pending" | "blocked" | "not_applicable";
+            /** Validation Errors */
+            validation_errors?: string[];
+        };
+        /**
+         * KnowledgeRuntimeTestEvidenceResponse
+         * @description Static local-test evidence known to protect one runtime knowledge package.
+         */
+        KnowledgeRuntimeTestEvidenceResponse: {
+            /**
+             * Agent Resource Read Test
+             * @default false
+             */
+            agent_resource_read_test: boolean;
+            /**
+             * Context Receipt Test
+             * @default false
+             */
+            context_receipt_test: boolean;
+            /**
+             * Evidence Pack Test
+             * @default false
+             */
+            evidence_pack_test: boolean;
+            /**
+             * Focused Test Exists
+             * @default false
+             */
+            focused_test_exists: boolean;
+            /**
+             * Mcp Tool Test
+             * @default false
+             */
+            mcp_tool_test: boolean;
+            /**
+             * Source Edit Hash Test
+             * @default false
+             */
+            source_edit_hash_test: boolean;
+            /** Test Nodes */
+            test_nodes?: string[];
+        };
         /** LLMConfig */
         LLMConfig: {
             /**
@@ -13564,6 +14818,209 @@ export interface components {
             top_k: number;
         };
         /**
+         * OcrEnginePublicInfo
+         * @description Public metadata for one OCR engine.
+         */
+        OcrEnginePublicInfo: {
+            /** Available */
+            available: boolean;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Engine Type
+             * @enum {string}
+             */
+            engine_type: "local" | "remote";
+            /** Name */
+            name: string;
+            /** Readiness Blockers */
+            readiness_blockers?: string[];
+            /**
+             * Readiness Status
+             * @default ready
+             * @enum {string}
+             */
+            readiness_status: "ready" | "dependency_missing" | "configuration_required" | "adapter_not_wired" | "platform_unsupported" | "unavailable";
+            /** Requires Network */
+            requires_network: boolean;
+            /** Unavailable Reason */
+            unavailable_reason?: string | null;
+        };
+        /**
+         * OcrEngineSelectionRequest
+         * @description Request body for local OCR engine selection.
+         */
+        OcrEngineSelectionRequest: {
+            /** Engine */
+            engine?: string | null;
+            /** Engine Config */
+            engine_config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Language
+             * @default en
+             */
+            language: string;
+            /**
+             * Policy
+             * @default auto
+             * @enum {string}
+             */
+            policy: "auto" | "none" | "engine";
+        };
+        /**
+         * OcrEngineSelectionResponse
+         * @description Result of writing OCR runtime selection.
+         */
+        OcrEngineSelectionResponse: {
+            /** Config Path */
+            config_path: string;
+            /** Saved */
+            saved: boolean;
+            status: components["schemas"]["OcrStatusResponse"];
+        };
+        /**
+         * OcrExecutionProbeRequest
+         * @description Request body for an explicit OCR execution proof.
+         *
+         *     Args:
+         *         confirm_execution: Must be true because OCR may run local heavy
+         *             runtimes or upload page images for remote engines.
+         *         image_base64: Optional PNG/JPEG/etc. payload encoded as base64.
+         *         image_path: Optional local image path under allowed workspace roots.
+         *         engine: Optional engine id. Omitted means use resolved runtime policy.
+         *         engine_config: Engine-specific options; secrets never return.
+         *         language: OCR language tag forwarded to the selected engine.
+         *         preview_chars: Maximum OCR text preview characters returned.
+         */
+        OcrExecutionProbeRequest: {
+            /**
+             * Confirm Execution
+             * @default false
+             */
+            confirm_execution: boolean;
+            /** Engine */
+            engine?: string | null;
+            /** Engine Config */
+            engine_config?: {
+                [key: string]: unknown;
+            };
+            /** Image Base64 */
+            image_base64?: string | null;
+            /** Image Path */
+            image_path?: string | null;
+            /**
+             * Language
+             * @default en
+             */
+            language: string;
+            /**
+             * Preview Chars
+             * @default 240
+             */
+            preview_chars: number;
+        };
+        /**
+         * OcrExecutionProbeResponse
+         * @description Bounded proof that one OCR engine executed on one image payload.
+         */
+        OcrExecutionProbeResponse: {
+            /** Confirmed */
+            confirmed: boolean;
+            /** Duration Ms */
+            duration_ms: number;
+            /** Engine */
+            engine: string;
+            /**
+             * Engine Type
+             * @enum {string}
+             */
+            engine_type: "local" | "remote";
+            /** Input Bytes */
+            input_bytes: number;
+            /**
+             * Input Kind
+             * @enum {string}
+             */
+            input_kind: "image_base64" | "image_path";
+            /** Input Sha256 */
+            input_sha256: string;
+            /** Language */
+            language: string;
+            /** Requires Network */
+            requires_network: boolean;
+            /** Schema Version */
+            schema_version: string;
+            /** Text Length */
+            text_length: number;
+            /** Text Preview */
+            text_preview: string;
+            /** Text Sha256 */
+            text_sha256: string;
+        };
+        /**
+         * OcrHealthRequest
+         * @description Request body for a lightweight OCR engine readiness probe.
+         */
+        OcrHealthRequest: {
+            /** Engine */
+            engine?: string | null;
+            /** Engine Config */
+            engine_config?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * OcrHealthResponse
+         * @description OCR engine health-check response.
+         */
+        OcrHealthResponse: {
+            /** Detail */
+            detail: string;
+            /** Engine */
+            engine: string;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Ok */
+            ok: boolean;
+            /** Readiness Blockers */
+            readiness_blockers?: string[];
+            /**
+             * Readiness Status
+             * @default ready
+             * @enum {string}
+             */
+            readiness_status: "ready" | "dependency_missing" | "configuration_required" | "adapter_not_wired" | "platform_unsupported" | "unavailable";
+        };
+        /**
+         * OcrStatusResponse
+         * @description Current OCR runtime selection and registered engine inventory.
+         */
+        OcrStatusResponse: {
+            /** Available Engines */
+            available_engines?: components["schemas"]["OcrEnginePublicInfo"][];
+            /** Configured Engine */
+            configured_engine?: string | null;
+            /** Engine Config */
+            engine_config?: {
+                [key: string]: unknown;
+            };
+            /** Language */
+            language: string;
+            /**
+             * Policy
+             * @enum {string}
+             */
+            policy: "auto" | "none" | "engine";
+            /** Selected Engine */
+            selected_engine?: string | null;
+            /** Source */
+            source: string;
+            /** Warning */
+            warning?: string | null;
+        };
+        /**
          * OutlineItemPayload
          * @description Outline item (section/subsection) in hierarchical structure.
          */
@@ -13627,6 +15084,18 @@ export interface components {
             external_backends_supported: boolean;
             /** Install Hint */
             install_hint: string;
+            /** Ocr Config Source */
+            ocr_config_source: string;
+            /** Ocr Configured Engine */
+            ocr_configured_engine: string | null;
+            /** Ocr Language */
+            ocr_language: string;
+            /** Ocr Policy */
+            ocr_policy: string;
+            /** Ocr Selected Engine */
+            ocr_selected_engine: string | null;
+            /** Ocr Warning */
+            ocr_warning: string | null;
         };
         /**
          * PdfBboxUnit
@@ -13883,6 +15352,197 @@ export interface components {
              * @default 0
              */
             status: number;
+        };
+        /**
+         * ProductDocsChunkResponse
+         * @description One bounded product-doc chunk ref.
+         */
+        ProductDocsChunkResponse: {
+            /** Char Count */
+            char_count: number;
+            /** Chunk Id */
+            chunk_id: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Ref Id */
+            ref_id: string;
+            /** Source Hash */
+            source_hash: string;
+            /** Source Path */
+            source_path: string;
+            /** Source Role */
+            source_role: string;
+            /** Span End */
+            span_end: number;
+            /** Span Start */
+            span_start: number;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ProductDocsReadResponse
+         * @description Read-only product-doc chunks for bounded runtime context loading.
+         */
+        ProductDocsReadResponse: {
+            /** Chunk Count */
+            chunk_count: number;
+            /** Chunks */
+            chunks?: components["schemas"]["ProductDocsChunkResponse"][];
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Entries */
+            entries?: {
+                [key: string]: unknown;
+            };
+            /** Load Status */
+            load_status: string;
+            /** Loaded */
+            loaded: boolean;
+            /** Manifest */
+            manifest?: {
+                [key: string]: unknown;
+            };
+            /** Manifest Loaded */
+            manifest_loaded: boolean;
+            /** Package Id */
+            package_id: string;
+            /** Runtime Consumers */
+            runtime_consumers?: {
+                [key: string]: string;
+            }[];
+            /** Schema Version */
+            schema_version: string;
+            /** Source Files */
+            source_files?: components["schemas"]["ProductDocsSourceResponse"][];
+            /** Source Hash */
+            source_hash: string;
+            /** Source Path */
+            source_path: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * ProductDocsSearchHitResponse
+         * @description One product-doc search result with a bounded agent-readable ref.
+         */
+        ProductDocsSearchHitResponse: {
+            /** Kind */
+            kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Rank */
+            rank: number;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Ref Id */
+            ref_id: string;
+            /** Resource Kind */
+            resource_kind: string;
+            /** Schema Version */
+            schema_version: string;
+            /** Score */
+            score?: number | null;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ProductDocsSearchResponse
+         * @description Search results for repo-local product-doc refs.
+         */
+        ProductDocsSearchResponse: {
+            /** Package Id */
+            package_id: string;
+            /** Query */
+            query: string;
+            /** Results */
+            results?: components["schemas"]["ProductDocsSearchHitResponse"][];
+        };
+        /**
+         * ProductDocsSourceResponse
+         * @description One authoritative product-doc source loaded into runtime knowledge.
+         */
+        ProductDocsSourceResponse: {
+            /** Byte Count */
+            byte_count: number;
+            /** Char Count */
+            char_count: number;
+            /** Content Hash */
+            content_hash: string;
+            /** Loaded */
+            loaded: boolean;
+            /** Relative Path */
+            relative_path: string;
+            /** Role */
+            role: string;
+            /** Updated At */
+            updated_at: string;
+            /** Warning */
+            warning?: string | null;
+        };
+        /**
+         * ProductDocsStatusResponse
+         * @description Read-only status for repo-local product documentation knowledge.
+         */
+        ProductDocsStatusResponse: {
+            /** Chunk Count */
+            chunk_count: number;
+            /** Chunks */
+            chunks?: components["schemas"]["ProductDocsChunkResponse"][];
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Load Status */
+            load_status: string;
+            /** Loaded */
+            loaded: boolean;
+            /** Manifest */
+            manifest?: {
+                [key: string]: unknown;
+            };
+            /** Manifest Loaded */
+            manifest_loaded: boolean;
+            /** Package Id */
+            package_id: string;
+            /** Runtime Consumers */
+            runtime_consumers?: {
+                [key: string]: string;
+            }[];
+            /** Schema Version */
+            schema_version: string;
+            /** Source Files */
+            source_files?: components["schemas"]["ProductDocsSourceResponse"][];
+            /** Source Hash */
+            source_hash: string;
+            /** Source Path */
+            source_path: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+            /** Warnings */
+            warnings?: string[];
         };
         /**
          * ProjectExportBibliographyEntryPayload
@@ -15219,6 +16879,157 @@ export interface components {
             tags?: string[] | null;
         };
         /**
+         * ScoringRulesReadResponse
+         * @description Read-only scoring rules JSON sections for bounded runtime loading.
+         */
+        ScoringRulesReadResponse: {
+            /** Config Id */
+            config_id: string;
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Entries */
+            entries?: {
+                [key: string]: unknown;
+            };
+            /** Last Updated */
+            last_updated: string;
+            /** Load Status */
+            load_status: string;
+            /** Loaded */
+            loaded: boolean;
+            /** Manifest */
+            manifest?: {
+                [key: string]: unknown;
+            };
+            /** Manifest Loaded */
+            manifest_loaded: boolean;
+            /** Package Id */
+            package_id: string;
+            /** Runtime Consumers */
+            runtime_consumers?: {
+                [key: string]: string;
+            }[];
+            /** Schema Version */
+            schema_version: string;
+            /** Section Count */
+            section_count: number;
+            /** Sections */
+            sections?: components["schemas"]["ConfigSectionResponse"][];
+            source: components["schemas"]["ConfigSourceResponse"];
+            /** Source Hash */
+            source_hash: string;
+            /** Source Path */
+            source_path: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+            /** Version */
+            version: string;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * ScoringRulesSearchHitResponse
+         * @description One scoring-rules search result with a bounded agent-readable ref.
+         */
+        ScoringRulesSearchHitResponse: {
+            /** Kind */
+            kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Rank */
+            rank: number;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Ref Id */
+            ref_id: string;
+            /** Resource Kind */
+            resource_kind: string;
+            /** Schema Version */
+            schema_version: string;
+            /** Score */
+            score?: number | null;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ScoringRulesSearchResponse
+         * @description Search results for scoring-rules JSON config refs.
+         */
+        ScoringRulesSearchResponse: {
+            /** Package Id */
+            package_id: string;
+            /** Query */
+            query: string;
+            /** Results */
+            results?: components["schemas"]["ScoringRulesSearchHitResponse"][];
+        };
+        /**
+         * ScoringRulesStatusResponse
+         * @description Read-only status for the scoring rules JSON config knowledge asset.
+         */
+        ScoringRulesStatusResponse: {
+            /** Config Id */
+            config_id: string;
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Last Updated */
+            last_updated: string;
+            /** Load Status */
+            load_status: string;
+            /** Loaded */
+            loaded: boolean;
+            /** Manifest */
+            manifest?: {
+                [key: string]: unknown;
+            };
+            /** Manifest Loaded */
+            manifest_loaded: boolean;
+            /** Package Id */
+            package_id: string;
+            /** Runtime Consumers */
+            runtime_consumers?: {
+                [key: string]: string;
+            }[];
+            /** Schema Version */
+            schema_version: string;
+            /** Section Count */
+            section_count: number;
+            /** Sections */
+            sections?: components["schemas"]["ConfigSectionResponse"][];
+            source: components["schemas"]["ConfigSourceResponse"];
+            /** Source Hash */
+            source_hash: string;
+            /** Source Path */
+            source_path: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+            /** Version */
+            version: string;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
          * ScriptPolicyPayload
          * @description Script safety payload for imported skills.
          */
@@ -15756,6 +17567,152 @@ export interface components {
             skillIds: string[];
         };
         /**
+         * SkillPackageChunkResponse
+         * @description One bounded Skill package knowledge ref.
+         */
+        SkillPackageChunkResponse: {
+            /** Char Count */
+            char_count: number;
+            /** Chunk Id */
+            chunk_id: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Ref Id */
+            ref_id: string;
+            /** Source Hash */
+            source_hash: string;
+            /** Source Path */
+            source_path: string;
+            /** Source Role */
+            source_role: string;
+            /** Span End */
+            span_end: number;
+            /** Span Start */
+            span_start: number;
+            /** Title */
+            title: string;
+        };
+        /**
+         * SkillPackageSearchHitResponse
+         * @description One Skill package search result with a bounded agent-readable ref.
+         */
+        SkillPackageSearchHitResponse: {
+            /** Kind */
+            kind: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Rank */
+            rank: number;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Ref Id */
+            ref_id: string;
+            /** Resource Kind */
+            resource_kind: string;
+            /** Schema Version */
+            schema_version: string;
+            /** Score */
+            score?: number | null;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * SkillPackageSearchResponse
+         * @description Search results for repo-local Skill package knowledge refs.
+         */
+        SkillPackageSearchResponse: {
+            /** Package Id */
+            package_id: string;
+            /** Query */
+            query: string;
+            /** Results */
+            results?: components["schemas"]["SkillPackageSearchHitResponse"][];
+        };
+        /**
+         * SkillPackageSourceResponse
+         * @description One source file loaded from a read-only Skill package.
+         */
+        SkillPackageSourceResponse: {
+            /** Byte Count */
+            byte_count: number;
+            /** Char Count */
+            char_count: number;
+            /** Content Hash */
+            content_hash: string;
+            /** Loaded */
+            loaded: boolean;
+            /** Relative Path */
+            relative_path: string;
+            /** Role */
+            role: string;
+            /** Updated At */
+            updated_at: string;
+            /** Warning */
+            warning?: string | null;
+        };
+        /**
+         * SkillPackageStatusResponse
+         * @description Read-only status for one repo-local Skill package knowledge asset.
+         */
+        SkillPackageStatusResponse: {
+            /** Chunk Count */
+            chunk_count: number;
+            /** Chunks */
+            chunks?: components["schemas"]["SkillPackageChunkResponse"][];
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Load Status */
+            load_status: string;
+            /** Loaded */
+            loaded: boolean;
+            /** Manifest */
+            manifest?: {
+                [key: string]: unknown;
+            };
+            /** Manifest Loaded */
+            manifest_loaded: boolean;
+            /** Package Id */
+            package_id: string;
+            /** Package Root */
+            package_root: string;
+            /** Runtime Consumers */
+            runtime_consumers?: {
+                [key: string]: string;
+            }[];
+            /** Schema Version */
+            schema_version: string;
+            /** Skill Kind */
+            skill_kind: string;
+            /** Source Files */
+            source_files?: components["schemas"]["SkillPackageSourceResponse"][];
+            /** Source Hash */
+            source_hash: string;
+            /** Source Path */
+            source_path: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+            /** Version */
+            version: string;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
          * SkillRollbackRequest
          * @description Request body for restoring a managed user skill from a rollback snapshot.
          */
@@ -16038,16 +17995,44 @@ export interface components {
             chunk_id: string;
             /** Chunk Index */
             chunk_index: number;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Original Filename */
+            original_filename: string;
+            /** Page */
+            page?: number | null;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /** Ref Id */
+            ref_id: string;
             /** Score */
             score?: number | null;
+            /** Section */
+            section?: string | null;
             /** Source Hash */
             source_hash: string;
             /** Source Id */
             source_id: string;
+            /** Source Type */
+            source_type: string;
+            /** Span End */
+            span_end?: number | null;
+            /** Span Start */
+            span_start?: number | null;
+            /** Stored Path */
+            stored_path: string;
+            /** Summary */
+            summary: string;
             /** Text */
             text: string;
+            /** Text Hash */
+            text_hash: string;
             /** Title */
             title: string;
+            /** Truncated */
+            truncated: boolean;
         };
         /**
          * SourceVaultSourceResponse
@@ -16678,10 +18663,25 @@ export interface components {
             /** Action */
             action: string;
             /**
+             * Chunk Id
+             * @default
+             */
+            chunk_id: string;
+            /**
+             * Content Hash
+             * @default
+             */
+            content_hash: string;
+            /**
              * Error
              * @default
              */
             error: string;
+            /**
+             * Import Source Hash
+             * @default
+             */
+            import_source_hash: string;
             /**
              * Kind
              * @default
@@ -16693,12 +18693,51 @@ export interface components {
              */
             path: string;
             /**
+             * Read Endpoint
+             * @default
+             */
+            read_endpoint: string;
+            /**
+             * Ref Id
+             * @default
+             */
+            ref_id: string;
+            /**
+             * Review Item Id
+             * @default
+             */
+            review_item_id: string;
+            /**
+             * Runtime Approval Id
+             * @default
+             */
+            runtime_approval_id: string;
+            /**
+             * Runtime Job Id
+             * @default
+             */
+            runtime_job_id: string;
+            /**
+             * Runtime Session Id
+             * @default
+             */
+            runtime_session_id: string;
+            /**
              * Slug
              * @default
              */
             slug: string;
+            /**
+             * Source Hash
+             * @default
+             */
+            source_hash: string;
             /** Source Path */
             source_path: string;
+            /** Span End */
+            span_end?: number | null;
+            /** Span Start */
+            span_start?: number | null;
             /**
              * Status
              * @default
@@ -16717,6 +18756,11 @@ export interface components {
          * @description Local Markdown import request for the wiki sidecar.
          */
         WikiImportRequest: {
+            /**
+             * Confirm Write
+             * @default false
+             */
+            confirm_write: boolean;
             /**
              * Dry Run
              * @default true
@@ -16745,6 +18789,11 @@ export interface components {
          * @description Response for local Markdown wiki import.
          */
         WikiImportResponse: {
+            /**
+             * Confirm Write
+             * @default false
+             */
+            confirm_write: boolean;
             /** Dry Run */
             dry_run: boolean;
             /** Enabled */
@@ -16768,6 +18817,71 @@ export interface components {
             skipped: number;
             /** Warnings */
             warnings?: string[];
+        };
+        /** WikiManifestDrilldownItemPayload */
+        WikiManifestDrilldownItemPayload: {
+            /** Indexed Hash */
+            indexed_hash?: string | null;
+            /** Kind */
+            kind: string;
+            /** Page Path */
+            page_path: string;
+            /**
+             * Redacted
+             * @default false
+             */
+            redacted: boolean;
+            /** Source Hash */
+            source_hash?: string | null;
+        };
+        /** WikiManifestDrilldownPayload */
+        WikiManifestDrilldownPayload: {
+            /**
+             * Extra Count
+             * @default 0
+             */
+            extra_count: number;
+            /** Extra Pages */
+            extra_pages?: components["schemas"]["WikiManifestDrilldownItemPayload"][];
+            /**
+             * Hash Algorithm
+             * @default sha256
+             */
+            hash_algorithm: string;
+            /**
+             * Limit
+             * @default 10
+             */
+            limit: number;
+            /**
+             * Mismatched Count
+             * @default 0
+             */
+            mismatched_count: number;
+            /** Mismatched Pages */
+            mismatched_pages?: components["schemas"]["WikiManifestDrilldownItemPayload"][];
+            /**
+             * Missing Count
+             * @default 0
+             */
+            missing_count: number;
+            /** Missing Pages */
+            missing_pages?: components["schemas"]["WikiManifestDrilldownItemPayload"][];
+            /**
+             * Schema Version
+             * @default scholar-ai-wiki-manifest-drilldown/v1
+             */
+            schema_version: string;
+            /**
+             * Status
+             * @default unknown
+             */
+            status: string;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /**
          * WikiOkfInspectRequest
@@ -17131,6 +19245,27 @@ export interface components {
              */
             graph_json_exists: boolean;
             /**
+             * Index Hash
+             * @default none
+             */
+            index_hash: string;
+            /**
+             * Indexed Page Count
+             * @default 0
+             */
+            indexed_page_count: number;
+            /**
+             * Indexed Source Manifest Hash
+             * @default unknown
+             */
+            indexed_source_manifest_hash: string;
+            /**
+             * Integrity Status
+             * @default unknown
+             */
+            integrity_status: string;
+            manifest_drilldown?: components["schemas"]["WikiManifestDrilldownPayload"];
+            /**
              * Page Count
              * @default 0
              */
@@ -17149,6 +19284,13 @@ export interface components {
              * @default false
              */
             review_queue_exists: boolean;
+            /**
+             * Source Manifest Hash
+             * @default unknown
+             */
+            source_manifest_hash: string;
+            /** Source Page Count */
+            source_page_count?: number | null;
             /**
              * Stale
              * @default false
@@ -21722,6 +23864,417 @@ export interface operations {
             };
         };
     };
+    get_api_knowledge_academic_english_search: {
+        parameters: {
+            query: {
+                /** @description Academic-English knowledge query. */
+                q: string;
+                top_k?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcademicEnglishSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_academic_english_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcademicEnglishStatusResponse"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_bridge_lexicon_read: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BridgeLexiconReadResponse"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_bridge_lexicon_search: {
+        parameters: {
+            query: {
+                /** @description Bridge lexicon entry query. */
+                q: string;
+                top_k?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BridgeLexiconSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_bridge_lexicon_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BridgeLexiconStatusResponse"];
+                };
+            };
+        };
+    };
+    post_api_knowledge_context_receipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeContextReceiptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeContextReceiptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_packages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgePackagesResponse"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_product_docs_read: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductDocsReadResponse"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_product_docs_search: {
+        parameters: {
+            query: {
+                /** @description Product documentation query. */
+                q: string;
+                top_k?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductDocsSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_product_docs_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductDocsStatusResponse"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_runtime_conformance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeRuntimeConformanceResponse"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_scoring_rules_read: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoringRulesReadResponse"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_scoring_rules_search: {
+        parameters: {
+            query: {
+                /** @description Scoring-rules config query. */
+                q: string;
+                top_k?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoringRulesSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_scoring_rules_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoringRulesStatusResponse"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_skill_packages_package_id_search: {
+        parameters: {
+            query: {
+                /** @description Skill package knowledge query. */
+                q: string;
+                top_k?: number;
+            };
+            header?: never;
+            path: {
+                package_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillPackageSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_knowledge_skill_packages_package_id_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                package_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillPackageStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_knowledge_source_vault: {
         parameters: {
             query?: {
@@ -22744,6 +25297,145 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_pdf_backend_ocr_engine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OcrEngineSelectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OcrEngineSelectionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_pdf_backend_ocr_engines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OcrEnginePublicInfo"][];
+                };
+            };
+        };
+    };
+    post_api_pdf_backend_ocr_execution_probe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OcrExecutionProbeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OcrExecutionProbeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_pdf_backend_ocr_health: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OcrHealthRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OcrHealthResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_pdf_backend_ocr_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OcrStatusResponse"];
                 };
             };
         };

@@ -106,6 +106,8 @@ def _write_goal_state_fixture(root: Path, requirement_id: str) -> Path:
                 "updated_at": "2026-06-23T02:30:00+08:00",
                 "rollback": {
                     "checkpoint_id": "20260623-022555-n57-agent-workspace-requirement-contract-parity",
+                    "latest_checkpoint_id": "20260626-061743-n201-agent-workspace-latest-checkpoint",
+                    "latest_goal_state_checkpoint_id": "20260626-061744-n201-goal-state-latest-checkpoint",
                     "checkpoint_path": "C:/Users/xiao/.codex/rollback-checkpoints/private",
                     "restore_command": "restore C:/Users/xiao/private",
                 },
@@ -136,7 +138,7 @@ def _write_goal_state_fixture(root: Path, requirement_id: str) -> Path:
                 ],
                 "stop_boundary": [
                     "No push, tag, release, deploy, or external upload.",
-                    "Do not retry Computer Use accessibility-tree acceptance until sandboxPolicy is fixed.",
+                    "Do not treat external Computer Use package residual risk as missing local UIA proof.",
                     "Do not enable import-to-wiki writes without explicit authorization.",
                     "This fourth boundary must be omitted.",
                 ],
@@ -195,9 +197,7 @@ def test_agent_workspace_requirement_rest_and_mcp_payloads_stay_in_parity(
     assert rest_payload["path"] == (
         "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
     )
-    assert rest_payload["checkpoint_id"] == (
-        "20260623-022555-n57-agent-workspace-requirement-contract-parity"
-    )
+    assert rest_payload["checkpoint_id"] == "20260626-061744-n201-goal-state-latest-checkpoint"
     assert rest_payload["evidence_count"] == 2
     assert rest_payload["truncated"] is False
     assert len(rest_payload["evidence"]) == 2
@@ -208,7 +208,7 @@ def test_agent_workspace_requirement_rest_and_mcp_payloads_stay_in_parity(
     ]
     assert rest_payload["stop_boundaries"] == [
         "No push, tag, release, deploy, or external upload.",
-        "Do not retry Computer Use accessibility-tree acceptance until sandboxPolicy is fixed.",
+        "Do not treat external Computer Use package residual risk as missing local UIA proof.",
         "Do not enable import-to-wiki writes without explicit authorization.",
     ]
 

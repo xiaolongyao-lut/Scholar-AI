@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
-from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+import hashlib
+
 from layers.tolf_engine import EvidenceGate, TOLFConfig, TOLFEngine
 from retrieval_provenance import merge_source_labels
+from tolf_bridge_lexicon_store import get_bridge_lexicon_entries
 
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_一-鿿]+", re.UNICODE)
 _NUMERIC_EVIDENCE_RE = re.compile(
@@ -20,28 +21,13 @@ _NUMERIC_EVIDENCE_RE = re.compile(
     re.IGNORECASE,
 )
 
-_LEXICON_PATH = Path(__file__).resolve().parent / "config" / "cjk_bridge_lexicon.json"
-_CJK_BRIDGE_LEXICON: dict[str, tuple[str, ...]] | None = None
-
-
-def _load_bridge_lexicon() -> dict[str, tuple[str, ...]]:
-    global _CJK_BRIDGE_LEXICON
-    if _CJK_BRIDGE_LEXICON is not None:
-        return _CJK_BRIDGE_LEXICON
-    try:
-        raw = json.loads(_LEXICON_PATH.read_text(encoding="utf-8"))
-        _CJK_BRIDGE_LEXICON = {k: tuple(v) for k, v in raw.items()}
-    except (OSError, json.JSONDecodeError, TypeError):
-        _CJK_BRIDGE_LEXICON = {}
-    return _CJK_BRIDGE_LEXICON
-
 
 def _expand_query_with_bridge_terms(query: str) -> tuple[str, list[str]]:
     normalized = str(query or "").strip().lower()
     if not normalized:
         return query, []
     tokens = set(_TOKEN_RE.findall(normalized))
-    lexicon = _load_bridge_lexicon()
+    lexicon = get_bridge_lexicon_entries()
     expanded: list[str] = []
     seen: set[str] = set()
     for cjk_term, bridge_terms in lexicon.items():

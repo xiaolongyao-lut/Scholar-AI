@@ -16,6 +16,7 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { EvidenceGraphWorkbench } from '@/components/knowledge/EvidenceGraphWorkbench';
 import { CaptureToInboxButton } from '@/components/knowledge/CaptureToInboxButton';
 import { InsightPoolPanel } from '@/components/knowledge/InsightPoolPanel';
+import { KnowledgePackagesPanel } from '@/components/knowledge/KnowledgePackagesPanel';
 import { KnowledgeLibraryPanel } from '@/components/knowledge/KnowledgeLibraryPanel';
 import { SourceVaultPanel } from '@/components/knowledge/SourceVaultPanel';
 import { cn } from '@/lib/utils';
@@ -265,6 +266,9 @@ export function KnowledgeDeposits() {
         aria-label="知识沉淀当前区段"
         className="min-h-0 flex-1 overflow-auto px-4 py-5 sm:px-6"
       >
+        <div className="mx-auto mb-4 max-w-7xl">
+          <KnowledgePackagesPanel />
+        </div>
         <div
           id={`knowledge-workbench-panel-${activeSection.id}`}
           role="tabpanel"

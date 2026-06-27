@@ -33,6 +33,11 @@ function shortHash(value: string): string {
   return trimmed.length > 16 ? `${trimmed.slice(0, 12)}…` : trimmed;
 }
 
+function shortRef(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > 22 ? `${trimmed.slice(0, 18)}…` : trimmed;
+}
+
 function formatSourceStatus(value: SourceVaultSource['storage_status']): string {
   if (value === 'stored') return '已存储';
   if (value === 'referenced') return '仅引用';
@@ -331,10 +336,10 @@ export function SourceVaultPanel() {
                     <FileText size={14} className="shrink-0 text-primary/70" />
                     <span className="truncate">{result.title}</span>
                   </div>
-                  <div className="mt-1 line-clamp-2 text-xs leading-5 text-foreground/55">{result.text}</div>
+                  <div className="mt-1 line-clamp-2 text-xs leading-5 text-foreground/55">{result.summary}</div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className="mr-auto text-[10px] text-foreground/40">
-                      {result.chunk_id} · #{result.chunk_index}
+                      {shortRef(result.ref_id)} · {result.chunk_id} · #{result.chunk_index}
                     </span>
                     <button
                       type="button"
@@ -345,7 +350,7 @@ export function SourceVaultPanel() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => navigate(`/wiki?section=graph&source=${encodeURIComponent(result.source_id)}`)}
+                      onClick={() => navigate(`/wiki?section=graph&source=${encodeURIComponent(result.source_id)}&ref=${encodeURIComponent(result.ref_id)}`)}
                       className="rounded border border-primary/35 bg-primary/10 px-2 py-1 text-[11px] text-primary transition-colors hover:bg-primary/15"
                     >
                       图谱

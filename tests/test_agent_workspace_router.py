@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -19,10 +20,59 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     workspace_root = tmp_path / "agent_mcp_workflows"
     runtime_root = tmp_path / "runtime_state"
     output_root = tmp_path / "generated" / "output"
+    desktop_smoke_root = tmp_path / "generated" / "desktop_smoke" / "n75-desktop-smoke"
+    unrelated_desktop_smoke_root = tmp_path / "generated" / "desktop_smoke" / "newer-close-path-smoke"
     audit_root = workspace_root / ".audit"
     audit_root.mkdir(parents=True)
     runtime_root.mkdir(parents=True)
     output_root.mkdir(parents=True)
+    desktop_smoke_root.mkdir(parents=True)
+    unrelated_desktop_smoke_root.mkdir(parents=True)
+    (desktop_smoke_root / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "n75-desktop-smoke",
+                "status": "passed",
+                "initial_path": "/__desktop_acceptance/agent-workspace",
+                "screenshot_png": str(desktop_smoke_root / "window.png"),
+                "accessibility_tree_json": str(desktop_smoke_root / "accessibility-tree.json"),
+                "screenshot_nonblank": True,
+                "accessibility_tree_available": True,
+                "accessibility_tree_root_name": "文献助手",
+                "accessibility_tree_root_control_type": "窗口",
+                "accessibility_tree_node_count": 20,
+                "accessibility_tree_named_node_count": 9,
+                "warnings": ["native window could not be foregrounded before screenshot"],
+                "errors": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (unrelated_desktop_smoke_root / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "newer-close-path-smoke",
+                "status": "passed",
+                "initial_path": "/",
+                "screenshot_png": str(unrelated_desktop_smoke_root / "window.png"),
+                "accessibility_tree_json": str(unrelated_desktop_smoke_root / "accessibility-tree.json"),
+                "screenshot_nonblank": True,
+                "accessibility_tree_available": True,
+                "accessibility_tree_root_name": "文献助手",
+                "accessibility_tree_root_control_type": "窗口",
+                "accessibility_tree_node_count": 8,
+                "accessibility_tree_named_node_count": 4,
+                "warnings": ["unrelated close-path smoke should not satisfy Agent Workspace acceptance"],
+                "errors": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    newer_mtime = (desktop_smoke_root / "summary.json").stat().st_mtime + 20
+
+    os.utime(unrelated_desktop_smoke_root / "summary.json", (newer_mtime, newer_mtime))
     (workspace_root / "reports").mkdir()
     (workspace_root / "reports" / "summary.md").write_text(
         "Result contains sk-ant-api" + "A" * 60,
@@ -49,6 +99,7 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     monkeypatch.setattr(agent_workspace_router, "WORKSPACE_ARTIFACTS_ROOT", tmp_path)
     monkeypatch.setattr(agent_workspace_router, "WORKSPACE_RUNTIME_STATE_ROOT", runtime_root)
     monkeypatch.setattr(agent_workspace_router, "WORKSPACE_OUTPUT_ROOT", output_root)
+    monkeypatch.setattr(agent_workspace_router, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(
         agent_workspace_router,
         "_read_git_workspace_state",
@@ -68,30 +119,23 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
         lambda: agent_workspace_router.AgentWorkspaceGoalState(
             available=True,
             path="docs/plans/longrun-goal-state-local.json",
-            updated_at="2026-06-22T21:50:27+08:00",
-            checkpoint_id="20260622-214730-n41-goal-state-record-update",
-            requirement_count=49,
-            proved_count=47,
-            incomplete_count=1,
-            out_of_scope_count=1,
-            latest_requirement_id="N41-goal-state-workspace-visibility",
+            updated_at="2026-06-24T17:55:00+08:00",
+            checkpoint_id="20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio",
+            requirement_count=125,
+            proved_count=125,
+            incomplete_count=0,
+            out_of_scope_count=0,
+            latest_requirement_id="N112-sandboxpolicy-current-state-alignment",
             requirement_status=agent_workspace_router.AgentWorkspaceGoalRequirementStatus(
-                total=49,
-                proved=47,
-                incomplete=1,
-                out_of_scope=1,
-                latest_id="N41-goal-state-workspace-visibility",
+                total=125,
+                proved=125,
+                incomplete=0,
+                out_of_scope=0,
+                latest_id="N112-sandboxpolicy-current-state-alignment",
             ),
-            open_requirements=[
-                agent_workspace_router.AgentWorkspaceGoalOpenRequirement(
-                    id="B01-computer-use-accessibility-tree",
-                    status="incomplete",
-                    requirement="Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.",
-                    residual_risk="Retry only after the external tool error is fixed.",
-                )
-            ],
+            open_requirements=[],
             completion_claim=agent_workspace_router.AgentWorkspaceGoalCompletionClaim(
-                this_slice="N41 made goal-state recovery visible.",
+                this_slice="N112 aligned current recovery state with local UIA accessibility-tree evidence.",
                 full_goal="The full Scholar AI workflow spine remains active, not complete.",
             ),
             next_authorized_local_actions=[
@@ -123,38 +167,56 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
         "docs/plans",
     ]
     assert payload["workspace_state"]["artifact_root"]["file_count"] == 1
-    assert payload["workspace_state"]["artifact_root"]["path"] == "[redacted-local-path]"
+    assert payload["workspace_state"]["artifact_root"]["path"] == "agent_mcp_workflows"
     assert payload["workspace_state"]["artifact_root"]["truncated"] is False
     assert payload["workspace_state"]["runtime_state_root"]["exists"] is True
     assert payload["workspace_state"]["output_root"]["exists"] is True
+    desktop_smoke = payload["workspace_state"]["desktop_smoke"]
+    assert desktop_smoke["schema_version"] == "scholar_ai_desktop_smoke_state_v1"
+    assert desktop_smoke["available"] is True
+    assert desktop_smoke["read_only"] is True
+    assert desktop_smoke["run_id"] == "n75-desktop-smoke"
+    assert desktop_smoke["status"] == "passed"
+    assert desktop_smoke["initial_path"] == "/__desktop_acceptance/agent-workspace"
+    assert desktop_smoke["expected_initial_path"] == "/__desktop_acceptance/agent-workspace"
+    assert desktop_smoke["candidate_count"] == 2
+    assert desktop_smoke["ignored_count"] == 1
+    assert desktop_smoke["summary_path"] == "generated/desktop_smoke/n75-desktop-smoke/summary.json"
+    assert desktop_smoke["screenshot_path"] == "generated/desktop_smoke/n75-desktop-smoke/window.png"
+    assert desktop_smoke["accessibility_tree_path"] == "generated/desktop_smoke/n75-desktop-smoke/accessibility-tree.json"
+    assert desktop_smoke["screenshot_nonblank"] is True
+    assert desktop_smoke["accessibility_tree_available"] is True
+    assert desktop_smoke["accessibility_tree_root_name"] == "文献助手"
+    assert desktop_smoke["accessibility_tree_root_control_type"] == "窗口"
+    assert desktop_smoke["accessibility_tree_node_count"] == 20
+    assert desktop_smoke["accessibility_tree_named_node_count"] == 9
+    assert desktop_smoke["warnings"] == ["native window could not be foregrounded before screenshot"]
+    assert desktop_smoke["errors"] == []
     goal_state = payload["workspace_state"]["goal_state"]
     assert goal_state["available"] is True
     assert goal_state["path"] == "docs/plans/longrun-goal-state-local.json"
-    assert goal_state["checkpoint_id"] == "20260622-214730-n41-goal-state-record-update"
-    assert goal_state["requirement_count"] == 49
-    assert goal_state["proved_count"] == 47
-    assert goal_state["incomplete_count"] == 1
-    assert goal_state["out_of_scope_count"] == 1
-    assert goal_state["latest_requirement_id"] == "N41-goal-state-workspace-visibility"
+    assert goal_state["checkpoint_id"] == "20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio"
+    assert goal_state["requirement_count"] == 125
+    assert goal_state["proved_count"] == 125
+    assert goal_state["incomplete_count"] == 0
+    assert goal_state["out_of_scope_count"] == 0
+    assert goal_state["latest_requirement_id"] == "N112-sandboxpolicy-current-state-alignment"
     assert goal_state["requirement_status"] == {
-        "total": 49,
-        "proved": 47,
-        "incomplete": 1,
-        "out_of_scope": 1,
-        "latest_id": "N41-goal-state-workspace-visibility",
+        "total": 125,
+        "proved": 125,
+        "incomplete": 0,
+        "out_of_scope": 0,
+        "latest_id": "N112-sandboxpolicy-current-state-alignment",
     }
-    assert goal_state["open_requirements"] == [
-        {
-            "id": "B01-computer-use-accessibility-tree",
-            "status": "incomplete",
-            "requirement": "Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.",
-            "residual_risk": "Retry only after the external tool error is fixed.",
-        }
-    ]
-    assert goal_state["completion_claim"]["this_slice"] == "N41 made goal-state recovery visible."
+    assert goal_state["open_requirements"] == []
+    assert goal_state["completion_claim"]["this_slice"] == (
+        "N112 aligned current recovery state with local UIA accessibility-tree evidence."
+    )
     assert goal_state["completion_claim"]["full_goal"] == "The full Scholar AI workflow spine remains active, not complete."
     probes = payload["workspace_state"]["recovery_probes"]
     assert [probe["label"] for probe in probes] == [
+        "Desktop Smoke Evidence",
+        "OCR Runtime Status",
         "Workflow Passport",
         "Evidence Integrity Gate",
         "Research Action Lifecycle",
@@ -163,6 +225,15 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
         "Goal Requirement Drilldown",
     ]
     assert all(probe["read_only"] is True for probe in probes)
+    desktop_probe = next(probe for probe in probes if probe["label"] == "Desktop Smoke Evidence")
+    assert desktop_probe["route"] == "/api/agent-workspace/status"
+    assert desktop_probe["mcp_tool"] == "literature.agent_workspace_status"
+    assert "source desktop screenshot" in desktop_probe["purpose"]
+    ocr_probe = next(probe for probe in probes if probe["label"] == "OCR Runtime Status")
+    assert ocr_probe["route"] == "/api/pdf-backend/ocr-status"
+    assert ocr_probe["mcp_tool"] == "literature.ocr_status"
+    assert "OCR policy" in ocr_probe["purpose"]
+    assert "readiness blockers" in ocr_probe["purpose"]
     handoff_probe = next(probe for probe in probes if probe["label"] == "Agent Handoff Card")
     assert handoff_probe["route"] == "/runtime/job/{job_id}/agent-handoff-card"
     assert handoff_probe["requires_identifier"] is True
@@ -181,6 +252,7 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     serialized = json.dumps(payload, ensure_ascii=False)
     assert "sk-ant-api" not in serialized
     assert "Authorization: Bearer" not in serialized
+    assert str(tmp_path) not in serialized
 
 
 def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> None:
@@ -194,6 +266,8 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                 "current_objective": "sensitive full local objective should not be returned",
                 "rollback": {
                     "checkpoint_id": "20260622-213822-n41-goal-state-workspace-visibility",
+                    "latest_checkpoint_id": "20260626-061743-n201-agent-workspace-latest-checkpoint",
+                    "latest_goal_state_checkpoint_id": "20260626-061744-n201-goal-state-latest-checkpoint",
                     "checkpoint_path": "C:/Users/xiao/.codex/rollback-checkpoints/private",
                     "restore_command": "restore C:/Users/xiao/private",
                 },
@@ -201,10 +275,10 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                     {"id": "N39", "status": "proved"},
                     {"id": "N40", "status": "proved"},
                     {
-                        "id": "B01",
+                        "id": "E01",
                         "status": "incomplete",
-                        "requirement": "Computer Use accessibility-tree acceptance blocked at C:/Users/xiao/private/app",
-                        "residual_risk": "Retry only after sandboxPolicy is fixed.",
+                        "requirement": "External Computer Use package residual at C:/Users/xiao/private/app",
+                        "residual_risk": "Keep local UIA proof separate from external package residual risk.",
                     },
                     {
                         "id": "D01",
@@ -242,6 +316,41 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                     + "x" * 280,
                     "full_goal": "The full goal remains active and C:/Users/xiao/private must stay hidden.",
                 },
+                "goal_lifecycle_rollup": {
+                    "schema_version": "scholar_ai_goal_lifecycle_rollup_v1",
+                    "updated_at": "2026-06-25T23:59:30+08:00",
+                    "status": "active_requirements_proved_pending_authorized_gates",
+                    "is_goal_complete": False,
+                    "can_mark_goal_complete": False,
+                    "requirements_all_proved": True,
+                    "requirements_all_proved_or_out_of_scope": True,
+                    "latest_requirement_id": "N173-goal-lifecycle-rollup",
+                    "latest_slice_id": "N173-goal-lifecycle-rollup",
+                    "completion_blockers": [
+                        {
+                            "id": "actual_loading_gate_live_model_proof",
+                            "status": "blocked_pending_explicit_authorization",
+                            "requirement_surface": "Knowledge Runtime Pipeline at C:/Users/xiao/private",
+                            "missing_evidence": "Authorized live provider/model smoke artifact with verdict=ok.",
+                            "current_boundary": "Deterministic contract tests are proved only.",
+                        },
+                        {
+                            "id": "real_ocr_provider_execution",
+                            "status": "blocked_pending_explicit_authorization",
+                            "requirement_surface": "OCR local processing capability",
+                            "missing_evidence": "A real provider smoke without committed model cache.",
+                            "current_boundary": "Readiness endpoints are deterministically proved only.",
+                        },
+                        "git_persistence_user_signoff",
+                    ],
+                    "machine_readable_completion_rule": "Goal may be complete only when blockers are empty.",
+                    "why_not_complete": [
+                        "All requirement rows are proved, but goal-level proof gates remain.",
+                        "C:/Users/xiao/private should be redacted.",
+                        "Third visible reason.",
+                        "Fourth reason is intentionally omitted.",
+                    ],
+                },
                 "next_authorized_local_actions": [
                     "Create rollback checkpoint.",
                     "Search mature references.",
@@ -266,7 +375,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     assert summary.available is True
     assert summary.path == "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
     assert summary.updated_at == "2026-06-22T21:36:00+08:00"
-    assert summary.checkpoint_id == "20260622-213822-n41-goal-state-workspace-visibility"
+    assert summary.checkpoint_id == "20260626-061744-n201-goal-state-latest-checkpoint"
     assert summary.requirement_count == 8
     assert summary.proved_count == 2
     assert summary.incomplete_count == 1
@@ -277,9 +386,9 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     assert summary.requirement_status.incomplete == 1
     assert summary.requirement_status.out_of_scope == 1
     assert summary.requirement_status.latest_id == "C02"
-    assert [item.id for item in summary.open_requirements] == ["B01", "D01", "M01", "W01", "C01"]
+    assert [item.id for item in summary.open_requirements] == ["E01", "D01", "M01", "W01", "C01"]
     assert summary.open_requirements[0].requirement == (
-        "Computer Use accessibility-tree acceptance blocked at [redacted-local-path]"
+        "External Computer Use package residual at [redacted-local-path]"
     )
     assert summary.open_requirements[1].residual_risk == (
         "Future write-path safety tests need [redacted-local-path] redaction."
@@ -292,6 +401,29 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     assert len(summary.completion_claim.this_slice) == agent_workspace_router.MAX_GOAL_COMPLETION_CHARS
     assert summary.completion_claim.this_slice.startswith("N41 exposed bounded recovery state")
     assert summary.completion_claim.full_goal == "The full goal remains active and [redacted-local-path] must stay hidden."
+    assert summary.lifecycle_rollup.schema_version == "scholar_ai_goal_lifecycle_rollup_v1"
+    assert summary.lifecycle_rollup.status == "active_requirements_proved_pending_authorized_gates"
+    assert summary.lifecycle_rollup.is_goal_complete is False
+    assert summary.lifecycle_rollup.can_mark_goal_complete is False
+    assert summary.lifecycle_rollup.requirements_all_proved is True
+    assert summary.lifecycle_rollup.requirements_all_proved_or_out_of_scope is True
+    assert summary.lifecycle_rollup.latest_requirement_id == "N173-goal-lifecycle-rollup"
+    assert summary.lifecycle_rollup.latest_slice_id == "N173-goal-lifecycle-rollup"
+    assert len(summary.lifecycle_rollup.completion_blockers) == 3
+    assert summary.lifecycle_rollup.completion_blockers[0].id == "actual_loading_gate_live_model_proof"
+    assert summary.lifecycle_rollup.completion_blockers[0].requirement_surface == (
+        "Knowledge Runtime Pipeline at [redacted-local-path]"
+    )
+    assert summary.lifecycle_rollup.completion_blockers[2].id == "git_persistence_user_signoff"
+    assert summary.lifecycle_rollup.completion_blockers[2].status is None
+    assert summary.lifecycle_rollup.machine_readable_completion_rule == (
+        "Goal may be complete only when blockers are empty."
+    )
+    assert summary.lifecycle_rollup.why_not_complete == [
+        "All requirement rows are proved, but goal-level proof gates remain.",
+        "[redacted-local-path] should be redacted.",
+        "Third visible reason.",
+    ]
     assert summary.next_authorized_local_actions == [
         "Create rollback checkpoint.",
         "Search mature references.",
@@ -303,6 +435,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     assert "restore_command" not in serialized
     assert "C:/Users/xiao" not in serialized
     assert "sixth open row" not in serialized
+    assert "Fourth reason is intentionally omitted." not in serialized
 
 
 def test_goal_requirement_drilldown_is_bounded_and_path_safe(tmp_path, monkeypatch) -> None:
@@ -315,16 +448,18 @@ def test_goal_requirement_drilldown_is_bounded_and_path_safe(tmp_path, monkeypat
                 "updated_at": "2026-06-22T21:36:00+08:00",
                 "rollback": {
                     "checkpoint_id": "20260622-213822-n41-goal-state-workspace-visibility",
+                    "latest_checkpoint_id": "20260626-061743-n201-agent-workspace-latest-checkpoint",
+                    "latest_goal_state_checkpoint_id": "20260626-061744-n201-goal-state-latest-checkpoint",
                     "checkpoint_path": "C:/Users/xiao/.codex/rollback-checkpoints/private",
                     "restore_command": "restore C:/Users/xiao/private",
                 },
                 "requirements": [
                     {"id": "N39", "status": "proved", "requirement": "proved row"},
                     {
-                        "id": "B01",
+                        "id": "E01",
                         "status": "incomplete",
-                        "requirement": "Computer Use accessibility-tree acceptance blocked at C:/Users/xiao/private/app",
-                        "residual_risk": "Retry only after sandboxPolicy is fixed.",
+                        "requirement": "External Computer Use package residual at C:/Users/xiao/private/app",
+                        "residual_risk": "Keep local UIA proof separate from external package residual risk.",
                         "evidence": [
                             {
                                 "id": "router-test",
@@ -364,7 +499,7 @@ def test_goal_requirement_drilldown_is_bounded_and_path_safe(tmp_path, monkeypat
     client = TestClient(server.app)
 
     response = client.get(
-        "/api/agent-workspace/goal-requirements/B01",
+        "/api/agent-workspace/goal-requirements/E01",
         headers={server.LOCAL_API_CAPABILITY_HEADER: server.get_local_api_capability_token()},
     )
 
@@ -375,11 +510,11 @@ def test_goal_requirement_drilldown_is_bounded_and_path_safe(tmp_path, monkeypat
     assert payload["read_only"] is True
     assert payload["path"] == "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
     assert payload["updated_at"] == "2026-06-22T21:36:00+08:00"
-    assert payload["checkpoint_id"] == "20260622-213822-n41-goal-state-workspace-visibility"
-    assert payload["id"] == "B01"
+    assert payload["checkpoint_id"] == "20260626-061744-n201-goal-state-latest-checkpoint"
+    assert payload["id"] == "E01"
     assert payload["status"] == "incomplete"
-    assert payload["requirement"] == "Computer Use accessibility-tree acceptance blocked at [redacted-local-path]"
-    assert payload["residual_risk"] == "Retry only after sandboxPolicy is fixed."
+    assert payload["requirement"] == "External Computer Use package residual at [redacted-local-path]"
+    assert payload["residual_risk"] == "Keep local UIA proof separate from external package residual risk."
     assert payload["evidence_count"] == 9
     assert payload["truncated"] is True
     assert len(payload["evidence"]) == agent_workspace_router.MAX_GOAL_REQUIREMENT_EVIDENCE
@@ -404,7 +539,7 @@ def test_goal_requirement_drilldown_reports_missing_id(tmp_path, monkeypatch) ->
         json.dumps(
             {
                 "updated_at": "2026-06-22T21:36:00+08:00",
-                "requirements": [{"id": "B01", "status": "incomplete"}],
+                "requirements": [{"id": "E01", "status": "incomplete"}],
             },
             ensure_ascii=False,
         ),

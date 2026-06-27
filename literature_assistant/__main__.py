@@ -41,7 +41,7 @@ def _path_report() -> dict[str, str]:
 def _wiki_status_report() -> dict[str, object]:
     from literature_assistant.core.routers.wiki_router import wiki_status
 
-    return wiki_status().model_dump()
+    return wiki_status(user_id=None).model_dump()
 
 
 def _wiki_doctor_report() -> dict[str, object]:

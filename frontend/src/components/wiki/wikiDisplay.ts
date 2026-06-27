@@ -33,6 +33,19 @@ export function formatWikiWarning(value: unknown): string {
   if (raw.includes('Wiki integration is disabled')) {
     return 'Wiki 集成尚未启用。';
   }
+  const normalized = raw.toLowerCase();
+  if (normalized.includes('source manifest hash differs')) {
+    return 'Wiki 来源清单已变化，检索索引需要重新生成。';
+  }
+  if (normalized.includes('page count differs')) {
+    return 'Wiki 页面数量与检索索引不一致。';
+  }
+  if (normalized.includes('row count differs')) {
+    return 'Wiki 检索索引记录数不一致。';
+  }
+  if (normalized.includes('does not record a source manifest hash')) {
+    return 'Wiki 检索索引缺少来源清单记录。';
+  }
   return sanitizeWikiVisibleText(raw, '检测到一项需要处理的 Wiki 状态。');
 }
 

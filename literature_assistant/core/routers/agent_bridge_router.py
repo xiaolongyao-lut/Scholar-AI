@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Any, Literal
@@ -15,8 +17,21 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from datetime_utils import utc_now_iso_z
 from harness_protocols import ArtifactType, JobKind, JobStatus
 from models import ArtifactPayload, JobPayload, SessionPayload, ToolAttempt, ToolNextAction, ToolOutcome
+from literature_assistant.core.academic_english_resources import read_academic_english_resource
+from literature_assistant.core.config_knowledge import read_scoring_rules_resource
+from literature_assistant.core.product_docs_knowledge import read_product_docs_resource
+from literature_assistant.core.tolf_bridge_lexicon_store import read_bridge_lexicon_resource
+from literature_assistant.core.source_vault import (
+    SourceVault,
+    build_source_vault_chunk_metadata,
+    build_source_vault_chunk_read_endpoint,
+    build_source_vault_chunk_ref_id,
+    bounded_text,
+)
+from literature_assistant.core.skill_package_knowledge import read_skill_package_resource
 from literature_assistant.core.project_paths import wiki_generated_root
 from literature_assistant.core.wiki.page_store import AUTO_END, AUTO_START, WikiPageStore
+from literature_assistant.core.wiki.source_registry import derive_chunk_id
 
 
 router = APIRouter(prefix="/api/agent-bridge", tags=["Agent Bridge"])
@@ -1761,7 +1776,19 @@ def _split_ref_id(ref_id: str) -> tuple[str, str]:
     kind, raw_id = ref_id.split(":", 1)
     kind = kind.strip().lower()
     raw_id = raw_id.strip()
-    if kind not in {"material", "chunk", "project", "draft", "wiki"}:
+    if kind not in {
+        "material",
+        "chunk",
+        "project",
+        "draft",
+        "wiki",
+        "academic_english",
+        "bridge_lexicon",
+        "source_vault",
+        "skill_package",
+        "scoring_rules",
+        "product_docs",
+    }:
         raise HTTPException(status_code=400, detail=f"unsupported resource kind: {kind}")
     if not raw_id:
         raise HTTPException(status_code=400, detail="resource id is required")
@@ -1779,6 +1806,18 @@ def _resolve_resource(kind: str, raw_id: str, *, project_id: str | None) -> dict
         return _draft_resource(raw_id)
     if kind == "wiki":
         return _wiki_resource(raw_id)
+    if kind == "academic_english":
+        return _academic_english_resource(raw_id)
+    if kind == "bridge_lexicon":
+        return _bridge_lexicon_resource(raw_id)
+    if kind == "source_vault":
+        return _source_vault_resource(raw_id, project_id=project_id)
+    if kind == "skill_package":
+        return _skill_package_resource(raw_id)
+    if kind == "scoring_rules":
+        return _scoring_rules_resource(raw_id)
+    if kind == "product_docs":
+        return _product_docs_resource(raw_id)
     raise HTTPException(status_code=400, detail=f"unsupported resource kind: {kind}")
 
 
@@ -1884,17 +1923,122 @@ def _wiki_resource(raw_page_path: str) -> dict[str, Any]:
     content = store.read_page(relative_path)
     if content is None:
         raise HTTPException(status_code=404, detail=f"Wiki page not found: {relative_path.as_posix()}")
+    frontmatter, _body = _split_wiki_resource_frontmatter(str(content))
     text = _strip_wiki_resource_markers(str(content))
+    page_path = relative_path.as_posix()
+    ref_id = f"wiki:{page_path}"
+    source_hash = hashlib.sha256(str(content).encode("utf-8")).hexdigest()
+    content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    chunk_id = f"{ref_id}#{derive_chunk_id(source_hash, 0)}"
+    metadata = {
+        "knowledge_ref_schema_version": "scholar-ai-wiki-knowledge-ref/v1",
+        "ref_id": ref_id,
+        "chunk_id": chunk_id,
+        "page_path": page_path,
+        "source_path": page_path,
+        "source": "wiki",
+        "source_type": "wiki",
+        "resource_kind": "chunk",
+        "source_hash": source_hash,
+        "content_hash": content_hash,
+        "span_start": 0,
+        "span_end": len(text),
+        "read_endpoint": f"/api/agent-bridge/resource/{ref_id}",
+    }
+    metadata.update(_wiki_import_source_metadata(frontmatter))
     return {
         "kind": "wiki",
         "project_id": None,
         "title": _wiki_resource_title(text, relative_path),
         "content": text,
-        "metadata": {
-            "page_path": relative_path.as_posix(),
-            "source": "wiki",
-        },
+        "metadata": metadata,
     }
+
+
+def _academic_english_resource(raw_ref: str) -> dict[str, Any]:
+    """Return one generated academic-English ref as a bounded resource."""
+
+    try:
+        return read_academic_english_resource(raw_ref)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _bridge_lexicon_resource(raw_ref: str) -> dict[str, Any]:
+    """Return one bridge-lexicon entry as a bounded resource."""
+
+    try:
+        return read_bridge_lexicon_resource(raw_ref)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _source_vault_resource(raw_ref: str, *, project_id: str | None) -> dict[str, Any]:
+    """Return one Source Vault chunk as a bounded resource."""
+
+    normalized_ref = str(raw_ref or "").strip()
+    if not normalized_ref:
+        raise HTTPException(status_code=400, detail="source vault ref is required")
+    if not normalized_ref.startswith("chunk:"):
+        raise HTTPException(status_code=400, detail="source vault refs must use chunk:<chunk_id>")
+    chunk_id = normalized_ref.split(":", 1)[1].strip()
+    if not chunk_id:
+        raise HTTPException(status_code=400, detail="source vault chunk id is required")
+    vault = SourceVault()
+    chunk = vault.get_chunk(chunk_id)
+    if chunk is None:
+        raise HTTPException(status_code=404, detail=f"Source Vault chunk not found: {chunk_id}")
+    source = vault.get_source(chunk.source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail=f"Source Vault source not found: {chunk.source_id}")
+    ref_id = build_source_vault_chunk_ref_id(chunk.chunk_id)
+    metadata = build_source_vault_chunk_metadata(source, chunk)
+    if project_id:
+        metadata["project_id"] = project_id
+    metadata["read_endpoint"] = build_source_vault_chunk_read_endpoint(chunk.chunk_id)
+    return {
+        "kind": "source_vault",
+        "project_id": project_id,
+        "title": source.title,
+        "content": chunk.text,
+        "metadata": metadata,
+        "ref_id": ref_id,
+    }
+
+
+def _skill_package_resource(raw_ref: str) -> dict[str, Any]:
+    """Return one repo-local Skill package chunk as a bounded resource."""
+
+    try:
+        return read_skill_package_resource(raw_ref)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _scoring_rules_resource(raw_ref: str) -> dict[str, Any]:
+    """Return one scoring-rules config section as a bounded resource."""
+
+    try:
+        return read_scoring_rules_resource(raw_ref)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _product_docs_resource(raw_ref: str) -> dict[str, Any]:
+    """Return one repo-local product-doc chunk as a bounded resource."""
+
+    try:
+        return read_product_docs_resource(raw_ref)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 def _normalize_wiki_resource_path(raw_page_path: str) -> Path:
@@ -1918,21 +2062,60 @@ def _normalize_wiki_resource_path(raw_page_path: str) -> Path:
 def _strip_wiki_resource_markers(content: str) -> str:
     """Return readable wiki body text while preserving page frontmatter context."""
 
+    _frontmatter, body = _split_wiki_resource_frontmatter(content)
     lines: list[str] = []
-    in_frontmatter = False
-    for index, line in enumerate(str(content or "").splitlines()):
+    for line in str(body or "").splitlines():
         stripped = line.strip()
-        if index == 0 and stripped == "---json":
-            in_frontmatter = True
-            continue
-        if in_frontmatter:
-            if stripped == "---":
-                in_frontmatter = False
-            continue
         if stripped in {AUTO_START, AUTO_END}:
             continue
         lines.append(line)
     return "\n".join(lines).strip()
+
+
+def _split_wiki_resource_frontmatter(content: str) -> tuple[dict[str, Any], str]:
+    """Split JSON frontmatter from a generated wiki page."""
+
+    text = str(content or "")
+    lines = text.splitlines()
+    if lines and lines[0].strip() == "---json":
+        frontmatter_lines: list[str] = []
+        for index, line in enumerate(lines[1:], start=1):
+            if line.strip() == "---":
+                try:
+                    payload = json.loads("\n".join(frontmatter_lines))
+                except json.JSONDecodeError:
+                    payload = {}
+                frontmatter = payload if isinstance(payload, dict) else {}
+                return frontmatter, "\n".join(lines[index + 1 :])
+            frontmatter_lines.append(line)
+    return {}, text
+
+
+def _wiki_import_source_metadata(frontmatter: dict[str, Any]) -> dict[str, str]:
+    """Return safe local-import provenance fields stored in wiki frontmatter."""
+
+    if not isinstance(frontmatter, dict):
+        return {}
+    extra = frontmatter.get("extra")
+    if not isinstance(extra, dict):
+        return {}
+    import_source = extra.get("import_source")
+    if not isinstance(import_source, dict):
+        return {}
+    metadata: dict[str, str] = {}
+    source_hash = str(import_source.get("sha256") or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{64}", source_hash):
+        metadata["import_source_hash"] = source_hash
+    source_path = str(import_source.get("path") or "").strip()
+    if source_path:
+        metadata["import_source_path"] = source_path[:500]
+    source_type = str(import_source.get("type") or "").strip()
+    if source_type:
+        metadata["import_source_type"] = source_type[:80]
+    entry_source = str(extra.get("entry_source") or "").strip()
+    if entry_source:
+        metadata["entry_source"] = entry_source[:80]
+    return metadata
 
 
 def _wiki_resource_title(content: str, relative_path: Path) -> str:

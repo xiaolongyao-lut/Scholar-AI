@@ -32,7 +32,9 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
   const staleTone = status?.stale
     ? 'text-red-700 bg-red-50 border-red-200/80 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300'
     : 'text-slate-600 bg-surface-high border-outline-variant/40';
+  const integrity = status ? buildIntegritySummary(status) : null;
   const resourceRows = status ? buildResourceRows(status) : [];
+  const manifestDriftRows = status ? buildManifestDriftRows(status) : [];
 
   return (
     <section className="glass-card rounded-2xl p-6 border border-outline-variant/40 shadow-sm">
@@ -48,6 +50,12 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
               {status?.stale ? <AlertTriangle size={12} /> : <CheckCircle2 size={12} />}
               {status?.stale ? '需要重新生成' : '内容为最新'}
             </span>
+            {integrity ? (
+              <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-label', integrity.tone)}>
+                {integrity.blocking ? <AlertTriangle size={12} /> : <ShieldCheck size={12} />}
+                {integrity.label}
+              </span>
+            ) : null}
           </div>
           <h2 className="font-display text-2xl font-semibold text-foreground">Wiki 状态总览</h2>
         </div>
@@ -141,6 +149,63 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
         </div>
       </div>
 
+      {integrity ? (
+        <div
+          role="status"
+          aria-label="Wiki 来源完整性"
+          className={cn(
+            'mt-5 rounded-2xl border px-4 py-4',
+            integrity.blocking
+              ? 'border-amber-200/80 bg-amber-50/80 dark:border-amber-700/40 dark:bg-amber-500/15'
+              : 'border-outline-variant/30 bg-surface-lowest/70',
+          )}
+        >
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="font-label text-[11px] tracking-[0.2em] text-foreground/45">来源完整性</div>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-label', integrity.tone)}>
+                  {integrity.blocking ? <AlertTriangle size={12} /> : <CheckCircle2 size={12} />}
+                  {integrity.label}
+                </span>
+                <span className="text-xs text-foreground/55">模型上下文：{integrity.contextLabel}</span>
+              </div>
+            </div>
+            <div className="grid min-w-0 gap-2 text-xs text-foreground/60 sm:grid-cols-3 lg:min-w-[420px]">
+              <div className="rounded-xl border border-outline-variant/30 bg-surface-high/70 px-3 py-2">
+                <div className="text-[10px] text-foreground/40">源页 / 索引页</div>
+                <div className="mt-1 font-label text-foreground">{integrity.sourcePages} / {integrity.indexedPages}</div>
+              </div>
+              <div className="rounded-xl border border-outline-variant/30 bg-surface-high/70 px-3 py-2">
+                <div className="text-[10px] text-foreground/40">来源清单</div>
+                <div className="mt-1 truncate font-mono text-[11px] text-foreground">{integrity.sourceHash}</div>
+              </div>
+              <div className="rounded-xl border border-outline-variant/30 bg-surface-high/70 px-3 py-2">
+                <div className="text-[10px] text-foreground/40">索引清单</div>
+                <div className="mt-1 truncate font-mono text-[11px] text-foreground">{integrity.indexedHash}</div>
+              </div>
+            </div>
+          </div>
+          {manifestDriftRows.length ? (
+            <div className="mt-4 grid gap-2 lg:grid-cols-3">
+              {manifestDriftRows.map((row) => (
+                <div key={row.key} className="min-w-0 rounded-xl border border-outline-variant/30 bg-surface-high/70 px-3 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-label text-[11px] text-foreground/60">{row.label}</span>
+                    <span className="font-label text-xs text-foreground">{row.count}</span>
+                  </div>
+                  {row.samples.length ? (
+                    <div className="mt-2 truncate font-mono text-[11px] text-foreground/55">
+                      {row.samples.join(' · ')}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {status?.warnings?.length ? (
         <div className="mt-5 rounded-2xl border border-amber-200/80 bg-amber-50/80 px-4 py-4 dark:border-amber-700/40 dark:bg-amber-500/15">
           <div className="font-label text-[11px] tracking-[0.2em] text-amber-700/80 dark:text-amber-300/80">告警</div>
@@ -190,4 +255,124 @@ function buildResourceRows(status: WikiStatusModel): Array<{
       exists: status.review_queue_exists,
     },
   ];
+}
+
+function buildManifestDriftRows(status: WikiStatusModel): Array<{
+  key: string;
+  label: string;
+  count: number;
+  samples: string[];
+}> {
+  const drilldown = status.manifest_drilldown;
+  const rows = [
+    {
+      key: 'missing',
+      label: '源页未入索引',
+      count: drilldown.missing_count,
+      pages: drilldown.missing_pages,
+    },
+    {
+      key: 'extra',
+      label: '索引多余页',
+      count: drilldown.extra_count,
+      pages: drilldown.extra_pages,
+    },
+    {
+      key: 'mismatched',
+      label: 'Hash 不一致',
+      count: drilldown.mismatched_count,
+      pages: drilldown.mismatched_pages,
+    },
+  ];
+  return rows
+    .filter((row) => row.count > 0)
+    .map((row) => ({
+      key: row.key,
+      label: row.label,
+      count: row.count,
+      samples: row.pages.slice(0, 3).map(formatManifestPageSample),
+    }));
+}
+
+function formatManifestPageSample(page: WikiStatusModel['manifest_drilldown']['missing_pages'][number]): string {
+  return page.redacted ? '已隐藏路径' : page.page_path;
+}
+
+function buildIntegritySummary(status: WikiStatusModel): {
+  label: string;
+  tone: string;
+  blocking: boolean;
+  contextLabel: string;
+  sourcePages: string;
+  indexedPages: string;
+  sourceHash: string;
+  indexedHash: string;
+} {
+  const normalized = status.integrity_status.trim() || 'unknown';
+  const blocking = status.enabled && !['aligned', 'indexed_manifest_recorded', 'empty_no_index', 'disabled'].includes(normalized);
+  return {
+    label: wikiIntegrityLabel(normalized),
+    tone: wikiIntegrityTone(normalized, blocking),
+    blocking,
+    contextLabel: wikiIntegrityContextLabel(status.enabled, normalized, blocking),
+    sourcePages: status.source_page_count === null ? '未知' : String(status.source_page_count),
+    indexedPages: String(status.indexed_page_count),
+    sourceHash: shortDigest(status.source_manifest_hash),
+    indexedHash: shortDigest(status.indexed_source_manifest_hash),
+  };
+}
+
+function wikiIntegrityLabel(status: string): string {
+  const labels: Record<string, string> = {
+    aligned: '来源已对齐',
+    indexed_manifest_recorded: '已记录来源清单',
+    empty_no_index: '暂无索引',
+    empty_unproven: '空索引未证明',
+    disabled: '完整性未启用',
+    missing_index: '缺少检索索引',
+    unreadable_index: '索引不可读取',
+    missing_manifest: '缺少来源清单',
+    page_count_mismatch: '页面数不一致',
+    source_hash_mismatch: '来源已变更',
+    index_count_mismatch: '索引记录不一致',
+    unknown: '完整性未知',
+  };
+  return labels[status] ?? '完整性未知';
+}
+
+function wikiIntegrityTone(status: string, blocking: boolean): string {
+  if (status === 'aligned') {
+    return 'text-emerald-700 bg-emerald-50 border-emerald-200/80 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300';
+  }
+  if (blocking) {
+    return 'text-amber-800 bg-amber-50 border-amber-200/80 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300';
+  }
+  return 'text-slate-600 bg-surface-high border-outline-variant/40';
+}
+
+function wikiIntegrityContextLabel(enabled: boolean, status: string, blocking: boolean): string {
+  if (!enabled || status === 'disabled') {
+    return '未启用';
+  }
+  if (status === 'aligned') {
+    return '允许 Wiki 引用';
+  }
+  if (blocking) {
+    return '阻断 Wiki 引用';
+  }
+  if (status === 'empty_no_index') {
+    return '暂无可用索引';
+  }
+  if (status === 'indexed_manifest_recorded') {
+    return '待来源复核';
+  }
+  return '暂不进入';
+}
+
+function shortDigest(value: string): string {
+  const normalized = value.trim();
+  if (!normalized || normalized === 'unknown' || normalized === 'none') {
+    return '未记录';
+  }
+  return normalized.slice(0, 12);
 }

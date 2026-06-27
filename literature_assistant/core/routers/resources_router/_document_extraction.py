@@ -7,16 +7,19 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 try:
     from pdf_backends import (
         StructuredBlock,
         get_pdf_backend,
     )
+    from pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed
     from pdf_backends.pymupdf_backend import PyMuPDFBackend
 except ImportError:  # pragma: no cover — only triggered in misconfigured envs
     StructuredBlock = None  # type: ignore[assignment]
     get_pdf_backend = None  # type: ignore[assignment]
+    apply_pdf_ocr_if_needed = None  # type: ignore[assignment]
     PyMuPDFBackend = None  # type: ignore[assignment]
 
 
@@ -49,6 +52,7 @@ class ExtractedDocumentPayload:
     content: str
     blocks: list[StructuredBlock] | None = None  # type: ignore[valid-type]
     markdown_full: str | None = None
+    ocr_report: object | None = None
 
 
 def _extract_document_content(filename: str, raw: bytes) -> str:
@@ -210,11 +214,14 @@ def _extract_document_payload_from_path(
         backend = get_pdf_backend()
         try:
             text, blocks, markdown_full = backend.parse(source_path)
-            return ExtractedDocumentPayload(
+            payload = ExtractedDocumentPayload(
                 content=text,
                 blocks=blocks,
                 markdown_full=markdown_full,
             )
+            if apply_pdf_ocr_if_needed is None:
+                return payload
+            return cast(ExtractedDocumentPayload, apply_pdf_ocr_if_needed(filename, source_path, payload))
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             _LOGGER.warning(
                 "PDF backend %r failed parsing %s: %s; "

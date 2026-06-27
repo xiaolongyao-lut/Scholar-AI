@@ -16,6 +16,14 @@ jobs:
     timeout-minutes: 20
     env:
       PYTHONPATH: literature_assistant/core
+      PYTHONUTF8: "1"
+      RUNTIME_ENV_DISABLE_DOTENV: "1"
+      LITERATURE_ASSISTANT_RUNTIME_STATE_ROOT: ${{ github.workspace }}/workspace_artifacts/runtime_state/pytest_ci
+      LITERATURE_ASSISTANT_USER_ROOT: ${{ github.workspace }}/workspace_artifacts/pytest/pytest_ci
+      LITASSIST_DISABLE_FILE_LOG: "1"
+      LITASSIST_DISABLE_ROUTE_DUMP: "1"
+      LITASSIST_API_CAPABILITY_AUTH: "0"
+      LITASSIST_CREDENTIAL_SECRET_BACKEND: plaintext_file
 
     steps:
       - name: Checkout
@@ -41,7 +49,67 @@ jobs:
         run: |
           python -X utf8 -m compileall -q literature_assistant run_literature_assistant.py sitecustomize.py
 
-      - name: Collect Backend Tests
-        if: ${{ hashFiles('tests/**/*.py') != '' }}
+      - name: Run Focused Contract Tests
+        if: ${{ hashFiles('tests/**/*.py', 'agent_mcp_server/tests/**/*.py') != '' }}
         run: |
-          python -X utf8 -m pytest tests --collect-only -q
+          python -X utf8 -m pytest \
+            tests/test_provider_probe.py \
+            tests/test_api_chat_local_literature_tool_use.py \
+            tests/test_evidence_pack_build_contract.py \
+            tests/test_knowledge_router.py \
+            tests/test_live_api_chat_knowledge_context_receipt_smoke_harness.py \
+            tests/test_agent_bridge_router.py \
+            tests/test_agent_workspace_router.py \
+            tests/test_agent_workspace_mcp_contract.py \
+            tests/test_runtime_lifecycle_app_contract.py \
+            tests/test_runtime_router_contract.py \
+            tests/test_ocr_classifier.py \
+            tests/test_ocr_engine_registry.py \
+            tests/test_ocr_ingestion.py \
+            tests/test_ci_visibility_contract.py \
+            tests/test_wiki_crud.py \
+            tests/wiki/test_query.py \
+            tests/wiki/test_wiki_router.py \
+            tests/wiki/test_doctor.py \
+            agent_mcp_server/tests/test_runtime_tools.py \
+            agent_mcp_server/tests/test_server.py \
+            agent_mcp_server/tests/test_stdio_smoke.py \
+            -q
+
+  frontend-wiki-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Typecheck Frontend Evidence Surface
+        run: npm exec tsc -- --noEmit
+
+      - name: Run Wiki Frontend Evidence Tests
+        run: |
+          npm run test -- --run \
+            src/services/agentWorkspaceApi.test.ts \
+            src/services/knowledgeApi.test.tsx \
+            src/services/wikiApi.test.ts \
+            src/components/knowledge/KnowledgePackagesPanel.test.tsx \
+            src/components/wiki/wikiDisplay.test.ts \
+            src/components/wiki/WikiImportMarkdownPanel.test.tsx \
+            src/components/wiki/WikiStatusCard.test.tsx \
+            src/pages/AgentWorkspace.test.tsx \
+            src/pages/DesktopAcceptanceAgentWorkspace.test.tsx \
+            src/pages/WikiWorkbench.test.tsx

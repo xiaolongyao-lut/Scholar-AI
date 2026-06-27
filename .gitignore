@@ -79,6 +79,21 @@
 !/docs/MCP_SECURITY_ISOLATION.md
 !/docs/OPTIONAL_ADDONS.md
 !/docs/local-rerank-fallback-models.md
+!/docs/plans/
+/docs/plans/*
+!/docs/plans/autonomous-execution-framework.md
+!/docs/plans/autonomous-execution-planning-playbook.md
+!/docs/plans/longrun-goal-state-2026-06-19.json
+!/docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json
+!/docs/plans/scholar-ai-reference-derived-code-plan-2026-06-19.md
+!/docs/plans/scholar-ai-reference-derived-code-plan-verification-audit-2026-06-20.md
+!/docs/plans/scholar-ai-desktop-pywebview-smoke-2026-06-20.md
+!/docs/plans/scholar-ai-source-boundary-staging-readiness-2026-06-20.md
+!/docs/plans/scholar-ai-real-provider-api-smoke-2026-06-20.md
+!/docs/plans/scholar-ai-pre-stage-dry-run-2026-06-20.md
+!/docs/plans/runbooks/
+/docs/plans/runbooks/*
+!/docs/plans/runbooks/longrun-local-supervisor.md
 
 # Public installable Literature Assistant extension packages.
 # Commit only packages that the app can scan/install directly:
@@ -143,7 +158,20 @@ htmlcov/
 /frontend/**/*.test.ts
 /frontend/**/*.test.tsx
 /frontend/**/*.test.mjs
+!/frontend/src/components/chat/MessageRenderer.test.tsx
+!/frontend/src/components/graph/DimensionGraphViewer.test.tsx
+!/frontend/src/components/graph/semanticReviewSpec.test.ts
+!/frontend/src/pages/AgentWorkspace.test.tsx
 !/frontend/src/pages/DesktopAcceptanceAgentWorkspace.test.tsx
+!/frontend/src/pages/WikiWorkbench.test.tsx
+!/frontend/src/components/wiki/WikiImportMarkdownPanel.test.tsx
+!/frontend/src/components/wiki/WikiStatusCard.test.tsx
+!/frontend/src/components/wiki/wikiDisplay.test.ts
+!/frontend/src/components/knowledge/KnowledgePackagesPanel.test.tsx
+!/frontend/src/services/agentWorkspaceApi.test.ts
+!/frontend/src/services/wikiApi.test.ts
+!/frontend/src/services/knowledgeApi.test.tsx
+!/frontend/src/pages/Jobs.test.tsx
 !/frontend/src/pages/Settings.test.tsx
 /frontend/playwright.config.ts
 /frontend/vite.config.e2e.ts
@@ -189,6 +217,11 @@ htmlcov/
 !/scripts/smoke_windows_release.ps1
 /skills/
 /tools/
+!/tools/
+/tools/*
+!/tools/longrun/
+/tools/longrun/*
+!/tools/longrun/longrun-prompt.md
 # Third-party package copies must live under /extension_packages only when they
 # are Literature Assistant installable packages; do not embed them in runtime code.
 /literature_assistant/core/skills/importers/ui-ux-pro-max/
@@ -200,6 +233,28 @@ htmlcov/
 /workspace_artifacts/
 /workspace_references/
 /workspace_tests/
+!/workspace_tests/
+/workspace_tests/*
+!/workspace_tests/evaluation_manifests/
+/workspace_tests/evaluation_manifests/*
+!/workspace_tests/evaluation_manifests/rerank_canary_dry_run_sample.json
+!/workspace_tests/evaluation_manifests/rerank_canary_queries.jsonl
+!/workspace_tests/evaluation_manifests/rerank_canary_qrels.jsonl
+!/workspace_tests/fixtures/
+/workspace_tests/fixtures/*
+!/workspace_tests/fixtures/wiki_graph_doctor_smoke/
+/workspace_tests/fixtures/wiki_graph_doctor_smoke/*
+!/workspace_tests/fixtures/wiki_graph_doctor_smoke/pages/
+/workspace_tests/fixtures/wiki_graph_doctor_smoke/pages/*
+!/workspace_tests/fixtures/wiki_graph_doctor_smoke/pages/concepts/
+/workspace_tests/fixtures/wiki_graph_doctor_smoke/pages/concepts/*
+!/workspace_tests/fixtures/wiki_eval_smoke/
+/workspace_tests/fixtures/wiki_eval_smoke/*
+!/workspace_tests/fixtures/wiki_eval_smoke/manifest.json
+!/workspace_tests/fixtures/wiki_eval_smoke/pages/
+/workspace_tests/fixtures/wiki_eval_smoke/pages/*
+!/workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/
+/workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/*
 
 # Workspace scratch areas. Public tests and release scripts may be promoted
 # explicitly under SOURCE_RELEASE_POLICY.md; generated evaluation data stays
@@ -221,6 +276,9 @@ htmlcov/
 !/tests/test_local_rerank_status_endpoint.py
 !/tests/test_metadata_linter_api.py
 !/tests/test_pdf_backend_router.py
+!/tests/test_ocr_classifier.py
+!/tests/test_ocr_engine_registry.py
+!/tests/test_ocr_ingestion.py
 !/tests/test_pyinstaller_hiddenimports.py
 !/tests/test_pyproject_runtime_metadata.py
 !/tests/test_rag_structured_sibling_inclusion.py
@@ -230,6 +288,7 @@ htmlcov/
 !/tests/test_start_launchers_security.py
 !/tests/test_tolf_rag_fusion.py
 !/tests/test_wiki_crud.py
+!/tests/test_ci_visibility_contract.py
 !/tests/test_wiki_export.py
 !/tests/test_wiki_permissions.py
 !/tests/test_pdf_backends.py
@@ -241,9 +300,32 @@ htmlcov/
 !/tests/test_provider_endpoint_policy.py
 !/tests/test_key_pool_priority.py
 !/tests/test_env_example_contract.py
+!/tests/test_api_chat_local_literature_tool_use.py
+!/tests/test_api_probe_semantics.py
+!/tests/test_provider_probe.py
+!/tests/test_evidence_pack_build_contract.py
+!/tests/test_search_refs_contract.py
+!/tests/test_journal_metric_evidence.py
+!/tests/live_api_chat_full_writing_chain_smoke.py
+!/tests/test_live_api_chat_full_writing_chain_smoke_harness.py
+!/tests/live_api_chat_knowledge_context_receipt_smoke.py
+!/tests/test_live_api_chat_knowledge_context_receipt_smoke_harness.py
+!/tests/test_mcp_phase2_tool_loop.py
+!/tests/test_runtime_router_contract.py
+!/tests/test_runtime_lifecycle_app_contract.py
+!/tests/test_knowledge_router.py
+!/tests/test_agent_bridge_router.py
 !/tests/test_agent_workspace_router.py
 !/tests/test_agent_workspace_mcp_contract.py
+!/tests/test_writing_runtime_persistence.py
 !/tests/test_export_docx_contract.py
+!/tests/test_writing_submission_export.py
+!/tests/conftest.py
+!/tests/wiki/
+/tests/wiki/*
+!/tests/wiki/test_query.py
+!/tests/wiki/test_wiki_router.py
+!/tests/wiki/test_doctor.py
 /workspace_tests/benchmarks/results/
 /workspace_tests/diagnostics/
 /workspace_tests/evaluation_data/BASELINE_METRICS.json
@@ -269,6 +351,7 @@ htmlcov/
 /test_output.txt
 /final_test_result.txt
 /pytest.ini
+!/pytest.ini
 /.axe-linter.yml
 /eval_retrieval_runtime.py
 /gateb_phase_b_pool_export.py
@@ -303,3 +386,4 @@ htmlcov/
 
 # Stray root build chunks.
 /main-*.js
+.squad/

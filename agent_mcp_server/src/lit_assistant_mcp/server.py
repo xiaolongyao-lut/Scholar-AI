@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from .audit import AuditLog
 from .tools import (
@@ -91,6 +92,31 @@ def create_mcp_server(
         "literature.read_material": runtime.read_material,
         "literature.get_material_chunks": runtime.get_material_chunks,
         "literature.search_refs": runtime.search_refs,
+        "literature.knowledge_packages": runtime.knowledge_packages,
+        "literature.knowledge_runtime_conformance": runtime.knowledge_runtime_conformance,
+        "literature.ocr_status": runtime.ocr_status,
+        "literature.ocr_engines": runtime.ocr_engines,
+        "literature.ocr_health": runtime.ocr_health,
+        "literature.ocr_execution_probe": runtime.ocr_execution_probe,
+        "literature.knowledge_context_receipt": runtime.knowledge_context_receipt,
+        "literature.wiki_status": runtime.wiki_status,
+        "literature.wiki_search": runtime.wiki_search,
+        "literature.skill_package_status": runtime.skill_package_status,
+        "literature.skill_package_search": runtime.skill_package_search,
+        "literature.source_vault_status": runtime.source_vault_status,
+        "literature.source_vault_search": runtime.source_vault_search,
+        "literature.source_vault_read": runtime.source_vault_read,
+        "literature.academic_english_status": runtime.academic_english_status,
+        "literature.academic_english_search": runtime.academic_english_search,
+        "literature.bridge_lexicon_status": runtime.bridge_lexicon_status,
+        "literature.bridge_lexicon_read": runtime.bridge_lexicon_read,
+        "literature.bridge_lexicon_search": runtime.bridge_lexicon_search,
+        "literature.scoring_rules_status": runtime.scoring_rules_status,
+        "literature.scoring_rules_read": runtime.scoring_rules_read,
+        "literature.scoring_rules_search": runtime.scoring_rules_search,
+        "literature.product_docs_status": runtime.product_docs_status,
+        "literature.product_docs_read": runtime.product_docs_read,
+        "literature.product_docs_search": runtime.product_docs_search,
         "literature.evidence_pack_build": runtime.evidence_pack_build,
         "literature.project_scan_folder": runtime.project_scan_folder,
         "literature.figures_candidates": runtime.figures_candidates,
@@ -105,6 +131,7 @@ def create_mcp_server(
         "literature.agent_workspace_status": runtime.agent_workspace_status,
         "literature.agent_workspace_requirement": runtime.agent_workspace_requirement,
         "literature.agent_request_create": runtime.agent_request_create,
+        "literature.wiki_import": runtime.wiki_import,
         "literature.single_paper_task_create": runtime.single_paper_task_create,
         "literature.single_paper_completion_check": runtime.single_paper_completion_check,
         "literature.agent_request_list": runtime.agent_request_list,
@@ -262,6 +289,366 @@ def create_mcp_server(
     ) -> dict[str, Any]:
         """Search existing project chunks and return refs only."""
         return runtime.search_refs(project_id=project_id, query=query, top_k=top_k)
+
+    @mcp.tool(
+        name="literature.knowledge_packages",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Knowledge Packages",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_knowledge_packages() -> dict[str, Any]:
+        """Return the unified read-only runtime knowledge package registry."""
+        return runtime.knowledge_packages()
+
+    @mcp.tool(
+        name="literature.knowledge_runtime_conformance",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Knowledge Runtime Conformance",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_knowledge_runtime_conformance() -> dict[str, Any]:
+        """Return read-only Knowledge Runtime Pipeline conformance status."""
+        return runtime.knowledge_runtime_conformance()
+
+    @mcp.tool(
+        name="literature.ocr_status",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="OCR Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_ocr_status() -> dict[str, Any]:
+        """Return the redacted OCR runtime status without running OCR."""
+        return runtime.ocr_status()
+
+    @mcp.tool(
+        name="literature.ocr_engines",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="OCR Engines",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_ocr_engines() -> dict[str, Any]:
+        """Return registered OCR engine metadata without running OCR."""
+        return runtime.ocr_engines()
+
+    @mcp.tool(
+        name="literature.ocr_health",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="OCR Health",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_ocr_health(
+        engine: str | None = None,
+        engine_config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run a lightweight OCR engine readiness probe without OCR content upload."""
+        return runtime.ocr_health(engine=engine, engine_config=engine_config)
+
+    @mcp.tool(
+        name="literature.ocr_execution_probe",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="OCR Execution Probe",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
+    def literature_ocr_execution_probe(
+        confirm_execution: bool = False,
+        image_base64: str | None = None,
+        image_path: str | None = None,
+        engine: str | None = None,
+        engine_config: dict[str, Any] | None = None,
+        language: str = "en",
+        preview_chars: int = 240,
+    ) -> dict[str, Any]:
+        """Run one explicit OCR execution probe and return bounded proof."""
+        return runtime.ocr_execution_probe(
+            confirm_execution=confirm_execution,
+            image_base64=image_base64,
+            image_path=image_path,
+            engine=engine,
+            engine_config=engine_config,
+            language=language,
+            preview_chars=preview_chars,
+        )
+
+    @mcp.tool(
+        name="literature.knowledge_context_receipt",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Knowledge Context Receipt",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_knowledge_context_receipt(
+        ref_ids: list[str],
+        project_id: str | None = None,
+        prompt_name: str = "knowledge_runtime_context",
+        max_chars_per_ref: int = 1200,
+    ) -> dict[str, Any]:
+        """Prove bounded knowledge refs entered model-context input."""
+        return runtime.knowledge_context_receipt(
+            ref_ids=ref_ids,
+            project_id=project_id,
+            prompt_name=prompt_name,
+            max_chars_per_ref=max_chars_per_ref,
+        )
+
+    @mcp.tool(
+        name="literature.wiki_status",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Wiki Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_wiki_status(user_id: str | None = None) -> dict[str, Any]:
+        """Return the wiki package runtime status and manifest drilldown."""
+        return runtime.wiki_status(user_id=user_id)
+
+    @mcp.tool(
+        name="literature.wiki_search",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Wiki Search",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_wiki_search(
+        query: str,
+        top_k: int = 8,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Search wiki knowledge and return bounded refs."""
+        return runtime.wiki_search(query=query, top_k=top_k, user_id=user_id)
+
+    @mcp.tool(
+        name="literature.skill_package_status",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Skill Package Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_skill_package_status(
+        package_id: str = "academic-english-discourse",
+    ) -> dict[str, Any]:
+        """Return one supported Skill package provenance status."""
+        return runtime.skill_package_status(package_id=package_id)
+
+    @mcp.tool(
+        name="literature.skill_package_search",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Skill Package Search",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_skill_package_search(
+        query: str,
+        package_id: str = "academic-english-discourse",
+        top_k: int = 8,
+    ) -> dict[str, Any]:
+        """Search one supported Skill package and return bounded refs."""
+        return runtime.skill_package_search(query=query, package_id=package_id, top_k=top_k)
+
+    @mcp.tool(
+        name="literature.source_vault_status",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Source Vault Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_source_vault_status(limit: int = 50) -> dict[str, Any]:
+        """Return Source Vault package status and recent source records."""
+        return runtime.source_vault_status(limit=limit)
+
+    @mcp.tool(
+        name="literature.source_vault_search",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Source Vault Search",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_source_vault_search(
+        query: str,
+        top_k: int = 8,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Search Source Vault chunks and return bounded refs."""
+        return runtime.source_vault_search(query=query, top_k=top_k, project_id=project_id)
+
+    @mcp.tool(
+        name="literature.source_vault_read",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Source Vault Read",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_source_vault_read(
+        ref_id: str,
+        project_id: str | None = None,
+        max_chars: int = 6000,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """Read one bounded Source Vault chunk resource."""
+        return runtime.source_vault_read(
+            ref_id=ref_id,
+            project_id=project_id,
+            max_chars=max_chars,
+            cursor=cursor,
+        )
+
+    @mcp.tool(name="literature.academic_english_status", structured_output=True)
+    def literature_academic_english_status() -> dict[str, Any]:
+        """Return academic-English knowledge manifest and artifact status."""
+        return runtime.academic_english_status()
+
+    @mcp.tool(name="literature.academic_english_search", structured_output=True)
+    def literature_academic_english_search(
+        query: str,
+        top_k: int = 8,
+    ) -> dict[str, Any]:
+        """Search academic-English knowledge and return bounded refs."""
+        return runtime.academic_english_search(query=query, top_k=top_k)
+
+    @mcp.tool(
+        name="literature.bridge_lexicon_status",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Bridge Lexicon Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_bridge_lexicon_status() -> dict[str, Any]:
+        """Return CJK bridge lexicon provenance and runtime consumer status."""
+        return runtime.bridge_lexicon_status()
+
+    @mcp.tool(
+        name="literature.bridge_lexicon_read",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Bridge Lexicon Read",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_bridge_lexicon_read() -> dict[str, Any]:
+        """Read the bounded CJK bridge lexicon runtime artifact."""
+        return runtime.bridge_lexicon_read()
+
+    @mcp.tool(
+        name="literature.bridge_lexicon_search",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Bridge Lexicon Search",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_bridge_lexicon_search(
+        query: str,
+        top_k: int = 8,
+    ) -> dict[str, Any]:
+        """Search bridge-lexicon entries and return bounded refs."""
+        return runtime.bridge_lexicon_search(query=query, top_k=top_k)
+
+    @mcp.tool(name="literature.scoring_rules_status", structured_output=True)
+    def literature_scoring_rules_status() -> dict[str, Any]:
+        """Return scoring-rules JSON config provenance and runtime consumer status."""
+        return runtime.scoring_rules_status()
+
+    @mcp.tool(name="literature.scoring_rules_read", structured_output=True)
+    def literature_scoring_rules_read() -> dict[str, Any]:
+        """Read the bounded scoring-rules JSON config runtime artifact."""
+        return runtime.scoring_rules_read()
+
+    @mcp.tool(name="literature.scoring_rules_search", structured_output=True)
+    def literature_scoring_rules_search(
+        query: str,
+        top_k: int = 8,
+    ) -> dict[str, Any]:
+        """Search scoring-rules JSON config knowledge and return bounded refs."""
+        return runtime.scoring_rules_search(query=query, top_k=top_k)
+
+    @mcp.tool(name="literature.product_docs_status", structured_output=True)
+    def literature_product_docs_status() -> dict[str, Any]:
+        """Return product-docs Markdown provenance and runtime consumer status."""
+        return runtime.product_docs_status()
+
+    @mcp.tool(name="literature.product_docs_read", structured_output=True)
+    def literature_product_docs_read() -> dict[str, Any]:
+        """Read the bounded product-docs runtime artifact."""
+        return runtime.product_docs_read()
+
+    @mcp.tool(name="literature.product_docs_search", structured_output=True)
+    def literature_product_docs_search(
+        query: str,
+        top_k: int = 8,
+    ) -> dict[str, Any]:
+        """Search product-docs Markdown knowledge and return bounded refs."""
+        return runtime.product_docs_search(query=query, top_k=top_k)
 
     @mcp.tool(name="literature.evidence_pack_build", structured_output=True)
     def literature_evidence_pack_build(
@@ -496,6 +883,37 @@ def create_mcp_server(
             evolution_capture=evolution_capture,
         )
 
+    @mcp.tool(
+        name="literature.wiki_import",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Import Markdown to Wiki",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
+    def literature_wiki_import(
+        source_paths: list[str],
+        dry_run: bool = True,
+        confirm_write: bool = False,
+        overwrite: bool = False,
+        kind: str = "synthesis",
+        status: str = "draft",
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Import local Markdown files into private wiki pages."""
+        return runtime.wiki_import(
+            source_paths=source_paths,
+            dry_run=dry_run,
+            confirm_write=confirm_write,
+            overwrite=overwrite,
+            kind=kind,
+            status=status,
+            user_id=user_id,
+        )
+
     @mcp.tool(name="literature.single_paper_task_create", structured_output=True)
     def literature_single_paper_task_create(
         project_id: str,
@@ -561,7 +979,17 @@ def create_mcp_server(
         """Read one runtime-visible agent request."""
         return runtime.agent_request_read(request_id=request_id)
 
-    @mcp.tool(name="literature.agent_handoff_card", structured_output=True)
+    @mcp.tool(
+        name="literature.agent_handoff_card",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Agent Handoff Card",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_agent_handoff_card(request_id: str) -> dict[str, Any]:
         """Read a resumable handoff card for one runtime-visible agent request."""
         return runtime.agent_handoff_card(request_id=request_id)
@@ -579,7 +1007,17 @@ def create_mcp_server(
             write_record=write_record,
         )
 
-    @mcp.tool(name="literature.workflow_passport", structured_output=True)
+    @mcp.tool(
+        name="literature.workflow_passport",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Workflow Passport",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_workflow_passport(
         session_id: str | None = None,
         job_id: str | None = None,
@@ -594,7 +1032,17 @@ def create_mcp_server(
             limit=limit,
         )
 
-    @mcp.tool(name="literature.evidence_integrity_gate", structured_output=True)
+    @mcp.tool(
+        name="literature.evidence_integrity_gate",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Evidence Integrity Gate",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_evidence_integrity_gate(
         session_id: str | None = None,
         job_id: str | None = None,
@@ -609,7 +1057,17 @@ def create_mcp_server(
             limit=limit,
         )
 
-    @mcp.tool(name="literature.research_action_lifecycle", structured_output=True)
+    @mcp.tool(
+        name="literature.research_action_lifecycle",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Research Action Lifecycle",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_research_action_lifecycle(
         session_id: str | None = None,
         job_id: str | None = None,
@@ -624,7 +1082,17 @@ def create_mcp_server(
             limit=limit,
         )
 
-    @mcp.tool(name="literature.workflow_refresh_receipt", structured_output=True)
+    @mcp.tool(
+        name="literature.workflow_refresh_receipt",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Workflow Refresh Receipt",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_workflow_refresh_receipt(
         job_id: str,
         receipt_id: str | None = None,
@@ -632,7 +1100,17 @@ def create_mcp_server(
         """Read a persisted workflow refresh/replay receipt for one runtime job."""
         return runtime.workflow_refresh_receipt(job_id=job_id, receipt_id=receipt_id)
 
-    @mcp.tool(name="literature.workflow_replay_lineage", structured_output=True)
+    @mcp.tool(
+        name="literature.workflow_replay_lineage",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Workflow Replay Lineage",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_workflow_replay_lineage(
         job_id: str,
         limit: int = 12,
@@ -640,7 +1118,17 @@ def create_mcp_server(
         """Read compact workflow replay lineage for one runtime job."""
         return runtime.workflow_replay_lineage(job_id=job_id, limit=limit)
 
-    @mcp.tool(name="literature.workflow_replay_index", structured_output=True)
+    @mcp.tool(
+        name="literature.workflow_replay_index",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Workflow Replay Index",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_workflow_replay_index(
         project_id: str | None = None,
         session_id: str | None = None,

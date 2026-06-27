@@ -1,6 +1,8 @@
 import type { components } from '@/generated/openapi';
 
 export type WikiStatus = components['schemas']['WikiStatusResponse'];
+export type WikiManifestDrilldown = components['schemas']['WikiManifestDrilldownPayload'];
+export type WikiManifestDrilldownItem = components['schemas']['WikiManifestDrilldownItemPayload'];
 export type WikiPageSummary = components['schemas']['WikiPageSummaryPayload'];
 export type WikiPageListResponse = components['schemas']['WikiPageListResponse'];
 export type WikiPageRead = components['schemas']['WikiPageReadResponse'];
@@ -16,12 +18,41 @@ export interface WikiStatusModel extends WikiStatus {
   enabled: boolean;
   page_count: number;
   stale: boolean;
+  integrity_status: string;
+  index_hash: string;
+  source_manifest_hash: string;
+  indexed_source_manifest_hash: string;
+  indexed_page_count: number;
+  source_page_count: number | null;
   graph_json_exists: boolean;
   graph_db_exists: boolean;
   query_index_exists: boolean;
   review_queue_exists: boolean;
   paths: Record<string, string>;
   warnings: string[];
+  manifest_drilldown: WikiManifestDrilldownModel;
+}
+
+export interface WikiManifestDrilldownItemModel extends WikiManifestDrilldownItem {
+  kind: string;
+  page_path: string;
+  source_hash: string | null;
+  indexed_hash: string | null;
+  redacted: boolean;
+}
+
+export interface WikiManifestDrilldownModel extends WikiManifestDrilldown {
+  schema_version: string;
+  status: string;
+  hash_algorithm: string;
+  limit: number;
+  missing_count: number;
+  extra_count: number;
+  mismatched_count: number;
+  truncated: boolean;
+  missing_pages: WikiManifestDrilldownItemModel[];
+  extra_pages: WikiManifestDrilldownItemModel[];
+  mismatched_pages: WikiManifestDrilldownItemModel[];
 }
 
 export interface WikiPageSummaryModel extends WikiPageSummary {
@@ -193,6 +224,50 @@ export interface WikiCompileDryRunModel {
   budget_summary: WikiCompileBudgetSummaryModel;
   budget_checks: WikiCompileBudgetCheckModel[];
   errors: string[];
+  warnings: string[];
+}
+
+export interface WikiImportRequestModel {
+  source_paths: string[];
+  dry_run: boolean;
+  confirm_write: boolean;
+  overwrite: boolean;
+  kind: WikiManualPageKind;
+  status: WikiManualPageStatus;
+}
+
+export interface WikiImportItemModel {
+  source_path: string;
+  import_source_hash: string;
+  source_hash: string;
+  content_hash: string;
+  ref_id: string;
+  chunk_id: string;
+  read_endpoint: string;
+  span_start: number | null;
+  span_end: number | null;
+  title: string;
+  kind: string;
+  status: string;
+  slug: string;
+  path: string;
+  action: string;
+  review_item_id: string;
+  runtime_session_id: string;
+  runtime_job_id: string;
+  runtime_approval_id: string;
+  warnings: string[];
+  error: string;
+}
+
+export interface WikiImportResponseModel {
+  enabled: boolean;
+  dry_run: boolean;
+  confirm_write: boolean;
+  imported: number;
+  skipped: number;
+  errored: number;
+  pages: WikiImportItemModel[];
   warnings: string[];
 }
 

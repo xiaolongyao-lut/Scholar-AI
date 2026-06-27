@@ -74,6 +74,29 @@ export interface AgentWorkspaceGoalOpenRequirement {
   residual_risk: string | null;
 }
 
+export interface AgentWorkspaceGoalLifecycleBlocker {
+  id: string;
+  status: string | null;
+  requirement_surface: string | null;
+  missing_evidence: string | null;
+  current_boundary: string | null;
+}
+
+export interface AgentWorkspaceGoalLifecycleRollup {
+  schema_version: string | null;
+  updated_at: string | null;
+  status: string | null;
+  is_goal_complete: boolean | null;
+  can_mark_goal_complete: boolean | null;
+  requirements_all_proved: boolean | null;
+  requirements_all_proved_or_out_of_scope: boolean | null;
+  latest_requirement_id: string | null;
+  latest_slice_id: string | null;
+  completion_blockers: AgentWorkspaceGoalLifecycleBlocker[];
+  machine_readable_completion_rule: string | null;
+  why_not_complete: string[];
+}
+
 export interface AgentWorkspaceGoalRequirementEvidenceRef {
   label: string;
   text: string;
@@ -110,12 +133,37 @@ export interface AgentWorkspaceGoalState {
   latest_requirement_id: string | null;
   requirement_status: AgentWorkspaceGoalRequirementStatus;
   open_requirements?: AgentWorkspaceGoalOpenRequirement[];
+  lifecycle_rollup?: AgentWorkspaceGoalLifecycleRollup;
   completion_claim: {
     this_slice: string | null;
     full_goal: string | null;
   };
   next_authorized_local_actions: string[];
   stop_boundaries: string[];
+  error: string | null;
+}
+
+export interface AgentWorkspaceDesktopSmokeState {
+  schema_version: 'scholar_ai_desktop_smoke_state_v1';
+  available: boolean;
+  read_only: boolean;
+  run_id: string | null;
+  status: string | null;
+  initial_path: string | null;
+  expected_initial_path: string;
+  candidate_count: number;
+  ignored_count: number;
+  summary_path: string | null;
+  screenshot_path: string | null;
+  accessibility_tree_path: string | null;
+  screenshot_nonblank: boolean | null;
+  accessibility_tree_available: boolean | null;
+  accessibility_tree_root_name: string | null;
+  accessibility_tree_root_control_type: string | null;
+  accessibility_tree_node_count: number | null;
+  accessibility_tree_named_node_count: number | null;
+  warnings: string[];
+  errors: string[];
   error: string | null;
 }
 
@@ -129,6 +177,7 @@ export interface AgentWorkspaceState {
   output_root: AgentWorkspaceDirectoryState;
   git: AgentWorkspaceGitState;
   goal_state: AgentWorkspaceGoalState;
+  desktop_smoke: AgentWorkspaceDesktopSmokeState;
   recovery_probes: AgentWorkspaceRecoveryProbe[];
   boundaries: string[];
   next_safe_local_actions: string[];

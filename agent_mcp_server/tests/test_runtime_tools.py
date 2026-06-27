@@ -318,6 +318,738 @@ def test_search_refs_uses_pure_read_refs_endpoint(tools: RuntimeTools, backend: 
     assert "include_content" not in str(backend.calls[-1])
 
 
+def test_academic_english_status_uses_knowledge_endpoint(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """academic_english_status must read the backend manifest/status endpoint."""
+
+    tools.academic_english_status()
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/academic-english/status",
+        None,
+    )
+
+
+def test_knowledge_packages_uses_read_only_registry_endpoint(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """knowledge_packages must expose the unified backend registry to MCP callers."""
+
+    backend.set_json(
+        "/api/knowledge/packages",
+        {
+            "schema_version": "scholar-ai-knowledge-packages/v1",
+            "packages": [
+                {
+                    "package_id": "wiki",
+                    "status": "loaded",
+                    "source_hash": "s" * 64,
+                    "content_hash": "c" * 64,
+                    "read_endpoint": "/api/wiki/status",
+                }
+            ],
+        },
+    )
+
+    result = tools.knowledge_packages()
+
+    assert result["is_error"] is False
+    assert result["data"]["schema_version"] == "scholar-ai-knowledge-packages/v1"
+    assert result["data"]["packages"][0]["package_id"] == "wiki"
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/packages",
+        None,
+    )
+
+
+def test_knowledge_runtime_conformance_uses_read_only_endpoint(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """knowledge_runtime_conformance exposes the backend conformance projection."""
+
+    backend.set_json(
+        "/api/knowledge/runtime-conformance",
+        {
+            "schema_version": "scholar-ai-knowledge-runtime-conformance/v1",
+            "summary": {"proved": 1, "pending": 1, "blocked": 0},
+            "actual_loading_gate": {
+                "status": "blocked",
+                "evidence_level": "contract_evidence",
+                "artifact_contract": "scholar-ai-live-context-receipt-smoke/v1",
+                "artifact_path": "workspace_artifacts/generated/output/live_api_chat_knowledge_context_receipt_smoke.summary.json",
+                "verdict": "missing_artifact",
+                "evidence_scope": [
+                    "/api/chat",
+                    "literature.agent_resource_read",
+                    "literature.knowledge_context_receipt",
+                    "assembled_context_hash_backflow",
+                ],
+                "evidence": [],
+                "missing": ["authorized live provider smoke artifact with verdict=ok"],
+                "validation_errors": [],
+                "required_checks": [
+                    "artifact.schema.valid",
+                    "artifact.verdict.ok",
+                    "artifact.status_code.200",
+                    "artifact.required_tools.used",
+                    "artifact.required_tools.names",
+                    "artifact.receipt_hash.preview",
+                    "artifact.receipt_hash.final_answer",
+                    "artifact.receipt_hash.query_matches_direct",
+                    "artifact.direct_receipt.assembled_context_hash",
+                ],
+                "next_safe_local_actions": [
+                    "Require provider_preflight.status=proved before running live context-receipt smoke.",
+                    "Run tests/live_api_chat_knowledge_context_receipt_smoke.py only with explicit live-provider authorization.",
+                ],
+                "claim_boundary": "Deterministic package conformance is not live QA/model loading proof.",
+            },
+            "packages": [
+                {
+                    "package_id": "product_docs",
+                    "overall_status": "pending",
+                    "conformance": [
+                        {"requirement": "prompt_assembly_context_receipt", "status": "pending"},
+                    ],
+                }
+            ],
+        },
+    )
+
+    result = tools.knowledge_runtime_conformance()
+
+    assert result["is_error"] is False
+    assert result["data"]["schema_version"] == "scholar-ai-knowledge-runtime-conformance/v1"
+    gate = result["data"]["actual_loading_gate"]
+    assert gate["status"] == "blocked"
+    assert gate["verdict"] == "missing_artifact"
+    assert gate["artifact_contract"] == "scholar-ai-live-context-receipt-smoke/v1"
+    assert gate["validation_errors"] == []
+    assert len(gate["required_checks"]) == 9
+    assert "artifact.direct_receipt.assembled_context_hash" in gate["required_checks"]
+    assert "authorized live provider smoke artifact with verdict=ok" in gate["missing"]
+    assert gate["next_safe_local_actions"][0] == (
+        "Require provider_preflight.status=proved before running live context-receipt smoke."
+    )
+    assert result["data"]["packages"][0]["package_id"] == "product_docs"
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/runtime-conformance",
+        None,
+    )
+
+
+def test_ocr_status_uses_read_only_pdf_backend_endpoint(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """ocr_status exposes redacted OCR runtime selection without running OCR."""
+
+    backend.set_json(
+        "/api/pdf-backend/ocr-status",
+        {
+            "policy": "auto",
+            "configured_engine": None,
+            "selected_engine": None,
+            "language": "en",
+            "source": "default",
+            "engine_config": {},
+            "available_engines": [],
+            "warning": "OCR policy is auto but no available OCR engine was found",
+        },
+    )
+
+    result = tools.ocr_status()
+
+    assert result["is_error"] is False
+    assert result["data"]["policy"] == "auto"
+    assert result["data"]["engine_config"] == {}
+    assert backend.calls[-1] == (
+        "json",
+        "/api/pdf-backend/ocr-status",
+        None,
+    )
+
+
+def test_ocr_engines_uses_read_only_pdf_backend_endpoint(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """ocr_engines exposes local OCR engine inventory without running OCR."""
+
+    backend.set_json(
+        "/api/pdf-backend/ocr-engines",
+        [
+            {
+                "name": "rapidocr",
+                "display_name": "RapidOCR",
+                "engine_type": "local",
+                "available": False,
+                "requires_network": False,
+                "unavailable_reason": "rapidocr is not installed",
+                "readiness_status": "dependency_missing",
+                "readiness_blockers": ["rapidocr is not installed"],
+            }
+        ],
+    )
+
+    result = tools.ocr_engines()
+
+    assert result["is_error"] is False
+    assert result["data"][0]["name"] == "rapidocr"
+    assert result["data"][0]["readiness_status"] == "dependency_missing"
+    assert backend.calls[-1] == (
+        "json",
+        "/api/pdf-backend/ocr-engines",
+        None,
+    )
+
+
+def test_ocr_health_posts_bounded_readiness_probe_payload(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """ocr_health exposes backend readiness probing without uploading OCR content."""
+
+    backend.set_json(
+        "/api/pdf-backend/ocr-health",
+        {
+            "ok": False,
+            "detail": "remote OCR requires explicit api_key and base_url configuration",
+            "engine": "remote_api",
+            "latency_ms": 0.1,
+            "readiness_status": "configuration_required",
+            "readiness_blockers": [
+                "remote OCR requires explicit api_key and base_url configuration"
+            ],
+        },
+    )
+
+    result = tools.ocr_health(
+        engine=" remote_api ",
+        engine_config={"base_url": "https://ocr.example.test"},
+    )
+
+    assert result["is_error"] is False
+    assert result["data"]["engine"] == "remote_api"
+    assert result["data"]["readiness_status"] == "configuration_required"
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/pdf-backend/ocr-health",
+        {
+            "params": None,
+            "payload": {
+                "engine": "remote_api",
+                "engine_config": {"base_url": "https://ocr.example.test"},
+            },
+        },
+    )
+
+
+def test_ocr_health_rejects_malformed_engine_config_before_backend(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """MCP OCR health config must stay bounded and JSON serializable."""
+
+    with pytest.raises(ValueError, match="engine_config"):
+        tools.ocr_health(engine_config={"bad": object()})
+
+    with pytest.raises(ValueError, match="engine_config"):
+        tools.ocr_health(engine_config={"large": "x" * 9000})
+
+    assert backend.calls == []
+
+
+def test_ocr_execution_probe_posts_explicit_execution_payload(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """ocr_execution_probe should require intent and delegate execution to backend."""
+
+    backend.set_json(
+        "/api/pdf-backend/ocr-execution-probe",
+        {
+            "schema_version": "scholar-ai-ocr-execution-probe/v1",
+            "confirmed": True,
+            "engine": "mock_local",
+            "engine_type": "local",
+            "requires_network": False,
+            "language": "en",
+            "input_kind": "image_base64",
+            "input_bytes": 4,
+            "input_sha256": "a" * 64,
+            "text_length": 9,
+            "text_sha256": "b" * 64,
+            "text_preview": "mock text",
+            "duration_ms": 3,
+        },
+    )
+
+    result = tools.ocr_execution_probe(
+        confirm_execution=True,
+        image_base64=" ZmFrZQ== ",
+        engine=" mock_local ",
+        engine_config={"suffix": "ok"},
+        language=" en ",
+        preview_chars=80,
+    )
+
+    assert result["is_error"] is False
+    assert result["data"]["schema_version"] == "scholar-ai-ocr-execution-probe/v1"
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/pdf-backend/ocr-execution-probe",
+        {
+            "params": None,
+            "payload": {
+                "confirm_execution": True,
+                "image_base64": "ZmFrZQ==",
+                "image_path": None,
+                "engine": "mock_local",
+                "engine_config": {"suffix": "ok"},
+                "language": "en",
+                "preview_chars": 80,
+            },
+        },
+    )
+
+
+def test_ocr_execution_probe_rejects_unconfirmed_or_ambiguous_input_before_backend(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """MCP OCR execution must fail closed before backend content handling."""
+
+    with pytest.raises(ValueError, match="confirm_execution=true"):
+        tools.ocr_execution_probe(image_base64="ZmFrZQ==", engine="mock_local")
+
+    with pytest.raises(ValueError, match="exactly one"):
+        tools.ocr_execution_probe(confirm_execution=True, engine="mock_local")
+
+    with pytest.raises(ValueError, match="exactly one"):
+        tools.ocr_execution_probe(
+            confirm_execution=True,
+            image_base64="ZmFrZQ==",
+            image_path="C:/tmp/probe.png",
+            engine="mock_local",
+        )
+
+    with pytest.raises(ValueError, match="preview_chars"):
+        tools.ocr_execution_probe(
+            confirm_execution=True,
+            image_base64="ZmFrZQ==",
+            engine="mock_local",
+            preview_chars=1001,
+        )
+
+    assert backend.calls == []
+
+
+def test_knowledge_context_receipt_posts_bounded_ref_payload(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """knowledge_context_receipt should expose bounded context proof through MCP."""
+
+    backend.set_json(
+        "/api/knowledge/context-receipt",
+        {
+            "schema_version": "scholar-ai-knowledge-context-receipt/v1",
+            "prompt_hash": "p" * 64,
+            "assembled_context_hash": "c" * 64,
+            "resource_read_receipts": [{"ref_id": "product_docs:chunk:readme"}],
+        },
+    )
+
+    result = tools.knowledge_context_receipt(
+        [" product_docs:chunk:readme "],
+        project_id=" project-1 ",
+        prompt_name=" qa_prompt ",
+        max_chars_per_ref=800,
+    )
+
+    assert result["is_error"] is False
+    assert result["data"]["schema_version"] == "scholar-ai-knowledge-context-receipt/v1"
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/knowledge/context-receipt",
+        {
+            "params": None,
+            "payload": {
+                "ref_ids": ["product_docs:chunk:readme"],
+                "project_id": "project-1",
+                "prompt_name": "qa_prompt",
+                "max_chars_per_ref": 800,
+            },
+        },
+    )
+
+
+def test_knowledge_context_receipt_rejects_unbounded_inputs_before_backend(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """The MCP tool should not proxy malformed receipt requests."""
+
+    with pytest.raises(ValueError, match="ref_ids"):
+        tools.knowledge_context_receipt([])
+    with pytest.raises(ValueError, match="ref_ids"):
+        tools.knowledge_context_receipt(["valid:ref"] * 21)
+    with pytest.raises(ValueError, match="ref_ids"):
+        tools.knowledge_context_receipt(["   "])
+    with pytest.raises(ValueError, match="max_chars_per_ref"):
+        tools.knowledge_context_receipt(["product_docs:chunk:readme"], max_chars_per_ref=99)
+
+    assert backend.calls == []
+
+
+def test_wiki_status_uses_read_only_status_endpoint(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """wiki_status must expose the backend wiki manifest/status surface."""
+
+    tools.wiki_status(user_id=" reader-a ")
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/wiki/status",
+        {"user_id": "reader-a"},
+    )
+
+
+def test_wiki_search_returns_refs_only(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """wiki_search delegates bounded ref retrieval without reading page bodies."""
+
+    backend.set_json(
+        "/api/wiki/search",
+        {
+            "query": "laser welding",
+            "results": [
+                {
+                    "schema_version": "scholar-ai-wiki-knowledge-ref/v1",
+                    "ref_id": "wiki:concepts/laser-welding.md",
+                    "chunk_id": "wiki:concepts/laser-welding.md#0",
+                    "kind": "wiki",
+                    "summary": "Laser welding evidence enters the wiki pipeline.",
+                    "read_endpoint": "/api/agent-bridge/resource/wiki:concepts/laser-welding.md",
+                    "metadata": {
+                        "content_hash": "a" * 64,
+                        "source_hash": "b" * 64,
+                    },
+                }
+            ],
+        },
+    )
+
+    result = tools.wiki_search(" laser welding ", top_k=3, user_id=" reader-a ")
+
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/wiki/search",
+        {
+            "params": None,
+            "payload": {
+                "query": "laser welding",
+                "limit": 3,
+                "user_id": "reader-a",
+            },
+        },
+    )
+    assert result["is_error"] is False
+    assert result["data"]["results"][0]["ref_id"] == "wiki:concepts/laser-welding.md"
+    assert result["data"]["results"][0]["read_endpoint"] == (
+        "/api/agent-bridge/resource/wiki:concepts/laser-welding.md"
+    )
+    assert "content" not in result["data"]["results"][0]
+
+
+def test_wiki_search_rejects_unbounded_inputs_before_backend(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """wiki_search validates query and top_k before backend calls."""
+
+    with pytest.raises(ValueError, match="query"):
+        tools.wiki_search("   ")
+    with pytest.raises(ValueError, match="top_k"):
+        tools.wiki_search("laser", top_k=0)
+    with pytest.raises(ValueError, match="top_k"):
+        tools.wiki_search("laser", top_k=51)
+
+    assert backend.calls == []
+
+
+def test_skill_package_status_uses_allowlisted_knowledge_endpoint(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """skill_package_status exposes provenance without executing package code."""
+
+    tools.skill_package_status(" academic-english-discourse ")
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/skill-packages/academic-english-discourse/status",
+        None,
+    )
+
+
+def test_skill_package_status_rejects_unknown_package_before_backend(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """The MCP boundary should not become an arbitrary package-id proxy."""
+
+    with pytest.raises(ValueError, match="package_id"):
+        tools.skill_package_status("../other-skill")
+
+    assert backend.calls == []
+
+
+def test_source_vault_status_uses_knowledge_endpoint(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """source_vault_status must read the backend Source Vault overview endpoint."""
+
+    tools.source_vault_status(limit=12)
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/source-vault",
+        {"limit": 12},
+    )
+
+
+def test_bridge_lexicon_status_uses_knowledge_endpoint(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """bridge_lexicon_status must read the backend manifest/status endpoint."""
+
+    tools.bridge_lexicon_status()
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/bridge-lexicon/status",
+        None,
+    )
+
+
+def test_bridge_lexicon_read_uses_knowledge_endpoint(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """bridge_lexicon_read must read the backend bounded artifact endpoint."""
+
+    tools.bridge_lexicon_read()
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/bridge-lexicon/read",
+        None,
+    )
+
+
+def test_bridge_lexicon_search_returns_refs_only(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """bridge_lexicon_search must expose entry refs without reading resource bodies."""
+
+    backend.set_json(
+        "/api/knowledge/bridge-lexicon/search",
+        {
+            "query": "laser",
+            "package_id": "bridge_lexicon",
+            "results": [
+                {
+                    "schema_version": "scholar-ai-bridge-lexicon-knowledge-ref/v1",
+                    "ref_id": "bridge_lexicon:entry:laser-a1",
+                    "kind": "bridge_lexicon",
+                    "resource_kind": "entry",
+                    "title": "Bridge lexicon: 激光",
+                    "summary": "激光: laser",
+                    "score": 4.0,
+                    "rank": 1,
+                    "read_endpoint": "/api/agent-bridge/resource/bridge_lexicon:entry:laser-a1",
+                    "metadata": {
+                        "source_hash": "a" * 64,
+                        "package_content_hash": "b" * 64,
+                    },
+                }
+            ],
+        },
+    )
+
+    result = tools.bridge_lexicon_search("laser", top_k=3)
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/bridge-lexicon/search",
+        {"q": "laser", "top_k": 3},
+    )
+    assert result["data"]["results"][0]["ref_id"] == "bridge_lexicon:entry:laser-a1"
+    assert "content" not in result["data"]["results"][0]
+
+
+def test_bridge_lexicon_search_rejects_unbounded_inputs_before_backend(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """bridge_lexicon_search validates query and top_k before backend calls."""
+
+    with pytest.raises(ValueError, match="query"):
+        tools.bridge_lexicon_search("   ")
+    with pytest.raises(ValueError, match="top_k"):
+        tools.bridge_lexicon_search("laser", top_k=0)
+    with pytest.raises(ValueError, match="top_k"):
+        tools.bridge_lexicon_search("laser", top_k=51)
+
+    assert backend.calls == []
+
+
+def test_scoring_rules_status_uses_knowledge_endpoint(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """scoring_rules_status must read the backend manifest/status endpoint."""
+
+    tools.scoring_rules_status()
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/scoring-rules/status",
+        None,
+    )
+
+
+def test_scoring_rules_read_uses_knowledge_endpoint(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """scoring_rules_read must read the backend bounded artifact endpoint."""
+
+    tools.scoring_rules_read()
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/scoring-rules/read",
+        None,
+    )
+
+
+def test_product_docs_status_uses_knowledge_endpoint(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """product_docs_status must read the backend manifest/status endpoint."""
+
+    tools.product_docs_status()
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/product-docs/status",
+        None,
+    )
+
+
+def test_product_docs_read_uses_knowledge_endpoint(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """product_docs_read must read the backend bounded artifact endpoint."""
+
+    tools.product_docs_read()
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/product-docs/read",
+        None,
+    )
+
+
+def test_academic_english_search_returns_refs_only(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """academic_english_search delegates bounded ref retrieval to the backend."""
+
+    tools.academic_english_search("hedging", top_k=6)
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/academic-english/search",
+        {
+            "q": "hedging",
+            "top_k": 6,
+        },
+    )
+
+
+def test_skill_package_search_returns_refs_only(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """skill_package_search delegates refs-only retrieval to the backend."""
+
+    tools.skill_package_search(
+        "discourse move",
+        package_id=" academic-english-discourse ",
+        top_k=3,
+    )
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/skill-packages/academic-english-discourse/search",
+        {
+            "q": "discourse move",
+            "top_k": 3,
+        },
+    )
+
+
+def test_skill_package_search_rejects_invalid_package_and_top_k_before_backend(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Invalid Skill package searches should fail before backend I/O."""
+
+    with pytest.raises(ValueError, match="package_id"):
+        tools.skill_package_search("discourse", package_id="private-skill", top_k=3)
+    with pytest.raises(ValueError, match="top_k"):
+        tools.skill_package_search("discourse", top_k=0)
+
+    assert backend.calls == []
+
+
+def test_source_vault_search_returns_refs_only(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """source_vault_search delegates bounded ref retrieval to the backend."""
+
+    tools.source_vault_search("provenance", top_k=9, project_id=" project-1 ")
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/source-vault/search",
+        {
+            "q": "provenance",
+            "limit": 9,
+            "project_id": "project-1",
+        },
+    )
+
+
+def test_scoring_rules_search_returns_refs_only(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """scoring_rules_search delegates bounded ref retrieval to the backend."""
+
+    tools.scoring_rules_search("direct_evidence", top_k=4)
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/scoring-rules/search",
+        {
+            "q": "direct_evidence",
+            "top_k": 4,
+        },
+    )
+
+
+def test_product_docs_search_returns_refs_only(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """product_docs_search delegates bounded ref retrieval to the backend."""
+
+    tools.product_docs_search("MCP-first", top_k=5)
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/knowledge/product-docs/search",
+        {
+            "q": "MCP-first",
+            "top_k": 5,
+        },
+    )
+
+
 def test_academic_writing_lint_posts_quality_payload(
     tools: RuntimeTools,
     backend: FakeBackend,
@@ -1110,6 +1842,104 @@ def test_agent_request_create_posts_bounded_envelope(
     assert payload["payload"]["output_targets"]["evolution_capture"] is True
 
 
+def test_wiki_import_defaults_to_dry_run_and_calls_local_route(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Wiki import should default to dry-run and delegate path checks to backend."""
+
+    backend.set_json(
+        "/api/wiki/import",
+        {
+            "enabled": True,
+            "dry_run": True,
+            "confirm_write": False,
+            "imported": 0,
+            "skipped": 1,
+            "errored": 0,
+            "pages": [{"source_path": "note.md", "action": "planned_create"}],
+        },
+    )
+
+    result = tools.wiki_import([" C:/repo/note.md "])
+
+    assert result["is_error"] is False
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/wiki/import",
+        {
+            "params": None,
+            "payload": {
+                "source_paths": ["C:/repo/note.md"],
+                "dry_run": True,
+                "confirm_write": False,
+                "overwrite": False,
+                "kind": "synthesis",
+                "status": "draft",
+            },
+        },
+    )
+
+
+def test_wiki_import_apply_forwards_explicit_write_intent_and_user(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Apply mode remains explicit and carries the local wiki user id."""
+
+    backend.set_json(
+        "/api/wiki/import",
+        {
+            "enabled": True,
+            "dry_run": False,
+            "confirm_write": True,
+            "imported": 1,
+            "skipped": 0,
+            "errored": 0,
+            "pages": [{"source_path": "note.md", "action": "created"}],
+        },
+    )
+
+    result = tools.wiki_import(
+        ["C:/repo/note.md"],
+        dry_run=False,
+        confirm_write=True,
+        overwrite=True,
+        kind="concept",
+        status="review",
+        user_id=" owner123 ",
+    )
+
+    assert result["is_error"] is False
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/wiki/import",
+        {
+            "params": {"user_id": "owner123"},
+            "payload": {
+                "source_paths": ["C:/repo/note.md"],
+                "dry_run": False,
+                "confirm_write": True,
+                "overwrite": True,
+                "kind": "concept",
+                "status": "review",
+            },
+        },
+    )
+
+
+def test_wiki_import_rejects_empty_source_paths_before_backend(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """The MCP boundary should not call backend without at least one path."""
+
+    with pytest.raises(ValueError, match="source_paths"):
+        tools.wiki_import([" ", ""])
+
+    assert backend.calls == []
+
+
 def test_agent_handoff_card_reads_runtime_card_by_request_id(
     tools: RuntimeTools,
     backend: FakeBackend,
@@ -1658,31 +2488,48 @@ def test_agent_workspace_status_reads_recovery_state(
                 "goal_state": {
                     "available": True,
                     "path": "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
-                    "updated_at": "2026-06-22T21:50:27+08:00",
-                    "checkpoint_id": "20260622-214730-n41-goal-state-record-update",
-                    "requirement_count": 49,
-                    "proved_count": 47,
-                    "incomplete_count": 1,
-                    "out_of_scope_count": 1,
-                    "latest_requirement_id": "N41-goal-state-workspace-visibility",
+                    "updated_at": "2026-06-24T17:55:00+08:00",
+                    "checkpoint_id": "20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio",
+                    "requirement_count": 125,
+                    "proved_count": 125,
+                    "incomplete_count": 0,
+                    "out_of_scope_count": 0,
+                    "latest_requirement_id": "N112-sandboxpolicy-current-state-alignment",
                     "requirement_status": {
-                        "total": 49,
-                        "proved": 47,
-                        "incomplete": 1,
-                        "out_of_scope": 1,
-                        "latest_id": "N41-goal-state-workspace-visibility",
+                        "total": 125,
+                        "proved": 125,
+                        "incomplete": 0,
+                        "out_of_scope": 0,
+                        "latest_id": "N112-sandboxpolicy-current-state-alignment",
                     },
-                    "open_requirements": [
-                        {
-                            "id": "B01-computer-use-accessibility-tree",
-                            "status": "incomplete",
-                            "requirement": "Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.",
-                            "residual_risk": "Retry only after the external tool error is fixed.",
-                        }
-                    ],
+                    "open_requirements": [],
                     "completion_claim": {
-                        "this_slice": "N41 made goal-state recovery visible.",
+                        "this_slice": "N112 aligned current recovery state with local UIA accessibility-tree evidence.",
                         "full_goal": "The full Scholar AI workflow spine remains active, not complete.",
+                    },
+                    "lifecycle_rollup": {
+                        "schema_version": "scholar_ai_goal_lifecycle_rollup_v1",
+                        "updated_at": "2026-06-25T23:59:30+08:00",
+                        "status": "active_requirements_proved_pending_authorized_gates",
+                        "is_goal_complete": False,
+                        "can_mark_goal_complete": False,
+                        "requirements_all_proved": True,
+                        "requirements_all_proved_or_out_of_scope": True,
+                        "latest_requirement_id": "N173-goal-lifecycle-rollup",
+                        "latest_slice_id": "N173-goal-lifecycle-rollup",
+                        "completion_blockers": [
+                            {
+                                "id": "actual_loading_gate_live_model_proof",
+                                "status": "blocked_pending_explicit_authorization",
+                                "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
+                                "missing_evidence": "Authorized live provider/model smoke artifact with verdict=ok.",
+                                "current_boundary": "Deterministic contract and harness tests are proved.",
+                            }
+                        ],
+                        "machine_readable_completion_rule": "Goal may be marked complete only after blockers clear.",
+                        "why_not_complete": [
+                            "All requirement rows are proved, but goal-level proof gates remain."
+                        ],
                     },
                     "next_authorized_local_actions": [
                         "Create a rollback checkpoint and search mature references before edits."
@@ -1764,25 +2611,25 @@ def test_agent_workspace_status_reads_recovery_state(
     ]
     assert state["artifact_root"]["file_count"] == 12
     assert state["goal_state"]["available"] is True
-    assert state["goal_state"]["checkpoint_id"] == "20260622-214730-n41-goal-state-record-update"
-    assert state["goal_state"]["requirement_count"] == 49
-    assert state["goal_state"]["incomplete_count"] == 1
-    assert state["goal_state"]["latest_requirement_id"] == "N41-goal-state-workspace-visibility"
-    assert state["goal_state"]["requirement_status"]["total"] == 49
-    assert state["goal_state"]["requirement_status"]["proved"] == 47
-    assert state["goal_state"]["requirement_status"]["incomplete"] == 1
-    assert state["goal_state"]["requirement_status"]["out_of_scope"] == 1
-    assert state["goal_state"]["requirement_status"]["latest_id"] == "N41-goal-state-workspace-visibility"
-    assert state["goal_state"]["open_requirements"] == [
-        {
-            "id": "B01-computer-use-accessibility-tree",
-            "status": "incomplete",
-            "requirement": "Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.",
-            "residual_risk": "Retry only after the external tool error is fixed.",
-        }
-    ]
-    assert state["goal_state"]["completion_claim"]["this_slice"] == "N41 made goal-state recovery visible."
+    assert state["goal_state"]["checkpoint_id"] == "20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio"
+    assert state["goal_state"]["requirement_count"] == 125
+    assert state["goal_state"]["incomplete_count"] == 0
+    assert state["goal_state"]["latest_requirement_id"] == "N112-sandboxpolicy-current-state-alignment"
+    assert state["goal_state"]["requirement_status"]["total"] == 125
+    assert state["goal_state"]["requirement_status"]["proved"] == 125
+    assert state["goal_state"]["requirement_status"]["incomplete"] == 0
+    assert state["goal_state"]["requirement_status"]["out_of_scope"] == 0
+    assert state["goal_state"]["requirement_status"]["latest_id"] == "N112-sandboxpolicy-current-state-alignment"
+    assert state["goal_state"]["open_requirements"] == []
+    assert state["goal_state"]["completion_claim"]["this_slice"] == (
+        "N112 aligned current recovery state with local UIA accessibility-tree evidence."
+    )
     assert state["goal_state"]["completion_claim"]["full_goal"] == "The full Scholar AI workflow spine remains active, not complete."
+    lifecycle_rollup = state["goal_state"]["lifecycle_rollup"]
+    assert lifecycle_rollup["status"] == "active_requirements_proved_pending_authorized_gates"
+    assert lifecycle_rollup["is_goal_complete"] is False
+    assert lifecycle_rollup["can_mark_goal_complete"] is False
+    assert lifecycle_rollup["completion_blockers"][0]["id"] == "actual_loading_gate_live_model_proof"
     assert state["recovery_probes"][0]["route"] == "/runtime/research-action-lifecycle"
     assert state["recovery_probes"][0]["read_only"] is True
     handoff_probe = state["recovery_probes"][1]
@@ -1814,13 +2661,13 @@ def test_agent_workspace_requirement_reads_goal_requirement_drilldown(
             "updated_at": "2026-06-22T21:36:00+08:00",
             "checkpoint_id": "20260622-213822-n41-goal-state-workspace-visibility",
             "id": "B01-computer-use-accessibility-tree",
-            "status": "incomplete",
-            "requirement": "Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.",
-            "residual_risk": "Retry only after the external tool error is fixed.",
+            "status": "proved",
+            "requirement": "Local UIA accessibility-tree acceptance is restored for the source desktop app.",
+            "residual_risk": "External Computer Use package exports issue remains a residual risk.",
             "evidence": [
                 {
-                    "label": "tests/test_agent_workspace_router.py",
-                    "text": "router contract covers redacted requirement drilldown",
+                    "label": "workspace_artifacts/generated/desktop_smoke/sandboxpolicy-diagnosis-20260623/summary.json",
+                    "text": "status passed with root 文献助手 and non-empty UIA tree",
                 }
             ],
             "evidence_count": 1,
@@ -1840,9 +2687,11 @@ def test_agent_workspace_requirement_reads_goal_requirement_drilldown(
     assert data["schema_version"] == "scholar_ai_goal_requirement_drilldown_v1"
     assert data["read_only"] is True
     assert data["id"] == "B01-computer-use-accessibility-tree"
-    assert data["status"] == "incomplete"
+    assert data["status"] == "proved"
     assert data["evidence_count"] == 1
-    assert data["evidence"][0]["label"] == "tests/test_agent_workspace_router.py"
+    assert data["evidence"][0]["label"] == (
+        "workspace_artifacts/generated/desktop_smoke/sandboxpolicy-diagnosis-20260623/summary.json"
+    )
     assert backend.calls[-1] == (
         "json",
         "/api/agent-workspace/goal-requirements/B01-computer-use-accessibility-tree",
@@ -2188,6 +3037,101 @@ def test_agent_resource_read_uses_bounded_reader(
         "/api/agent-bridge/resource/chunk:mat_1_chunk_0",
         {"max_chars": 500, "project_id": "project-1", "cursor": "100"},
     )
+
+
+def test_agent_resource_read_accepts_wiki_refs(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Wiki refs should flow through the same bounded reader contract."""
+
+    tools.agent_resource_read("wiki:concepts/laser-welding.md", max_chars=600, cursor="120")
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/agent-bridge/resource/wiki:concepts/laser-welding.md",
+        {"max_chars": 600, "cursor": "120"},
+    )
+
+
+def test_agent_resource_read_accepts_skill_package_refs(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Skill package refs should flow through the same bounded reader contract."""
+
+    tools.agent_resource_read(
+        "skill_package:academic-english-discourse:chunk:skill-source",
+        max_chars=700,
+        cursor="0",
+    )
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/agent-bridge/resource/skill_package:academic-english-discourse:chunk:skill-source",
+        {"max_chars": 700, "cursor": "0"},
+    )
+
+
+def test_agent_resource_read_accepts_scoring_rules_refs(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Scoring-rules refs should flow through the same bounded reader contract."""
+
+    tools.agent_resource_read(
+        "scoring_rules:section:weights",
+        max_chars=700,
+        cursor="0",
+    )
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/agent-bridge/resource/scoring_rules:section:weights",
+        {"max_chars": 700, "cursor": "0"},
+    )
+
+
+def test_agent_resource_read_accepts_product_docs_refs(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Product-doc refs should flow through the same bounded reader contract."""
+
+    tools.agent_resource_read(
+        "product_docs:chunk:readme-1-abc123",
+        max_chars=500,
+        cursor="40",
+    )
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/agent-bridge/resource/product_docs:chunk:readme-1-abc123",
+        {"max_chars": 500, "cursor": "40"},
+    )
+
+
+def test_source_vault_read_accepts_only_source_vault_chunk_refs(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """source_vault_read should expose bounded Source Vault refs without becoming a generic proxy."""
+
+    tools.source_vault_read(
+        "source_vault:chunk:chunk-abc",
+        project_id=" project-1 ",
+        max_chars=900,
+        cursor=" 20 ",
+    )
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/agent-bridge/resource/source_vault:chunk:chunk-abc",
+        {"max_chars": 900, "project_id": "project-1", "cursor": "20"},
+    )
+
+    with pytest.raises(ValueError, match="source_vault:chunk"):
+        tools.source_vault_read("wiki:some-page")
 
 
 def test_agent_result_requires_terminal_payload(

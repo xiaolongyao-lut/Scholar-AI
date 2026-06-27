@@ -3,6 +3,28 @@
 from lit_assistant_mcp.server import create_mcp_server
 
 
+def _assert_read_only_annotations(tool: object) -> None:
+    """Assert a tool declares the non-mutating MCP annotation contract."""
+
+    annotations = getattr(tool, "annotations", None)
+    assert annotations is not None
+    assert annotations.readOnlyHint is True
+    assert annotations.destructiveHint is False
+    assert annotations.idempotentHint is True
+    assert annotations.openWorldHint is False
+
+
+def _assert_execution_probe_annotations(tool: object) -> None:
+    """Assert OCR execution is explicit, non-destructive, and non-idempotent."""
+
+    annotations = getattr(tool, "annotations", None)
+    assert annotations is not None
+    assert annotations.readOnlyHint is False
+    assert annotations.destructiveHint is False
+    assert annotations.idempotentHint is False
+    assert annotations.openWorldHint is True
+
+
 def test_server_registers_source_and_runtime_tools() -> None:
     """FastMCP server exposes source, runtime, and workflow-spine tool names."""
     server = create_mcp_server()
@@ -25,6 +47,31 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.read_material",
         "literature.get_material_chunks",
         "literature.search_refs",
+        "literature.knowledge_packages",
+        "literature.knowledge_runtime_conformance",
+        "literature.ocr_status",
+        "literature.ocr_engines",
+        "literature.ocr_health",
+        "literature.ocr_execution_probe",
+        "literature.knowledge_context_receipt",
+        "literature.wiki_status",
+        "literature.wiki_search",
+        "literature.skill_package_status",
+        "literature.skill_package_search",
+        "literature.source_vault_status",
+        "literature.source_vault_search",
+        "literature.source_vault_read",
+        "literature.academic_english_status",
+        "literature.academic_english_search",
+        "literature.bridge_lexicon_status",
+        "literature.bridge_lexicon_read",
+        "literature.bridge_lexicon_search",
+        "literature.scoring_rules_status",
+        "literature.scoring_rules_read",
+        "literature.scoring_rules_search",
+        "literature.product_docs_status",
+        "literature.product_docs_read",
+        "literature.product_docs_search",
         "literature.evidence_pack_build",
         "literature.project_scan_folder",
         "literature.figures_candidates",
@@ -41,6 +88,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.agent_workspace_status",
         "literature.agent_workspace_requirement",
         "literature.agent_request_create",
+        "literature.wiki_import",
         "literature.single_paper_task_create",
         "literature.single_paper_completion_check",
         "literature.agent_request_list",
@@ -71,3 +119,40 @@ def test_server_registers_source_and_runtime_tools() -> None:
     }.issubset(tool_names)
     assert "literature.search_literature" not in tool_names
     assert "literature.ingest_then_search" not in tool_names
+
+    tools_by_name = {tool.name: tool for tool in server._tool_manager.list_tools()}
+    read_only_tool_names = [
+        "literature.knowledge_packages",
+        "literature.knowledge_runtime_conformance",
+        "literature.ocr_status",
+        "literature.ocr_engines",
+        "literature.ocr_health",
+        "literature.knowledge_context_receipt",
+        "literature.wiki_status",
+        "literature.wiki_search",
+        "literature.skill_package_status",
+        "literature.skill_package_search",
+        "literature.source_vault_status",
+        "literature.source_vault_search",
+        "literature.source_vault_read",
+        "literature.bridge_lexicon_status",
+        "literature.bridge_lexicon_read",
+        "literature.bridge_lexicon_search",
+        "literature.agent_handoff_card",
+        "literature.workflow_passport",
+        "literature.evidence_integrity_gate",
+        "literature.research_action_lifecycle",
+        "literature.workflow_refresh_receipt",
+        "literature.workflow_replay_lineage",
+        "literature.workflow_replay_index",
+    ]
+    for tool_name in read_only_tool_names:
+        _assert_read_only_annotations(tools_by_name[tool_name])
+    _assert_execution_probe_annotations(tools_by_name["literature.ocr_execution_probe"])
+
+    wiki_import_annotations = tools_by_name["literature.wiki_import"].annotations
+    assert wiki_import_annotations is not None
+    assert wiki_import_annotations.readOnlyHint is False
+    assert wiki_import_annotations.destructiveHint is True
+    assert wiki_import_annotations.idempotentHint is False
+    assert wiki_import_annotations.openWorldHint is False

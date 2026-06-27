@@ -182,6 +182,68 @@ class ReviewQueue:
                 return item
         return None
 
+    def update_metadata(self, item_id: str, metadata_updates: Mapping[str, Any]) -> ReviewItem:
+        """Merge JSON-safe metadata onto an existing review item.
+
+        Args:
+            item_id: Existing review item id.
+            metadata_updates: Object-shaped metadata patch used for local audit
+                refs. Values are copied as-is and must be JSON serializable.
+
+        Returns:
+            Updated review item.
+
+        Raises:
+            KeyError: If the review item does not exist.
+            TypeError: If metadata_updates is not a mapping.
+        """
+
+        normalized = _require_text(item_id, "item_id")
+        if not isinstance(metadata_updates, Mapping):
+            raise TypeError("metadata_updates must be a mapping")
+        items = self.list_items()
+        updated_items: list[ReviewItem] = []
+        updated_item: ReviewItem | None = None
+        for item in items:
+            if item.item_id != normalized:
+                updated_items.append(item)
+                continue
+            updated_item = ReviewItem(
+                item_id=item.item_id,
+                kind=item.kind,
+                title=item.title,
+                page_path=item.page_path,
+                summary=item.summary,
+                status=item.status,
+                created_at=item.created_at,
+                source=item.source,
+                metadata={**dict(item.metadata), **dict(metadata_updates)},
+                decision=item.decision,
+            )
+            updated_items.append(updated_item)
+        if updated_item is None:
+            raise KeyError(normalized)
+        self._write_items(updated_items)
+        return updated_item
+
+    def remove(self, item_id: str) -> bool:
+        """Remove a pending local review item during same-transaction rollback.
+
+        Args:
+            item_id: Existing review item id.
+
+        Returns:
+            True when an item was removed, False when the id was absent.
+        """
+
+        normalized = _require_text(item_id, "item_id")
+        items = self.list_items()
+        kept = [item for item in items if item.item_id != normalized]
+        if len(kept) == len(items):
+            return False
+        self._write_items(kept)
+        return True
+
     def approve(self, item_id: str, *, reason: str = "", decided_by: str = "user") -> ReviewItem:
         return self._decide(
             item_id,

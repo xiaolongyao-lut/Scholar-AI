@@ -19,6 +19,10 @@ import {
   type BlockingActionBoundaryProjection,
   type WorkflowActionPreflightProjection,
 } from '@/services/agentWorkspaceApi';
+import {
+  getKnowledgeRuntimeConformance,
+  type KnowledgeRuntimeConformanceResponse,
+} from '@/services/knowledgeApi';
 import { getWikiReview } from '@/services/wikiApi';
 
 vi.mock('@/services/agentWorkspaceApi', () => ({
@@ -41,6 +45,10 @@ vi.mock('@/services/wikiApi', () => ({
   getWikiReview: vi.fn(),
 }));
 
+vi.mock('@/services/knowledgeApi', () => ({
+  getKnowledgeRuntimeConformance: vi.fn(),
+}));
+
 const mockedGetAgentWorkspaceStatus = vi.mocked(getAgentWorkspaceStatus);
 const mockedGetAgentWorkspaceRequirement = vi.mocked(getAgentWorkspaceRequirement);
 const mockedGetAgentBridgeStatus = vi.mocked(getAgentBridgeStatus);
@@ -55,6 +63,7 @@ const mockedGetWorkflowReplayLineage = vi.mocked(getWorkflowReplayLineage);
 const mockedGetZoteroAttachmentHealth = vi.mocked(getZoteroAttachmentHealth);
 const mockedListRuntimeJobs = vi.mocked(listRuntimeJobs);
 const mockedGetWikiReview = vi.mocked(getWikiReview);
+const mockedGetKnowledgeRuntimeConformance = vi.mocked(getKnowledgeRuntimeConformance);
 const emptyWorkflowStageRuntimeFacts = {
   diagnostics: {},
   reproducibility: {},
@@ -106,31 +115,48 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
     goal_state: {
       available: true,
       path: 'docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json',
-      updated_at: '2026-06-22T21:50:27+08:00',
-      checkpoint_id: '20260622-214730-n41-goal-state-record-update',
-      requirement_count: 49,
-      proved_count: 47,
-      incomplete_count: 1,
-      out_of_scope_count: 1,
-      latest_requirement_id: 'N41-goal-state-workspace-visibility',
+      updated_at: '2026-06-24T17:55:00+08:00',
+      checkpoint_id: '20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio',
+      requirement_count: 125,
+      proved_count: 125,
+      incomplete_count: 0,
+      out_of_scope_count: 0,
+      latest_requirement_id: 'N112-sandboxpolicy-current-state-alignment',
       requirement_status: {
-        total: 49,
-        proved: 47,
-        incomplete: 1,
-        out_of_scope: 1,
-        latest_id: 'N41-goal-state-workspace-visibility',
+        total: 125,
+        proved: 125,
+        incomplete: 0,
+        out_of_scope: 0,
+        latest_id: 'N112-sandboxpolicy-current-state-alignment',
       },
-      open_requirements: [
-        {
-          id: 'B01-computer-use-accessibility-tree',
-          status: 'incomplete',
-          requirement: 'Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.',
-          residual_risk: 'Retry only after the external tool error is fixed.',
-        },
-      ],
+      open_requirements: [],
       completion_claim: {
-        this_slice: 'N41 made goal-state recovery visible.',
+        this_slice: 'N112 aligned current recovery state with local UIA accessibility-tree evidence.',
         full_goal: 'The full Scholar AI workflow spine remains active, not complete.',
+      },
+      lifecycle_rollup: {
+        schema_version: 'scholar_ai_goal_lifecycle_rollup_v1',
+        updated_at: '2026-06-25T23:59:30+08:00',
+        status: 'active_requirements_proved_pending_authorized_gates',
+        is_goal_complete: false,
+        can_mark_goal_complete: false,
+        requirements_all_proved: true,
+        requirements_all_proved_or_out_of_scope: true,
+        latest_requirement_id: 'N173-goal-lifecycle-rollup',
+        latest_slice_id: 'N173-goal-lifecycle-rollup',
+        completion_blockers: [
+          {
+            id: 'actual_loading_gate_live_model_proof',
+            status: 'blocked_pending_explicit_authorization',
+            requirement_surface: 'Knowledge Runtime Pipeline QA/agent actual model-context loading',
+            missing_evidence: 'Authorized live provider/model smoke artifact with verdict=ok.',
+            current_boundary: 'Deterministic contract and harness tests are proved.',
+          },
+        ],
+        machine_readable_completion_rule: 'Goal may be marked complete only after blockers clear.',
+        why_not_complete: [
+          'All requirement rows are proved, but goal-level proof gates remain.',
+        ],
       },
       next_authorized_local_actions: [
         'Create a rollback checkpoint and search mature references before nontrivial edits.',
@@ -138,7 +164,48 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       stop_boundaries: ['No push, tag, release, deploy, or external upload.'],
       error: null,
     },
+    desktop_smoke: {
+      schema_version: 'scholar_ai_desktop_smoke_state_v1' as const,
+      available: true,
+      read_only: true,
+      run_id: 'n75-desktop-smoke',
+      status: 'passed',
+      initial_path: '/__desktop_acceptance/agent-workspace',
+      expected_initial_path: '/__desktop_acceptance/agent-workspace',
+      candidate_count: 2,
+      ignored_count: 1,
+      summary_path: 'workspace_artifacts/generated/desktop_smoke/n75-desktop-smoke/summary.json',
+      screenshot_path: 'workspace_artifacts/generated/desktop_smoke/n75-desktop-smoke/window.png',
+      accessibility_tree_path: 'workspace_artifacts/generated/desktop_smoke/n75-desktop-smoke/accessibility-tree.json',
+      screenshot_nonblank: true,
+      accessibility_tree_available: true,
+      accessibility_tree_root_name: '文献助手',
+      accessibility_tree_root_control_type: '窗口',
+      accessibility_tree_node_count: 20,
+      accessibility_tree_named_node_count: 9,
+      warnings: [],
+      errors: [],
+      error: null,
+    },
     recovery_probes: [
+      {
+        label: 'Desktop Smoke Evidence',
+        route: '/api/agent-workspace/status',
+        read_only: true,
+        requires_identifier: false,
+        identifier_hint: null,
+        purpose: 'Recover latest source desktop screenshot and accessibility-tree artifact labels before claiming UI acceptance.',
+        mcp_tool: 'literature.agent_workspace_status',
+      },
+      {
+        label: 'OCR Runtime Status',
+        route: '/api/pdf-backend/ocr-status',
+        read_only: true,
+        requires_identifier: false,
+        identifier_hint: null,
+        purpose: 'Recover OCR policy, selected engine, readiness blockers, and redacted runtime config before claiming local processing capability.',
+        mcp_tool: 'literature.ocr_status',
+      },
       {
         label: 'Workflow Passport',
         route: '/runtime/workflow-passport',
@@ -194,6 +261,168 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       'Inspect git dirty paths and preserve unrelated local work before staging or committing.',
     ],
     ...overrides,
+  };
+}
+
+function knowledgeRuntimeFixture(): KnowledgeRuntimeConformanceResponse {
+  return {
+    schema_version: 'scholar_ai_knowledge_runtime_conformance_v1',
+    generated_at: '2026-06-25T10:00:00Z',
+    pipeline: [
+      'authoritative source',
+      'builder/loader/chunker',
+      'runtime artifact',
+      'manifest/provenance/hash',
+      'searchable ref/resource',
+      'bounded context',
+      'QA/agent actual loading',
+      'audit/test proof',
+    ],
+    summary: {
+      proved: 1,
+      pending: 0,
+      blocked: 1,
+      not_applicable: 0,
+    },
+    actual_loading_gate: {
+      status: 'blocked',
+      evidence_level: 'contract_evidence',
+      artifact_path: 'workspace_artifacts/generated/output/live_api_chat_knowledge_context_receipt_smoke.summary.json',
+      artifact_ref: 'workspace_artifacts/generated/output/live_api_chat_knowledge_context_receipt_smoke.summary.json',
+      artifact_contract: 'scholar-ai-live-context-receipt-smoke/v1',
+      artifact_exists: false,
+      artifact_schema_valid: false,
+      artifact_contract_valid: false,
+      artifact_checked_at: '2026-06-26T03:39:00Z',
+      verdict: 'missing_artifact',
+      evidence_scope: [
+        '/api/chat',
+        'literature.agent_resource_read',
+        'literature.knowledge_context_receipt',
+        'assembled_context_hash_backflow',
+      ],
+      evidence: [],
+      missing: [
+        'authorized live provider smoke artifact with verdict=ok',
+        'LITASSIST_RUN_LIVE_CONTEXT_RECEIPT_SMOKE or --allow-live-provider-call',
+      ],
+      validation_errors: [],
+      required_checks: [
+        'artifact.schema.valid',
+        'artifact.verdict.ok',
+        'artifact.status_code.200',
+        'artifact.required_tools.used',
+        'artifact.required_tools.names',
+        'artifact.receipt_hash.preview',
+        'artifact.receipt_hash.final_answer',
+        'artifact.receipt_hash.query_matches_direct',
+        'artifact.direct_receipt.assembled_context_hash',
+      ],
+      claim_boundary: 'Package conformance proves deterministic source-to-context receipts only; no live QA/model actual-loading artifact is present.',
+      provider_preflight: {
+        status: 'blocked',
+        evidence_level: 'contract_evidence',
+        artifact_path: 'workspace_artifacts/runtime_state/provider-capabilities.json',
+        artifact_ref: 'workspace_artifacts/runtime_state/provider-capabilities.json',
+        artifact_exists: true,
+        artifact_schema_valid: true,
+        checked_at: '2026-06-26T03:40:00Z',
+        record_count: 1,
+        latest_status: 'auth_required',
+        records: [
+          {
+            fingerprint: 'a'.repeat(64),
+            provider: 'hhl',
+            base_url_host: 'free.hanhanapi.top',
+            model: 'gpt-5.5',
+            status: 'auth_required',
+            ordinary_chat_ok: false,
+            forced_tool_choice_ok: false,
+            last_probe_at: '2026-06-25T20:13:21Z',
+            failure_class: 'models',
+            masked_error: 'HTTP 401: Invalid token (request id: [REDACTED])',
+          },
+        ],
+        evidence_scope: ['/api/chat/tool-capability/test'],
+        evidence: ['workspace_artifacts/runtime_state/provider-capabilities.json'],
+        missing: ['provider_tool_call_status=tool_call_ok'],
+        validation_errors: [],
+        claim_boundary: 'Provider preflight has not proven forced tool calls.',
+      },
+    },
+    packages: [
+      {
+        package_id: 'source_vault',
+        kind: 'source_vault',
+        title: 'Source Vault',
+        overall_status: 'blocked',
+        loaded: false,
+        source_path: 'workspace_artifacts/source_vault',
+        source_hash: 'missing',
+        content_hash: 'missing',
+        read_endpoint: '/api/knowledge/source-vault/{ref_id}',
+        search_endpoint: '/api/knowledge/source-vault/search',
+        manifest: { empty_runtime: true },
+        runtime_consumers: [{ surface: 'MCP', tool: 'literature.source_vault_read' }],
+        mcp_tools: ['literature.source_vault_search', 'literature.source_vault_read'],
+        test_evidence: {
+          focused_test_exists: true,
+          source_edit_hash_test: true,
+          context_receipt_test: false,
+          evidence_pack_test: false,
+          agent_resource_read_test: true,
+          mcp_tool_test: true,
+          test_nodes: ['tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_endpoint_only_claims'],
+        },
+        conformance: [
+          {
+            requirement: 'Loaded searchable refs exist before claiming bounded context.',
+            status: 'blocked',
+            evidence_level: 'runtime_projection',
+            evidence_scope: ['default_runtime'],
+            evidence: [],
+            missing: ['loaded_ref'],
+          },
+        ],
+      },
+      {
+        package_id: 'wiki',
+        kind: 'wiki',
+        title: 'Private Wiki',
+        overall_status: 'proved',
+        loaded: true,
+        source_path: 'workspace_artifacts/wiki',
+        source_hash: 'sha256:wiki-source-hash',
+        content_hash: 'sha256:wiki-content-hash',
+        read_endpoint: '/api/wiki/resource/{ref_id}',
+        search_endpoint: '/api/wiki/search',
+        manifest: { loaded: true },
+        runtime_consumers: [
+          { surface: 'QA', caller: 'evidence_pack' },
+          { surface: 'Agent', caller: 'resource_read' },
+        ],
+        mcp_tools: ['literature.wiki_search', 'literature.wiki_resource_read'],
+        test_evidence: {
+          focused_test_exists: true,
+          source_edit_hash_test: true,
+          context_receipt_test: true,
+          evidence_pack_test: true,
+          agent_resource_read_test: true,
+          mcp_tool_test: true,
+          test_nodes: ['tests/wiki/test_wiki_router.py::test_wiki_source_rebuild_search_resource_and_context_receipt_chain'],
+        },
+        conformance: [
+          {
+            requirement: 'Wiki refs can be loaded into bounded context.',
+            status: 'proved',
+            evidence_level: 'focused_test_evidence',
+            evidence_scope: ['wiki'],
+            evidence: ['context receipt test passed'],
+            missing: [],
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -257,16 +486,16 @@ describe('AgentWorkspace', () => {
       available: true,
       read_only: true,
       path: 'docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json',
-      updated_at: '2026-06-22T21:50:27+08:00',
-      checkpoint_id: '20260622-214730-n41-goal-state-record-update',
+      updated_at: '2026-06-24T17:55:00+08:00',
+      checkpoint_id: '20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio',
       id: 'B01-computer-use-accessibility-tree',
-      status: 'incomplete',
-      requirement: 'Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.',
-      residual_risk: 'Retry only after the external tool error is fixed.',
+      status: 'proved',
+      requirement: 'Local UIA accessibility-tree acceptance is restored for the source desktop app.',
+      residual_risk: 'External Computer Use package exports issue remains a residual risk.',
       evidence: [
         {
-          label: 'tests/test_agent_workspace_router.py',
-          text: 'router contract covers redacted requirement drilldown',
+          label: 'workspace_artifacts/generated/desktop_smoke/sandboxpolicy-diagnosis-20260623/summary.json',
+          text: 'status passed with root 文献助手 and non-empty UIA tree',
         },
       ],
       evidence_count: 1,
@@ -324,6 +553,7 @@ describe('AgentWorkspace', () => {
       enabled: true,
       items: [],
     });
+    mockedGetKnowledgeRuntimeConformance.mockResolvedValue(knowledgeRuntimeFixture());
     mockedListRuntimeJobs.mockResolvedValue({ recent: [] });
     mockedGetWorkflowPassport.mockResolvedValue({
       schema_version: 'scholar_ai_workflow_passport_v1',
@@ -679,6 +909,102 @@ describe('AgentWorkspace', () => {
     expect(screen.getByText('进入 Wiki 工作台复核待审页面。')).toBeInTheDocument();
     expect(screen.getByText('打开任务详情检查待补充哨兵和 evidence refs。')).toBeInTheDocument();
     expect(screen.queryByText('C:/private/Zotero')).not.toBeInTheDocument();
+  });
+
+  it('renders local Markdown wiki import recovery metadata without exposing internal routes', async () => {
+    mockedGetWikiReview.mockResolvedValue({
+      enabled: true,
+      items: [
+        {
+          item_id: 'import-synthesis-runtime-note',
+          kind: 'draft',
+          title: 'Runtime Import Note',
+          page_path: 'private/imports/runtime-note.md',
+          summary: 'Local Markdown import candidate.',
+          status: 'pending',
+          created_at: '2026-06-23T10:00:00Z',
+          source: 'local_markdown_import',
+          metadata: {
+            manual_wiki_import: true,
+            requested_status: 'final',
+            source_path: 'C:\\Users\\Alice\\My Documents\\runtime note.md',
+            runtime_session_id: 'session_import_1',
+            runtime_job_id: 'job_import_1',
+            runtime_approval_id: 'approval_import_1',
+            evidence_integrity_gate: { status: 'block' },
+            runtime_recovery: {
+              agent_handoff_card: '/runtime/job/job_import_1/agent-handoff-card',
+            },
+            agent_handoff_recovery: {
+              review_queue_probe: '/api/wiki/review?status=pending&kind=draft',
+              forbidden_actions: [
+                'direct_zotero_db_write',
+                'external_upload',
+                'auto_approve_import',
+              ],
+            },
+          },
+          decision: null,
+        },
+      ],
+    });
+
+    render(<AgentWorkspace />);
+
+    const recoveryRegion = await screen.findByRole('region', { name: 'Wiki import recovery' });
+    expect(within(recoveryRegion).getByText('Wiki Import Recovery')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('pending 1')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('runtime refs 1')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('gate block 1')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('read-only true')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('import-synthesis-runtime-note')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('private/imports/runtime-note.md')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('requested final')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('gate block')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('job_import_1')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('session_import_1')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('approval_import_1')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('handoff card available')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('review probe available')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('direct_zotero_db_write')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('external_upload')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('auto_approve_import')).toBeInTheDocument();
+    expect(within(recoveryRegion).getByText('No auto approval, external upload, Zotero DB mutation, or published knowledge write is exposed from Agent Workspace.')).toBeInTheDocument();
+    expect(within(recoveryRegion).queryByText('/runtime/job/job_import_1/agent-handoff-card')).not.toBeInTheDocument();
+    expect(within(recoveryRegion).queryByText('C:\\Users\\Alice\\My Documents\\runtime note.md')).not.toBeInTheDocument();
+    expect(within(recoveryRegion).queryByText(/My Documents/)).not.toBeInTheDocument();
+    expect(within(recoveryRegion).queryByRole('button', { name: /approve|reject|write|publish/i })).not.toBeInTheDocument();
+    expect(within(recoveryRegion).queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('renders Knowledge Runtime conformance in Agent Workspace recovery state', async () => {
+    render(<AgentWorkspace />);
+
+    const knowledgeRegion = await screen.findByRole('region', { name: 'Knowledge runtime conformance' });
+    expect(mockedGetKnowledgeRuntimeConformance).toHaveBeenCalledTimes(1);
+    expect(within(knowledgeRegion).getByText('Knowledge Runtime')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('conformance visible')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('read-only true')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('packages 2')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('blocked 1')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('proved 1')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('live gate blocked')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('Actual loading gate')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('missing_artifact · evidence 0 · missing 2 · errors 0 · checks 9')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('contract scholar-ai-live-context-receipt-smoke/v1')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('validation errors 0')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('required checks 9')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('check artifact.schema.valid')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('check artifact.verdict.ok')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('check artifact.status_code.200')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText(/Package conformance proves deterministic source-to-context receipts only/)).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('missing authorized live provider smoke artifact with verdict=ok')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText(/authoritative source -> builder\/loader\/chunker -> runtime artifact/)).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('Source Vault')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('loaded false')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('blocked rows 1')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('Private Wiki')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('focused-test · context-receipt · agent-resource · mcp-tool')).toBeInTheDocument();
   });
 
   it('filters open requirements before truncation and selects a matching drilldown', async () => {
@@ -2060,39 +2386,48 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('ahead 33')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('artifacts ready · files 1 · 256 B')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('runtime ready · files 2 · 128 B')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('goal-state 49 rows · proved 47 · incomplete 1 · out-of-scope 1 · latest N41-goal-state-workspace-visibility')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('goal-state 125 rows · proved 125 · incomplete 0 · out-of-scope 0 · latest N112-sandboxpolicy-current-state-alignment · lifecycle active_requirements_proved_pending_authorized_gates')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal-state visible')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('requirement status visible')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('open requirements 1')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Open Requirements')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('B01-computer-use-accessibility-tree · incomplete · Computer Use accessibility-tree acceptance is blocked by sandboxPolicy. · risk Retry only after the external tool error is fixed.')).toBeInTheDocument();
-    const requirementDrilldownRegion = within(workspaceStateRegion).getByRole('region', { name: 'Requirement evidence drilldown' });
-    expect(within(requirementDrilldownRegion).getByText('Requirement Evidence')).toBeInTheDocument();
-    expect(within(requirementDrilldownRegion).getByText('drilldown visible')).toBeInTheDocument();
-    expect(within(requirementDrilldownRegion).getByText('read-only true')).toBeInTheDocument();
-    expect(within(requirementDrilldownRegion).getByText('evidence 1')).toBeInTheDocument();
-    expect(within(requirementDrilldownRegion).getByText('B01-computer-use-accessibility-tree · incomplete')).toBeInTheDocument();
-    expect(within(requirementDrilldownRegion).getByText('requirement Computer Use accessibility-tree acceptance is blocked by sandboxPolicy.')).toBeInTheDocument();
-    expect(within(requirementDrilldownRegion).getByText('risk Retry only after the external tool error is fixed.')).toBeInTheDocument();
-    expect(within(requirementDrilldownRegion).getByText('tests/test_agent_workspace_router.py · router contract covers redacted requirement drilldown')).toBeInTheDocument();
-    expect(within(requirementDrilldownRegion).getByText('next Create a rollback checkpoint and search mature references before edits.')).toBeInTheDocument();
-    expect(within(requirementDrilldownRegion).getByText('boundary No push, tag, release, deploy, or external upload.')).toBeInTheDocument();
+    const desktopSmokeRegion = within(workspaceStateRegion).getByRole('region', { name: 'Desktop smoke evidence' });
+    expect(within(desktopSmokeRegion).getByText('Desktop Smoke Evidence')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('desktop smoke visible')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('read-only true')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('status passed')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('n75-desktop-smoke · passed · screenshot nonblank · a11y tree yes · candidates 2 · ignored 1')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('/__desktop_acceptance/agent-workspace')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('expected /__desktop_acceptance/agent-workspace')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('ignored 1')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('root 文献助手')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('control 窗口')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('nodes 20')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('named 9')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('workspace_artifacts/generated/desktop_smoke/n75-desktop-smoke/window.png')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).getByText('workspace_artifacts/generated/desktop_smoke/n75-desktop-smoke/accessibility-tree.json')).toBeInTheDocument();
+    expect(within(desktopSmokeRegion).queryByText(/C:\\Users\\/)).not.toBeInTheDocument();
+    expect(within(workspaceStateRegion).queryByText('Open Requirements')).not.toBeInTheDocument();
+    expect(within(workspaceStateRegion).queryByText(/B01-computer-use-accessibility-tree · incomplete/)).not.toBeInTheDocument();
+    expect(within(workspaceStateRegion).queryByRole('region', { name: 'Requirement evidence drilldown' })).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('full goal status visible')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('slice completion N41 made goal-state recovery visible.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('lifecycle active_requirements_proved_pending_authorized_gates')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('slice completion N112 aligned current recovery state with local UIA accessibility-tree evidence.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('full goal The full Scholar AI workflow spine remains active, not complete.')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('checkpoint 20260622-214730-n41-goal-state-record-update')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('lifecycle blockers 1 · can complete false')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('checkpoint 20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json')).toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText(/C:\\Users\\/)).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText(/restore_command/)).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('literature_assistant/core/routers/agent_workspace_router.py')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('docs/plans/local-goal-state.json')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Desktop Smoke Evidence · read-only true · literature.agent_workspace_status')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('OCR Runtime Status · read-only true · literature.ocr_status')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Workflow Passport · read-only true · literature.workflow_passport')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Research Action Lifecycle · read-only true · literature.research_action_lifecycle')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Agent Handoff Card · read-only true · needs job_id · literature.agent_handoff_card')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Create a rollback checkpoint and re-check official or mature references before nontrivial edits.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('/runtime/workflow-passport')).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('/runtime/job/{job_id}/agent-handoff-card')).not.toBeInTheDocument();
-    expect(mockedGetAgentWorkspaceRequirement).toHaveBeenCalledWith('B01-computer-use-accessibility-tree');
+    expect(mockedGetAgentWorkspaceRequirement).not.toHaveBeenCalled();
     expect(mockedGetBehaviorEvalPack).toHaveBeenCalledWith({ includeCases: true });
     expect(mockedGetResearchActionLifecycle).toHaveBeenCalledWith({ limit: 50 });
     expect(await screen.findByText('in_progress · refs 2 · probes 3 · replay 2')).toBeInTheDocument();

@@ -29,9 +29,12 @@ MAX_STATE_PATHS = 8
 MAX_GOAL_STATE_ACTIONS = 3
 MAX_GOAL_STATE_BOUNDARIES = 3
 MAX_GOAL_STATE_OPEN_REQUIREMENTS = 5
+MAX_GOAL_LIFECYCLE_BLOCKERS = 5
 MAX_GOAL_COMPLETION_CHARS = 240
 MAX_GOAL_REQUIREMENT_EVIDENCE = 8
 MAX_GOAL_REQUIREMENT_TEXT_CHARS = 480
+MAX_DESKTOP_SMOKE_TEXT_ITEMS = 3
+AGENT_WORKSPACE_DESKTOP_ACCEPTANCE_PATH = "/__desktop_acceptance/agent-workspace"
 GIT_STATUS_TIMEOUT_SECONDS = 2.0
 OPEN_REQUIREMENT_STATUSES = frozenset(
     {
@@ -166,6 +169,57 @@ class AgentWorkspaceGoalOpenRequirement(BaseModel):
     residual_risk: str | None = Field(default=None, max_length=240)
 
 
+class AgentWorkspaceGoalLifecycleBlocker(BaseModel):
+    """One bounded goal-level blocker from the longrun lifecycle rollup.
+
+    Args:
+        id: Stable blocker id.
+        status: Current blocker state.
+        requirement_surface: Short product or workflow surface affected.
+        missing_evidence: Missing proof needed before completion can be claimed.
+        current_boundary: Current authorization, tooling, or evidence boundary.
+    """
+
+    id: str = Field(min_length=1, max_length=160)
+    status: str | None = Field(default=None, max_length=120)
+    requirement_surface: str | None = Field(default=None, max_length=240)
+    missing_evidence: str | None = Field(default=None, max_length=240)
+    current_boundary: str | None = Field(default=None, max_length=240)
+
+
+class AgentWorkspaceGoalLifecycleRollup(BaseModel):
+    """Machine-readable longrun goal lifecycle summary for recovery decisions.
+
+    Args:
+        schema_version: Source rollup schema identifier.
+        updated_at: Timestamp from the rollup.
+        status: Goal-level lifecycle status, distinct from requirement rows.
+        is_goal_complete: Whether the longrun goal itself is complete.
+        can_mark_goal_complete: Whether a resumed agent may mark it complete.
+        requirements_all_proved: Whether all rows are currently proved.
+        requirements_all_proved_or_out_of_scope: Whether every row is proved or
+            explicitly outside scope.
+        latest_requirement_id: Latest requirement row id recorded by the rollup.
+        latest_slice_id: Latest slice id recorded by the rollup.
+        completion_blockers: Bounded unresolved goal-level blockers.
+        machine_readable_completion_rule: Compact rule for completion claims.
+        why_not_complete: Bounded explanation list when the goal remains active.
+    """
+
+    schema_version: str | None = Field(default=None, max_length=120)
+    updated_at: str | None = Field(default=None, max_length=80)
+    status: str | None = Field(default=None, max_length=160)
+    is_goal_complete: bool | None = None
+    can_mark_goal_complete: bool | None = None
+    requirements_all_proved: bool | None = None
+    requirements_all_proved_or_out_of_scope: bool | None = None
+    latest_requirement_id: str | None = Field(default=None, max_length=160)
+    latest_slice_id: str | None = Field(default=None, max_length=160)
+    completion_blockers: list[AgentWorkspaceGoalLifecycleBlocker] = Field(default_factory=list)
+    machine_readable_completion_rule: str | None = Field(default=None, max_length=240)
+    why_not_complete: list[str] = Field(default_factory=list)
+
+
 class AgentWorkspaceGoalRequirementEvidenceRef(BaseModel):
     """One bounded evidence reference from the longrun requirement matrix.
 
@@ -233,6 +287,7 @@ class AgentWorkspaceGoalState(BaseModel):
         latest_requirement_id: Last requirement id in the matrix.
         requirement_status: Compact requirement-to-evidence status summary.
         open_requirements: Bounded non-proved requirement rows for recovery.
+        lifecycle_rollup: Machine-readable goal-level completion boundary.
         completion_claim: Bounded slice/full-goal completion summary.
         next_authorized_local_actions: Bounded action labels from the record.
         stop_boundaries: Bounded stop-boundary labels from the record.
@@ -250,9 +305,58 @@ class AgentWorkspaceGoalState(BaseModel):
     latest_requirement_id: str | None = Field(default=None, max_length=160)
     requirement_status: AgentWorkspaceGoalRequirementStatus = Field(default_factory=AgentWorkspaceGoalRequirementStatus)
     open_requirements: list[AgentWorkspaceGoalOpenRequirement] = Field(default_factory=list)
+    lifecycle_rollup: AgentWorkspaceGoalLifecycleRollup = Field(default_factory=AgentWorkspaceGoalLifecycleRollup)
     completion_claim: AgentWorkspaceGoalCompletionClaim = Field(default_factory=AgentWorkspaceGoalCompletionClaim)
     next_authorized_local_actions: list[str] = Field(default_factory=list)
     stop_boundaries: list[str] = Field(default_factory=list)
+    error: str | None = Field(default=None, max_length=240)
+
+
+class AgentWorkspaceDesktopSmokeState(BaseModel):
+    """Latest local desktop acceptance smoke evidence for recovery decisions.
+
+    Args:
+        available: Whether a desktop smoke summary was found and parsed.
+        run_id: Stable run directory id under generated desktop smoke artifacts.
+        status: Smoke result status from the local summary.
+        initial_path: App route used when launching the source desktop window.
+        expected_initial_path: App route required for Agent Workspace acceptance evidence.
+        candidate_count: Number of desktop smoke summaries inspected.
+        ignored_count: Number of summaries ignored because they were not Agent Workspace acceptance runs.
+        summary_path: Repository-relative summary artifact label.
+        screenshot_path: Repository-relative screenshot artifact label.
+        accessibility_tree_path: Repository-relative UIA tree artifact label.
+        screenshot_nonblank: Whether the captured desktop image was nonblank.
+        accessibility_tree_available: Whether a UIA tree was captured.
+        accessibility_tree_root_name: Root accessible object name.
+        accessibility_tree_root_control_type: Root accessible object type.
+        accessibility_tree_node_count: Total captured UIA node count.
+        accessibility_tree_named_node_count: Captured named-node count.
+        warnings: Bounded local smoke warnings.
+        errors: Bounded local smoke errors.
+        error: Redacted read/parse error when unavailable.
+    """
+
+    schema_version: str = "scholar_ai_desktop_smoke_state_v1"
+    available: bool
+    read_only: bool = True
+    run_id: str | None = Field(default=None, max_length=120)
+    status: str | None = Field(default=None, max_length=80)
+    initial_path: str | None = Field(default=None, max_length=240)
+    expected_initial_path: str = AGENT_WORKSPACE_DESKTOP_ACCEPTANCE_PATH
+    candidate_count: int = Field(default=0, ge=0)
+    ignored_count: int = Field(default=0, ge=0)
+    summary_path: str | None = Field(default=None, max_length=240)
+    screenshot_path: str | None = Field(default=None, max_length=240)
+    accessibility_tree_path: str | None = Field(default=None, max_length=240)
+    screenshot_nonblank: bool | None = None
+    accessibility_tree_available: bool | None = None
+    accessibility_tree_root_name: str | None = Field(default=None, max_length=120)
+    accessibility_tree_root_control_type: str | None = Field(default=None, max_length=120)
+    accessibility_tree_node_count: int | None = Field(default=None, ge=0)
+    accessibility_tree_named_node_count: int | None = Field(default=None, ge=0)
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
     error: str | None = Field(default=None, max_length=240)
 
 
@@ -268,6 +372,7 @@ class AgentWorkspaceState(BaseModel):
     output_root: AgentWorkspaceDirectoryState
     git: AgentWorkspaceGitState
     goal_state: AgentWorkspaceGoalState
+    desktop_smoke: AgentWorkspaceDesktopSmokeState
     recovery_probes: list[AgentWorkspaceRecoveryProbe] = Field(default_factory=list)
     boundaries: list[str] = Field(default_factory=list)
     next_safe_local_actions: list[str] = Field(default_factory=list)
@@ -678,6 +783,14 @@ def _safe_text_list(value: Any, limit: int) -> list[str]:
     return out
 
 
+def _safe_optional_text(value: Any, *, max_chars: int = 240) -> str | None:
+    """Return a bounded redacted string or ``None`` for missing values."""
+
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return _redact_text(value.strip())[:max_chars]
+
+
 def _safe_goal_completion_claim(value: Any) -> AgentWorkspaceGoalCompletionClaim:
     """Return bounded completion claims without exposing the full goal record."""
 
@@ -692,6 +805,109 @@ def _safe_goal_completion_claim(value: Any) -> AgentWorkspaceGoalCompletionClaim
         full_goal=_redact_text(full_goal).strip()[:MAX_GOAL_COMPLETION_CHARS]
         if isinstance(full_goal, str) and full_goal.strip()
         else None,
+    )
+
+
+def _desktop_smoke_root() -> Path:
+    """Return the generated desktop smoke artifact root."""
+
+    return (WORKSPACE_ARTIFACTS_ROOT / "generated" / "desktop_smoke").resolve()
+
+
+def _read_json_object(path: Path) -> dict[str, Any] | None:
+    """Return a JSON object from ``path`` or ``None`` when it is unavailable."""
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _latest_desktop_smoke_summary_file() -> tuple[Path | None, dict[str, Any] | None, int, int]:
+    """Return the newest Agent Workspace desktop smoke summary and scan counts."""
+
+    root = _desktop_smoke_root()
+    if not root.exists() or not root.is_dir():
+        return None, None, 0, 0
+    files = [path for path in root.glob("*/summary.json") if path.is_file()]
+    if not files:
+        return None, None, 0, 0
+    sorted_files = sorted(files, key=lambda item: (item.stat().st_mtime, item.parent.name), reverse=True)
+    ignored_count = 0
+    for path in sorted_files:
+        payload = _read_json_object(path)
+        if payload is None:
+            ignored_count += 1
+            continue
+        if payload.get("initial_path") == AGENT_WORKSPACE_DESKTOP_ACCEPTANCE_PATH:
+            return path, payload, len(sorted_files), ignored_count
+        ignored_count += 1
+    return None, None, len(sorted_files), ignored_count
+
+
+def _safe_artifact_path_from_summary(value: Any) -> str | None:
+    """Return a repository-relative artifact path from a summary path field."""
+
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return _workspace_state_path(Path(value.strip()))
+
+
+def _safe_optional_int(value: Any) -> int | None:
+    """Return a non-negative integer from arbitrary summary data."""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    return None
+
+
+def _load_desktop_smoke_state() -> AgentWorkspaceDesktopSmokeState:
+    """Load the latest local desktop smoke evidence without exposing raw paths."""
+
+    summary_path, payload, candidate_count, ignored_count = _latest_desktop_smoke_summary_file()
+    if summary_path is None:
+        return AgentWorkspaceDesktopSmokeState(
+            available=False,
+            candidate_count=candidate_count,
+            ignored_count=ignored_count,
+            error="no Agent Workspace desktop smoke summary found",
+        )
+    path_label = _workspace_state_path(summary_path)
+    if payload is None:
+        return AgentWorkspaceDesktopSmokeState(
+            available=False,
+            candidate_count=candidate_count,
+            ignored_count=ignored_count,
+            summary_path=path_label,
+            error="desktop smoke summary could not be parsed",
+        )
+
+    return AgentWorkspaceDesktopSmokeState(
+        available=True,
+        candidate_count=candidate_count,
+        ignored_count=ignored_count,
+        run_id=_safe_optional_text(payload.get("run_id"), max_chars=120) or _redact_text(summary_path.parent.name)[:120],
+        status=_safe_optional_text(payload.get("status"), max_chars=80),
+        initial_path=_safe_optional_text(payload.get("initial_path")),
+        summary_path=path_label,
+        screenshot_path=_safe_artifact_path_from_summary(payload.get("screenshot_png")),
+        accessibility_tree_path=_safe_artifact_path_from_summary(payload.get("accessibility_tree_json")),
+        screenshot_nonblank=payload.get("screenshot_nonblank") if isinstance(payload.get("screenshot_nonblank"), bool) else None,
+        accessibility_tree_available=payload.get("accessibility_tree_available")
+        if isinstance(payload.get("accessibility_tree_available"), bool)
+        else None,
+        accessibility_tree_root_name=_safe_optional_text(payload.get("accessibility_tree_root_name"), max_chars=120),
+        accessibility_tree_root_control_type=_safe_optional_text(
+            payload.get("accessibility_tree_root_control_type"),
+            max_chars=120,
+        ),
+        accessibility_tree_node_count=_safe_optional_int(payload.get("accessibility_tree_node_count")),
+        accessibility_tree_named_node_count=_safe_optional_int(payload.get("accessibility_tree_named_node_count")),
+        warnings=_safe_text_list(payload.get("warnings"), MAX_DESKTOP_SMOKE_TEXT_ITEMS),
+        errors=_safe_text_list(payload.get("errors"), MAX_DESKTOP_SMOKE_TEXT_ITEMS),
     )
 
 
@@ -721,6 +937,67 @@ def _safe_goal_open_requirement(row: dict[str, Any]) -> AgentWorkspaceGoalOpenRe
         status=status,
         requirement=requirement_text,
         residual_risk=residual_risk_text,
+    )
+
+
+def _safe_goal_lifecycle_blocker(value: Any) -> AgentWorkspaceGoalLifecycleBlocker | None:
+    """Return one bounded lifecycle blocker without exposing raw local records."""
+
+    if isinstance(value, str):
+        raw_id = value.strip()
+        if not raw_id:
+            return None
+        return AgentWorkspaceGoalLifecycleBlocker(id=_redact_text(raw_id)[:160])
+    if not isinstance(value, dict):
+        return None
+    raw_id = value.get("id")
+    if not isinstance(raw_id, str) or not raw_id.strip():
+        return None
+    return AgentWorkspaceGoalLifecycleBlocker(
+        id=_redact_text(raw_id.strip())[:160],
+        status=_safe_optional_text(value.get("status"), max_chars=120),
+        requirement_surface=_safe_optional_text(value.get("requirement_surface"), max_chars=240),
+        missing_evidence=_safe_optional_text(value.get("missing_evidence"), max_chars=240),
+        current_boundary=_safe_optional_text(value.get("current_boundary"), max_chars=240),
+    )
+
+
+def _safe_goal_lifecycle_rollup(value: Any) -> AgentWorkspaceGoalLifecycleRollup:
+    """Return a bounded lifecycle rollup from arbitrary goal-state data."""
+
+    if not isinstance(value, dict):
+        return AgentWorkspaceGoalLifecycleRollup()
+    raw_blockers = value.get("completion_blockers")
+    completion_blockers: list[AgentWorkspaceGoalLifecycleBlocker] = []
+    if isinstance(raw_blockers, list):
+        for item in raw_blockers:
+            if len(completion_blockers) >= MAX_GOAL_LIFECYCLE_BLOCKERS:
+                break
+            blocker = _safe_goal_lifecycle_blocker(item)
+            if blocker is not None:
+                completion_blockers.append(blocker)
+    return AgentWorkspaceGoalLifecycleRollup(
+        schema_version=_safe_optional_text(value.get("schema_version"), max_chars=120),
+        updated_at=_safe_optional_text(value.get("updated_at"), max_chars=80),
+        status=_safe_optional_text(value.get("status"), max_chars=160),
+        is_goal_complete=value.get("is_goal_complete") if isinstance(value.get("is_goal_complete"), bool) else None,
+        can_mark_goal_complete=value.get("can_mark_goal_complete")
+        if isinstance(value.get("can_mark_goal_complete"), bool)
+        else None,
+        requirements_all_proved=value.get("requirements_all_proved")
+        if isinstance(value.get("requirements_all_proved"), bool)
+        else None,
+        requirements_all_proved_or_out_of_scope=value.get("requirements_all_proved_or_out_of_scope")
+        if isinstance(value.get("requirements_all_proved_or_out_of_scope"), bool)
+        else None,
+        latest_requirement_id=_safe_optional_text(value.get("latest_requirement_id"), max_chars=160),
+        latest_slice_id=_safe_optional_text(value.get("latest_slice_id"), max_chars=160),
+        completion_blockers=completion_blockers,
+        machine_readable_completion_rule=_safe_optional_text(
+            value.get("machine_readable_completion_rule"),
+            max_chars=240,
+        ),
+        why_not_complete=_safe_text_list(value.get("why_not_complete"), MAX_GOAL_STATE_BOUNDARIES),
     )
 
 
@@ -782,6 +1059,26 @@ def _load_goal_state_payload() -> tuple[Path | None, dict[str, Any] | None, str 
     return path, payload, None
 
 
+def _goal_state_checkpoint_id(payload: dict[str, Any]) -> str | None:
+    """Return the newest rollback checkpoint id without exposing local paths.
+
+    Args:
+        payload: Parsed longrun goal-state JSON object.
+
+    Returns:
+        Latest recovery checkpoint id, falling back to the historical checkpoint id.
+    """
+
+    rollback = payload.get("rollback")
+    if not isinstance(rollback, dict):
+        return None
+    for key in ("latest_goal_state_checkpoint_id", "latest_checkpoint_id", "checkpoint_id"):
+        value = rollback.get(key)
+        if isinstance(value, str) and value.strip():
+            return _redact_text(value.strip())[:120]
+    return None
+
+
 def _load_goal_state_summary() -> AgentWorkspaceGoalState:
     """Load a bounded local goal-state summary without exposing full records."""
 
@@ -811,14 +1108,13 @@ def _load_goal_state_summary() -> AgentWorkspaceGoalState:
         if isinstance(row_id, str) and row_id.strip():
             latest_requirement_id = _redact_text(row_id.strip())[:160]
 
-    rollback = payload.get("rollback")
-    checkpoint_id = rollback.get("checkpoint_id") if isinstance(rollback, dict) else None
+    checkpoint_id = _goal_state_checkpoint_id(payload)
     updated_at = payload.get("updated_at")
     return AgentWorkspaceGoalState(
         available=True,
         path=path_label,
         updated_at=_redact_text(updated_at)[:80] if isinstance(updated_at, str) and updated_at.strip() else None,
-        checkpoint_id=_redact_text(checkpoint_id)[:120] if isinstance(checkpoint_id, str) and checkpoint_id.strip() else None,
+        checkpoint_id=checkpoint_id,
         requirement_count=len(requirements),
         proved_count=statuses.get("proved", 0),
         incomplete_count=statuses.get("incomplete", 0),
@@ -832,6 +1128,7 @@ def _load_goal_state_summary() -> AgentWorkspaceGoalState:
             latest_id=latest_requirement_id,
         ),
         open_requirements=open_requirements,
+        lifecycle_rollup=_safe_goal_lifecycle_rollup(payload.get("goal_lifecycle_rollup")),
         completion_claim=_safe_goal_completion_claim(payload.get("completion_claim")),
         next_authorized_local_actions=_safe_text_list(payload.get("next_authorized_local_actions"), MAX_GOAL_STATE_ACTIONS),
         stop_boundaries=_safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES),
@@ -885,13 +1182,12 @@ def _load_goal_requirement_drilldown(requirement_id: str) -> AgentWorkspaceGoalR
         ),
         None,
     )
-    rollback = payload.get("rollback")
-    checkpoint_id = rollback.get("checkpoint_id") if isinstance(rollback, dict) else None
+    checkpoint_id = _goal_state_checkpoint_id(payload)
     updated_at = payload.get("updated_at")
     base = {
         "path": path_label,
         "updated_at": _redact_text(updated_at)[:80] if isinstance(updated_at, str) and updated_at.strip() else None,
-        "checkpoint_id": _redact_text(checkpoint_id)[:120] if isinstance(checkpoint_id, str) and checkpoint_id.strip() else None,
+        "checkpoint_id": checkpoint_id,
         "next_safe_local_actions": _safe_text_list(payload.get("next_authorized_local_actions"), MAX_GOAL_STATE_ACTIONS),
         "stop_boundaries": _safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES),
     }
@@ -983,6 +1279,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
     output_state = _count_directory_state("generated_output", WORKSPACE_OUTPUT_ROOT)
     git_state = _read_git_workspace_state()
     goal_state = _load_goal_state_summary()
+    desktop_smoke = _load_desktop_smoke_state()
     boundaries = [
         "Do not execute approvals, import-to-wiki writes, external uploads, push, tag, release, publish, or deploy from this status surface.",
         "Do not mutate Zotero databases or github/ reference repositories from Agent Workspace state.",
@@ -1001,7 +1298,20 @@ def _build_workspace_state() -> AgentWorkspaceState:
         output_root=output_state,
         git=git_state,
         goal_state=goal_state,
+        desktop_smoke=desktop_smoke,
         recovery_probes=[
+            _workspace_recovery_probe(
+                "Desktop Smoke Evidence",
+                "/api/agent-workspace/status",
+                "Recover latest source desktop screenshot and accessibility-tree artifact labels before claiming UI acceptance.",
+                mcp_tool="literature.agent_workspace_status",
+            ),
+            _workspace_recovery_probe(
+                "OCR Runtime Status",
+                "/api/pdf-backend/ocr-status",
+                "Recover OCR policy, selected engine, readiness blockers, and redacted runtime config before claiming local processing capability.",
+                mcp_tool="literature.ocr_status",
+            ),
             _workspace_recovery_probe(
                 "Workflow Passport",
                 "/runtime/workflow-passport",
