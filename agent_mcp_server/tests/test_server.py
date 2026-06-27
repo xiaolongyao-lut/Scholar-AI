@@ -1,6 +1,14 @@
 """Tests for FastMCP server registration."""
 
+from pathlib import Path
+
+from lit_assistant_mcp.audit import AuditLog
+from lit_assistant_mcp.policy import PathPolicy
 from lit_assistant_mcp.server import create_mcp_server
+from lit_assistant_mcp.tools.source import SourceTools
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _assert_read_only_annotations(tool: object) -> None:
@@ -156,3 +164,39 @@ def test_server_registers_source_and_runtime_tools() -> None:
     assert wiki_import_annotations.destructiveHint is True
     assert wiki_import_annotations.idempotentHint is False
     assert wiki_import_annotations.openWorldHint is False
+
+
+def test_server_instructions_point_to_capability_map_without_stale_count() -> None:
+    """Server instructions should advertise the map without duplicating registry counts."""
+    server = create_mcp_server()
+
+    instructions = getattr(server, "instructions", "")
+    assert "agent_mcp_server/CAPABILITY_MAP.md" in instructions
+    assert "source.read_file" in instructions
+    assert "84 tools" not in instructions
+
+
+def test_capability_map_covers_registered_tools_and_is_source_readable() -> None:
+    """The agent-facing capability map must stay synchronized with registered tools."""
+    server = create_mcp_server()
+    tool_names = {tool.name for tool in server._tool_manager.list_tools()}
+    capability_map = REPO_ROOT / "agent_mcp_server" / "CAPABILITY_MAP.md"
+    text = capability_map.read_text(encoding="utf-8")
+
+    assert "## 完整工具名索引" in text
+    missing = sorted(name for name in tool_names if name not in text)
+    assert not missing
+
+    source = SourceTools(
+        repo_root=REPO_ROOT,
+        policy=PathPolicy(
+            repo_root=REPO_ROOT,
+            allowed_roots=["agent_mcp_server/"],
+            denied_patterns=["**/.env*", ".git/**", "workspace_artifacts/runtime_state/**"],
+        ),
+        audit=AuditLog(REPO_ROOT / "workspace_artifacts/agent_mcp_workflows/.audit"),
+    )
+    result = source.read_file("agent_mcp_server/CAPABILITY_MAP.md", max_chars=1200)
+
+    assert result["is_error"] is False
+    assert "Scholar AI MCP" in result["data"]["content"]

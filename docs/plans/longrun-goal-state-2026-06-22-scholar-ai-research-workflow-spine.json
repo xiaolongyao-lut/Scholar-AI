@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T18:58:36+08:00",
+  "updated_at": "2026-06-27T19:06:51+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,21 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260627-184718-n248-knowledge-runtime-proof-strength",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-184718-n248-knowledge-runtime-proof-strength",
-    "latest_goal_state_checkpoint_id": "20260627-184718-n248-knowledge-runtime-proof-strength",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-184718-n248-knowledge-runtime-proof-strength",
-    "latest_checkpoint_caveat": "Git rollback checkpoint for N248 Knowledge Runtime manifest audit completeness gate; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260627-190230-n249-mcp-capability-map-audit",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-190230-n249-mcp-capability-map-audit",
+    "latest_goal_state_checkpoint_id": "20260627-190230-n249-mcp-capability-map-audit",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-190230-n249-mcp-capability-map-audit",
+    "latest_checkpoint_caveat": "Git rollback checkpoint for N249 MCP capability map synchronization; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N249 MCP capability map synchronization",
+      "source": "Model Context Protocol server tools specification; FastMCP/Python SDK server instructions behavior; existing Scholar AI source.read_file path policy",
+      "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools ; local mcp.server.fastmcp.FastMCP introspection ; agent_mcp_server/src/lit_assistant_mcp/tools/source.py",
+      "status": "Official/mature references and local source policy checked on 2026-06-27 before implementation",
+      "checked_at": "2026-06-27T19:06:51+08:00",
+      "use_in_slice": "Used to keep agent-facing MCP guidance in server instructions and a source-readable capability map while anchoring the live registry to list_tools/server.py rather than stale hardcoded counts. No external code copied."
+    },
     {
       "topic": "N248 Knowledge Runtime manifest audit completeness gate",
       "source": "W3C PROV Overview; RO-Crate specification; pytest node id documentation; FastAPI response models/OpenAPI",
@@ -7034,18 +7042,36 @@
         ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py -q -> 8 passed."
       ],
       "residual_risk": "This slice prevents partial deterministic focused evidence from being marked proved. It still does not run every referenced focused test node in CI visibility checks and does not prove live QA/model actual-loading, which remains blocked by provider auth and authorized live-smoke requirements."
+    },
+    {
+      "id": "N249-mcp-capability-map-synchronization",
+      "requirement": "MCP/Agent Workspace visibility must give agents a source-readable, tested capability map that points to real registered tools and workflow chains without relying on stale hardcoded tool counts.",
+      "source": "Current goal includes MCP/Agent Workspace visible recovery and agent handoff recoverability. A dirty-worktree audit found a new agent_mcp_server/CAPABILITY_MAP.md plus runtime instructions that improved discoverability but hardcoded the tool count and lacked a sync contract against the registered MCP tool list.",
+      "status": "proved",
+      "evidence": [
+        "agent_mcp_server/CAPABILITY_MAP.md is added as a source-readable agent entrypoint covering three-hop tool-to-code lookup, connection startup tools, workflow chains, grouped tool families, safety boundaries, and a complete tool-name index.",
+        "agent_mcp_server/README.md now points agents to MCP list_tools as the live registry and to CAPABILITY_MAP.md for the scenario map, instead of maintaining a partial hand-written tool list.",
+        "agent_mcp_server/src/lit_assistant_mcp/server.py expands FastMCP instructions with connection sequence, tool groups, common chains, capability map read path, and forbidden path boundary, while removing the hardcoded tool count so instructions do not drift when tools are added or removed.",
+        "agent_mcp_server/tests/test_server.py adds test_server_instructions_point_to_capability_map_without_stale_count, asserting server instructions include the source.read_file capability map path and do not hardcode '84 tools'.",
+        "agent_mcp_server/tests/test_server.py adds test_capability_map_covers_registered_tools_and_is_source_readable, which compares every registered server._tool_manager tool name against CAPABILITY_MAP.md and verifies SourceTools can read agent_mcp_server/CAPABILITY_MAP.md under the existing source path policy.",
+        ".\\.venv-1\\Scripts\\python.exe -m py_compile agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_server.py -> passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py -q -> 3 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_source_tools.py::test_read_file_redacts_secrets agent_mcp_server\\tests\\test_stdio_smoke.py::test_stdio_wrapper_initialize_list_and_call -q -> 2 passed."
+      ],
+      "residual_risk": "The map is a human/agent navigation aid, not an executable API schema. The new test ensures every registered tool name appears in the map, but it does not verify each prose chain's endpoint semantics beyond the existing MCP server/source/stdout smoke tests."
     }
   ],
   "changed_files_for_this_slice": [
-    "literature_assistant/core/routers/knowledge_router.py",
-    "tests/test_knowledge_router.py",
+    "agent_mcp_server/CAPABILITY_MAP.md",
+    "agent_mcp_server/README.md",
+    "agent_mcp_server/src/lit_assistant_mcp/server.py",
+    "agent_mcp_server/tests/test_server.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\knowledge_router.py tests\\test_knowledge_router.py -> passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_manifest_audit_requires_complete_focused_evidence tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_marks_prompt_context_receipt_proved tests\\test_ci_visibility_contract.py::test_knowledge_runtime_test_evidence_nodes_resolve -q -> 3 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py -q -> 53 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py -q -> 8 passed"
+    ".\\.venv-1\\Scripts\\python.exe -m py_compile agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_server.py -> passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py -q -> 3 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_source_tools.py::test_read_file_redacts_secrets agent_mcp_server\\tests\\test_stdio_smoke.py::test_stdio_wrapper_initialize_list_and_call -q -> 2 passed"
   ],
   "next_authorized_local_actions": [
     "Continue deterministic Knowledge Runtime recovery/visibility work that does not require provider credentials or live model calls.",
@@ -7061,7 +7087,7 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N248 proves Knowledge Runtime manifest_audit_test_proof now requires complete package-specific focused evidence and pytest node ids before marking deterministic source-to-context audit proof as proved.",
+    "this_slice": "N249 proves the Scholar AI MCP server now exposes a source-readable capability map and tested tool-name index so agents can recover available tools without stale hardcoded counts.",
     "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
     "can_mark_goal_complete": false,
     "why_not_complete": "The current configured provider still requires authentication and no fresh authorized live context-receipt smoke has proved the same provider/baseHost/model endpoint, so Knowledge Runtime live QA/model actual-loading remains blocked."
@@ -12753,23 +12779,23 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T18:58:36+08:00",
+    "updated_at": "2026-06-27T19:06:51+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 249,
+    "requirements_total": 250,
     "requirement_status_counts": {
-      "proved": 249
+      "proved": 250
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N248-krt-manifest-audit-complete-focused-evidence",
-    "latest_slice_id": "N248-krt-manifest-audit-complete-focused-evidence",
+    "latest_requirement_id": "N249-mcp-capability-map-synchronization",
+    "latest_slice_id": "N249-mcp-capability-map-synchronization",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
-        "evidence": "N248 hardens deterministic KRT manifest audit completeness only; live loading proof still requires corrected credentials and a fresh OK smoke."
+        "evidence": "N249 improves MCP capability visibility only; live loading proof still requires corrected credentials and a fresh OK smoke."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",

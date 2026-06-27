@@ -14,38 +14,43 @@ HTTP endpoint instead of creating an installer path.
 
 ## Tools
 
-- `source.list_tree`
-- `source.search`
-- `source.read_file`
-- `source.read_symbols`
-- `source.inspect_routes`
-- `source.find_references`
-- `source.explain_entrypoints`
-- `literature.config_status`
-- `literature.list_projects`
-- `literature.list_materials`
-- `literature.read_material`
-- `literature.get_material_chunks`
-- `literature.search_refs`
-- `literature.evidence_pack_build`
-- `literature.project_scan_folder`
-- `literature.figures_candidates`
-- `literature.figures_generate`
-- `literature.citations_sources`
-- `literature.citations_detect_overlap`
-- `literature.outline_generate`
-- `literature.export_annotations_markdown`
-- `literature.export_docx`
-- `literature.journal_style_spec_draft`
-- `literature.journal_style_spec_confirm`
-- `literature.agent_bridge_status`
-- `literature.agent_request_create`
-- `literature.agent_request_list`
-- `literature.agent_request_read`
-- `literature.agent_resource_read`
-- `literature.agent_progress`
-- `literature.agent_result`
-- `literature.agent_fail`
+Use MCP `list_tools` for the live registry. For the full scenario map,
+typical workflow chains, full tool-name index, and the tool→code three-hop locator, read
+[`CAPABILITY_MAP.md`](./CAPABILITY_MAP.md) — agents can pull it via
+`source.read_file path=agent_mcp_server/CAPABILITY_MAP.md`.
+
+Groups (prefix → implementation):
+
+- `source.*` — read-only source inspection (`tools/source.py`):
+  `list_tree`, `search`, `read_file`, `read_symbols`, `inspect_routes`,
+  `find_references`, `explain_entrypoints`.
+- `literature.*` — HTTP to the backend `literature_assistant/core`
+  (`tools/runtime.py`): config/health (`config_status`, `health_check`,
+  `zotero_attachment_health`), projects/materials (`list_projects`,
+  `list_materials`, `read_material`, `get_material_chunks`,
+  `project_scan_folder`), retrieval/evidence (`search_refs`,
+  `evidence_pack_build`, `evidence_integrity_gate`, `knowledge_context_receipt`),
+  knowledge/wiki/lexicon/scoring/product-docs/skill/source-vault families, OCR
+  (`ocr_status`, `ocr_engines`, `ocr_health`, `ocr_execution_probe`,
+  `ocr_material`), figures/citations/writing/export (`figures_candidates`,
+  `figures_generate`, `citations_sources`, `citations_detect_overlap`,
+  `outline_generate`, `academic_writing_lint`, `journal_style_spec_draft`,
+  `journal_style_spec_confirm`, `export_annotations_markdown`, `export_docx`,
+  `export_project_pack`, `translate_pack`, `prepare_visual_review`), agent
+  bridge/collaboration (`agent_bridge_status`, `agent_workspace_status`,
+  `agent_workspace_requirement`, `agent_request_create/list/read`,
+  `agent_resource_read`, `agent_progress`, `agent_result`, `agent_fail`,
+  `agent_handoff_card`, `single_paper_task_create`,
+  `single_paper_completion_check`, `wiki_import`), workflow guardrails/replay
+  (`workflow_passport`, `workflow_refresh_receipt`, `workflow_replay_lineage`,
+  `workflow_replay_index`, `research_action_lifecycle`, `behavior_eval_pack`).
+- `workflow.*` / `artifact.*` — JSON workflow engine and artifacts
+  (`tools/workflow.py`): `workflow.create_plan`, `workflow.write_json_workflow`,
+  `workflow.run_json_workflow`, `workflow.run_python_sandbox`,
+  `artifact.write_markdown`, `artifact.read_artifact`, `artifact.list_artifacts`.
+
+Experimental tools (OCR generation, visual review, translate/project packs,
+Python sandbox) are gated by `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1`.
 
 ## Optional Full-Text Acquisition
 

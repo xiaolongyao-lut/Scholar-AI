@@ -171,7 +171,24 @@ def create_mcp_server(
 
     mcp = FastMCP(
         name="literature-assistant",
-        instructions="Local Literature Assistant toolbox for Codex and Claude.",
+        instructions=(
+            "Scholar AI (文献助手) local MCP toolbox. "
+            "On connect: literature.config_status / literature.health_check, "
+            "then literature.list_projects to pick a project_id.\n"
+            "Tool groups: source.* = read-only source inspection (tools/source.py); "
+            "literature.* = HTTP to backend literature_assistant/core (tools/runtime.py); "
+            "workflow.* / artifact.* = JSON workflow + artifacts (tools/workflow.py); "
+            "experimental OCR/visual/translate/pack/sandbox gated by "
+            "LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1 (tools/experimental.py).\n"
+            "Typical chains: cite-with-evidence = search_refs -> evidence_pack_build "
+            "-> evidence_integrity_gate; write = evidence_pack_build -> outline_generate "
+            "-> academic_writing_lint -> figures_generate -> export_docx; "
+            "read-code = source.inspect_routes -> source.read_symbols -> source.read_file.\n"
+            "Full scenario map + tool->code three-hop locator: "
+            "source.read_file path=agent_mcp_server/CAPABILITY_MAP.md.\n"
+            "Never read/export .env*, credentials, runtime state, logs, browser "
+            "profiles, rollback snapshots, .claude/, .codex/."
+        ),
     )
 
     @mcp.tool(name="source.list_tree", structured_output=True)
