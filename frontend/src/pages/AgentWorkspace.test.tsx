@@ -271,6 +271,38 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       warning: 'Source Vault mirror backlog has 1 source rows and 2 chunk rows pending replay.',
       error: null,
     },
+    knowledge_actual_loading_gate: {
+      schema_version: 'scholar_ai_krt_actual_loading_gate_state_v1' as const,
+      available: true,
+      read_only: true,
+      status: 'blocked',
+      verdict: 'missing_artifact',
+      artifact_ref: 'workspace_artifacts/generated/output/live_api_chat_knowledge_context_receipt_smoke.summary.json',
+      artifact_path: 'workspace_artifacts/generated/output/live_api_chat_knowledge_context_receipt_smoke.summary.json',
+      artifact_exists: false,
+      artifact_schema_valid: false,
+      artifact_contract_valid: false,
+      provider_preflight_status: 'blocked',
+      provider_latest_status: 'auth_required',
+      provider_record_count: 1,
+      auth_required_count: 1,
+      tool_call_ok_count: 0,
+      provider_ready_for_authorized_live_smoke: false,
+      recovery_state: 'blocked_provider_preflight_and_missing_live_smoke',
+      recovery_blocked_by: ['provider_preflight:blocked:auth_required', 'live_smoke_artifact:missing'],
+      recovery_ref_count: 5,
+      authorization_required_ref_count: 2,
+      completion_requires_authorized_live_smoke: true,
+      missing: [
+        'authorized live provider smoke artifact with verdict=ok',
+        'provider_preflight.status=proved',
+      ],
+      next_safe_local_actions: [
+        'Require provider_preflight.status=proved before running live context-receipt smoke.',
+      ],
+      claim_boundary: 'Deterministic context receipts are proved, but live QA/model loading is not.',
+      error: null,
+    },
     recovery_probes: [
       {
         label: 'Desktop Smoke Evidence',
@@ -2674,6 +2706,37 @@ describe('AgentWorkspace', () => {
     expect(within(ocrRuntimeRegion).getByText('Mock Local OCR · ready · available · local')).toBeInTheDocument();
     expect(within(ocrRuntimeRegion).getByText('next Inspect literature.ocr_engines before running OCR.')).toBeInTheDocument();
     expect(within(ocrRuntimeRegion).queryByText('raw-secret-should-not-leak')).not.toBeInTheDocument();
+    const actualLoadingRegion = within(workspaceStateRegion).getByRole('region', { name: 'Knowledge actual-loading gate recovery' });
+    expect(within(actualLoadingRegion).getByText('KRT Actual Loading')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('actual-loading blocked')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('read-only true')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('artifact missing')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('contract false')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('provider ready false')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('live smoke required')).toBeInTheDocument();
+    expect(
+      within(actualLoadingRegion).getByText(
+        'recovery blocked_provider_preflight_and_missing_live_smoke · verdict missing_artifact · preflight blocked · latest auth_required',
+      ),
+    ).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('auth required 1')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('tool-call ok 0')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('preflight records 1')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('blocked by 2')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('auth refs 2')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('recovery refs 5')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('workspace_artifacts/generated/output/live_api_chat_knowledge_context_receipt_smoke.summary.json')).toBeInTheDocument();
+    expect(
+      within(actualLoadingRegion).getByText('boundary Deterministic context receipts are proved, but live QA/model loading is not.'),
+    ).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('blocker provider_preflight:blocked:auth_required')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('blocker live_smoke_artifact:missing')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('missing authorized live provider smoke artifact with verdict=ok')).toBeInTheDocument();
+    expect(within(actualLoadingRegion).getByText('missing provider_preflight.status=proved')).toBeInTheDocument();
+    expect(
+      within(actualLoadingRegion).getByText('next Require provider_preflight.status=proved before running live context-receipt smoke.'),
+    ).toBeInTheDocument();
+    expect(within(actualLoadingRegion).queryByRole('button')).not.toBeInTheDocument();
     const wikiDoctorRegion = within(workspaceStateRegion).getByRole('region', { name: 'Wiki Doctor recovery' });
     expect(within(wikiDoctorRegion).getByText('Wiki Doctor')).toBeInTheDocument();
     expect(within(wikiDoctorRegion).getByText('wiki doctor visible')).toBeInTheDocument();

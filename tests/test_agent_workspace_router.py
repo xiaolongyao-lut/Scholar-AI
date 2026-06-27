@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -15,6 +16,83 @@ if str(core_path) not in sys.path:
 import routers.agent_workspace_router as agent_workspace_router
 import python_adapter_server as server
 from wiki.source_registry import ChunkInput, SourceRecord, WikiRegistry
+
+
+def test_load_knowledge_actual_loading_gate_state_projects_owner_gate(tmp_path, monkeypatch) -> None:
+    artifact = tmp_path / "workspace_artifacts" / "generated" / "output" / "live_smoke.json"
+    monkeypatch.setattr(agent_workspace_router, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        agent_workspace_router,
+        "_read_knowledge_actual_loading_gate",
+        lambda: SimpleNamespace(
+            status="blocked",
+            verdict="missing_artifact",
+            artifact_ref="workspace_artifacts/generated/output/live_smoke.json",
+            artifact_path=str(artifact),
+            artifact_exists=False,
+            artifact_schema_valid=False,
+            artifact_contract_valid=False,
+            provider_preflight=SimpleNamespace(
+                status="blocked",
+                latest_status="auth_required",
+                record_count=2,
+                auth_required_count=1,
+                tool_call_ok_count=1,
+                provider_ready_for_authorized_live_smoke=False,
+            ),
+            recovery=SimpleNamespace(
+                state="blocked_provider_preflight_and_missing_live_smoke",
+                blocked_by=["provider_preflight:blocked:auth_required", "live_smoke_artifact:missing"],
+                recovery_refs=[
+                    SimpleNamespace(requires_authorization=False),
+                    SimpleNamespace(requires_authorization=True),
+                    SimpleNamespace(requires_authorization=True),
+                ],
+                completion_requires_authorized_live_smoke=True,
+            ),
+            missing=[
+                "authorized live provider smoke artifact with verdict=ok",
+                "provider_preflight.status=proved",
+            ],
+            next_safe_local_actions=[
+                "Require provider_preflight.status=proved before running live context-receipt smoke."
+            ],
+            claim_boundary="Deterministic context receipts are proved, but live QA/model loading is not.",
+        ),
+    )
+
+    state = agent_workspace_router._load_knowledge_actual_loading_gate_state()
+
+    assert state.schema_version == "scholar_ai_krt_actual_loading_gate_state_v1"
+    assert state.available is True
+    assert state.read_only is True
+    assert state.status == "blocked"
+    assert state.verdict == "missing_artifact"
+    assert state.artifact_path == "workspace_artifacts/generated/output/live_smoke.json"
+    assert state.artifact_exists is False
+    assert state.artifact_contract_valid is False
+    assert state.provider_preflight_status == "blocked"
+    assert state.provider_latest_status == "auth_required"
+    assert state.provider_record_count == 2
+    assert state.auth_required_count == 1
+    assert state.tool_call_ok_count == 1
+    assert state.provider_ready_for_authorized_live_smoke is False
+    assert state.recovery_state == "blocked_provider_preflight_and_missing_live_smoke"
+    assert state.recovery_blocked_by == [
+        "provider_preflight:blocked:auth_required",
+        "live_smoke_artifact:missing",
+    ]
+    assert state.recovery_ref_count == 3
+    assert state.authorization_required_ref_count == 2
+    assert state.completion_requires_authorized_live_smoke is True
+    assert state.missing == [
+        "authorized live provider smoke artifact with verdict=ok",
+        "provider_preflight.status=proved",
+    ]
+    assert state.next_safe_local_actions == [
+        "Require provider_preflight.status=proved before running live context-receipt smoke."
+    ]
+    assert state.claim_boundary == "Deterministic context receipts are proved, but live QA/model loading is not."
 
 
 def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, monkeypatch) -> None:
@@ -217,6 +295,39 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
             "next_safe_local_actions": ["Inspect literature.ocr_engines before running OCR."],
         },
     )
+    monkeypatch.setattr(
+        agent_workspace_router,
+        "_load_knowledge_actual_loading_gate_state",
+        lambda: agent_workspace_router.AgentWorkspaceKnowledgeActualLoadingGateState(
+            available=True,
+            status="blocked",
+            verdict="missing_artifact",
+            artifact_ref="workspace_artifacts/generated/output/live_api_chat_knowledge_context_receipt_smoke.summary.json",
+            artifact_path="workspace_artifacts/generated/output/live_api_chat_knowledge_context_receipt_smoke.summary.json",
+            artifact_exists=False,
+            artifact_schema_valid=False,
+            artifact_contract_valid=False,
+            provider_preflight_status="blocked",
+            provider_latest_status="auth_required",
+            provider_record_count=1,
+            auth_required_count=1,
+            tool_call_ok_count=0,
+            provider_ready_for_authorized_live_smoke=False,
+            recovery_state="blocked_provider_preflight_and_missing_live_smoke",
+            recovery_blocked_by=["provider_preflight:blocked:auth_required", "live_smoke_artifact:missing"],
+            recovery_ref_count=5,
+            authorization_required_ref_count=2,
+            completion_requires_authorized_live_smoke=True,
+            missing=[
+                "authorized live provider smoke artifact with verdict=ok",
+                "provider_preflight.status=proved",
+            ],
+            next_safe_local_actions=[
+                "Require provider_preflight.status=proved before running live context-receipt smoke."
+            ],
+            claim_boundary="Deterministic context receipts are proved, but live QA/model loading is not.",
+        ),
+    )
     monkeypatch.setenv("LITASSIST_API_CAPABILITY_AUTH", "1")
     client = TestClient(server.app)
 
@@ -321,6 +432,38 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert wiki_doctor["next_safe_local_actions"] == [
         "Read /api/wiki/doctor, then run an explicit local maintenance slice before WikiRegistry.replay_source_vault_mirror()."
     ]
+    actual_loading_gate = payload["workspace_state"]["knowledge_actual_loading_gate"]
+    assert actual_loading_gate["schema_version"] == "scholar_ai_krt_actual_loading_gate_state_v1"
+    assert actual_loading_gate["available"] is True
+    assert actual_loading_gate["read_only"] is True
+    assert actual_loading_gate["status"] == "blocked"
+    assert actual_loading_gate["verdict"] == "missing_artifact"
+    assert actual_loading_gate["artifact_exists"] is False
+    assert actual_loading_gate["artifact_contract_valid"] is False
+    assert actual_loading_gate["provider_preflight_status"] == "blocked"
+    assert actual_loading_gate["provider_latest_status"] == "auth_required"
+    assert actual_loading_gate["provider_record_count"] == 1
+    assert actual_loading_gate["auth_required_count"] == 1
+    assert actual_loading_gate["tool_call_ok_count"] == 0
+    assert actual_loading_gate["provider_ready_for_authorized_live_smoke"] is False
+    assert actual_loading_gate["recovery_state"] == "blocked_provider_preflight_and_missing_live_smoke"
+    assert actual_loading_gate["recovery_blocked_by"] == [
+        "provider_preflight:blocked:auth_required",
+        "live_smoke_artifact:missing",
+    ]
+    assert actual_loading_gate["recovery_ref_count"] == 5
+    assert actual_loading_gate["authorization_required_ref_count"] == 2
+    assert actual_loading_gate["completion_requires_authorized_live_smoke"] is True
+    assert actual_loading_gate["missing"] == [
+        "authorized live provider smoke artifact with verdict=ok",
+        "provider_preflight.status=proved",
+    ]
+    assert actual_loading_gate["next_safe_local_actions"] == [
+        "Require provider_preflight.status=proved before running live context-receipt smoke."
+    ]
+    assert actual_loading_gate["claim_boundary"] == (
+        "Deterministic context receipts are proved, but live QA/model loading is not."
+    )
     goal_state = payload["workspace_state"]["goal_state"]
     assert goal_state["available"] is True
     assert goal_state["path"] == "docs/plans/longrun-goal-state-local.json"

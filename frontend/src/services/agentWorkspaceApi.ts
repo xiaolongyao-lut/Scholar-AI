@@ -227,6 +227,34 @@ export interface AgentWorkspaceWikiDoctorState {
   error: string | null;
 }
 
+export interface AgentWorkspaceKnowledgeActualLoadingGateState {
+  schema_version: 'scholar_ai_krt_actual_loading_gate_state_v1';
+  available: boolean;
+  read_only: boolean;
+  status: string;
+  verdict: string | null;
+  artifact_ref: string | null;
+  artifact_path: string | null;
+  artifact_exists: boolean;
+  artifact_schema_valid: boolean;
+  artifact_contract_valid: boolean;
+  provider_preflight_status: string | null;
+  provider_latest_status: string | null;
+  provider_record_count: number;
+  auth_required_count: number;
+  tool_call_ok_count: number;
+  provider_ready_for_authorized_live_smoke: boolean;
+  recovery_state: string | null;
+  recovery_blocked_by: string[];
+  recovery_ref_count: number;
+  authorization_required_ref_count: number;
+  completion_requires_authorized_live_smoke: boolean;
+  missing: string[];
+  next_safe_local_actions: string[];
+  claim_boundary: string | null;
+  error: string | null;
+}
+
 export interface AgentWorkspaceState {
   schema_version: 'scholar_ai_agent_workspace_state_v1';
   generated_at: string;
@@ -240,6 +268,7 @@ export interface AgentWorkspaceState {
   desktop_smoke: AgentWorkspaceDesktopSmokeState;
   ocr_runtime: AgentWorkspaceOcrRuntimeState;
   wiki_doctor: AgentWorkspaceWikiDoctorState;
+  knowledge_actual_loading_gate: AgentWorkspaceKnowledgeActualLoadingGateState;
   recovery_probes: AgentWorkspaceRecoveryProbe[];
   boundaries: string[];
   next_safe_local_actions: string[];

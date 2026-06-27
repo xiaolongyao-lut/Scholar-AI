@@ -47,6 +47,9 @@ MAX_OCR_RUNTIME_ENGINES = 12
 MAX_OCR_RUNTIME_ACTIONS = 5
 MAX_OCR_RUNTIME_BLOCKERS = 5
 MAX_WIKI_DOCTOR_ACTIONS = 4
+MAX_KRT_ACTUAL_LOADING_ACTIONS = 4
+MAX_KRT_ACTUAL_LOADING_BLOCKERS = 4
+MAX_KRT_ACTUAL_LOADING_MISSING = 4
 AGENT_WORKSPACE_DESKTOP_ACCEPTANCE_PATH = "/__desktop_acceptance/agent-workspace"
 GIT_STATUS_TIMEOUT_SECONDS = 2.0
 OPEN_REQUIREMENT_STATUSES = frozenset(
@@ -449,6 +452,45 @@ class AgentWorkspaceWikiDoctorState(BaseModel):
     error: str | None = Field(default=None, max_length=240)
 
 
+class AgentWorkspaceKnowledgeActualLoadingGateState(BaseModel):
+    """Read-only Knowledge Runtime live actual-loading gate summary.
+
+    Args:
+        available: Whether the conformance gate could be read locally.
+        status: Gate status from the Knowledge Runtime conformance endpoint.
+        verdict: Live smoke artifact verdict when an artifact is present.
+        artifact_ref: Repository-relative proof artifact label.
+        provider_preflight_status: Provider forced-tool-call preflight status.
+        recovery_state: Machine-readable recovery state for resumed agents.
+    """
+
+    schema_version: str = "scholar_ai_krt_actual_loading_gate_state_v1"
+    available: bool
+    read_only: bool = True
+    status: str = Field(default="unknown", max_length=80)
+    verdict: str | None = Field(default=None, max_length=120)
+    artifact_ref: str | None = Field(default=None, max_length=240)
+    artifact_path: str | None = Field(default=None, max_length=240)
+    artifact_exists: bool = False
+    artifact_schema_valid: bool = False
+    artifact_contract_valid: bool = False
+    provider_preflight_status: str | None = Field(default=None, max_length=80)
+    provider_latest_status: str | None = Field(default=None, max_length=80)
+    provider_record_count: int = Field(default=0, ge=0)
+    auth_required_count: int = Field(default=0, ge=0)
+    tool_call_ok_count: int = Field(default=0, ge=0)
+    provider_ready_for_authorized_live_smoke: bool = False
+    recovery_state: str | None = Field(default=None, max_length=120)
+    recovery_blocked_by: list[str] = Field(default_factory=list)
+    recovery_ref_count: int = Field(default=0, ge=0)
+    authorization_required_ref_count: int = Field(default=0, ge=0)
+    completion_requires_authorized_live_smoke: bool = True
+    missing: list[str] = Field(default_factory=list)
+    next_safe_local_actions: list[str] = Field(default_factory=list)
+    claim_boundary: str | None = Field(default=None, max_length=240)
+    error: str | None = Field(default=None, max_length=240)
+
+
 class AgentWorkspaceState(BaseModel):
     """Machine-readable local workspace state for resumable agents."""
 
@@ -464,6 +506,7 @@ class AgentWorkspaceState(BaseModel):
     desktop_smoke: AgentWorkspaceDesktopSmokeState
     ocr_runtime: AgentWorkspaceOcrRuntimeState
     wiki_doctor: AgentWorkspaceWikiDoctorState
+    knowledge_actual_loading_gate: AgentWorkspaceKnowledgeActualLoadingGateState
     recovery_probes: list[AgentWorkspaceRecoveryProbe] = Field(default_factory=list)
     boundaries: list[str] = Field(default_factory=list)
     next_safe_local_actions: list[str] = Field(default_factory=list)
@@ -1183,6 +1226,67 @@ def _load_wiki_doctor_state() -> AgentWorkspaceWikiDoctorState:
         )
 
 
+def _read_knowledge_actual_loading_gate() -> Any:
+    """Return the Knowledge Runtime actual-loading gate from its owner module."""
+
+    try:
+        from routers.knowledge_router import _actual_loading_gate
+    except ModuleNotFoundError:
+        from literature_assistant.core.routers.knowledge_router import _actual_loading_gate
+
+    return _actual_loading_gate()
+
+
+def _load_knowledge_actual_loading_gate_state() -> AgentWorkspaceKnowledgeActualLoadingGateState:
+    """Load the existing Knowledge Runtime actual-loading proof gate read-only."""
+
+    try:
+        gate = _read_knowledge_actual_loading_gate()
+        artifact_path = None
+        if isinstance(gate.artifact_path, str) and gate.artifact_path.strip():
+            artifact_path = _workspace_state_path(Path(gate.artifact_path))
+        recovery_refs = list(gate.recovery.recovery_refs)
+        return AgentWorkspaceKnowledgeActualLoadingGateState(
+            available=True,
+            status=_redact_text(gate.status).strip()[:80] or "unknown",
+            verdict=_safe_optional_text(gate.verdict, max_chars=120),
+            artifact_ref=_safe_optional_text(gate.artifact_ref, max_chars=240),
+            artifact_path=artifact_path,
+            artifact_exists=gate.artifact_exists,
+            artifact_schema_valid=gate.artifact_schema_valid,
+            artifact_contract_valid=gate.artifact_contract_valid,
+            provider_preflight_status=_safe_optional_text(gate.provider_preflight.status, max_chars=80),
+            provider_latest_status=_safe_optional_text(gate.provider_preflight.latest_status, max_chars=80),
+            provider_record_count=gate.provider_preflight.record_count,
+            auth_required_count=gate.provider_preflight.auth_required_count,
+            tool_call_ok_count=gate.provider_preflight.tool_call_ok_count,
+            provider_ready_for_authorized_live_smoke=gate.provider_preflight.provider_ready_for_authorized_live_smoke,
+            recovery_state=_safe_optional_text(gate.recovery.state, max_chars=120),
+            recovery_blocked_by=_safe_text_list(
+                gate.recovery.blocked_by,
+                MAX_KRT_ACTUAL_LOADING_BLOCKERS,
+            ),
+            recovery_ref_count=len(recovery_refs),
+            authorization_required_ref_count=sum(1 for item in recovery_refs if item.requires_authorization),
+            completion_requires_authorized_live_smoke=gate.recovery.completion_requires_authorized_live_smoke,
+            missing=_safe_text_list(gate.missing, MAX_KRT_ACTUAL_LOADING_MISSING),
+            next_safe_local_actions=_safe_text_list(
+                gate.next_safe_local_actions,
+                MAX_KRT_ACTUAL_LOADING_ACTIONS,
+            ),
+            claim_boundary=_safe_optional_text(gate.claim_boundary, max_chars=240),
+        )
+    except Exception as exc:
+        return AgentWorkspaceKnowledgeActualLoadingGateState(
+            available=False,
+            status="error",
+            error=_redact_text(str(exc))[:240] or "Knowledge Runtime actual-loading gate could not be loaded",
+            next_safe_local_actions=[
+                "Read /api/knowledge/runtime-conformance before claiming live model-context loading proof."
+            ],
+        )
+
+
 def _safe_goal_open_requirement(row: dict[str, Any]) -> AgentWorkspaceGoalOpenRequirement | None:
     """Return one bounded open requirement row when it is safe to expose."""
 
@@ -1554,6 +1658,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
     desktop_smoke = _load_desktop_smoke_state()
     ocr_runtime = _load_ocr_runtime_state()
     wiki_doctor = _load_wiki_doctor_state()
+    knowledge_actual_loading_gate = _load_knowledge_actual_loading_gate_state()
     boundaries = [
         "Do not execute approvals, import-to-wiki writes, external uploads, push, tag, release, publish, or deploy from this status surface.",
         "Do not mutate Zotero databases or github/ reference repositories from Agent Workspace state.",
@@ -1575,6 +1680,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
         desktop_smoke=desktop_smoke,
         ocr_runtime=ocr_runtime,
         wiki_doctor=wiki_doctor,
+        knowledge_actual_loading_gate=knowledge_actual_loading_gate,
         recovery_probes=[
             _workspace_recovery_probe(
                 "Desktop Smoke Evidence",

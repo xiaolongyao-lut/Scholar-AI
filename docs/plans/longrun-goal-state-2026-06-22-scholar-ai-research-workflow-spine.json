@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-28T02:35:00+08:00",
+  "updated_at": "2026-06-28T03:02:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,45 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260628-023000-n269-wiki-doctor-samples-visible",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-023000-n269-wiki-doctor-samples-visible",
-    "latest_goal_state_checkpoint_id": "20260628-023000-n269-wiki-doctor-samples-visible",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-023000-n269-wiki-doctor-samples-visible",
-    "latest_checkpoint_caveat": "Rollback checkpoint for N269 Wiki Doctor bounded backlog sample visibility; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260628-025419-n270-krt-actual-loading-gate-closeout",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-025419-n270-krt-actual-loading-gate-closeout",
+    "latest_goal_state_checkpoint_id": "20260628-025419-n270-krt-actual-loading-gate-closeout",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-025419-n270-krt-actual-loading-gate-closeout",
+    "latest_checkpoint_caveat": "Rollback checkpoint for N270 Agent Workspace KRT actual-loading gate visibility; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N270 Agent Workspace Knowledge Runtime actual-loading gate projection",
+      "source": "FastAPI response-model filtering and Pydantic model documentation",
+      "url": "https://fastapi.tiangolo.com/tutorial/response-model/ ; https://docs.pydantic.dev/latest/concepts/models/",
+      "status": "HEAD checked 200 on 2026-06-28 before closeout",
+      "checked_at": "2026-06-28T03:02:00+08:00",
+      "use_in_slice": "Used to expose a bounded typed AgentWorkspaceKnowledgeActualLoadingGateState without re-parsing prose, running provider calls, or adding write/replay controls."
+    },
+    {
+      "topic": "N270 visible actual-loading gate recovery assertions",
+      "source": "React conditional rendering and Testing Library documentation",
+      "url": "https://react.dev/learn/conditional-rendering ; https://testing-library.com/docs/react-testing-library/intro/",
+      "status": "HEAD checked 200 on 2026-06-28 before closeout",
+      "checked_at": "2026-06-28T03:02:00+08:00",
+      "use_in_slice": "Used to render the read-only KRT Actual Loading recovery region and assert visible blocker/preflight/missing evidence instead of implementation details."
+    },
+    {
+      "topic": "N270 OpenAPI contract propagation",
+      "source": "OpenAPI Specification",
+      "url": "https://swagger.io/specification/",
+      "status": "HEAD checked 200 on 2026-06-28 before closeout",
+      "checked_at": "2026-06-28T03:02:00+08:00",
+      "use_in_slice": "Used to keep backend schema, generated TypeScript client, handwritten frontend service contract, and desktop fixture synchronized."
+    },
+    {
+      "topic": "N270 provenance and MCP recovery boundary",
+      "source": "W3C PROV Overview and Model Context Protocol tools specification",
+      "url": "https://www.w3.org/TR/prov-overview/ ; https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+      "status": "HEAD checked 200 on 2026-06-28 before closeout",
+      "checked_at": "2026-06-28T03:02:00+08:00",
+      "use_in_slice": "Used to keep deterministic Agent Workspace recovery visibility separate from authorized live provider/model actual-loading proof and MCP tool execution authority."
+    },
     {
       "topic": "N269 Agent Workspace Wiki Doctor bounded sample payload",
       "source": "FastAPI response-model filtering and Pydantic model documentation",
@@ -7649,6 +7681,21 @@
         "cd frontend; npm run build -> passed; prebuild generate:openapi:if-needed, tsc, and vite build completed."
       ],
       "residual_risk": "This proves deterministic read-only Wiki Doctor sample visibility only. It does not execute WikiRegistry.replay_source_vault_mirror(), mutate Source Vault/wiki/Zotero data, run live model loading, execute OCR, modify github/ references, upload, push, tag, release, or deploy."
+    },
+    {
+      "id": "N270-agent-workspace-krt-actual-loading-gate-visible",
+      "requirement": "Agent Workspace status must expose the existing Knowledge Runtime actual-loading gate as bounded read-only recovery state, including provider preflight status, live-smoke artifact state, recovery blockers, missing proof, authorization-required references, next safe local action, and a clear boundary that deterministic context receipts are not live model-loading proof.",
+      "source": "Current Scholar AI / 文献助手 MCP-first research workflow goal requires workspace-visible, handoff-recoverable Knowledge Runtime evidence without claiming live QA/model actual-loading until provider preflight and authorized smoke proof are present.",
+      "status": "proved",
+      "evidence": [
+        "literature_assistant/core/routers/agent_workspace_router.py adds AgentWorkspaceKnowledgeActualLoadingGateState and projects routers.knowledge_router._actual_loading_gate() into /api/agent-workspace/status as read-only bounded recovery state.",
+        "tests/test_agent_workspace_router.py asserts direct projection of blocked/auth_required actual-loading gate fields and full Agent Workspace status payload exposure.",
+        "frontend/src/pages/AgentWorkspace.tsx renders a read-only KRT Actual Loading recovery region with status, verdict, artifact, provider readiness, recovery blockers, missing proof, auth refs, and next safe local action.",
+        "frontend/src/services/agentWorkspaceApi.ts, frontend/src/generated/openapi.ts, frontend/openapi/modular-pipeline-openapi.json, and frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx keep service/OpenAPI/generated/desktop fixture contracts synchronized.",
+        "Verification: py_compile passed; pytest tests/test_agent_workspace_router.py -q -> 8 passed; npm run generate:openapi passed; npm run test -- --run src/pages/AgentWorkspace.test.tsx src/pages/DesktopAcceptanceAgentWorkspace.test.tsx -> 8 passed; npm run build passed."
+      ],
+      "residual_risk": "This proves deterministic Agent Workspace recovery visibility only. It does not run /api/chat/tool-capability/test, does not run a live provider/model smoke, does not prove live QA/model actual-loading, does not execute OCR, does not replay or mutate WikiRegistry/Source Vault, and does not push/tag/release/deploy/upload.",
+      "next_action": "Continue with the next authorized local KRT recovery slice, while keeping live provider smoke, OCR execution, and WikiRegistry replay/write repair behind explicit authorization gates."
     }
   ],
   "changed_files_for_this_slice": [
@@ -13379,30 +13426,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-28T02:35:00+08:00",
+    "updated_at": "2026-06-28T03:02:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 270,
+    "requirements_total": 271,
     "requirement_status_counts": {
-      "proved": 270
+      "proved": 271
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N269-agent-workspace-wiki-doctor-samples-visible",
-    "latest_slice_id": "N269-agent-workspace-wiki-doctor-samples-visible",
+    "latest_requirement_id": "N270-agent-workspace-krt-actual-loading-gate-visible",
+    "latest_slice_id": "N270-agent-workspace-krt-actual-loading-gate-visible",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N269 proves deterministic Agent Workspace visibility for bounded Wiki Doctor backlog samples only; the configured provider remains auth/preflight gated and WikiRegistry replay remains explicit-authority gated.",
-        "evidence": "N269 makes representative source/chunk backlog samples visible in Agent Workspace so a resumed agent can locate registry mirror rows before considering KRT closure or maintenance replay."
+        "current_boundary": "N270 makes the existing actual-loading gate visible in Agent Workspace only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N270 surfaces provider_preflight_status, provider_latest_status, auth_required_count, recovery_blocked_by, missing proof, and completion_requires_authorized_live_smoke through Agent Workspace status/UI without running a live provider smoke."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N269 proves deterministic read-only Wiki Doctor backlog sample visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay remain separately explicit-authority gated."
+    "why_not_complete": "N270 proves deterministic read-only Agent Workspace visibility for the Knowledge Runtime actual-loading gate only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -18867,5 +18914,79 @@
       "Keep live QA/model actual-loading blocked until provider preflight is proved and explicit live-smoke authorization is present; keep OCR execution behind confirm_execution=true and explicit local/remote upload boundaries."
     ],
     "updated_at": "2026-06-28T02:35:00+08:00"
+  },
+  "n270_agent_workspace_krt_actual_loading_gate_visible_slice": {
+    "id": "N270-agent-workspace-krt-actual-loading-gate-visible",
+    "status": "proved",
+    "summary": "N270 exposes the existing Knowledge Runtime actual-loading gate inside Agent Workspace status and UI as bounded read-only recovery state, so resumed agents can see provider preflight/auth blockers and missing live-smoke proof without running live providers or opening the Knowledge Runtime conformance panel.",
+    "rollback_checkpoint_id": "20260628-025419-n270-krt-actual-loading-gate-closeout",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-025419-n270-krt-actual-loading-gate-closeout",
+    "mature_references_checked": [
+      {
+        "topic": "N270 Agent Workspace Knowledge Runtime actual-loading gate projection",
+        "source": "FastAPI response-model filtering and Pydantic model documentation",
+        "url": "https://fastapi.tiangolo.com/tutorial/response-model/ ; https://docs.pydantic.dev/latest/concepts/models/",
+        "status": "HEAD checked 200 on 2026-06-28 before closeout",
+        "checked_at": "2026-06-28T03:02:00+08:00",
+        "use_in_slice": "Used to expose a bounded typed AgentWorkspaceKnowledgeActualLoadingGateState without re-parsing prose, running provider calls, or adding write/replay controls."
+      },
+      {
+        "topic": "N270 visible actual-loading gate recovery assertions",
+        "source": "React conditional rendering and Testing Library documentation",
+        "url": "https://react.dev/learn/conditional-rendering ; https://testing-library.com/docs/react-testing-library/intro/",
+        "status": "HEAD checked 200 on 2026-06-28 before closeout",
+        "checked_at": "2026-06-28T03:02:00+08:00",
+        "use_in_slice": "Used to render the read-only KRT Actual Loading recovery region and assert visible blocker/preflight/missing evidence instead of implementation details."
+      },
+      {
+        "topic": "N270 OpenAPI contract propagation",
+        "source": "OpenAPI Specification",
+        "url": "https://swagger.io/specification/",
+        "status": "HEAD checked 200 on 2026-06-28 before closeout",
+        "checked_at": "2026-06-28T03:02:00+08:00",
+        "use_in_slice": "Used to keep backend schema, generated TypeScript client, handwritten frontend service contract, and desktop fixture synchronized."
+      },
+      {
+        "topic": "N270 provenance and MCP recovery boundary",
+        "source": "W3C PROV Overview and Model Context Protocol tools specification",
+        "url": "https://www.w3.org/TR/prov-overview/ ; https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+        "status": "HEAD checked 200 on 2026-06-28 before closeout",
+        "checked_at": "2026-06-28T03:02:00+08:00",
+        "use_in_slice": "Used to keep deterministic Agent Workspace recovery visibility separate from authorized live provider/model actual-loading proof and MCP tool execution authority."
+      }
+    ],
+    "changed_files": [
+      "literature_assistant/core/routers/agent_workspace_router.py",
+      "tests/test_agent_workspace_router.py",
+      "frontend/src/services/agentWorkspaceApi.ts",
+      "frontend/src/pages/AgentWorkspace.tsx",
+      "frontend/src/pages/AgentWorkspace.test.tsx",
+      "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
+      "frontend/openapi/modular-pipeline-openapi.json",
+      "frontend/src/generated/openapi.ts",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification_commands": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before closeout; current worktree facts superseded stale N254 recovery text.",
+      "git status --short --branch -> main...origin/main [ahead 99] with only N270 Agent Workspace KRT actual-loading gate visibility files dirty before closeout.",
+      "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-025419-n270-krt-actual-loading-gate-closeout before N270 closeout edits.",
+      "Invoke-WebRequest HEAD https://fastapi.tiangolo.com/tutorial/response-model/ -> 200; https://docs.pydantic.dev/latest/concepts/models/ -> 200; https://react.dev/learn/conditional-rendering -> 200; https://testing-library.com/docs/react-testing-library/intro/ -> 200; https://swagger.io/specification/ -> 200; https://www.w3.org/TR/prov-overview/ -> 200; https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py -> passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 8 passed.",
+      "cd frontend; npm run generate:openapi -> schema and generated TypeScript client regenerated successfully.",
+      "cd frontend; npm run test -- --run src/pages/AgentWorkspace.test.tsx src/pages/DesktopAcceptanceAgentWorkspace.test.tsx -> 2 files / 8 tests passed.",
+      "cd frontend; npm run build -> passed; prebuild generate:openapi:if-needed, tsc, and vite build completed.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid after N270 record update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N270 rollup.",
+      "Current-state projection probe using literature_assistant.core.routers.agent_workspace_router._load_goal_state_summary() -> projection-ok 271 N270-agent-workspace-krt-actual-loading-gate-visible can_mark_goal_complete=false."
+    ],
+    "decision": "Project the authoritative knowledge_router actual-loading gate into Agent Workspace instead of creating a parallel proof system; keep the surface read-only and explicitly separate deterministic recovery visibility from live provider/model actual-loading proof.",
+    "residual_risk": "This proves read-only Agent Workspace KRT actual-loading gate visibility only. It does not execute provider preflight, does not run live QA/model context loading, does not execute OCR, does not replay or mutate Source Vault/wiki/Zotero data, does not modify github/ references, upload, push, tag, release, or deploy. Native pywebview desktop acceptance was not rerun in this slice; deterministic desktop fixture and frontend build passed.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
+      "Continue with another local KRT recovery evidence slice that improves deterministic source-to-context, replay/sync, or Agent Workspace/MCP recovery visibility without executing replay automatically.",
+      "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization is present; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
+    ],
+    "updated_at": "2026-06-28T03:02:00+08:00"
   }
 }

@@ -3699,6 +3699,7 @@ export function WorkspaceStatePanel({
   const wikiDoctorSourceStatusEntries = workspaceWikiDoctorStatusEntries(wikiDoctor.source_status_counts);
   const wikiDoctorChunkStatusEntries = workspaceWikiDoctorStatusEntries(wikiDoctor.chunk_status_counts);
   const wikiDoctorSamples = (wikiDoctor.samples ?? []).slice(0, 4);
+  const workspaceActualLoadingGate = state.knowledge_actual_loading_gate;
   const allOpenRequirements = state.goal_state.open_requirements ?? [];
   const matchingOpenRequirements = allOpenRequirements.filter((item) => matchesOpenRequirementQuery(requirementQuery, item));
   const openRequirements = matchingOpenRequirements.slice(0, 5);
@@ -4102,6 +4103,79 @@ export function WorkspaceStatePanel({
               {ocrRuntime.next_safe_local_actions.length > 0 ? (
                 <p className="mt-1.5 break-words text-[11px] leading-4 text-foreground/55">
                   next {sanitizeInspectorText(ocrRuntime.next_safe_local_actions[0])}
+                </p>
+              ) : null}
+            </div>
+            <div
+              role="region"
+              aria-label="Knowledge actual-loading gate recovery"
+              className="min-w-0 rounded-md border border-outline-variant/35 bg-surface-lowest px-2 py-2 md:col-span-2"
+            >
+              <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                <h4 className="mr-auto font-label text-[11px] font-semibold text-foreground/45">KRT Actual Loading</h4>
+                <StatusPill tone={workspaceActualLoadingGate.available ? knowledgeRuntimeTone(workspaceActualLoadingGate.status) : 'warning'}>
+                  actual-loading {workspaceActualLoadingGate.available ? sanitizeInspectorText(workspaceActualLoadingGate.status) : 'missing'}
+                </StatusPill>
+                <StatusPill tone="neutral">read-only {String(workspaceActualLoadingGate.read_only)}</StatusPill>
+                <StatusPill tone={workspaceActualLoadingGate.artifact_exists ? 'info' : 'warning'}>
+                  artifact {workspaceActualLoadingGate.artifact_exists ? 'present' : 'missing'}
+                </StatusPill>
+                <StatusPill tone={workspaceActualLoadingGate.artifact_contract_valid ? 'success' : 'warning'}>
+                  contract {String(workspaceActualLoadingGate.artifact_contract_valid)}
+                </StatusPill>
+                <StatusPill tone={workspaceActualLoadingGate.provider_ready_for_authorized_live_smoke ? 'success' : 'warning'}>
+                  provider ready {String(workspaceActualLoadingGate.provider_ready_for_authorized_live_smoke)}
+                </StatusPill>
+                <StatusPill tone={workspaceActualLoadingGate.completion_requires_authorized_live_smoke ? 'warning' : 'success'}>
+                  live smoke {workspaceActualLoadingGate.completion_requires_authorized_live_smoke ? 'required' : 'proved'}
+                </StatusPill>
+              </div>
+              <p className="break-words text-[11px] leading-4 text-foreground/60">
+                recovery {sanitizeInspectorText(workspaceActualLoadingGate.recovery_state ?? 'unknown')} · verdict {sanitizeInspectorText(workspaceActualLoadingGate.verdict ?? 'unknown')} · preflight {sanitizeInspectorText(workspaceActualLoadingGate.provider_preflight_status ?? 'unknown')} · latest {sanitizeInspectorText(workspaceActualLoadingGate.provider_latest_status ?? 'unknown')}
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <StatusPill tone={workspaceActualLoadingGate.auth_required_count > 0 ? 'danger' : 'neutral'}>
+                  auth required {workspaceActualLoadingGate.auth_required_count}
+                </StatusPill>
+                <StatusPill tone={workspaceActualLoadingGate.tool_call_ok_count > 0 ? 'success' : 'warning'}>
+                  tool-call ok {workspaceActualLoadingGate.tool_call_ok_count}
+                </StatusPill>
+                <StatusPill tone="neutral">preflight records {workspaceActualLoadingGate.provider_record_count}</StatusPill>
+                <StatusPill tone={workspaceActualLoadingGate.recovery_blocked_by.length > 0 ? 'danger' : 'success'}>
+                  blocked by {workspaceActualLoadingGate.recovery_blocked_by.length}
+                </StatusPill>
+                <StatusPill tone={workspaceActualLoadingGate.authorization_required_ref_count > 0 ? 'warning' : 'neutral'}>
+                  auth refs {workspaceActualLoadingGate.authorization_required_ref_count}
+                </StatusPill>
+                <StatusPill tone="neutral">recovery refs {workspaceActualLoadingGate.recovery_ref_count}</StatusPill>
+                {workspaceActualLoadingGate.artifact_ref ? (
+                  <StatusPill tone="neutral">{sanitizeInspectorText(workspaceActualLoadingGate.artifact_ref)}</StatusPill>
+                ) : null}
+              </div>
+              {workspaceActualLoadingGate.claim_boundary || workspaceActualLoadingGate.error ? (
+                <p className="mt-1.5 break-words rounded-md border border-outline-variant/25 bg-surface px-2 py-1 text-[11px] leading-4 text-foreground/60">
+                  {workspaceActualLoadingGate.error
+                    ? `error ${sanitizeInspectorText(workspaceActualLoadingGate.error)}`
+                    : `boundary ${sanitizeInspectorText(workspaceActualLoadingGate.claim_boundary ?? '')}`}
+                </p>
+              ) : null}
+              {workspaceActualLoadingGate.recovery_blocked_by.length > 0 || workspaceActualLoadingGate.missing.length > 0 ? (
+                <div className="mt-1.5 grid gap-1 md:grid-cols-2">
+                  {workspaceActualLoadingGate.recovery_blocked_by.slice(0, 3).map((item) => (
+                    <p key={`workspace-actual-loading-blocker:${item}`} className="break-words rounded-md border border-outline-variant/25 bg-surface px-2 py-1 text-[11px] leading-4 text-foreground/60">
+                      blocker {sanitizeInspectorText(item)}
+                    </p>
+                  ))}
+                  {workspaceActualLoadingGate.missing.slice(0, 3).map((item) => (
+                    <p key={`workspace-actual-loading-missing:${item}`} className="break-words rounded-md border border-outline-variant/25 bg-surface px-2 py-1 text-[11px] leading-4 text-foreground/60">
+                      missing {sanitizeInspectorText(item)}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+              {workspaceActualLoadingGate.next_safe_local_actions.length > 0 ? (
+                <p className="mt-1.5 break-words text-[11px] leading-4 text-foreground/55">
+                  next {sanitizeInspectorText(workspaceActualLoadingGate.next_safe_local_actions[0])}
                 </p>
               ) : null}
             </div>

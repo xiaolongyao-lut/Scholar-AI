@@ -2634,6 +2634,208 @@
         "title": "AgentWorkspaceGoalState",
         "type": "object"
       },
+      "AgentWorkspaceKnowledgeActualLoadingGateState": {
+        "description": "Read-only Knowledge Runtime live actual-loading gate summary.\n\nArgs:\n    available: Whether the conformance gate could be read locally.\n    status: Gate status from the Knowledge Runtime conformance endpoint.\n    verdict: Live smoke artifact verdict when an artifact is present.\n    artifact_ref: Repository-relative proof artifact label.\n    provider_preflight_status: Provider forced-tool-call preflight status.\n    recovery_state: Machine-readable recovery state for resumed agents.",
+        "properties": {
+          "artifact_contract_valid": {
+            "default": false,
+            "title": "Artifact Contract Valid",
+            "type": "boolean"
+          },
+          "artifact_exists": {
+            "default": false,
+            "title": "Artifact Exists",
+            "type": "boolean"
+          },
+          "artifact_path": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Path"
+          },
+          "artifact_ref": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Ref"
+          },
+          "artifact_schema_valid": {
+            "default": false,
+            "title": "Artifact Schema Valid",
+            "type": "boolean"
+          },
+          "auth_required_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Auth Required Count",
+            "type": "integer"
+          },
+          "authorization_required_ref_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Authorization Required Ref Count",
+            "type": "integer"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "claim_boundary": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Boundary"
+          },
+          "completion_requires_authorized_live_smoke": {
+            "default": true,
+            "title": "Completion Requires Authorized Live Smoke",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
+          "provider_latest_status": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Latest Status"
+          },
+          "provider_preflight_status": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Preflight Status"
+          },
+          "provider_ready_for_authorized_live_smoke": {
+            "default": false,
+            "title": "Provider Ready For Authorized Live Smoke",
+            "type": "boolean"
+          },
+          "provider_record_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Provider Record Count",
+            "type": "integer"
+          },
+          "read_only": {
+            "default": true,
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "recovery_blocked_by": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recovery Blocked By",
+            "type": "array"
+          },
+          "recovery_ref_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Recovery Ref Count",
+            "type": "integer"
+          },
+          "recovery_state": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery State"
+          },
+          "schema_version": {
+            "default": "scholar_ai_krt_actual_loading_gate_state_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "default": "unknown",
+            "maxLength": 80,
+            "title": "Status",
+            "type": "string"
+          },
+          "tool_call_ok_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Tool Call Ok Count",
+            "type": "integer"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "AgentWorkspaceKnowledgeActualLoadingGateState",
+        "type": "object"
+      },
       "AgentWorkspaceOcrEngineState": {
         "description": "One redacted OCR engine readiness summary for workspace recovery.",
         "properties": {
@@ -2948,6 +3150,9 @@
           "goal_state": {
             "$ref": "#/components/schemas/AgentWorkspaceGoalState"
           },
+          "knowledge_actual_loading_gate": {
+            "$ref": "#/components/schemas/AgentWorkspaceKnowledgeActualLoadingGateState"
+          },
           "next_safe_local_actions": {
             "items": {
               "type": "string"
@@ -2999,7 +3204,8 @@
           "goal_state",
           "desktop_smoke",
           "ocr_runtime",
-          "wiki_doctor"
+          "wiki_doctor",
+          "knowledge_actual_loading_gate"
         ],
         "title": "AgentWorkspaceState",
         "type": "object"

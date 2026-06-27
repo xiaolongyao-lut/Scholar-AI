@@ -8315,6 +8315,109 @@ export interface components {
             updated_at?: string | null;
         };
         /**
+         * AgentWorkspaceKnowledgeActualLoadingGateState
+         * @description Read-only Knowledge Runtime live actual-loading gate summary.
+         *
+         *     Args:
+         *         available: Whether the conformance gate could be read locally.
+         *         status: Gate status from the Knowledge Runtime conformance endpoint.
+         *         verdict: Live smoke artifact verdict when an artifact is present.
+         *         artifact_ref: Repository-relative proof artifact label.
+         *         provider_preflight_status: Provider forced-tool-call preflight status.
+         *         recovery_state: Machine-readable recovery state for resumed agents.
+         */
+        AgentWorkspaceKnowledgeActualLoadingGateState: {
+            /**
+             * Artifact Contract Valid
+             * @default false
+             */
+            artifact_contract_valid: boolean;
+            /**
+             * Artifact Exists
+             * @default false
+             */
+            artifact_exists: boolean;
+            /** Artifact Path */
+            artifact_path?: string | null;
+            /** Artifact Ref */
+            artifact_ref?: string | null;
+            /**
+             * Artifact Schema Valid
+             * @default false
+             */
+            artifact_schema_valid: boolean;
+            /**
+             * Auth Required Count
+             * @default 0
+             */
+            auth_required_count: number;
+            /**
+             * Authorization Required Ref Count
+             * @default 0
+             */
+            authorization_required_ref_count: number;
+            /** Available */
+            available: boolean;
+            /** Claim Boundary */
+            claim_boundary?: string | null;
+            /**
+             * Completion Requires Authorized Live Smoke
+             * @default true
+             */
+            completion_requires_authorized_live_smoke: boolean;
+            /** Error */
+            error?: string | null;
+            /** Missing */
+            missing?: string[];
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
+            /** Provider Latest Status */
+            provider_latest_status?: string | null;
+            /** Provider Preflight Status */
+            provider_preflight_status?: string | null;
+            /**
+             * Provider Ready For Authorized Live Smoke
+             * @default false
+             */
+            provider_ready_for_authorized_live_smoke: boolean;
+            /**
+             * Provider Record Count
+             * @default 0
+             */
+            provider_record_count: number;
+            /**
+             * Read Only
+             * @default true
+             */
+            read_only: boolean;
+            /** Recovery Blocked By */
+            recovery_blocked_by?: string[];
+            /**
+             * Recovery Ref Count
+             * @default 0
+             */
+            recovery_ref_count: number;
+            /** Recovery State */
+            recovery_state?: string | null;
+            /**
+             * Schema Version
+             * @default scholar_ai_krt_actual_loading_gate_state_v1
+             */
+            schema_version: string;
+            /**
+             * Status
+             * @default unknown
+             */
+            status: string;
+            /**
+             * Tool Call Ok Count
+             * @default 0
+             */
+            tool_call_ok_count: number;
+            /** Verdict */
+            verdict?: string | null;
+        };
+        /**
          * AgentWorkspaceOcrEngineState
          * @description One redacted OCR engine readiness summary for workspace recovery.
          */
@@ -8439,6 +8542,7 @@ export interface components {
             generated_at: string;
             git: components["schemas"]["AgentWorkspaceGitState"];
             goal_state: components["schemas"]["AgentWorkspaceGoalState"];
+            knowledge_actual_loading_gate: components["schemas"]["AgentWorkspaceKnowledgeActualLoadingGateState"];
             /** Next Safe Local Actions */
             next_safe_local_actions?: string[];
             ocr_runtime: components["schemas"]["AgentWorkspaceOcrRuntimeState"];
