@@ -80,6 +80,22 @@ literature.knowledge_context_receipt     # bounded context receipt
 
 核对顺序：先看 package status/hash，再拿 ref，随后 bounded read，最后生成 context receipt。这个链路证明 deterministic source-to-context；仍不等于 live QA/model actual-loading proof。
 
+## WikiRegistry -> Source Vault mirror backlog
+
+预存 WikiRegistry 行的 Source Vault mirror 状态先通过只读诊断恢复：
+
+```text
+literature.wiki_doctor                   # Source Vault mirror backlog / needs_replay
+literature.agent_workspace_status        # Wiki Doctor summary and bounded samples
+literature.source_vault_status           # Source Vault manifest/status
+```
+
+核对重点：
+
+- `metrics.source_vault_mirror` 或 `source_vault_mirror_backlog` 的 `needs_replay`、pending source/chunk counts、status counts、samples。
+- `actions[].safe_auto_repair` 必须保持 `false`；`WikiRegistry.replay_source_vault_mirror()` 只是显式本地维护切片的命令提示，不是 MCP 自动修复工具。
+- backlog 诊断证明可见性和恢复边界；不等于已执行 replay/write repair，也不等于 live provider/model actual-loading proof。
+
 ---
 
 ## 分组工具清单

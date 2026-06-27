@@ -201,6 +201,13 @@ def test_capability_map_covers_registered_tools_and_is_source_readable() -> None
     assert "literature.agent_resource_read           # bounded resource read" in text
     assert "literature.knowledge_context_receipt     # bounded context receipt" in text
     assert "这个链路证明 deterministic source-to-context" in text
+    assert "## WikiRegistry -> Source Vault mirror backlog" in text
+    assert "literature.wiki_doctor                   # Source Vault mirror backlog / needs_replay" in text
+    assert "metrics.source_vault_mirror" in text
+    assert "source_vault_mirror_backlog" in text
+    assert "actions[].safe_auto_repair" in text
+    assert "WikiRegistry.replay_source_vault_mirror()" in text
+    assert "不是 MCP 自动修复工具" in text
     missing = sorted(name for name in tool_names if name not in text)
     assert not missing
 
