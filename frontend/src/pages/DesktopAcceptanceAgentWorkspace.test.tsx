@@ -68,6 +68,15 @@ describe('DesktopAcceptanceAgentWorkspace', () => {
     expect(within(desktopSmokeRegion).getByText('workspace_artifacts/generated/desktop_smoke/n74-wiki-import-recovery-desktop-aligned/window.png')).toBeInTheDocument();
     expect(within(desktopSmokeRegion).getByText('workspace_artifacts/generated/desktop_smoke/n74-wiki-import-recovery-desktop-aligned/accessibility-tree.json')).toBeInTheDocument();
     expect(within(desktopSmokeRegion).queryByText(/C:\\Users\\/)).not.toBeInTheDocument();
+    const ocrRuntimeRegion = within(workspaceStateRegion).getByRole('region', { name: 'OCR runtime recovery' });
+    expect(within(ocrRuntimeRegion).getByText('OCR Runtime')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('ocr runtime visible')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('selected mock_local')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('ocr auto · selected mock_local · ready 1/2 · lang en · source default')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('Mock Local OCR · ready · available · local')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('Remote OCR API · configuration_required · unavailable · remote · network · blocker api_key is required')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('blocker remote_api: api_key is required')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('next Inspect literature.ocr_health before claiming OCR execution readiness.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText(/open requirements/)).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByRole('textbox', { name: 'Filter open requirements' })).not.toBeInTheDocument();
     const requirementDrilldownRegion = within(workspaceStateRegion).getByRole('region', { name: 'Requirement evidence drilldown' });

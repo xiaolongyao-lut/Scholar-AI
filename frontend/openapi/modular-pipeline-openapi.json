@@ -2634,6 +2634,230 @@
         "title": "AgentWorkspaceGoalState",
         "type": "object"
       },
+      "AgentWorkspaceOcrEngineState": {
+        "description": "One redacted OCR engine readiness summary for workspace recovery.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "engine_type": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Engine Type",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
+          "readiness_blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Readiness Blockers",
+            "type": "array"
+          },
+          "readiness_status": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Readiness Status"
+          },
+          "requires_network": {
+            "title": "Requires Network",
+            "type": "boolean"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "name",
+          "display_name",
+          "engine_type",
+          "available",
+          "requires_network"
+        ],
+        "title": "AgentWorkspaceOcrEngineState",
+        "type": "object"
+      },
+      "AgentWorkspaceOcrRuntimeState": {
+        "description": "Read-only OCR runtime snapshot for local processing recovery.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "configured_engine": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configured Engine"
+          },
+          "engine_config": {
+            "additionalProperties": true,
+            "title": "Engine Config",
+            "type": "object"
+          },
+          "engine_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Engine Count",
+            "type": "integer"
+          },
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/AgentWorkspaceOcrEngineState"
+            },
+            "title": "Engines",
+            "type": "array"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
+          "policy": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy"
+          },
+          "read_only": {
+            "default": true,
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "readiness_blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Readiness Blockers",
+            "type": "array"
+          },
+          "ready_engine_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Ready Engine Count",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": "scholar_ai_ocr_runtime_state_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "selected_engine": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Engine"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "AgentWorkspaceOcrRuntimeState",
+        "type": "object"
+      },
       "AgentWorkspaceRecoveryProbe": {
         "description": "One read-only recovery endpoint a resumed agent can inspect.\n\nArgs:\n    label: Stable display label for the recovery surface.\n    route: Local route or route pattern. Placeholder routes require an\n        identifier supplied from visible runtime state.\n    read_only: Whether this probe is diagnostic only.\n    requires_identifier: Whether the route pattern needs a job/request id.\n    identifier_hint: Identifier name expected by the route pattern.\n    purpose: Why this probe should be read before mutating workflow state.\n    mcp_tool: Optional MCP tool exposing the same read-only projection.",
         "properties": {
@@ -2731,6 +2955,9 @@
             "title": "Next Safe Local Actions",
             "type": "array"
           },
+          "ocr_runtime": {
+            "$ref": "#/components/schemas/AgentWorkspaceOcrRuntimeState"
+          },
           "output_root": {
             "$ref": "#/components/schemas/AgentWorkspaceDirectoryState"
           },
@@ -2767,7 +2994,8 @@
           "output_root",
           "git",
           "goal_state",
-          "desktop_smoke"
+          "desktop_smoke",
+          "ocr_runtime"
         ],
         "title": "AgentWorkspaceState",
         "type": "object"

@@ -144,6 +144,48 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
             stop_boundaries=["No push, tag, release, deploy, or external upload."],
         ),
     )
+    monkeypatch.setattr(
+        agent_workspace_router,
+        "public_ocr_status",
+        lambda: {
+            "policy": "engine",
+            "configured_engine": "remote_api",
+            "selected_engine": None,
+            "language": "en",
+            "source": "config",
+            "engine_config": {
+                "api_key": "raw-secret-should-not-leak",
+                "base_url": "https://ocr.example.test",
+                "nested": {"hidden": "value"},
+            },
+            "available_engines": [
+                {
+                    "name": "remote_api",
+                    "display_name": "Remote OCR API",
+                    "engine_type": "remote",
+                    "available": False,
+                    "requires_network": True,
+                    "unavailable_reason": "remote upload consent is not enabled",
+                    "readiness_status": "configuration_required",
+                    "readiness_blockers": ["allow_remote_upload must be true"],
+                    "next_safe_local_actions": ["Set allow_remote_upload only after explicit consent."],
+                },
+                {
+                    "name": "mock_local",
+                    "display_name": "Mock Local OCR",
+                    "engine_type": "local",
+                    "available": True,
+                    "requires_network": False,
+                    "unavailable_reason": None,
+                    "readiness_status": "ready",
+                    "readiness_blockers": [],
+                    "next_safe_local_actions": ["Run literature.ocr_execution_probe with confirm_execution=true."],
+                },
+            ],
+            "warning": "OCR policy is engine but remote_api is not ready",
+            "next_safe_local_actions": ["Inspect literature.ocr_engines before running OCR."],
+        },
+    )
     monkeypatch.setenv("LITASSIST_API_CAPABILITY_AUTH", "1")
     client = TestClient(server.app)
 
@@ -192,6 +234,32 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert desktop_smoke["accessibility_tree_named_node_count"] == 9
     assert desktop_smoke["warnings"] == ["native window could not be foregrounded before screenshot"]
     assert desktop_smoke["errors"] == []
+    ocr_runtime = payload["workspace_state"]["ocr_runtime"]
+    assert ocr_runtime["schema_version"] == "scholar_ai_ocr_runtime_state_v1"
+    assert ocr_runtime["available"] is True
+    assert ocr_runtime["read_only"] is True
+    assert ocr_runtime["policy"] == "engine"
+    assert ocr_runtime["configured_engine"] == "remote_api"
+    assert ocr_runtime["selected_engine"] is None
+    assert ocr_runtime["language"] == "en"
+    assert ocr_runtime["source"] == "config"
+    assert ocr_runtime["engine_config"] == {
+        "api_key": "***",
+        "base_url": "https://ocr.example.test",
+        "nested": "dict",
+    }
+    assert ocr_runtime["engine_count"] == 2
+    assert ocr_runtime["ready_engine_count"] == 1
+    assert ocr_runtime["engines"][0]["name"] == "remote_api"
+    assert ocr_runtime["engines"][0]["readiness_status"] == "configuration_required"
+    assert ocr_runtime["engines"][0]["readiness_blockers"] == ["allow_remote_upload must be true"]
+    assert ocr_runtime["engines"][1]["available"] is True
+    assert ocr_runtime["warning"] == "OCR policy is engine but remote_api is not ready"
+    assert ocr_runtime["readiness_blockers"][:2] == [
+        "OCR policy is engine but remote_api is not ready",
+        "remote_api: allow_remote_upload must be true",
+    ]
+    assert ocr_runtime["next_safe_local_actions"] == ["Inspect literature.ocr_engines before running OCR."]
     goal_state = payload["workspace_state"]["goal_state"]
     assert goal_state["available"] is True
     assert goal_state["path"] == "docs/plans/longrun-goal-state-local.json"
@@ -251,6 +319,7 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert ".audit" not in payload["artifacts"][0]["path"]
     serialized = json.dumps(payload, ensure_ascii=False)
     assert "sk-ant-api" not in serialized
+    assert "raw-secret-should-not-leak" not in serialized
     assert "Authorization: Bearer" not in serialized
     assert str(tmp_path) not in serialized
 

@@ -72,6 +72,7 @@ import type { WikiReviewItemModel, WikiReviewListModel } from '@/types/wiki';
 type WorkspaceTab = 'agents' | 'artifacts' | 'audit';
 
 type AgentWorkspaceOpenRequirement = NonNullable<AgentWorkspaceStatus['workspace_state']['goal_state']['open_requirements']>[number];
+type AgentWorkspaceOcrEngine = AgentWorkspaceStatus['workspace_state']['ocr_runtime']['engines'][number];
 
 const KIND_LABELS: Record<string, string> = {
   markdown: 'Markdown',
@@ -1831,6 +1832,36 @@ function workspaceDesktopSmokeSummary(state: AgentWorkspaceStatus['workspace_sta
   const tree = smoke.accessibility_tree_available ? 'a11y tree yes' : 'a11y tree no';
   const filter = `candidates ${smoke.candidate_count} · ignored ${smoke.ignored_count}`;
   return `${runId} · ${status} · ${screenshot} · ${tree} · ${filter}`;
+}
+
+function workspaceOcrRuntimeTone(state: AgentWorkspaceStatus['workspace_state']): StatusTone {
+  const ocr = state.ocr_runtime;
+  if (!ocr.available || ocr.error) {
+    return 'danger';
+  }
+  if (ocr.selected_engine) {
+    return 'success';
+  }
+  return ocr.warning || ocr.readiness_blockers.length > 0 ? 'warning' : 'neutral';
+}
+
+function workspaceOcrRuntimeSummary(state: AgentWorkspaceStatus['workspace_state']): string {
+  const ocr = state.ocr_runtime;
+  if (!ocr.available) {
+    return `ocr runtime unavailable${ocr.error ? ` · ${sanitizeInspectorText(ocr.error)}` : ''}`;
+  }
+  const policy = ocr.policy ? sanitizeInspectorText(ocr.policy) : 'unknown';
+  const selected = ocr.selected_engine ? sanitizeInspectorText(ocr.selected_engine) : 'none';
+  const language = ocr.language ? sanitizeInspectorText(ocr.language) : 'unknown';
+  const source = ocr.source ? sanitizeInspectorText(ocr.source) : 'unknown';
+  return `ocr ${policy} · selected ${selected} · ready ${ocr.ready_engine_count}/${ocr.engine_count} · lang ${language} · source ${source}`;
+}
+
+function workspaceOcrEngineLabel(engine: AgentWorkspaceOcrEngine): string {
+  const displayName = sanitizeInspectorText(engine.display_name || engine.name);
+  const readiness = sanitizeInspectorText(engine.readiness_status || (engine.available ? 'ready' : 'unavailable'));
+  const network = engine.requires_network ? ' · network' : '';
+  return `${displayName} · ${readiness} · ${engine.available ? 'available' : 'unavailable'} · ${sanitizeInspectorText(engine.engine_type)}${network}`;
 }
 
 function firstRecommendationMessage(healthCheck: AgentWorkflowHealthCheck | null): string {
@@ -3614,6 +3645,9 @@ export function WorkspaceStatePanel({
   const goalCompletionClaim = workspaceGoalCompletionClaimSummary(state.goal_state);
   const goalLifecycle = state.goal_state.lifecycle_rollup ?? null;
   const desktopSmoke = state.desktop_smoke;
+  const ocrRuntime = state.ocr_runtime;
+  const visibleOcrEngines = ocrRuntime.engines.slice(0, 4);
+  const ocrConfigEntries = Object.entries(ocrRuntime.engine_config).slice(0, 4);
   const allOpenRequirements = state.goal_state.open_requirements ?? [];
   const matchingOpenRequirements = allOpenRequirements.filter((item) => matchesOpenRequirementQuery(requirementQuery, item));
   const openRequirements = matchingOpenRequirements.slice(0, 5);
@@ -3917,6 +3951,75 @@ export function WorkspaceStatePanel({
                     </p>
                   ))}
                 </div>
+              ) : null}
+            </div>
+            <div
+              role="region"
+              aria-label="OCR runtime recovery"
+              className="min-w-0 rounded-md border border-outline-variant/35 bg-surface-lowest px-2 py-2 md:col-span-2"
+            >
+              <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                <h4 className="mr-auto font-label text-[11px] font-semibold text-foreground/45">OCR Runtime</h4>
+                <StatusPill tone={workspaceOcrRuntimeTone(state)}>
+                  ocr runtime {ocrRuntime.available ? 'visible' : 'unavailable'}
+                </StatusPill>
+                <StatusPill tone="neutral">read-only {String(ocrRuntime.read_only)}</StatusPill>
+                <StatusPill tone={ocrRuntime.selected_engine ? 'success' : 'warning'}>
+                  selected {ocrRuntime.selected_engine ? sanitizeInspectorText(ocrRuntime.selected_engine) : 'none'}
+                </StatusPill>
+              </div>
+              <p className="break-words text-[11px] leading-4 text-foreground/60">
+                {workspaceOcrRuntimeSummary(state)}
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {ocrRuntime.configured_engine ? <StatusPill tone="neutral">configured {sanitizeInspectorText(ocrRuntime.configured_engine)}</StatusPill> : null}
+                {ocrRuntime.language ? <StatusPill tone="neutral">lang {sanitizeInspectorText(ocrRuntime.language)}</StatusPill> : null}
+                {ocrRuntime.source ? <StatusPill tone="neutral">source {sanitizeInspectorText(ocrRuntime.source)}</StatusPill> : null}
+                <StatusPill tone={ocrRuntime.ready_engine_count > 0 ? 'success' : 'warning'}>ready engines {ocrRuntime.ready_engine_count}</StatusPill>
+                <StatusPill tone="neutral">engine inventory {ocrRuntime.engine_count}</StatusPill>
+              </div>
+              {ocrConfigEntries.length > 0 ? (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {ocrConfigEntries.map(([key, value]) => (
+                    <StatusPill key={key} tone="neutral">
+                      {sanitizeInspectorText(key)} {displayUnknownValue(value)}
+                    </StatusPill>
+                  ))}
+                </div>
+              ) : null}
+              {ocrRuntime.warning || ocrRuntime.error || ocrRuntime.readiness_blockers.length > 0 ? (
+                <div className="mt-1.5 grid gap-1">
+                  {ocrRuntime.warning ? (
+                    <p className="break-words rounded-md border border-outline-variant/25 bg-surface px-2 py-1 text-[11px] leading-4 text-foreground/60">
+                      warning {sanitizeInspectorText(ocrRuntime.warning)}
+                    </p>
+                  ) : null}
+                  {ocrRuntime.error ? (
+                    <p className="break-words rounded-md border border-danger/20 bg-danger/5 px-2 py-1 text-[11px] leading-4 text-danger">
+                      error {sanitizeInspectorText(ocrRuntime.error)}
+                    </p>
+                  ) : null}
+                  {ocrRuntime.readiness_blockers.slice(0, 3).map((blocker) => (
+                    <p key={`ocr-blocker:${blocker}`} className="break-words rounded-md border border-outline-variant/25 bg-surface px-2 py-1 text-[11px] leading-4 text-foreground/60">
+                      blocker {sanitizeInspectorText(blocker)}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+              {visibleOcrEngines.length > 0 ? (
+                <div className="mt-1.5 grid gap-1 md:grid-cols-2">
+                  {visibleOcrEngines.map((engine) => (
+                    <p key={engine.name} className="break-words rounded-md border border-outline-variant/25 bg-surface px-2 py-1 text-[11px] leading-4 text-foreground/60">
+                      {workspaceOcrEngineLabel(engine)}
+                      {engine.readiness_blockers.length > 0 ? ` · blocker ${sanitizeInspectorText(engine.readiness_blockers[0])}` : ''}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+              {ocrRuntime.next_safe_local_actions.length > 0 ? (
+                <p className="mt-1.5 break-words text-[11px] leading-4 text-foreground/55">
+                  next {sanitizeInspectorText(ocrRuntime.next_safe_local_actions[0])}
+                </p>
               ) : null}
             </div>
             <div

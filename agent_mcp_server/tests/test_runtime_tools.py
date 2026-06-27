@@ -2685,6 +2685,59 @@ def test_agent_workspace_status_reads_recovery_state(
                     "total_bytes": 512,
                     "truncated": False,
                 },
+                "ocr_runtime": {
+                    "schema_version": "scholar_ai_ocr_runtime_state_v1",
+                    "available": True,
+                    "read_only": True,
+                    "policy": "engine",
+                    "configured_engine": "remote_api",
+                    "selected_engine": None,
+                    "language": "en",
+                    "source": "config",
+                    "engine_config": {
+                        "api_key": "***",
+                        "base_url": "https://ocr.example.test",
+                    },
+                    "engine_count": 2,
+                    "ready_engine_count": 1,
+                    "engines": [
+                        {
+                            "name": "remote_api",
+                            "display_name": "Remote OCR API",
+                            "engine_type": "remote",
+                            "available": False,
+                            "requires_network": True,
+                            "readiness_status": "configuration_required",
+                            "readiness_blockers": ["allow_remote_upload must be true"],
+                            "next_safe_local_actions": [
+                                "Set allow_remote_upload only after explicit consent."
+                            ],
+                            "unavailable_reason": "remote upload consent is not enabled",
+                        },
+                        {
+                            "name": "mock_local",
+                            "display_name": "Mock Local OCR",
+                            "engine_type": "local",
+                            "available": True,
+                            "requires_network": False,
+                            "readiness_status": "ready",
+                            "readiness_blockers": [],
+                            "next_safe_local_actions": [
+                                "Run literature.ocr_execution_probe with confirm_execution=true."
+                            ],
+                            "unavailable_reason": None,
+                        },
+                    ],
+                    "readiness_blockers": [
+                        "OCR policy is engine but remote_api is not ready",
+                        "remote_api: allow_remote_upload must be true",
+                    ],
+                    "warning": "OCR policy is engine but remote_api is not ready",
+                    "next_safe_local_actions": [
+                        "Inspect literature.ocr_engines before running OCR."
+                    ],
+                    "error": None,
+                },
                 "recovery_probes": [
                     {
                         "label": "Research Action Lifecycle",
@@ -2734,6 +2787,18 @@ def test_agent_workspace_status_reads_recovery_state(
         "agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py",
     ]
     assert state["artifact_root"]["file_count"] == 12
+    assert state["ocr_runtime"]["schema_version"] == "scholar_ai_ocr_runtime_state_v1"
+    assert state["ocr_runtime"]["read_only"] is True
+    assert state["ocr_runtime"]["policy"] == "engine"
+    assert state["ocr_runtime"]["configured_engine"] == "remote_api"
+    assert state["ocr_runtime"]["selected_engine"] is None
+    assert state["ocr_runtime"]["engine_config"]["api_key"] == "***"
+    assert state["ocr_runtime"]["ready_engine_count"] == 1
+    assert state["ocr_runtime"]["engines"][0]["readiness_status"] == "configuration_required"
+    assert state["ocr_runtime"]["readiness_blockers"][1] == "remote_api: allow_remote_upload must be true"
+    assert state["ocr_runtime"]["next_safe_local_actions"] == [
+        "Inspect literature.ocr_engines before running OCR."
+    ]
     assert state["goal_state"]["available"] is True
     assert state["goal_state"]["checkpoint_id"] == "20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio"
     assert state["goal_state"]["requirement_count"] == 125

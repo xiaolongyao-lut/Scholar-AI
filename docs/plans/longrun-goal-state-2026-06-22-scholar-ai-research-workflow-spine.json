@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T19:46:23+08:00",
+  "updated_at": "2026-06-27T20:20:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,21 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260627-194411-n252-krt-panel-required-check-sync",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-194411-n252-krt-panel-required-check-sync",
-    "latest_goal_state_checkpoint_id": "20260627-194411-n252-krt-panel-required-check-sync",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-194411-n252-krt-panel-required-check-sync",
-    "latest_checkpoint_caveat": "Git rollback checkpoint for N252 Knowledge Runtime package-panel required-check visibility; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260627-195623-n253-ocr-agent-workspace-probes",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-195623-n253-ocr-agent-workspace-probes",
+    "latest_goal_state_checkpoint_id": "20260627-195623-n253-ocr-agent-workspace-probes",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-195623-n253-ocr-agent-workspace-probes",
+    "latest_checkpoint_caveat": "Git rollback checkpoint for N253 OCR runtime Agent Workspace state visibility; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N253 OCR runtime Agent Workspace state visibility",
+      "source": "FastAPI response-model filtering; Model Context Protocol readOnlyHint/tool annotation boundary; Kubernetes readiness/liveness probe distinction",
+      "url": "https://fastapi.tiangolo.com/tutorial/response-model/ ; https://modelcontextprotocol.io/specification/2025-06-18/server/tools ; https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/",
+      "status": "Official/mature references checked on 2026-06-27 before implementation",
+      "checked_at": "2026-06-27T19:56:23+08:00",
+      "use_in_slice": "Used to keep Agent Workspace OCR runtime state as a typed read-only projection with redacted output, not an OCR execution path; health/execution probes remain separate and explicit. No external code copied."
+    },
     {
       "topic": "N252 Knowledge Runtime package-panel required-check visibility",
       "source": "Testing Library visible-query guidance; Scholar AI existing KnowledgePackagesPanel contract; frontend-quality local UI verification discipline",
@@ -7130,19 +7138,55 @@
         "cd frontend; npm run test -- --run src/components/knowledge/KnowledgePackagesPanel.test.tsx -> 1 file passed, 1 test passed."
       ],
       "residual_risk": "This is deterministic UI visibility only. It does not change backend behavior, regenerate OpenAPI artifacts, or prove live QA/model actual-loading while provider auth/live smoke remain gated."
+    },
+    {
+      "id": "N253-ocr-runtime-agent-workspace-state-visibility",
+      "requirement": "Agent Workspace must expose the OCR runtime as a first-class read-only state snapshot, not only as a recovery probe link, so a resumed agent can see policy, selected/configured engine, redacted config, readiness blockers, engine inventory, and safe next actions without executing OCR.",
+      "source": "N253 OCR audit subagent result and user goal branch for OCR/local processing capability visibility. The existing OCR status endpoint and MCP tools already existed, but workspace_state only listed OCR Runtime Status as a link.",
+      "status": "proved",
+      "evidence": [
+        "literature_assistant/core/routers/agent_workspace_router.py adds AgentWorkspaceOcrRuntimeState and AgentWorkspaceOcrEngineState, loads public_ocr_status() into workspace_state.ocr_runtime, bounds engines/actions/blockers, redacts secret-like engine_config keys, and degrades to available=false on OCR status load errors without executing OCR.",
+        "tests/test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit monkeypatches public_ocr_status() and proves schema_version, read_only=true, policy/configured/selected engine, redacted api_key, engine_count/ready_engine_count, readiness blockers, next_safe_local_actions, and no raw secret leakage.",
+        "agent_mcp_server/tests/test_runtime_tools.py::test_agent_workspace_status_reads_recovery_state now preserves workspace_state.ocr_runtime through literature.agent_workspace_status so MCP callers recover the OCR runtime snapshot.",
+        "frontend/src/services/agentWorkspaceApi.ts and generated OpenAPI artifacts include the ocr_runtime contract.",
+        "frontend/src/pages/AgentWorkspace.tsx renders the OCR Runtime recovery region with policy/selected/ready counts, redacted config, readiness blockers, engine summaries, and next action, while exposing no OCR execution button.",
+        "frontend/src/pages/AgentWorkspace.test.tsx and frontend/src/pages/DesktopAcceptanceAgentWorkspace.test.tsx assert the visible OCR runtime region, read-only state, safe next actions, remote blocker visibility, local-ready engine visibility, and no raw secret leakage.",
+        "cd frontend; npm run generate:openapi -> passed and regenerated frontend/openapi/modular-pipeline-openapi.json plus frontend/src/generated/openapi.ts.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit -q -> 1 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_agent_workspace_status_reads_recovery_state -q -> 1 passed.",
+        "cd frontend; npm run test -- --run src/pages/AgentWorkspace.test.tsx src/pages/DesktopAcceptanceAgentWorkspace.test.tsx -> 2 files passed, 8 tests passed."
+      ],
+      "residual_risk": "This is deterministic OCR runtime visibility only. It does not execute real PaddleOCR/RapidOCR/Windows/Remote OCR, does not upload content, does not change OCR config, and does not prove live provider/model actual-loading."
     }
   ],
   "changed_files_for_this_slice": [
-    "frontend/src/components/knowledge/KnowledgePackagesPanel.tsx",
-    "frontend/src/components/knowledge/KnowledgePackagesPanel.test.tsx",
+    "agent_mcp_server/tests/test_runtime_tools.py",
+    "frontend/openapi/modular-pipeline-openapi.json",
+    "frontend/src/generated/openapi.ts",
+    "frontend/src/pages/AgentWorkspace.test.tsx",
+    "frontend/src/pages/AgentWorkspace.tsx",
+    "frontend/src/pages/DesktopAcceptanceAgentWorkspace.test.tsx",
+    "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
+    "frontend/src/services/agentWorkspaceApi.ts",
+    "literature_assistant/core/routers/agent_workspace_router.py",
+    "tests/test_agent_workspace_router.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "cd frontend; npm run test -- --run src/components/knowledge/KnowledgePackagesPanel.test.tsx -> 1 file passed, 1 test passed"
+    "cd frontend; npm run generate:openapi -> passed and regenerated frontend/openapi/modular-pipeline-openapi.json plus frontend/src/generated/openapi.ts",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit -q -> 1 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_agent_workspace_status_reads_recovery_state -q -> 1 passed",
+    "cd frontend; npm run test -- --run src/pages/AgentWorkspace.test.tsx src/pages/DesktopAcceptanceAgentWorkspace.test.tsx -> 2 files passed, 8 tests passed",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit agent_mcp_server\\tests\\test_runtime_tools.py::test_agent_workspace_status_reads_recovery_state -q -> 2 passed",
+    "cd frontend; npm run build -> tsc && vite build passed",
+    "git diff --check -> exit 0; warnings only that docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json and frontend/openapi/modular-pipeline-openapi.json CRLF will be replaced by LF when Git touches them",
+    "git ls-files -ci --exclude-standard -> no ignored tracked files reported"
   ],
   "next_authorized_local_actions": [
-    "Continue deterministic Knowledge Runtime recovery/visibility work that does not require provider credentials or live model calls, especially freshness policy visibility if a concrete TTL/window is authorized later.",
-    "Continue Knowledge Runtime Pipeline source-to-context proof work for wiki/official/academic-English/source-vault packages where it can be proved through builder/manifest/retrieval/resource tests without external upload.",
+    "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
+    "Continue Knowledge Runtime Pipeline source-to-context proof work by adding a deterministic local Source Vault loaded proof where it can be proved through builder/manifest/retrieval/resource tests without external upload.",
     "If provider credentials are corrected, first rerun /api/chat/tool-capability/test and require provider_preflight.status=proved before any live context-receipt smoke; then require generatedAt and last_probe_at to be timezone-aware and ordered.",
     "Continue OCR provider-readiness/configuration contract work only when it avoids uploading user content and keeps runtime artifacts local.",
     "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
@@ -7154,10 +7198,10 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N252 proves the KnowledgePackagesPanel registry surface now renders the strengthened ten-check actual-loading gate and specifically exposes artifact.generated_at.utc_aware.",
+    "this_slice": "N253 proves Agent Workspace and MCP status now expose a first-class, read-only, redacted OCR runtime snapshot with engine readiness and safe recovery actions.",
     "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
     "can_mark_goal_complete": false,
-    "why_not_complete": "The current configured provider still requires authentication and no fresh authorized live context-receipt smoke has proved the same provider/baseHost/model endpoint under the strengthened timestamp-order gate, so Knowledge Runtime live QA/model actual-loading remains blocked."
+    "why_not_complete": "The current configured provider still requires authentication and no fresh authorized live context-receipt smoke has proved the same provider/baseHost/model endpoint under the strengthened timestamp-order gate; real OCR provider execution also remains gated behind explicit execution/upload consent."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -12846,27 +12890,27 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T19:46:23+08:00",
+    "updated_at": "2026-06-27T20:20:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 253,
+    "requirements_total": 254,
     "requirement_status_counts": {
-      "proved": 253
+      "proved": 254
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N252-krt-package-panel-required-check-visibility",
-    "latest_slice_id": "N252-krt-package-panel-required-check-visibility",
+    "latest_requirement_id": "N253-ocr-runtime-agent-workspace-state-visibility",
+    "latest_slice_id": "N253-ocr-runtime-agent-workspace-state-visibility",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
-        "evidence": "N252 synchronizes deterministic package-panel visibility only; live loading proof still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint."
+        "evidence": "N253 synchronizes deterministic OCR runtime visibility only; live loading proof still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "The current configured provider still requires authentication and no fresh authorized live context-receipt smoke has proved the same provider/baseHost/model endpoint under the strengthened timestamp-order gate, so Knowledge Runtime live QA/model actual-loading remains blocked."
+    "why_not_complete": "The current configured provider still requires authentication and no fresh authorized live context-receipt smoke has proved the same provider/baseHost/model endpoint under the strengthened timestamp-order gate; real OCR provider execution remains explicitly gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -17334,6 +17378,72 @@
       "Continue Knowledge Runtime Pipeline source-to-context proof work for wiki/official/academic-English/source-vault packages where it can be proved through builder/manifest/retrieval/resource tests without external upload.",
       "If provider credentials are corrected, first rerun /api/chat/tool-capability/test and require provider_preflight.status=proved before any live context-receipt smoke; then require generatedAt and last_probe_at to be timezone-aware and ordered.",
       "Continue OCR provider-readiness/configuration contract work only when it avoids uploading user content and keeps runtime artifacts local.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
+    ]
+  },
+  "n253_ocr_runtime_agent_workspace_state_visibility_slice": {
+    "id": "N253-ocr-runtime-agent-workspace-state-visibility",
+    "status": "proved",
+    "summary": "N253 exposes the OCR runtime as a first-class read-only Agent Workspace state snapshot and synchronizes the REST, MCP, OpenAPI, frontend, and desktop acceptance contracts.",
+    "rollback_checkpoint_id": "20260627-195623-n253-ocr-agent-workspace-probes",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-195623-n253-ocr-agent-workspace-probes",
+    "mature_references_checked": [
+      {
+        "topic": "N253 FastAPI response model and OpenAPI contract",
+        "source": "FastAPI response-model documentation",
+        "url": "https://fastapi.tiangolo.com/tutorial/response-model/",
+        "status": "Official reference checked on 2026-06-27 before implementation",
+        "checked_at": "2026-06-27T19:56:23+08:00",
+        "use_in_slice": "Used to project OCR runtime state through typed Pydantic response models and generated OpenAPI instead of an untyped ad hoc dict."
+      },
+      {
+        "topic": "N253 MCP read-only tool boundary",
+        "source": "Model Context Protocol server tools specification",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+        "status": "Official reference checked on 2026-06-27 before implementation",
+        "checked_at": "2026-06-27T19:56:23+08:00",
+        "use_in_slice": "Used to keep literature.agent_workspace_status as a structured status projection and avoid relabeling OCR execution as read-only."
+      },
+      {
+        "topic": "N253 readiness probe semantics",
+        "source": "Kubernetes liveness/readiness/startup probe documentation",
+        "url": "https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/",
+        "status": "Mature reference checked on 2026-06-27 before implementation",
+        "checked_at": "2026-06-27T19:56:23+08:00",
+        "use_in_slice": "Used to separate low-cost readiness visibility from explicit OCR execution probes that can run heavy local runtimes or upload content."
+      }
+    ],
+    "changed_files": [
+      "literature_assistant/core/routers/agent_workspace_router.py",
+      "tests/test_agent_workspace_router.py",
+      "agent_mcp_server/tests/test_runtime_tools.py",
+      "frontend/src/services/agentWorkspaceApi.ts",
+      "frontend/src/pages/AgentWorkspace.tsx",
+      "frontend/src/pages/AgentWorkspace.test.tsx",
+      "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
+      "frontend/src/pages/DesktopAcceptanceAgentWorkspace.test.tsx",
+      "frontend/openapi/modular-pipeline-openapi.json",
+      "frontend/src/generated/openapi.ts",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification_commands": [
+      "cd frontend; npm run generate:openapi -> passed and regenerated frontend/openapi/modular-pipeline-openapi.json plus frontend/src/generated/openapi.ts",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit -q -> 1 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_agent_workspace_status_reads_recovery_state -q -> 1 passed",
+      "cd frontend; npm run test -- --run src/pages/AgentWorkspace.test.tsx src/pages/DesktopAcceptanceAgentWorkspace.test.tsx -> 2 files passed, 8 tests passed",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit agent_mcp_server\\tests\\test_runtime_tools.py::test_agent_workspace_status_reads_recovery_state -q -> 2 passed",
+      "cd frontend; npm run build -> tsc && vite build passed",
+      "git diff --check -> exit 0; warnings only that docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json and frontend/openapi/modular-pipeline-openapi.json CRLF will be replaced by LF when Git touches them",
+      "git ls-files -ci --exclude-standard -> no ignored tracked files reported"
+    ],
+    "decision": "Reuse existing public_ocr_status(), Agent Workspace state, and literature.agent_workspace_status instead of creating a second OCR status endpoint or executing OCR from the recovery surface. Execution probe remains explicitly confirmed and outside this read-only state snapshot.",
+    "residual_risk": "This slice proves deterministic OCR runtime visibility only. It does not execute real PaddleOCR, RapidOCR, Windows OCR, or Remote API OCR, does not upload content, does not edit OCR config, and does not clear the live Knowledge Runtime actual-loading provider gate.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
+      "Continue Knowledge Runtime Pipeline source-to-context proof work by adding a deterministic local Source Vault loaded proof where it can be proved through builder/manifest/retrieval/resource tests without external upload.",
+      "Keep OCR execution probes behind confirm_execution=true and explicit local/remote upload boundaries.",
       "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
     ]
   }

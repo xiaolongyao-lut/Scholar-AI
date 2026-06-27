@@ -187,6 +187,53 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       errors: [],
       error: null,
     },
+    ocr_runtime: {
+      schema_version: 'scholar_ai_ocr_runtime_state_v1' as const,
+      available: true,
+      read_only: true,
+      policy: 'engine',
+      configured_engine: 'remote_api',
+      selected_engine: null,
+      language: 'en',
+      source: 'config',
+      engine_config: {
+        api_key: '***',
+        base_url: 'https://ocr.example.test',
+      },
+      engine_count: 2,
+      ready_engine_count: 1,
+      engines: [
+        {
+          name: 'remote_api',
+          display_name: 'Remote OCR API',
+          engine_type: 'remote',
+          available: false,
+          requires_network: true,
+          readiness_status: 'configuration_required',
+          readiness_blockers: ['allow_remote_upload must be true'],
+          next_safe_local_actions: ['Set allow_remote_upload only after explicit consent.'],
+          unavailable_reason: 'remote upload consent is not enabled',
+        },
+        {
+          name: 'mock_local',
+          display_name: 'Mock Local OCR',
+          engine_type: 'local',
+          available: true,
+          requires_network: false,
+          readiness_status: 'ready',
+          readiness_blockers: [],
+          next_safe_local_actions: ['Run literature.ocr_execution_probe with confirm_execution=true.'],
+          unavailable_reason: null,
+        },
+      ],
+      readiness_blockers: [
+        'OCR policy is engine but remote_api is not ready',
+        'remote_api: allow_remote_upload must be true',
+      ],
+      warning: 'OCR policy is engine but remote_api is not ready',
+      next_safe_local_actions: ['Inspect literature.ocr_engines before running OCR.'],
+      error: null,
+    },
     recovery_probes: [
       {
         label: 'Desktop Smoke Evidence',
@@ -2484,6 +2531,23 @@ describe('AgentWorkspace', () => {
     expect(within(desktopSmokeRegion).getByText('workspace_artifacts/generated/desktop_smoke/n75-desktop-smoke/window.png')).toBeInTheDocument();
     expect(within(desktopSmokeRegion).getByText('workspace_artifacts/generated/desktop_smoke/n75-desktop-smoke/accessibility-tree.json')).toBeInTheDocument();
     expect(within(desktopSmokeRegion).queryByText(/C:\\Users\\/)).not.toBeInTheDocument();
+    const ocrRuntimeRegion = within(workspaceStateRegion).getByRole('region', { name: 'OCR runtime recovery' });
+    expect(within(ocrRuntimeRegion).getByText('OCR Runtime')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('ocr runtime visible')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('read-only true')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('selected none')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('ocr engine · selected none · ready 1/2 · lang en · source config')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('configured remote_api')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('ready engines 1')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('engine inventory 2')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('api_key ***')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('base_url https://ocr.example.test')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('warning OCR policy is engine but remote_api is not ready')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('blocker remote_api: allow_remote_upload must be true')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('Remote OCR API · configuration_required · unavailable · remote · network · blocker allow_remote_upload must be true')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('Mock Local OCR · ready · available · local')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).getByText('next Inspect literature.ocr_engines before running OCR.')).toBeInTheDocument();
+    expect(within(ocrRuntimeRegion).queryByText('raw-secret-should-not-leak')).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('Open Requirements')).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText(/B01-computer-use-accessibility-tree · incomplete/)).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByRole('region', { name: 'Requirement evidence drilldown' })).not.toBeInTheDocument();

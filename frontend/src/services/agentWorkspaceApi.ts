@@ -167,6 +167,37 @@ export interface AgentWorkspaceDesktopSmokeState {
   error: string | null;
 }
 
+export interface AgentWorkspaceOcrEngineState {
+  name: string;
+  display_name: string;
+  engine_type: string;
+  available: boolean;
+  requires_network: boolean;
+  readiness_status: string | null;
+  readiness_blockers: string[];
+  next_safe_local_actions: string[];
+  unavailable_reason: string | null;
+}
+
+export interface AgentWorkspaceOcrRuntimeState {
+  schema_version: 'scholar_ai_ocr_runtime_state_v1';
+  available: boolean;
+  read_only: boolean;
+  policy: string | null;
+  configured_engine: string | null;
+  selected_engine: string | null;
+  language: string | null;
+  source: string | null;
+  engine_config: Record<string, unknown>;
+  engine_count: number;
+  ready_engine_count: number;
+  engines: AgentWorkspaceOcrEngineState[];
+  readiness_blockers: string[];
+  warning: string | null;
+  next_safe_local_actions: string[];
+  error: string | null;
+}
+
 export interface AgentWorkspaceState {
   schema_version: 'scholar_ai_agent_workspace_state_v1';
   generated_at: string;
@@ -178,6 +209,7 @@ export interface AgentWorkspaceState {
   git: AgentWorkspaceGitState;
   goal_state: AgentWorkspaceGoalState;
   desktop_smoke: AgentWorkspaceDesktopSmokeState;
+  ocr_runtime: AgentWorkspaceOcrRuntimeState;
   recovery_probes: AgentWorkspaceRecoveryProbe[];
   boundaries: string[];
   next_safe_local_actions: string[];

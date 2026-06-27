@@ -13,6 +13,7 @@ import re
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from pdf_backends import public_ocr_status
 from project_paths import REPO_ROOT, WORKSPACE_ARTIFACTS_ROOT, WORKSPACE_OUTPUT_ROOT, WORKSPACE_RUNTIME_STATE_ROOT
 
 
@@ -34,6 +35,9 @@ MAX_GOAL_COMPLETION_CHARS = 240
 MAX_GOAL_REQUIREMENT_EVIDENCE = 8
 MAX_GOAL_REQUIREMENT_TEXT_CHARS = 480
 MAX_DESKTOP_SMOKE_TEXT_ITEMS = 3
+MAX_OCR_RUNTIME_ENGINES = 12
+MAX_OCR_RUNTIME_ACTIONS = 5
+MAX_OCR_RUNTIME_BLOCKERS = 5
 AGENT_WORKSPACE_DESKTOP_ACCEPTANCE_PATH = "/__desktop_acceptance/agent-workspace"
 GIT_STATUS_TIMEOUT_SECONDS = 2.0
 OPEN_REQUIREMENT_STATUSES = frozenset(
@@ -360,6 +364,41 @@ class AgentWorkspaceDesktopSmokeState(BaseModel):
     error: str | None = Field(default=None, max_length=240)
 
 
+class AgentWorkspaceOcrEngineState(BaseModel):
+    """One redacted OCR engine readiness summary for workspace recovery."""
+
+    name: str = Field(min_length=1, max_length=80)
+    display_name: str = Field(min_length=1, max_length=120)
+    engine_type: str = Field(min_length=1, max_length=40)
+    available: bool
+    requires_network: bool
+    readiness_status: str | None = Field(default=None, max_length=80)
+    readiness_blockers: list[str] = Field(default_factory=list)
+    next_safe_local_actions: list[str] = Field(default_factory=list)
+    unavailable_reason: str | None = Field(default=None, max_length=240)
+
+
+class AgentWorkspaceOcrRuntimeState(BaseModel):
+    """Read-only OCR runtime snapshot for local processing recovery."""
+
+    schema_version: str = "scholar_ai_ocr_runtime_state_v1"
+    available: bool
+    read_only: bool = True
+    policy: str | None = Field(default=None, max_length=40)
+    configured_engine: str | None = Field(default=None, max_length=80)
+    selected_engine: str | None = Field(default=None, max_length=80)
+    language: str | None = Field(default=None, max_length=40)
+    source: str | None = Field(default=None, max_length=80)
+    engine_config: dict[str, Any] = Field(default_factory=dict)
+    engine_count: int = Field(default=0, ge=0)
+    ready_engine_count: int = Field(default=0, ge=0)
+    engines: list[AgentWorkspaceOcrEngineState] = Field(default_factory=list)
+    readiness_blockers: list[str] = Field(default_factory=list)
+    warning: str | None = Field(default=None, max_length=240)
+    next_safe_local_actions: list[str] = Field(default_factory=list)
+    error: str | None = Field(default=None, max_length=240)
+
+
 class AgentWorkspaceState(BaseModel):
     """Machine-readable local workspace state for resumable agents."""
 
@@ -373,6 +412,7 @@ class AgentWorkspaceState(BaseModel):
     git: AgentWorkspaceGitState
     goal_state: AgentWorkspaceGoalState
     desktop_smoke: AgentWorkspaceDesktopSmokeState
+    ocr_runtime: AgentWorkspaceOcrRuntimeState
     recovery_probes: list[AgentWorkspaceRecoveryProbe] = Field(default_factory=list)
     boundaries: list[str] = Field(default_factory=list)
     next_safe_local_actions: list[str] = Field(default_factory=list)
@@ -911,6 +951,105 @@ def _load_desktop_smoke_state() -> AgentWorkspaceDesktopSmokeState:
     )
 
 
+def _safe_ocr_config_record(value: Any) -> dict[str, Any]:
+    """Return a bounded, redacted OCR config record for recovery display."""
+
+    if not isinstance(value, dict):
+        return {}
+    secret_parts = ("api_key", "token", "secret", "password", "authorization", "bearer")
+    out: dict[str, Any] = {}
+    for raw_key, raw_value in list(value.items())[:12]:
+        key = _redact_text(str(raw_key).strip())[:80]
+        if not key:
+            continue
+        if any(part in key.lower() for part in secret_parts):
+            out[key] = "***"
+        elif isinstance(raw_value, str):
+            out[key] = _redact_text(raw_value)[:240]
+        elif isinstance(raw_value, (int, float, bool)) or raw_value is None:
+            out[key] = raw_value
+        else:
+            out[key] = str(type(raw_value).__name__)[:80]
+    return out
+
+
+def _safe_ocr_engine_state(value: Any) -> AgentWorkspaceOcrEngineState | None:
+    """Return one bounded OCR engine summary from registry metadata."""
+
+    if not isinstance(value, dict):
+        return None
+    name = _safe_optional_text(value.get("name"), max_chars=80)
+    if name is None:
+        return None
+    display_name = _safe_optional_text(value.get("display_name"), max_chars=120) or name
+    engine_type = _safe_optional_text(value.get("engine_type"), max_chars=40) or "unknown"
+    return AgentWorkspaceOcrEngineState(
+        name=name,
+        display_name=display_name,
+        engine_type=engine_type,
+        available=value.get("available") is True,
+        requires_network=value.get("requires_network") is True,
+        readiness_status=_safe_optional_text(value.get("readiness_status"), max_chars=80),
+        readiness_blockers=_safe_text_list(value.get("readiness_blockers"), MAX_OCR_RUNTIME_BLOCKERS),
+        next_safe_local_actions=_safe_text_list(value.get("next_safe_local_actions"), MAX_OCR_RUNTIME_ACTIONS),
+        unavailable_reason=_safe_optional_text(value.get("unavailable_reason"), max_chars=240),
+    )
+
+
+def _load_ocr_runtime_state() -> AgentWorkspaceOcrRuntimeState:
+    """Load redacted OCR runtime status without executing OCR."""
+
+    try:
+        payload = public_ocr_status()
+    except Exception as exc:
+        return AgentWorkspaceOcrRuntimeState(
+            available=False,
+            error=_redact_text(str(exc))[:240] or "OCR runtime status could not be loaded",
+        )
+    if not isinstance(payload, dict):
+        return AgentWorkspaceOcrRuntimeState(
+            available=False,
+            error="OCR runtime status returned an invalid payload",
+        )
+
+    engines: list[AgentWorkspaceOcrEngineState] = []
+    raw_engines = payload.get("available_engines")
+    if isinstance(raw_engines, list):
+        for item in raw_engines:
+            if len(engines) >= MAX_OCR_RUNTIME_ENGINES:
+                break
+            engine = _safe_ocr_engine_state(item)
+            if engine is not None:
+                engines.append(engine)
+    blockers: list[str] = []
+    for engine in engines:
+        if len(blockers) >= MAX_OCR_RUNTIME_BLOCKERS:
+            break
+        for blocker in engine.readiness_blockers:
+            blockers.append(f"{engine.name}: {blocker}"[:240])
+            if len(blockers) >= MAX_OCR_RUNTIME_BLOCKERS:
+                break
+    warning = _safe_optional_text(payload.get("warning"), max_chars=240)
+    if warning and len(blockers) < MAX_OCR_RUNTIME_BLOCKERS:
+        blockers.insert(0, warning)
+
+    return AgentWorkspaceOcrRuntimeState(
+        available=True,
+        policy=_safe_optional_text(payload.get("policy"), max_chars=40),
+        configured_engine=_safe_optional_text(payload.get("configured_engine"), max_chars=80),
+        selected_engine=_safe_optional_text(payload.get("selected_engine"), max_chars=80),
+        language=_safe_optional_text(payload.get("language"), max_chars=40),
+        source=_safe_optional_text(payload.get("source"), max_chars=80),
+        engine_config=_safe_ocr_config_record(payload.get("engine_config")),
+        engine_count=len(engines),
+        ready_engine_count=sum(1 for engine in engines if engine.available),
+        engines=engines,
+        readiness_blockers=blockers,
+        warning=warning,
+        next_safe_local_actions=_safe_text_list(payload.get("next_safe_local_actions"), MAX_OCR_RUNTIME_ACTIONS),
+    )
+
+
 def _safe_goal_open_requirement(row: dict[str, Any]) -> AgentWorkspaceGoalOpenRequirement | None:
     """Return one bounded open requirement row when it is safe to expose."""
 
@@ -1280,6 +1419,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
     git_state = _read_git_workspace_state()
     goal_state = _load_goal_state_summary()
     desktop_smoke = _load_desktop_smoke_state()
+    ocr_runtime = _load_ocr_runtime_state()
     boundaries = [
         "Do not execute approvals, import-to-wiki writes, external uploads, push, tag, release, publish, or deploy from this status surface.",
         "Do not mutate Zotero databases or github/ reference repositories from Agent Workspace state.",
@@ -1299,6 +1439,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
         git=git_state,
         goal_state=goal_state,
         desktop_smoke=desktop_smoke,
+        ocr_runtime=ocr_runtime,
         recovery_probes=[
             _workspace_recovery_probe(
                 "Desktop Smoke Evidence",

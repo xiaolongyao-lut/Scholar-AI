@@ -8315,6 +8315,82 @@ export interface components {
             updated_at?: string | null;
         };
         /**
+         * AgentWorkspaceOcrEngineState
+         * @description One redacted OCR engine readiness summary for workspace recovery.
+         */
+        AgentWorkspaceOcrEngineState: {
+            /** Available */
+            available: boolean;
+            /** Display Name */
+            display_name: string;
+            /** Engine Type */
+            engine_type: string;
+            /** Name */
+            name: string;
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
+            /** Readiness Blockers */
+            readiness_blockers?: string[];
+            /** Readiness Status */
+            readiness_status?: string | null;
+            /** Requires Network */
+            requires_network: boolean;
+            /** Unavailable Reason */
+            unavailable_reason?: string | null;
+        };
+        /**
+         * AgentWorkspaceOcrRuntimeState
+         * @description Read-only OCR runtime snapshot for local processing recovery.
+         */
+        AgentWorkspaceOcrRuntimeState: {
+            /** Available */
+            available: boolean;
+            /** Configured Engine */
+            configured_engine?: string | null;
+            /** Engine Config */
+            engine_config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Engine Count
+             * @default 0
+             */
+            engine_count: number;
+            /** Engines */
+            engines?: components["schemas"]["AgentWorkspaceOcrEngineState"][];
+            /** Error */
+            error?: string | null;
+            /** Language */
+            language?: string | null;
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
+            /** Policy */
+            policy?: string | null;
+            /**
+             * Read Only
+             * @default true
+             */
+            read_only: boolean;
+            /** Readiness Blockers */
+            readiness_blockers?: string[];
+            /**
+             * Ready Engine Count
+             * @default 0
+             */
+            ready_engine_count: number;
+            /**
+             * Schema Version
+             * @default scholar_ai_ocr_runtime_state_v1
+             */
+            schema_version: string;
+            /** Selected Engine */
+            selected_engine?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Warning */
+            warning?: string | null;
+        };
+        /**
          * AgentWorkspaceRecoveryProbe
          * @description One read-only recovery endpoint a resumed agent can inspect.
          *
@@ -8365,6 +8441,7 @@ export interface components {
             goal_state: components["schemas"]["AgentWorkspaceGoalState"];
             /** Next Safe Local Actions */
             next_safe_local_actions?: string[];
+            ocr_runtime: components["schemas"]["AgentWorkspaceOcrRuntimeState"];
             output_root: components["schemas"]["AgentWorkspaceDirectoryState"];
             /**
              * Read Only
