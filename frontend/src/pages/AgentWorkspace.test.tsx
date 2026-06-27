@@ -162,8 +162,15 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       },
       next_authorized_local_actions: [
         'Create a rollback checkpoint and search mature references before nontrivial edits.',
+        'Continue deterministic local recovery and proof hardening.',
+        'Keep live provider/model actual-loading blocked until preflight is proved.',
       ],
-      stop_boundaries: ['No push, tag, release, deploy, or external upload.'],
+      stop_boundaries: [
+        'Do not call the long-run goal complete while can_mark_goal_complete is false.',
+        'No push, tag, release, deploy, or external upload.',
+        'Do not run live provider/model or remote OCR upload without explicit authorization.',
+        'Do not reset squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization.',
+      ],
       error: null,
     },
     desktop_smoke: {
@@ -2837,6 +2844,12 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('full goal The full Scholar AI workflow spine remains active, not complete.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('completion claim can complete false')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('completion claim why not complete Live provider/model actual-loading is still blocked.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('goal next 1 Create a rollback checkpoint and search mature references before nontrivial edits.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('goal next 2 Continue deterministic local recovery and proof hardening.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('goal next 3 Keep live provider/model actual-loading blocked until preflight is proved.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('goal boundary 1 Do not call the long-run goal complete while can_mark_goal_complete is false.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('goal boundary 3 Do not run live provider/model or remote OCR upload without explicit authorization.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('goal boundary 4 Do not reset squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('lifecycle blockers 1 · can complete false')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('checkpoint 20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json')).toBeInTheDocument();

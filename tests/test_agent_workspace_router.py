@@ -718,7 +718,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                     "No push.",
                     "No upload.",
                     "No Zotero DB mutation.",
-                    "This fourth boundary is intentionally omitted.",
+                    "This fourth boundary remains visible.",
                 ],
             },
             ensure_ascii=False,
@@ -786,7 +786,12 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
         "Search mature references.",
         "Run focused tests.",
     ]
-    assert summary.stop_boundaries == ["No push.", "No upload.", "No Zotero DB mutation."]
+    assert summary.stop_boundaries == [
+        "No push.",
+        "No upload.",
+        "No Zotero DB mutation.",
+        "This fourth boundary remains visible.",
+    ]
     serialized = summary.model_dump_json()
     assert "current_objective" not in serialized
     assert "restore_command" not in serialized
@@ -844,7 +849,7 @@ def test_goal_requirement_drilldown_is_bounded_and_path_safe(tmp_path, monkeypat
                     "No push.",
                     "No upload.",
                     "No Zotero DB mutation.",
-                    "This fourth boundary is intentionally omitted.",
+                    "This fourth boundary remains visible.",
                 ],
             },
             ensure_ascii=False,
@@ -882,7 +887,12 @@ def test_goal_requirement_drilldown_is_bounded_and_path_safe(tmp_path, monkeypat
         "Search mature references.",
         "Run focused tests.",
     ]
-    assert payload["stop_boundaries"] == ["No push.", "No upload.", "No Zotero DB mutation."]
+    assert payload["stop_boundaries"] == [
+        "No push.",
+        "No upload.",
+        "No Zotero DB mutation.",
+        "This fourth boundary remains visible.",
+    ]
     serialized = json.dumps(payload, ensure_ascii=False)
     assert "restore_command" not in serialized
     assert "C:/Users/xiao" not in serialized

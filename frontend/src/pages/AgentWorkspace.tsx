@@ -3689,6 +3689,8 @@ export function WorkspaceStatePanel({
   const boundaries = state.boundaries.slice(0, 3).map(sanitizeInspectorText);
   const nextActions = state.next_safe_local_actions.slice(0, 3).map(sanitizeInspectorText);
   const goalCompletionClaim = workspaceGoalCompletionClaimSummary(state.goal_state);
+  const goalNextActions = state.goal_state.next_authorized_local_actions.slice(0, 4).map(sanitizeInspectorText);
+  const goalStopBoundaries = state.goal_state.stop_boundaries.slice(0, 4).map(sanitizeInspectorText);
   const goalLifecycle = state.goal_state.lifecycle_rollup ?? null;
   const firstLifecycleBlocker = goalLifecycle?.completion_blockers[0] ?? null;
   const hasLifecycleRecordDetails = Boolean(
@@ -3871,6 +3873,24 @@ export function WorkspaceStatePanel({
                   <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
                     why not complete {sanitizeInspectorText(goalLifecycle.why_not_complete[0])}
                   </p>
+                ) : null}
+                {goalNextActions.length > 0 ? (
+                  <div className="grid gap-1 rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    {goalNextActions.map((action, index) => (
+                      <p key={`${action}-${index}`} className="break-words">
+                        goal next {index + 1} {action}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+                {goalStopBoundaries.length > 0 ? (
+                  <div className="grid gap-1 rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    {goalStopBoundaries.map((boundary, index) => (
+                      <p key={`${boundary}-${index}`} className="break-words">
+                        goal boundary {index + 1} {boundary}
+                      </p>
+                    ))}
+                  </div>
                 ) : null}
               </div>
             ) : null}

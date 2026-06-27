@@ -449,6 +449,23 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
     assert summary.lifecycle_rollup.can_mark_goal_complete is rollup.get("can_mark_goal_complete")
     assert summary.completion_claim.can_mark_goal_complete is summary.lifecycle_rollup.can_mark_goal_complete
     assert summary.completion_claim.full_goal == completion_claim.get("full_goal")
+    next_actions = payload.get("next_authorized_local_actions")
+    assert isinstance(next_actions, list) and next_actions
+    expected_next_actions = [
+        action for action in next_actions if isinstance(action, str) and action.strip()
+    ][: agent_workspace_router.MAX_GOAL_STATE_ACTIONS]
+    assert summary.next_authorized_local_actions == expected_next_actions
+    assert any("deterministic local recovery/proof hardening" in action for action in expected_next_actions)
+
+    stop_boundaries = payload.get("stop_boundary")
+    assert isinstance(stop_boundaries, list) and stop_boundaries
+    expected_stop_boundaries = [
+        boundary for boundary in stop_boundaries if isinstance(boundary, str) and boundary.strip()
+    ][: agent_workspace_router.MAX_GOAL_STATE_BOUNDARIES]
+    assert summary.stop_boundaries == expected_stop_boundaries
+    assert any("Do not call the long-run goal complete" in boundary for boundary in expected_stop_boundaries)
+    assert any("live provider/model" in boundary for boundary in expected_stop_boundaries)
+    assert any("Zotero DB" in boundary and "github/" in boundary for boundary in expected_stop_boundaries)
     why_not_complete = completion_claim.get("why_not_complete")
     assert isinstance(why_not_complete, str) and why_not_complete.strip()
     assert summary.completion_claim.why_not_complete is not None

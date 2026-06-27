@@ -2697,9 +2697,16 @@ def test_agent_workspace_status_reads_recovery_state(
                         ],
                     },
                     "next_authorized_local_actions": [
-                        "Create a rollback checkpoint and search mature references before edits."
+                        "Create a rollback checkpoint and search mature references before edits.",
+                        "Continue deterministic local recovery and proof hardening.",
+                        "Keep live provider/model actual-loading blocked until preflight is proved.",
                     ],
-                    "stop_boundaries": ["No push, tag, release, deploy, or external upload."],
+                    "stop_boundaries": [
+                        "Do not call the long-run goal complete while can_mark_goal_complete is false.",
+                        "No push, tag, release, deploy, or external upload.",
+                        "Do not run live provider/model without explicit authorization.",
+                        "Do not mutate Zotero DB, modify github/ references, or add Feishu/Lark integration.",
+                    ],
                     "error": None,
                 },
                 "artifact_root": {
@@ -2919,6 +2926,17 @@ def test_agent_workspace_status_reads_recovery_state(
     assert state["goal_state"]["completion_claim"]["why_not_complete"] == (
         "Live provider/model actual-loading is still blocked."
     )
+    assert state["goal_state"]["next_authorized_local_actions"] == [
+        "Create a rollback checkpoint and search mature references before edits.",
+        "Continue deterministic local recovery and proof hardening.",
+        "Keep live provider/model actual-loading blocked until preflight is proved.",
+    ]
+    assert state["goal_state"]["stop_boundaries"] == [
+        "Do not call the long-run goal complete while can_mark_goal_complete is false.",
+        "No push, tag, release, deploy, or external upload.",
+        "Do not run live provider/model without explicit authorization.",
+        "Do not mutate Zotero DB, modify github/ references, or add Feishu/Lark integration.",
+    ]
     lifecycle_rollup = state["goal_state"]["lifecycle_rollup"]
     assert lifecycle_rollup["status"] == "active_requirements_proved_pending_authorized_gates"
     assert lifecycle_rollup["is_goal_complete"] is False
