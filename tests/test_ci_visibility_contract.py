@@ -15,6 +15,14 @@ WORKFLOW_SPINE_GOAL_STATE = (
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
 )
 PRIVATE_LOCAL_PLAN_PROBE = "docs/plans/private-local-audit-placeholder.md"
+WIKI_EVAL_SMOKE_VISIBLE_FIXTURES = (
+    "workspace_tests/fixtures/wiki_eval_smoke/manifest.json",
+    "workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/baseline-contrast.md",
+    "workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/paper-a.md",
+)
+WIKI_GRAPH_DOCTOR_LOCAL_ONLY_PROBE = (
+    "workspace_tests/fixtures/wiki_graph_doctor_smoke/pages/concepts/alpha-model.md"
+)
 
 PYTHON_TEST_RE = re.compile(r"(?P<path>(?:tests|agent_mcp_server/tests)/[A-Za-z0-9_./-]+\.py)")
 FRONTEND_TEST_RE = re.compile(r"(?P<path>src/[A-Za-z0-9_./-]+\.test\.(?:tsx|ts))")
@@ -276,6 +284,14 @@ def test_current_workflow_spine_goal_state_is_git_visible() -> None:
     assert WORKFLOW_SPINE_GOAL_STATE in visible_records
     assert not _is_git_ignored(WORKFLOW_SPINE_GOAL_STATE)
     assert _is_git_ignored(PRIVATE_LOCAL_PLAN_PROBE)
+
+
+def test_selected_workspace_fixtures_are_path_explicit() -> None:
+    """Selected workspace fixtures must be complete without exposing adjacent local fixtures."""
+    for path in WIKI_EVAL_SMOKE_VISIBLE_FIXTURES:
+        assert (REPO_ROOT / path).is_file()
+        assert not _is_git_ignored(path)
+    assert _is_git_ignored(WIKI_GRAPH_DOCTOR_LOCAL_ONLY_PROBE)
 
 
 def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> None:

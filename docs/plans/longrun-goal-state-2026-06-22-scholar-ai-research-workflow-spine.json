@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T13:45:00+08:00",
+  "updated_at": "2026-06-27T13:56:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,11 +100,11 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260627-134244-n231-e2e-post-commit-goal-state",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-134244-n231-e2e-post-commit-goal-state",
-    "latest_goal_state_checkpoint_id": "20260627-134244-n231-e2e-post-commit-goal-state",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-134244-n231-e2e-post-commit-goal-state",
-    "latest_checkpoint_caveat": "Git checkpoint created before the docs-only N231 e2e post-commit goal-state correction; restore only with explicit user intent after reviewing current dirty worktree ownership."
+    "latest_checkpoint_id": "manual-20260627_134828-n232-dirty-worktree-fixture-boundary",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_134828-n232-dirty-worktree-fixture-boundary",
+    "latest_goal_state_checkpoint_id": "manual-20260627_134828-n232-dirty-worktree-fixture-boundary",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_134828-n232-dirty-worktree-fixture-boundary",
+    "latest_checkpoint_caveat": "Targeted local rollback snapshot for the N232 dirty-worktree fixture-boundary closure; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
     {
@@ -2723,6 +2723,30 @@
       "status": "HTTP 200",
       "checked_at": "2026-06-27T13:35:00+08:00",
       "use_in_slice": "Used for json.tool validation and structured goal-state editing. No external code copied."
+    },
+    {
+      "topic": "N232 gitignore fixture boundary",
+      "source": "Git gitignore documentation",
+      "url": "https://git-scm.com/docs/gitignore",
+      "status": "HTTP 200",
+      "checked_at": "2026-06-27T13:56:00+08:00",
+      "use_in_slice": "Used to repair path-explicit unignore ordering without exposing broad workspace_tests directories. No external code copied."
+    },
+    {
+      "topic": "N232 focused pytest contract",
+      "source": "pytest good practices documentation",
+      "url": "https://docs.pytest.org/en/stable/explanation/goodpractices.html",
+      "status": "HTTP 200",
+      "checked_at": "2026-06-27T13:56:00+08:00",
+      "use_in_slice": "Used to keep the regression in the existing focused contract file. No external code copied."
+    },
+    {
+      "topic": "N232 JSON/JSONL validation",
+      "source": "Python json documentation",
+      "url": "https://docs.python.org/3/library/json.html",
+      "status": "HTTP 200",
+      "checked_at": "2026-06-27T13:56:00+08:00",
+      "use_in_slice": "Used for structured JSON validation and goal-state editing. No external code copied."
     }
   ],
   "requirements": [
@@ -6423,31 +6447,51 @@
         "Local Git commit a0589483 Update agent workspace e2e evidence drilldown persists the Playwright requirement-drilldown fixture update after npm run test:e2e:agent-workspace -> 1 passed; remaining untracked surfaces are tools/ and workspace_tests/ only."
       ],
       "residual_risk": "Commits 689c1407 and a0589483 persist the verified N231 scope locally, but this does not complete live Knowledge Runtime model-context loading, real RapidOCR runtime execution, remote OCR real execution, native desktop Computer Use accessibility-tree retry, or the remaining local tools/workspace_tests material audit."
+    },
+    {
+      "id": "N232-dirty-worktree-fixture-boundary-closure",
+      "requirement": "The remaining dirty worktree must be reduced to a reviewed, path-explicit, locally committable evidence set without exposing broad tools/workspace_tests local materials or committing incomplete fixtures.",
+      "source": "Latest user instruction that remaining dirty files are likely agent-created and may be locally committed; existing SOURCE_RELEASE_POLICY and AI_WORKSPACE_GUIDE public/local boundary; Ponytail constraint to fix the root boundary with the smallest maintainable diff.",
+      "status": "proved",
+      "evidence": [
+        "git ls-files --others --exclude-standard showed only selected public-candidate files after the .gitignore boundary fix: tools/longrun/longrun-prompt.md, rerank canary manifest/query/qrels, wiki_eval_smoke manifest, and two referenced wiki_eval_smoke pages.",
+        ".gitignore now re-includes workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/*.md so the already visible wiki_eval_smoke manifest is not committed without its referenced answer pages.",
+        "tests/test_ci_visibility_contract.py now proves selected wiki_eval_smoke fixture files exist and are git-visible while the adjacent wiki_graph_doctor_smoke local-only probe remains ignored.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py -q -> 7 passed.",
+        "JSON validation and JSONL object-row checks passed for the selected workspace_tests evaluation manifests and fixture manifest.",
+        "git status --ignored --short tools workspace_tests showed broad tools/eval, tools/squad, tools/openclaw, workspace_tests/benchmarks, diagnostics, provider_proxy, scratch, evaluation_scripts, pycache, and graph_doctor smoke files remain ignored/local-only.",
+        "Rollback checkpoint created before edits: C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_134828-n232-dirty-worktree-fixture-boundary.",
+        "Official/mature references checked: Git gitignore docs, pytest good practices, and Python json docs returned HTTP 200; used only for boundary and validation practice, with no copied external implementation."
+      ],
+      "residual_risk": "This closes the visible dirty-worktree fixture boundary and prepares a local commit. Ignored local-only tools/workspace_tests material still exists on disk by design; live KRT actual-loading, real RapidOCR runtime execution, and remote OCR real execution remain separate authorization/runtime gates."
     }
   ],
   "changed_files_for_this_slice": [
     ".gitignore",
-    ".github/workflows/ci.yml",
     "tests/test_ci_visibility_contract.py",
+    "tools/longrun/longrun-prompt.md",
+    "workspace_tests/evaluation_manifests/rerank_canary_dry_run_sample.json",
+    "workspace_tests/evaluation_manifests/rerank_canary_qrels.jsonl",
+    "workspace_tests/evaluation_manifests/rerank_canary_queries.jsonl",
+    "workspace_tests/fixtures/wiki_eval_smoke/manifest.json",
+    "workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/baseline-contrast.md",
+    "workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/paper-a.md",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed before N231 record update.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py -q -> 6 passed after wiki-test visibility narrowing.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest <focused backend/MCP CI list> -q -> 417 passed.",
-    "frontend: npm exec tsc -- --noEmit -> passed.",
-    "frontend: npm run test -- --run <focused frontend evidence list> -> 10 files / 47 tests passed.",
-    "git commit -m \"Add knowledge runtime and workflow evidence contracts\" -> 689c1407.",
-    "git status --short --branch after 689c1407 -> main...origin/main [ahead 58], remaining uncommitted frontend/e2e/tools/workspace_tests only.",
-    "frontend: npm run test:e2e:agent-workspace -> 1 passed.",
-    "git commit -m \"Update agent workspace e2e evidence drilldown\" -> a0589483.",
-    "git status --short --branch after a0589483 -> main...origin/main [ahead 60], remaining untracked tools/ and workspace_tests/ only."
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py -q -> 7 passed after adding the selected workspace fixture visibility contract.",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool workspace_tests\\evaluation_manifests\\rerank_canary_dry_run_sample.json and workspace_tests\\fixtures\\wiki_eval_smoke\\manifest.json -> both parsed successfully.",
+    "JSONL parser check -> workspace_tests\\evaluation_manifests\\rerank_canary_queries.jsonl has 30 object rows and workspace_tests\\evaluation_manifests\\rerank_canary_qrels.jsonl has 40 object rows.",
+    "git ls-files --others --exclude-standard -> only tools/longrun/longrun-prompt.md, rerank_canary manifest/query/qrels, wiki_eval_smoke manifest, and two referenced wiki_eval_smoke pages are git-visible before staging.",
+    "git check-ignore -v -> wiki_eval_smoke/pages/synthesis/*.md are unignored by the new explicit file rule while wiki_graph_doctor_smoke/pages/concepts/*.md remain ignored by the adjacent local-only fixture rule.",
+    "Targeted secret-pattern scan over the selected files -> no credential-shaped secrets found; matches were limited to policy words in .gitignore/longrun prompt when using the broad scan.",
+    "Official/mature references checked for this slice: Git gitignore docs HTTP 200, pytest good practices HTTP 200, Python json docs HTTP 200. No external code copied."
   ],
   "next_authorized_local_actions": [
-    "Before the next nontrivial slice, read required docs, run git status, 先回档/create rollback checkpoint, 搜索成熟方案/search official or mature references, and record evidence/residual risk.",
-    "Stage and commit only the verified KRT/runtime/frontend/CI visibility files after secret checks, git diff --cached --check, and git ls-files -ci --exclude-standard.",
-    "Continue separate cleanup for remaining local-only docs/tools/workspace_tests files without broad git add.",
-    "Keep Knowledge Runtime live actual-loading, real RapidOCR execution, and Remote OCR real execution as explicit blockers unless credentials/runtime/consent are available."
+    "Stage only the N232 audited files and commit locally after git diff --cached --check and git ls-files -ci --exclude-standard pass; do not push/tag/release/upload.",
+    "Continue live Knowledge Runtime actual-loading proof only if configured credentials/runtime are available; otherwise keep it blocked with explicit evidence.",
+    "Continue real RapidOCR/PaddleOCR/Remote OCR proof only within local/private runtime and explicit consent boundaries.",
+    "Before any next slice: read AI_WORKSPACE_GUIDE.md, AGENTS.md, autonomous framework/playbook; run git status; create rollback checkpoint; search mature/official references; record evidence."
   ],
   "stop_boundary": [
     "Do not call the long-run goal complete while goal_lifecycle_rollup.can_mark_goal_complete is false.",
@@ -6455,7 +6499,7 @@
     "Do not run live provider/model or real OCR provider smokes without explicit authorization and credential-safe logging.",
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
-  "completion_claim": "not_complete_pending_authorized_gates",
+  "completion_claim": "Not complete: N232 proves the remaining git-visible dirty-worktree fixture boundary and prepares a local commit, but live/real execution gates remain pending.",
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
     "status": "proved",
@@ -10380,9 +10424,9 @@
     ]
   },
   "latest_slice": {
-    "id": "N230-rapidocr-external-private-runtime-contract",
-    "key": "n230_rapidocr_external_private_runtime_contract_slice",
-    "updated_at": "2026-06-27T13:20:04+08:00",
+    "id": "N232-dirty-worktree-fixture-boundary-closure",
+    "key": "n232_dirty_worktree_fixture_boundary_closure_slice",
+    "updated_at": "2026-06-27T13:56:00+08:00",
     "status": "proved"
   },
   "n151_ocr_health_mcp_visibility_slice": {
@@ -12148,26 +12192,25 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T13:45:00+08:00",
+    "updated_at": "2026-06-27T13:56:00+08:00",
     "status": "requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 232,
+    "requirements_total": 233,
     "requirement_status_counts": {
-      "proved": 232
+      "proved": 233
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N231-ci-visibility-and-goal-state-persistence-boundary",
-    "latest_slice_id": "N231-ci-visibility-and-goal-state-persistence-boundary",
+    "latest_requirement_id": "N232-dirty-worktree-fixture-boundary-closure",
+    "latest_slice_id": "N232-dirty-worktree-fixture-boundary-closure",
     "completion_blockers": [
       "actual_loading_gate_live_model_proof_auth_required_current_provider",
       "real_rapidocr_runtime_execution_or_explicit_out_of_scope",
-      "remote_ocr_real_execution_requires_explicit_consent_and_credentials_or_out_of_scope",
-      "remaining_local_tools_and_workspace_tests_require_scoped_audit"
+      "remote_ocr_real_execution_requires_explicit_consent_and_credentials_or_out_of_scope"
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N231 product/CI/e2e persistence is locally committed by 689c1407 and a0589483, but live Knowledge Runtime actual-loading, real RapidOCR runtime execution or explicit out-of-scope classification, remote OCR real execution, and remaining tools/workspace_tests scoped audit remain unresolved."
+    "why_not_complete": "N232 closes the visible dirty-worktree fixture boundary locally, but live Knowledge Runtime actual-loading, real RapidOCR runtime execution or explicit out-of-scope classification, and remote OCR real execution remain unresolved authorization/runtime gates."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -15592,5 +15635,76 @@
       "Keep Knowledge Runtime live actual-loading, real RapidOCR execution, and Remote OCR real execution as explicit blockers unless credentials/runtime/consent are available."
     ],
     "updated_at": "2026-06-27T13:45:00+08:00"
+  },
+  "n232_dirty_worktree_fixture_boundary_closure_slice": {
+    "status": "proved",
+    "objective": "The remaining dirty worktree must be reduced to a reviewed, path-explicit, locally committable evidence set without exposing broad tools/workspace_tests local materials or committing incomplete fixtures.",
+    "summary": "N232 audits the remaining untracked tools/workspace_tests surface, fixes the minimal .gitignore parent/child rule needed for a complete wiki_eval_smoke fixture, protects the boundary with the existing CI visibility contract, and keeps broader local tools/workspace_tests ignored.",
+    "changed_files": [
+      ".gitignore",
+      "tests/test_ci_visibility_contract.py",
+      "tools/longrun/longrun-prompt.md",
+      "workspace_tests/evaluation_manifests/rerank_canary_dry_run_sample.json",
+      "workspace_tests/evaluation_manifests/rerank_canary_qrels.jsonl",
+      "workspace_tests/evaluation_manifests/rerank_canary_queries.jsonl",
+      "workspace_tests/fixtures/wiki_eval_smoke/manifest.json",
+      "workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/baseline-contrast.md",
+      "workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/paper-a.md",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "rollback_checkpoints": [
+      {
+        "id": "manual-20260627_134828-n232-dirty-worktree-fixture-boundary",
+        "path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_134828-n232-dirty-worktree-fixture-boundary",
+        "scope": "Targeted snapshot before .gitignore, CI visibility contract, selected untracked fixture, and goal-state updates."
+      }
+    ],
+    "mature_references_checked": [
+      {
+        "topic": "N232 gitignore fixture boundary",
+        "source": "Git gitignore documentation",
+        "url": "https://git-scm.com/docs/gitignore",
+        "status": "HTTP 200",
+        "checked_at": "2026-06-27T13:56:00+08:00",
+        "use_in_slice": "Used to repair path-explicit unignore ordering without exposing broad workspace_tests directories. No external code copied."
+      },
+      {
+        "topic": "N232 focused pytest contract",
+        "source": "pytest good practices documentation",
+        "url": "https://docs.pytest.org/en/stable/explanation/goodpractices.html",
+        "status": "HTTP 200",
+        "checked_at": "2026-06-27T13:56:00+08:00",
+        "use_in_slice": "Used to keep the regression in the existing focused contract file. No external code copied."
+      },
+      {
+        "topic": "N232 JSON/JSONL validation",
+        "source": "Python json documentation",
+        "url": "https://docs.python.org/3/library/json.html",
+        "status": "HTTP 200",
+        "checked_at": "2026-06-27T13:56:00+08:00",
+        "use_in_slice": "Used for structured JSON validation and goal-state editing. No external code copied."
+      }
+    ],
+    "verification": [
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py -q -> 7 passed after adding the selected workspace fixture visibility contract.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool workspace_tests\\evaluation_manifests\\rerank_canary_dry_run_sample.json and workspace_tests\\fixtures\\wiki_eval_smoke\\manifest.json -> both parsed successfully.",
+      "JSONL parser check -> workspace_tests\\evaluation_manifests\\rerank_canary_queries.jsonl has 30 object rows and workspace_tests\\evaluation_manifests\\rerank_canary_qrels.jsonl has 40 object rows.",
+      "git ls-files --others --exclude-standard -> only tools/longrun/longrun-prompt.md, rerank_canary manifest/query/qrels, wiki_eval_smoke manifest, and two referenced wiki_eval_smoke pages are git-visible before staging.",
+      "git check-ignore -v -> wiki_eval_smoke/pages/synthesis/*.md are unignored by the new explicit file rule while wiki_graph_doctor_smoke/pages/concepts/*.md remain ignored by the adjacent local-only fixture rule.",
+      "Targeted secret-pattern scan over the selected files -> no credential-shaped secrets found; matches were limited to policy words in .gitignore/longrun prompt when using the broad scan.",
+      "Official/mature references checked for this slice: Git gitignore docs HTTP 200, pytest good practices HTTP 200, Python json docs HTTP 200. No external code copied."
+    ],
+    "contract_delta": {
+      "before": "tools/ and workspace_tests/ still appeared dirty, and the wiki_eval_smoke manifest was git-visible without its referenced Markdown answer pages.",
+      "after": "Only a reviewed path-explicit evidence set is git-visible; wiki_eval_smoke fixture content is complete; adjacent graph_doctor and broad workspace tools remain ignored/local-only.",
+      "boundary": "No push, tag, release, upload, deployment, credential change, Zotero DB write, github/ modification, broad git add, or destructive cleanup."
+    },
+    "residual_risk": "This closes the visible dirty-worktree fixture boundary and prepares a local commit. Ignored local-only tools/workspace_tests material still exists on disk by design; live KRT actual-loading, real RapidOCR runtime execution, and remote OCR real execution remain separate authorization/runtime gates.",
+    "next_actions": [
+      "Stage only the N232 audited paths, run git diff --cached --check and git ls-files -ci --exclude-standard, then make a local commit if checks pass.",
+      "After commit, re-check git status --short --branch to confirm no git-visible dirty files remain; ignored local tools/workspace_tests stay local-only.",
+      "Continue the next Scholar AI local slice only after reading required docs, running git status, creating a rollback checkpoint, and checking mature/official references."
+    ],
+    "updated_at": "2026-06-27T13:56:00+08:00"
   }
 }

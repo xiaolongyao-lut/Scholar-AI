@@ -255,6 +255,7 @@ htmlcov/
 /workspace_tests/fixtures/wiki_eval_smoke/pages/*
 !/workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/
 /workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/*
+!/workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/*.md
 
 # Workspace scratch areas. Public tests and release scripts may be promoted
 # explicitly under SOURCE_RELEASE_POLICY.md; generated evaluation data stays

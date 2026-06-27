@@ -1,0 +1,59 @@
+{
+  "inputs": {
+    "queries_path": "workspace_tests/evaluation_manifests/rerank_canary_queries.jsonl",
+    "qrels_path": "workspace_tests/evaluation_manifests/rerank_canary_qrels.jsonl",
+    "queries_nonempty_lines": 30,
+    "qrels_nonempty_lines": 40
+  },
+  "outputs": {
+    "metrics_path": "workspace_artifacts/generated/eval/rerank_canary/rerank.metrics.json",
+    "progress_path": "workspace_artifacts/generated/eval/rerank_canary/rerank.progress.jsonl",
+    "per_query_output": "workspace_artifacts/generated/eval/rerank_canary/rerank.per_query.jsonl",
+    "rerank_trace_output": "workspace_artifacts/generated/eval/rerank_canary/rerank.trace.jsonl",
+    "resume_guard_path": "workspace_artifacts/generated/eval/rerank_canary/rerank.metrics.json.resume_config.json",
+    "run_log_path": "workspace_artifacts/generated/eval/rerank_canary/rerank.run.log"
+  },
+  "retrieval_config": {
+    "use_rerank": true,
+    "top_k": 5,
+    "recall_top_n": 100,
+    "rerank_top_n": 40,
+    "query_concurrency": 16
+  },
+  "runtime_env_overrides": {
+    "DASHSCOPE_RERANK_BASE_URL": "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+    "DASHSCOPE_RERANK_MODEL": "qwen3-rerank",
+    "RAG_RUNTIME_RERANK_ENABLED": "1"
+  },
+  "reranker": {
+    "model": "qwen3-rerank"
+  },
+  "safety": {
+    "requires_paired_no_rerank_control": true
+  },
+  "paired_control": {
+    "inputs": {
+      "queries_path": "workspace_tests/evaluation_manifests/rerank_canary_queries.jsonl",
+      "qrels_path": "workspace_tests/evaluation_manifests/rerank_canary_qrels.jsonl",
+      "queries_nonempty_lines": 30,
+      "qrels_nonempty_lines": 40
+    },
+    "outputs": {
+      "metrics_path": "workspace_artifacts/generated/eval/rerank_canary/control.metrics.json",
+      "progress_path": "workspace_artifacts/generated/eval/rerank_canary/control.progress.jsonl",
+      "per_query_output": "workspace_artifacts/generated/eval/rerank_canary/control.per_query.jsonl",
+      "rerank_trace_output": "workspace_artifacts/generated/eval/rerank_canary/control.trace.jsonl",
+      "resume_guard_path": "workspace_artifacts/generated/eval/rerank_canary/control.metrics.json.resume_config.json",
+      "run_log_path": "workspace_artifacts/generated/eval/rerank_canary/control.run.log"
+    },
+    "retrieval_config": {
+      "use_rerank": false,
+      "top_k": 5,
+      "recall_top_n": 100,
+      "query_concurrency": 16
+    },
+    "runtime_env_overrides": {
+      "RAG_RUNTIME_RERANK_ENABLED": "0"
+    }
+  }
+}
