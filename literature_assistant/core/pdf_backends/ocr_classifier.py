@@ -6,10 +6,13 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
-__all__ = ["OCRNeedClassifier", "PDFClassificationResult"]
+__all__ = ["OCRNeedClassifier", "PDFClassificationResult", "PDFStrategy"]
 
 logger = logging.getLogger("OCRNeedClassifier")
+
+PDFStrategy = Literal["text_only", "ocr_only", "hybrid"]
 
 
 @dataclass(frozen=True)
@@ -28,7 +31,7 @@ class PDFClassificationResult:
     text_pages: list[int]
     ocr_pages: list[int]
     mixed_pages: list[int]
-    strategy: str  # "text_only" | "ocr_only" | "hybrid"
+    strategy: PDFStrategy
     total_pages: int
     avg_text_density: float
 
@@ -55,9 +58,28 @@ class OCRNeedClassifier:
             ocr_density_threshold: 扫描型阈值（字符数）
             image_area_ratio_threshold: 图片面积占比阈值
         """
+        if isinstance(text_density_threshold, bool) or not isinstance(
+            text_density_threshold, int
+        ):
+            raise TypeError("text_density_threshold must be an integer")
+        if isinstance(ocr_density_threshold, bool) or not isinstance(ocr_density_threshold, int):
+            raise TypeError("ocr_density_threshold must be an integer")
+        if text_density_threshold <= 0:
+            raise ValueError("text_density_threshold must be positive")
+        if ocr_density_threshold < 0:
+            raise ValueError("ocr_density_threshold must be non-negative")
+        if text_density_threshold <= ocr_density_threshold:
+            raise ValueError("text_density_threshold must be greater than ocr_density_threshold")
+        if isinstance(image_area_ratio_threshold, bool) or not isinstance(
+            image_area_ratio_threshold, (int, float)
+        ):
+            raise TypeError("image_area_ratio_threshold must be numeric")
+        if not 0.0 <= float(image_area_ratio_threshold) <= 1.0:
+            raise ValueError("image_area_ratio_threshold must be between 0 and 1")
+
         self.text_threshold = text_density_threshold
         self.ocr_threshold = ocr_density_threshold
-        self.image_ratio_threshold = image_area_ratio_threshold
+        self.image_ratio_threshold = float(image_area_ratio_threshold)
 
     def classify_pdf(self, pdf_path: Path) -> PDFClassificationResult:
         """分类 PDF 文件的每一页
@@ -72,6 +94,11 @@ class OCRNeedClassifier:
             ImportError: PyMuPDF 未安装
             OSError: PDF 文件无法打开
         """
+        if not isinstance(pdf_path, Path):
+            raise TypeError("pdf_path must be a pathlib.Path")
+        if not pdf_path.is_file():
+            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
         try:
             import pymupdf
         except ImportError as exc:

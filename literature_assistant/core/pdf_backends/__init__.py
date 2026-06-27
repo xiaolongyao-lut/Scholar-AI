@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
 """PDF parser backend abstraction.
 
-Provides a backend Protocol for the active PyMuPDF parser. Heavy document
-parsers with third-party model runtimes must live outside the core source tree
-as optional plugins or workspace references.
-
-RemoteDocumentParseBackend (MinerU / Mistral OCR) is instantiated on-demand
-by UnifiedBatchUploadService when the OCR classifier detects scanned PDFs.
-It does not participate in the default get_pdf_backend() flow.
+Provides a backend Protocol for the active PyMuPDF parser and lightweight
+contracts for optional OCR engines. Heavy OCR runtimes are discovered lazily
+and do not participate in the default get_pdf_backend() flow.
 
 Public API:
     PDFParserBackend        : Protocol; .parse(path) -> (text, blocks?, md?)
@@ -35,6 +31,26 @@ __all__ = [
     "DocumentParseProvider",
     "create_mineru_provider",
     "create_mistral_provider",
+    "OCR_POLICY_ENV_VAR",
+    "OCR_ENGINE_ENV_VAR",
+    "OCR_LANGUAGE_ENV_VAR",
+    "OcrEngine",
+    "OcrEngineHealth",
+    "OcrEngineInfo",
+    "OcrIngestionReport",
+    "OcrReadinessStatus",
+    "OcrRuntimeConfig",
+    "apply_pdf_ocr_if_needed",
+    "build_ocr_engine",
+    "clear_ocr_engines_for_tests",
+    "list_ocr_engine_info",
+    "list_ocr_engine_names",
+    "load_builtin_ocr_engines",
+    "public_ocr_status",
+    "register_ocr_engine",
+    "resolve_ocr_runtime_config",
+    "select_ocr_engine",
+    "write_ocr_runtime_config",
 ]
 
 
@@ -138,4 +154,27 @@ from .remote_document_parse_backend import (
     DocumentParseProvider,
     create_mineru_provider,
     create_mistral_provider,
+)
+from .ocr_engine import (
+    OcrEngine,
+    OcrEngineHealth,
+    OcrEngineInfo,
+    OcrReadinessStatus,
+    OcrRuntimeConfig,
+)
+from .ocr_ingestion import OcrIngestionReport, apply_pdf_ocr_if_needed
+from .ocr_engine_registry import (
+    OCR_ENGINE_ENV_VAR,
+    OCR_LANGUAGE_ENV_VAR,
+    OCR_POLICY_ENV_VAR,
+    build_ocr_engine,
+    clear_ocr_engines_for_tests,
+    list_ocr_engine_info,
+    list_ocr_engine_names,
+    load_builtin_ocr_engines,
+    public_ocr_status,
+    register_ocr_engine,
+    resolve_ocr_runtime_config,
+    select_ocr_engine,
+    write_ocr_runtime_config,
 )
