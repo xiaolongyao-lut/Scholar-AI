@@ -2031,6 +2031,22 @@ def _next_safe_local_actions(*action_groups: tuple[str, ...]) -> list[str]:
     return actions
 
 
+def _actual_loading_next_safe_actions(
+    provider_preflight: KnowledgeRuntimeProviderPreflightResponse,
+    *action_groups: tuple[str, ...],
+) -> list[str]:
+    """Return recovery actions that keep provider blockers visible at the top gate."""
+
+    provider_actions: tuple[str, ...] = ()
+    if provider_preflight.status != "proved":
+        provider_actions = tuple(provider_preflight.next_safe_local_actions)
+    return _next_safe_local_actions(
+        *action_groups,
+        provider_actions,
+        _ACTUAL_LOADING_BASE_ACTIONS,
+    )
+
+
 def _provider_preflight_record_response(
     record: ProviderCapabilityRecord,
 ) -> KnowledgeRuntimeProviderPreflightRecordResponse:
@@ -2266,9 +2282,9 @@ def _actual_loading_gate() -> KnowledgeRuntimeActualLoadingGateResponse:
                 "authorized live provider smoke artifact with verdict=ok",
                 "LITASSIST_RUN_LIVE_CONTEXT_RECEIPT_SMOKE or --allow-live-provider-call",
             ],
-            next_safe_local_actions=_next_safe_local_actions(
+            next_safe_local_actions=_actual_loading_next_safe_actions(
+                provider_preflight,
                 _ACTUAL_LOADING_MISSING_ARTIFACT_ACTIONS,
-                _ACTUAL_LOADING_BASE_ACTIONS,
             ),
             claim_boundary=(
                 "Package conformance proves deterministic source-to-context receipts only; "
@@ -2294,9 +2310,9 @@ def _actual_loading_gate() -> KnowledgeRuntimeActualLoadingGateResponse:
             evidence=[artifact_ref],
             missing=validation_errors,
             validation_errors=validation_errors,
-            next_safe_local_actions=_next_safe_local_actions(
+            next_safe_local_actions=_actual_loading_next_safe_actions(
+                provider_preflight,
                 _ACTUAL_LOADING_INVALID_ARTIFACT_ACTIONS,
-                _ACTUAL_LOADING_BASE_ACTIONS,
             ),
             claim_boundary=(
                 "A live smoke artifact exists, but it cannot be parsed as the "
@@ -2322,9 +2338,9 @@ def _actual_loading_gate() -> KnowledgeRuntimeActualLoadingGateResponse:
             evidence=[artifact_ref],
             missing=["valid live smoke artifact schema", *validation_errors],
             validation_errors=validation_errors,
-            next_safe_local_actions=_next_safe_local_actions(
+            next_safe_local_actions=_actual_loading_next_safe_actions(
+                provider_preflight,
                 _ACTUAL_LOADING_INVALID_ARTIFACT_ACTIONS,
-                _ACTUAL_LOADING_BASE_ACTIONS,
             ),
             claim_boundary=(
                 "A live smoke artifact exists, but it does not match the "
@@ -2354,9 +2370,9 @@ def _actual_loading_gate() -> KnowledgeRuntimeActualLoadingGateResponse:
                     f"provider_preflight_status={provider_preflight.status}",
                 ],
                 missing=list(dict.fromkeys(missing)),
-                next_safe_local_actions=_next_safe_local_actions(
+                next_safe_local_actions=_actual_loading_next_safe_actions(
+                    provider_preflight,
                     _ACTUAL_LOADING_PROVIDER_BLOCKED_ACTIONS,
-                    _ACTUAL_LOADING_BASE_ACTIONS,
                 ),
                 claim_boundary=(
                     "A live smoke artifact satisfies the context-receipt contract, but "
@@ -2387,9 +2403,9 @@ def _actual_loading_gate() -> KnowledgeRuntimeActualLoadingGateResponse:
                     f"model={summary.model or 'unknown'}",
                 ],
                 missing=missing,
-                next_safe_local_actions=_next_safe_local_actions(
+                next_safe_local_actions=_actual_loading_next_safe_actions(
+                    provider_preflight,
                     _ACTUAL_LOADING_PROVIDER_BLOCKED_ACTIONS,
-                    _ACTUAL_LOADING_BASE_ACTIONS,
                 ),
                 claim_boundary=(
                     "A live smoke artifact satisfies the context-receipt contract, but "
@@ -2434,9 +2450,9 @@ def _actual_loading_gate() -> KnowledgeRuntimeActualLoadingGateResponse:
         evidence=[artifact_ref],
         missing=validation_errors,
         validation_errors=validation_errors,
-        next_safe_local_actions=_next_safe_local_actions(
+        next_safe_local_actions=_actual_loading_next_safe_actions(
+            provider_preflight,
             _ACTUAL_LOADING_CONTRACT_ACTIONS,
-            _ACTUAL_LOADING_BASE_ACTIONS,
         ),
         claim_boundary=claim_boundary
         or (

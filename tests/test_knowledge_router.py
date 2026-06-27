@@ -1345,6 +1345,76 @@ def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_prefligh
     assert gate["provider_preflight"]["latest_status"] == "auth_required"
 
 
+def test_knowledge_runtime_conformance_keeps_provider_actions_on_http_error_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A failed live artifact must not hide provider auth recovery actions."""
+
+    artifact = tmp_path / "live_api_chat_knowledge_context_receipt_smoke.summary.json"
+    provider_capabilities = tmp_path / "provider-capabilities.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "generatedAt": "2026-06-25T22:12:00Z",
+                "surface": "/api/chat",
+                "statusCode": 401,
+                "verdict": "http_error",
+                "claimBoundary": "HTTP error cannot prove actual model context loading.",
+                "provider": "hhl",
+                "baseHost": "free.hanhanapi.top",
+                "model": "gpt-5.5",
+                "directReceipt": {
+                    "assembledContextHash": "f" * 64,
+                    "assembledContextCharCount": 321,
+                    "resourceReceiptCount": 1,
+                },
+                "chatEvidence": {
+                    "toolNames": [],
+                    "usedRequiredTools": False,
+                    "receiptHashVisibleInToolPreview": False,
+                    "finalAnswerIncludesReceiptHash": False,
+                    "queryHashMatchesDirectReceipt": False,
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    write_provider_capability_fixture(
+        provider_capabilities,
+        status="auth_required",
+        forced_tool_choice_ok=False,
+        ordinary_chat_ok=False,
+        failure_class="models",
+        masked_error="HTTP 401: Invalid token (request id: [REDACTED])",
+    )
+    monkeypatch.setattr(knowledge_router, "output_path", lambda *parts: artifact)
+    monkeypatch.setattr(knowledge_router, "_provider_capabilities_path", lambda: provider_capabilities)
+
+    client = make_client(make_vault(tmp_path))
+    response = client.get("/api/knowledge/runtime-conformance")
+
+    assert response.status_code == 200
+    gate = response.json()["actual_loading_gate"]
+    assert gate["status"] == "blocked"
+    assert gate["verdict"] == "http_error"
+    assert gate["artifact_schema_valid"] is True
+    assert gate["artifact_contract_valid"] is False
+    assert gate["provider_preflight"]["status"] == "blocked"
+    assert gate["provider_preflight"]["latest_status"] == "auth_required"
+    assert "artifact.status_code.200" in gate["missing"]
+    assert "Fix the listed artifact contract checks and rerun the live context-receipt smoke." in (
+        gate["next_safe_local_actions"]
+    )
+    assert "Stop live actual-loading smoke while latest provider status is auth_required." in (
+        gate["next_safe_local_actions"]
+    )
+    assert "After the user corrects provider credentials/config, rerun provider tool-capability preflight." in (
+        gate["next_safe_local_actions"]
+    )
+
+
 def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
