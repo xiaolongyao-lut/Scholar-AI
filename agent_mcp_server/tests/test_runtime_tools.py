@@ -2715,6 +2715,16 @@ def test_agent_workspace_status_reads_recovery_state(
                         "docs/plans/autonomous-execution-planning-playbook.md",
                         "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
                     ],
+                    "mature_references_checked": [
+                        {
+                            "topic": "N112 recovery state response model",
+                            "source": "FastAPI response-model documentation",
+                            "url": "https://fastapi.tiangolo.com/tutorial/response-model/",
+                            "status": "HEAD checked 200",
+                            "checked_at": "2026-06-24T17:55:00+08:00",
+                            "use_in_slice": "Keep recovery state on the typed status response.",
+                        }
+                    ],
                     "error": None,
                 },
                 "artifact_root": {
@@ -2955,6 +2965,8 @@ def test_agent_workspace_status_reads_recovery_state(
         "docs/plans/autonomous-execution-planning-playbook.md",
         "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
     ]
+    assert state["goal_state"]["mature_references_checked"][0]["topic"] == "N112 recovery state response model"
+    assert state["goal_state"]["mature_references_checked"][0]["source"] == "FastAPI response-model documentation"
     lifecycle_rollup = state["goal_state"]["lifecycle_rollup"]
     assert lifecycle_rollup["status"] == "active_requirements_proved_pending_authorized_gates"
     assert lifecycle_rollup["is_goal_complete"] is False

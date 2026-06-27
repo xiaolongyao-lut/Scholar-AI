@@ -178,6 +178,16 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
         'docs/plans/autonomous-execution-framework.md',
         'docs/plans/autonomous-execution-planning-playbook.md',
       ],
+      mature_references_checked: [
+        {
+          topic: 'N112 recovery state response model at C:\\Users\\Alice\\private\\goal.json',
+          source: 'FastAPI response-model documentation',
+          url: 'https://fastapi.tiangolo.com/tutorial/response-model/',
+          status: 'HEAD checked 200',
+          checked_at: '2026-06-24T17:55:00+08:00',
+          use_in_slice: 'Keep recovery state on the typed status response.',
+        },
+      ],
       error: null,
     },
     desktop_smoke: {
@@ -2862,6 +2872,11 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('goal record 2 AGENTS.md')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal record 3 docs/plans/autonomous-execution-framework.md')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal record 4 docs/plans/autonomous-execution-planning-playbook.md')).toBeInTheDocument();
+    expect(
+      within(workspaceStateRegion).getByText(
+        'mature reference 1 FastAPI response-model documentation · N112 recovery state response model at [redacted-local-path] · HEAD checked 200 · checked 2026-06-24T17:55:00+08:00 · use Keep recovery state on the typed status response.',
+      ),
+    ).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('lifecycle blockers 1 · can complete false')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('checkpoint 20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json')).toBeInTheDocument();

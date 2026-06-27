@@ -254,6 +254,16 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
                 "Create a rollback checkpoint and search mature references before the next slice."
             ],
             stop_boundaries=["No push, tag, release, deploy, or external upload."],
+            mature_references_checked=[
+                agent_workspace_router.AgentWorkspaceGoalMatureReference(
+                    topic="N112 recovery state response model",
+                    source="FastAPI response-model documentation",
+                    url="https://fastapi.tiangolo.com/tutorial/response-model/",
+                    status="HEAD checked 200",
+                    checked_at="2026-06-24T17:55:00+08:00",
+                    use_in_slice="Keep the recovery state on the typed status response.",
+                )
+            ],
         ),
     )
     monkeypatch.setattr(
@@ -474,6 +484,8 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert goal_state["rollback_caveat"] == (
         "Restore only with explicit user intent after checking dirty worktree ownership."
     )
+    assert goal_state["mature_references_checked"][0]["topic"] == "N112 recovery state response model"
+    assert goal_state["mature_references_checked"][0]["source"] == "FastAPI response-model documentation"
     assert goal_state["requirement_count"] == 125
     assert goal_state["proved_count"] == 125
     assert goal_state["incomplete_count"] == 0
@@ -736,6 +748,44 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                     "frontend/src/pages/AgentWorkspace.tsx",
                     "This ninth record is intentionally omitted.",
                 ],
+                "mature_references_checked": [
+                    {
+                        "topic": "N41 response model at C:/Users/xiao/private",
+                        "source": "FastAPI response-model documentation",
+                        "url": "https://fastapi.tiangolo.com/tutorial/response-model/",
+                        "status": "HEAD checked 200",
+                        "checked_at": "2026-06-22T21:36:00+08:00",
+                        "use_in_slice": "Keep recovery projection bounded and typed.",
+                    },
+                    {
+                        "topic": "N41 field constraints",
+                        "source": "Pydantic fields documentation",
+                        "url": "https://docs.pydantic.dev/latest/concepts/fields/",
+                        "status": "HEAD checked 200",
+                        "checked_at": "2026-06-22T21:36:00+08:00",
+                        "use_in_slice": "Bound text fields before display.",
+                    },
+                    {
+                        "topic": "N41 assertions",
+                        "source": "pytest assertion documentation",
+                        "url": "https://docs.pytest.org/en/stable/how-to/assert.html",
+                        "status": "HEAD checked 200",
+                        "checked_at": "2026-06-22T21:36:00+08:00",
+                        "use_in_slice": "Compare visible projection to source record.",
+                    },
+                    {
+                        "topic": "N41 observability",
+                        "source": "Google SRE monitoring distributed systems chapter",
+                        "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+                        "status": "HEAD checked 200",
+                        "checked_at": "2026-06-22T21:36:00+08:00",
+                        "use_in_slice": "Catch recovery-state drift in CI.",
+                    },
+                    {
+                        "topic": "fifth reference intentionally omitted",
+                        "source": "Reference five",
+                    },
+                ],
             },
             ensure_ascii=False,
         ),
@@ -821,10 +871,19 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
         "agent_mcp_server/tests/test_runtime_tools.py",
         "frontend/src/pages/AgentWorkspace.tsx",
     ]
+    assert len(summary.mature_references_checked) == agent_workspace_router.MAX_GOAL_STATE_MATURE_REFERENCES
+    assert summary.mature_references_checked[0].topic == "N41 response model at [redacted-local-path]"
+    assert summary.mature_references_checked[0].source == "FastAPI response-model documentation"
+    assert summary.mature_references_checked[0].url == "https://fastapi.tiangolo.com/tutorial/response-model/"
+    assert summary.mature_references_checked[0].status == "HEAD checked 200"
+    assert summary.mature_references_checked[0].checked_at == "2026-06-22T21:36:00+08:00"
+    assert summary.mature_references_checked[0].use_in_slice == "Keep recovery projection bounded and typed."
+    assert summary.mature_references_checked[-1].topic == "N41 observability"
     serialized = summary.model_dump_json()
     assert "current_objective" not in serialized
     assert "restore_command" not in serialized
     assert "C:/Users/xiao" not in serialized
+    assert "fifth reference" not in serialized
     assert "sixth open row" not in serialized
     assert "Fourth reason is intentionally omitted." not in serialized
 

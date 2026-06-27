@@ -3695,6 +3695,7 @@ export function WorkspaceStatePanel({
   const goalNextActions = state.goal_state.next_authorized_local_actions.slice(0, 4).map(sanitizeInspectorText);
   const goalStopBoundaries = state.goal_state.stop_boundaries.slice(0, 4).map(sanitizeInspectorText);
   const goalAuthoritativeRecords = (state.goal_state.authoritative_records ?? []).slice(0, 8).map(sanitizeInspectorText);
+  const goalMatureReferences = (state.goal_state.mature_references_checked ?? []).slice(0, 4);
   const goalLifecycle = state.goal_state.lifecycle_rollup ?? null;
   const firstLifecycleBlocker = goalLifecycle?.completion_blockers[0] ?? null;
   const hasLifecycleRecordDetails = Boolean(
@@ -3821,6 +3822,7 @@ export function WorkspaceStatePanel({
             goalCompletionClaim.whyNotComplete ||
             goalRollbackCaveat ||
             goalAuthoritativeRecords.length > 0 ||
+            goalMatureReferences.length > 0 ||
             goalLifecycle?.completion_blockers?.length ? (
               <div className="mt-2 grid gap-1.5">
                 {goalCompletionClaim.thisSlice ? (
@@ -3910,6 +3912,22 @@ export function WorkspaceStatePanel({
                         goal record {index + 1} {record}
                       </p>
                     ))}
+                  </div>
+                ) : null}
+                {goalMatureReferences.length > 0 ? (
+                  <div className="grid gap-1 rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    {goalMatureReferences.map((reference, index) => {
+                      const source = sanitizeInspectorText(reference.source ?? 'unknown source');
+                      const topic = sanitizeInspectorText(reference.topic ?? 'unknown topic');
+                      const status = sanitizeInspectorText(reference.status ?? 'status unknown');
+                      const checkedAt = reference.checked_at ? ` · checked ${sanitizeInspectorText(reference.checked_at)}` : '';
+                      const useInSlice = reference.use_in_slice ? ` · use ${sanitizeInspectorText(reference.use_in_slice)}` : '';
+                      return (
+                        <p key={`${source}-${topic}-${index}`} className="break-words">
+                          mature reference {index + 1} {source} · {topic} · {status}{checkedAt}{useInSlice}
+                        </p>
+                      );
+                    })}
                   </div>
                 ) : null}
               </div>

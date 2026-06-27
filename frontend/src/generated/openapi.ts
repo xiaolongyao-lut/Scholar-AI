@@ -8118,6 +8118,32 @@ export interface components {
             why_not_complete?: string[];
         };
         /**
+         * AgentWorkspaceGoalMatureReference
+         * @description One bounded mature-reference record from the longrun goal state.
+         *
+         *     Args:
+         *         topic: Slice-specific reason this reference was checked.
+         *         source: Official or mature reference label.
+         *         url: Reference URL or local reference label.
+         *         status: Reachability or review status recorded by the slice.
+         *         checked_at: Timestamp recorded by the slice.
+         *         use_in_slice: Bounded note explaining the borrowed boundary.
+         */
+        AgentWorkspaceGoalMatureReference: {
+            /** Checked At */
+            checked_at?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Topic */
+            topic?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Use In Slice */
+            use_in_slice?: string | null;
+        };
+        /**
          * AgentWorkspaceGoalOpenRequirement
          * @description Bounded unresolved requirement row for recovery decisions.
          *
@@ -8277,6 +8303,7 @@ export interface components {
          *         next_authorized_local_actions: Bounded action labels from the record.
          *         stop_boundaries: Bounded stop-boundary labels from the record.
          *         authoritative_records: Bounded record labels a resumed agent should read first.
+         *         mature_references_checked: Bounded reference records used for latest slices.
          *         error: Redacted parse/read error when unavailable.
          */
         AgentWorkspaceGoalState: {
@@ -8297,6 +8324,8 @@ export interface components {
             /** Latest Requirement Id */
             latest_requirement_id?: string | null;
             lifecycle_rollup?: components["schemas"]["AgentWorkspaceGoalLifecycleRollup"];
+            /** Mature References Checked */
+            mature_references_checked?: components["schemas"]["AgentWorkspaceGoalMatureReference"][];
             /** Next Authorized Local Actions */
             next_authorized_local_actions?: string[];
             /** Open Requirements */

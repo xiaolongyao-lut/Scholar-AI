@@ -484,6 +484,18 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
     assert latest_checkpoint_caveat.startswith(summary.rollback_caveat[:120])
     assert "rollback-checkpoints" not in summary.rollback_caveat
     assert "Restore-Item" not in summary.rollback_caveat
+    mature_references = payload.get("mature_references_checked")
+    assert isinstance(mature_references, list) and mature_references
+    expected_mature_references = [
+        reference for reference in mature_references if isinstance(reference, dict)
+    ][: agent_workspace_router.MAX_GOAL_STATE_MATURE_REFERENCES]
+    assert len(summary.mature_references_checked) == len(expected_mature_references)
+    assert summary.mature_references_checked[0].source == expected_mature_references[0].get("source")
+    assert summary.mature_references_checked[0].topic == expected_mature_references[0].get("topic")
+    assert summary.mature_references_checked[0].status == expected_mature_references[0].get("status")
+    serialized_goal_state = summary.model_dump_json()
+    assert "rollback-checkpoints" not in serialized_goal_state
+    assert "Restore-Item" not in serialized_goal_state
     why_not_complete = completion_claim.get("why_not_complete")
     assert isinstance(why_not_complete, str) and why_not_complete.strip()
     assert summary.completion_claim.why_not_complete is not None

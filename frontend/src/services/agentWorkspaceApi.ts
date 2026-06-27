@@ -97,6 +97,15 @@ export interface AgentWorkspaceGoalLifecycleRollup {
   why_not_complete: string[];
 }
 
+export interface AgentWorkspaceGoalMatureReference {
+  topic: string | null;
+  source: string | null;
+  url: string | null;
+  status: string | null;
+  checked_at: string | null;
+  use_in_slice: string | null;
+}
+
 export interface AgentWorkspaceGoalRequirementEvidenceRef {
   label: string;
   text: string;
@@ -144,6 +153,7 @@ export interface AgentWorkspaceGoalState {
   next_authorized_local_actions: string[];
   stop_boundaries: string[];
   authoritative_records: string[];
+  mature_references_checked: AgentWorkspaceGoalMatureReference[];
   error: string | null;
 }
 

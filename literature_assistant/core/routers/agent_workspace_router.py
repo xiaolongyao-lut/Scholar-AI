@@ -39,6 +39,7 @@ MAX_GOAL_STATE_ACTIONS = 3
 MAX_GOAL_STATE_BOUNDARIES = 4
 MAX_GOAL_STATE_OPEN_REQUIREMENTS = 5
 MAX_GOAL_STATE_AUTH_RECORDS = 8
+MAX_GOAL_STATE_MATURE_REFERENCES = 4
 MAX_GOAL_LIFECYCLE_BLOCKERS = 5
 MAX_GOAL_COMPLETION_CHARS = 240
 MAX_GOAL_REQUIREMENT_EVIDENCE = 8
@@ -242,6 +243,26 @@ class AgentWorkspaceGoalLifecycleRollup(BaseModel):
     why_not_complete: list[str] = Field(default_factory=list)
 
 
+class AgentWorkspaceGoalMatureReference(BaseModel):
+    """One bounded mature-reference record from the longrun goal state.
+
+    Args:
+        topic: Slice-specific reason this reference was checked.
+        source: Official or mature reference label.
+        url: Reference URL or local reference label.
+        status: Reachability or review status recorded by the slice.
+        checked_at: Timestamp recorded by the slice.
+        use_in_slice: Bounded note explaining the borrowed boundary.
+    """
+
+    topic: str | None = Field(default=None, max_length=160)
+    source: str | None = Field(default=None, max_length=160)
+    url: str | None = Field(default=None, max_length=240)
+    status: str | None = Field(default=None, max_length=160)
+    checked_at: str | None = Field(default=None, max_length=80)
+    use_in_slice: str | None = Field(default=None, max_length=240)
+
+
 class AgentWorkspaceGoalRequirementEvidenceRef(BaseModel):
     """One bounded evidence reference from the longrun requirement matrix.
 
@@ -315,6 +336,7 @@ class AgentWorkspaceGoalState(BaseModel):
         next_authorized_local_actions: Bounded action labels from the record.
         stop_boundaries: Bounded stop-boundary labels from the record.
         authoritative_records: Bounded record labels a resumed agent should read first.
+        mature_references_checked: Bounded reference records used for latest slices.
         error: Redacted parse/read error when unavailable.
     """
 
@@ -335,6 +357,7 @@ class AgentWorkspaceGoalState(BaseModel):
     next_authorized_local_actions: list[str] = Field(default_factory=list)
     stop_boundaries: list[str] = Field(default_factory=list)
     authoritative_records: list[str] = Field(default_factory=list)
+    mature_references_checked: list[AgentWorkspaceGoalMatureReference] = Field(default_factory=list)
     error: str | None = Field(default=None, max_length=240)
 
 
@@ -1490,6 +1513,46 @@ def _goal_state_rollback_caveat(payload: dict[str, Any]) -> str | None:
     return _redact_text(value.strip())[:MAX_GOAL_ROLLBACK_CAVEAT_CHARS]
 
 
+def _safe_goal_mature_references(value: Any) -> list[AgentWorkspaceGoalMatureReference]:
+    """Return bounded mature-reference records without exposing full plan history.
+
+    Args:
+        value: Raw ``mature_references_checked`` value from the goal-state JSON.
+
+    Returns:
+        Up to ``MAX_GOAL_STATE_MATURE_REFERENCES`` redacted reference records.
+    """
+
+    if not isinstance(value, list):
+        return []
+    references: list[AgentWorkspaceGoalMatureReference] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        reference = AgentWorkspaceGoalMatureReference(
+            topic=_safe_optional_text(item.get("topic"), max_chars=160),
+            source=_safe_optional_text(item.get("source"), max_chars=160),
+            url=_safe_optional_text(item.get("url"), max_chars=240),
+            status=_safe_optional_text(item.get("status"), max_chars=160),
+            checked_at=_safe_optional_text(item.get("checked_at"), max_chars=80),
+            use_in_slice=_safe_optional_text(item.get("use_in_slice"), max_chars=240),
+        )
+        if any(
+            (
+                reference.topic,
+                reference.source,
+                reference.url,
+                reference.status,
+                reference.checked_at,
+                reference.use_in_slice,
+            )
+        ):
+            references.append(reference)
+        if len(references) >= MAX_GOAL_STATE_MATURE_REFERENCES:
+            break
+    return references
+
+
 def _load_goal_state_summary() -> AgentWorkspaceGoalState:
     """Load a bounded local goal-state summary without exposing full records."""
 
@@ -1545,6 +1608,7 @@ def _load_goal_state_summary() -> AgentWorkspaceGoalState:
         next_authorized_local_actions=_safe_text_list(payload.get("next_authorized_local_actions"), MAX_GOAL_STATE_ACTIONS),
         stop_boundaries=_safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES),
         authoritative_records=_safe_text_list(payload.get("authoritative_records"), MAX_GOAL_STATE_AUTH_RECORDS),
+        mature_references_checked=_safe_goal_mature_references(payload.get("mature_references_checked")),
     )
 
 

@@ -135,6 +135,16 @@ const ACCEPTANCE_WORKSPACE_STATE = {
       'docs/plans/autonomous-execution-framework.md',
       'docs/plans/autonomous-execution-planning-playbook.md',
     ],
+    mature_references_checked: [
+      {
+        topic: 'N74 desktop acceptance visibility',
+        source: 'React Testing Library introduction',
+        url: 'https://testing-library.com/docs/react-testing-library/intro/',
+        status: 'HEAD checked 200',
+        checked_at: '2026-06-23T19:49:30+08:00',
+        use_in_slice: 'Assert visible recovery state instead of component internals.',
+      },
+    ],
     error: null,
   },
   desktop_smoke: {
