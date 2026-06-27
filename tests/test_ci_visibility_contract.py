@@ -397,6 +397,9 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
     assert rollup.get("requirement_status_counts") == dict(sorted(status_counts.items()))
     assert rollup.get("latest_requirement_id") == rows[-1]["id"]
     assert rollup.get("latest_slice_id") == rows[-1]["id"]
+    top_latest_slice = payload.get("latest_slice")
+    if top_latest_slice is not None:
+        assert top_latest_slice == rows[-1]["id"]
     assert rollup.get("requirements_all_proved") is all(
         row["status"] == "proved" for row in rows
     )
