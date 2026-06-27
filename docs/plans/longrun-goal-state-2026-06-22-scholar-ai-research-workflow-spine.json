@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T23:20:41+08:00",
+  "updated_at": "2026-06-27T23:37:10+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,21 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "mcp-safe-result-20260627_231719",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\mcp-safe-result-20260627_231719",
-    "latest_goal_state_checkpoint_id": "mcp-safe-result-20260627_231719",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\mcp-safe-result-20260627_231719",
-    "latest_checkpoint_caveat": "Targeted rollback snapshot for N255 MCP safe_result structured truncation and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "n256-wiki-registry-replay-20260627_233341",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n256-wiki-registry-replay-20260627_233341",
+    "latest_goal_state_checkpoint_id": "n256-wiki-registry-replay-20260627_233341",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n256-wiki-registry-replay-20260627_233341",
+    "latest_checkpoint_caveat": "Targeted rollback snapshot for N256 preexisting wiki registry replay/sync coverage and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N256 preexisting wiki registry replay into Source Vault",
+      "source": "W3C PROV entity/activity provenance; RO-Crate metadata-with-data packaging; Model Context Protocol resources",
+      "url": "https://www.w3.org/TR/prov-overview/ ; https://www.researchobject.org/ro-crate/specification/1.2/introduction.html ; https://modelcontextprotocol.io/specification/2025-03-26/server/resources",
+      "status": "Official/mature references checked on 2026-06-27 before implementation",
+      "checked_at": "2026-06-27T23:30:00+08:00",
+      "use_in_slice": "Used to keep replay as deterministic provenance-preserving sync from existing WikiRegistry rows to Source Vault manifest/search/resource/context evidence. No external code copied."
+    },
     {
       "topic": "N255 MCP safe_result structured truncation",
       "source": "Model Context Protocol server tools specification and basic protocol specification",
@@ -7212,22 +7220,46 @@
         ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N255 rollup."
       ],
       "residual_risk": "This proves deterministic local MCP result shaping only. It does not change MCP transport schemas, does not run live provider/model-context smoke, does not clear provider preflight gates, and does not execute OCR."
+    },
+    {
+      "id": "N256-wiki-registry-replay-source-vault-proof",
+      "requirement": "Preexisting WikiRegistry source/chunk rows must have a deterministic replay/sync path into Source Vault that proves manifest loaded state, searchable ref/resource access, bounded context receipt, and visible blocked statuses without relying on a fresh wiki import.",
+      "source": "Post-N254/N255 continuation. N254 proved the successful local Markdown import path, while the remaining KRT mainline required deterministic replay/sync coverage for wiki registry rows that already existed before the Source Vault mirror path or were written with automatic mirroring disabled.",
+      "status": "proved",
+      "evidence": [
+        "literature_assistant/core/wiki/source_registry.py adds SourceVaultReplayReport with source/chunk status counts so replay success is not inferred from row existence alone.",
+        "WikiRegistry.replay_source_vault_mirror() reuses existing registry rows, validates optional source ids and timestamps, replays source rows through _mirror_source_to_vault(), replays chunk rows through _mirror_chunks_to_vault(), and returns final persisted mirror status counts.",
+        "tests/test_wiki_crud.py::TestWikiImport::test_preexisting_wiki_registry_rows_replay_into_source_vault seeds a registry with mirror_to_source_vault=False, proves source/chunk statuses start as not_mirrored, runs replay, and proves both statuses become mirrored with one source and one chunk.",
+        "The same test proves the replayed Source Vault runtime through /api/knowledge/packages manifest loaded=true, /api/knowledge/source-vault/search ref hit, /api/agent-bridge/resource bounded resource read, and /api/knowledge/context-receipt assembled_context_preview.",
+        "Invoke-WebRequest HEAD https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://www.researchobject.org/ro-crate/specification/1.2/introduction.html -> HTTP 200; https://modelcontextprotocol.io/specification/2025-03-26/server/resources -> HTTP 200.",
+        ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\wiki\\source_registry.py tests\\test_wiki_crud.py -> passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport::test_preexisting_wiki_registry_rows_replay_into_source_vault -q -> 1 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_source_vault.py::test_register_chunks_stores_anchors_sidecar_and_searches tests\\test_knowledge_router.py::test_source_vault_source_edit_rebuilds_hash_ref_resource_and_context_receipt -q -> 2 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport tests\\test_source_vault.py tests\\test_knowledge_router.py::test_knowledge_packages_returns_normalized_registry tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_marks_prompt_context_receipt_proved tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_endpoint_only_claims -q -> 26 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_source_vault_search_returns_refs_only agent_mcp_server\\tests\\test_runtime_tools.py::test_source_vault_read_accepts_only_source_vault_chunk_refs agent_mcp_server\\tests\\test_runtime_tools.py::test_knowledge_context_receipt_posts_bounded_ref_payload -q -> 3 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid after N256 record update.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N256 rollup.",
+        "git diff --check -- literature_assistant/core/wiki/source_registry.py tests/test_wiki_crud.py docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> exit 0; warning only that the goal-state JSON CRLF will be replaced by LF when Git touches it.",
+        "git ls-files -ci --exclude-standard -> no ignored tracked files reported."
+      ],
+      "residual_risk": "This proves deterministic local replay/sync for existing WikiRegistry rows. It does not add a user-facing replay endpoint, does not run live QA/model actual-loading, does not mutate Zotero DB, does not modify github/ references, and does not execute OCR."
     }
   ],
   "changed_files_for_this_slice": [
-    "agent_mcp_server/src/lit_assistant_mcp/result.py",
-    "agent_mcp_server/tests/test_result.py",
+    "literature_assistant/core/wiki/source_registry.py",
+    "tests/test_wiki_crud.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Invoke-WebRequest HEAD https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200; https://modelcontextprotocol.io/specification/2025-06-18/basic -> HTTP 200.",
-    ".\\.venv-1\\Scripts\\python.exe -m py_compile agent_mcp_server\\src\\lit_assistant_mcp\\result.py agent_mcp_server\\tests\\test_result.py -> passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_result.py -q -> 9 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py -q -> 105 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_result.py agent_mcp_server\\tests\\test_runtime_tools.py -q -> 114 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid after N255 record update",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N255 rollup",
-    "git diff --check -- agent_mcp_server/src/lit_assistant_mcp/result.py agent_mcp_server/tests/test_result.py docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> exit 0; warning only that the goal-state JSON CRLF will be replaced by LF when Git touches it",
+    "Invoke-WebRequest HEAD https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://www.researchobject.org/ro-crate/specification/1.2/introduction.html -> HTTP 200; https://modelcontextprotocol.io/specification/2025-03-26/server/resources -> HTTP 200.",
+    ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\wiki\\source_registry.py tests\\test_wiki_crud.py -> passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport::test_preexisting_wiki_registry_rows_replay_into_source_vault -q -> 1 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_source_vault.py::test_register_chunks_stores_anchors_sidecar_and_searches tests\\test_knowledge_router.py::test_source_vault_source_edit_rebuilds_hash_ref_resource_and_context_receipt -q -> 2 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport tests\\test_source_vault.py tests\\test_knowledge_router.py::test_knowledge_packages_returns_normalized_registry tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_marks_prompt_context_receipt_proved tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_endpoint_only_claims -q -> 26 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_source_vault_search_returns_refs_only agent_mcp_server\\tests\\test_runtime_tools.py::test_source_vault_read_accepts_only_source_vault_chunk_refs agent_mcp_server\\tests\\test_runtime_tools.py::test_knowledge_context_receipt_posts_bounded_ref_payload -q -> 3 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid after N256 record update",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N256 rollup",
+    "git diff --check -- literature_assistant/core/wiki/source_registry.py tests/test_wiki_crud.py docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> exit 0; warning only that the goal-state JSON CRLF will be replaced by LF when Git touches it",
     "git ls-files -ci --exclude-standard -> no ignored tracked files reported"
   ],
   "next_authorized_local_actions": [
@@ -7244,10 +7276,10 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N255 proves MCP safe_result keeps oversized tool outputs structured, redacted, explicitly truncated, and within the configured JSON data budget.",
+    "this_slice": "N256 proves preexisting WikiRegistry source/chunk rows can be deterministically replayed into Source Vault and then loaded through manifest, search, bounded resource read, and context receipt.",
     "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N255 proves deterministic local MCP result shaping only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; full wiki replay for preexisting rows remains a separate local slice."
+    "why_not_complete": "N256 proves deterministic local wiki registry replay/sync only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution remains separately gated."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -12936,32 +12968,27 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T23:20:41+08:00",
+    "updated_at": "2026-06-27T23:37:10+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 256,
+    "requirements_total": 257,
     "requirement_status_counts": {
-      "proved": 256
+      "proved": 257
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N255-mcp-safe-result-structured-truncation",
-    "latest_slice_id": "N255-mcp-safe-result-structured-truncation",
+    "latest_requirement_id": "N256-wiki-registry-replay-source-vault-proof",
+    "latest_slice_id": "N256-wiki-registry-replay-source-vault-proof",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
-        "evidence": "N255 proves deterministic local MCP result shaping only; live loading proof still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint."
-      },
-      {
-        "id": "wiki_registry_full_replay_not_implemented",
-        "status": "incomplete",
-        "evidence": "The explicit local Markdown import success path mirrors into Source Vault and is proved by tests; preexisting wiki registry rows still need a separate replay/sync entry before claiming full wiki backfill coverage."
+        "evidence": "N256 proves deterministic local wiki registry replay/sync into Source Vault only; live loading proof still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N255 proves deterministic MCP safe_result structured truncation. The current configured provider still requires authentication for live QA/model actual-loading proof, and preexisting wiki registry replay remains a separate local slice."
+    "why_not_complete": "N256 proves deterministic preexisting wiki registry replay/sync into Source Vault. The current configured provider still requires authentication for live QA/model actual-loading proof, and OCR execution remains separately gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -17603,6 +17630,66 @@
     "next_actions": [
       "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
       "Continue Knowledge Runtime Pipeline work with deterministic replay/sync coverage for preexisting wiki registry rows or another local knowledge family.",
+      "Keep live QA/model actual-loading blocked until provider preflight is proved; keep OCR execution behind confirm_execution=true and explicit local/remote upload boundaries.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
+    ]
+  },
+  "n256_wiki_registry_replay_source_vault_proof_slice": {
+    "id": "N256-wiki-registry-replay-source-vault-proof",
+    "status": "proved",
+    "summary": "N256 adds deterministic replay/sync coverage for preexisting WikiRegistry rows by replaying stored source/chunk rows into Source Vault and proving manifest, search, bounded resource read, and context receipt without requiring a fresh wiki import.",
+    "rollback_checkpoint_id": "n256-wiki-registry-replay-20260627_233341",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n256-wiki-registry-replay-20260627_233341",
+    "mature_references_checked": [
+      {
+        "topic": "N256 provenance-preserving replay",
+        "source": "W3C PROV Overview",
+        "url": "https://www.w3.org/TR/prov-overview/",
+        "status": "Official reference checked on 2026-06-27 before implementation",
+        "checked_at": "2026-06-27T23:30:00+08:00",
+        "use_in_slice": "Used to preserve source rows, replay activity, Source Vault entities, and context receipt proof as separate evidence. No external code copied."
+      },
+      {
+        "topic": "N256 research object metadata boundary",
+        "source": "RO-Crate specification introduction",
+        "url": "https://www.researchobject.org/ro-crate/specification/1.2/introduction.html",
+        "status": "Mature reference checked on 2026-06-27 before implementation",
+        "checked_at": "2026-06-27T23:30:00+08:00",
+        "use_in_slice": "Used as the metadata-with-data principle for replayed Source Vault manifest/hash/ref/resource evidence. No external implementation copied."
+      },
+      {
+        "topic": "N256 bounded resource read boundary",
+        "source": "Model Context Protocol resources specification",
+        "url": "https://modelcontextprotocol.io/specification/2025-03-26/server/resources",
+        "status": "Official reference checked on 2026-06-27 before implementation",
+        "checked_at": "2026-06-27T23:30:00+08:00",
+        "use_in_slice": "Used to keep replay proof tied to read-only ref/resource semantics for agent-facing Source Vault refs. No external code copied."
+      }
+    ],
+    "changed_files": [
+      "literature_assistant/core/wiki/source_registry.py",
+      "tests/test_wiki_crud.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification_commands": [
+      "git status --short --branch -> main...origin/main [ahead 85] clean after N255 commit.",
+      "Created targeted rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n256-wiki-registry-replay-20260627_233341 for source_registry.py, test_wiki_crud.py, and this goal-state JSON.",
+      "Invoke-WebRequest HEAD https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://www.researchobject.org/ro-crate/specification/1.2/introduction.html -> HTTP 200; https://modelcontextprotocol.io/specification/2025-03-26/server/resources -> HTTP 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\wiki\\source_registry.py tests\\test_wiki_crud.py -> passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport::test_preexisting_wiki_registry_rows_replay_into_source_vault -q -> 1 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_source_vault.py::test_register_chunks_stores_anchors_sidecar_and_searches tests\\test_knowledge_router.py::test_source_vault_source_edit_rebuilds_hash_ref_resource_and_context_receipt -q -> 2 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport tests\\test_source_vault.py tests\\test_knowledge_router.py::test_knowledge_packages_returns_normalized_registry tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_marks_prompt_context_receipt_proved tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_endpoint_only_claims -q -> 26 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_source_vault_search_returns_refs_only agent_mcp_server\\tests\\test_runtime_tools.py::test_source_vault_read_accepts_only_source_vault_chunk_refs agent_mcp_server\\tests\\test_runtime_tools.py::test_knowledge_context_receipt_posts_bounded_ref_payload -q -> 3 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid after N256 record update",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N256 rollup",
+      "git diff --check -- literature_assistant/core/wiki/source_registry.py tests/test_wiki_crud.py docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> exit 0; warning only that the goal-state JSON CRLF will be replaced by LF when Git touches it",
+      "git ls-files -ci --exclude-standard -> no ignored tracked files reported"
+    ],
+    "decision": "Add an explicit WikiRegistry replay method that reuses the existing Source Vault mirror functions and returns persisted status counts, instead of creating a second importer, seeding fake Source Vault rows, or changing the live provider gate.",
+    "residual_risk": "This proves local deterministic replay/sync for stored WikiRegistry rows only. It does not add an HTTP/UI trigger, run live QA/model actual-loading, mutate Zotero DB, modify github/ references, upload content, or execute OCR.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
+      "Continue KRT with another local knowledge family or agent-facing recovery surface that strengthens source-to-context proof without live provider claims.",
       "Keep live QA/model actual-loading blocked until provider preflight is proved; keep OCR execution behind confirm_execution=true and explicit local/remote upload boundaries.",
       "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
     ]

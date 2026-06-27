@@ -91,6 +91,21 @@ class ChunkInput:
     span_end: int | None = None
 
 
+@dataclass(frozen=True)
+class SourceVaultReplayReport:
+    """Replay summary for preexisting Wiki registry rows.
+
+    The status maps are keyed by persisted Source Vault mirror statuses such as
+    ``mirrored`` or ``blocked`` so callers can block on incomplete sync without
+    inferring success from row counts alone.
+    """
+
+    source_count: int
+    chunk_count: int
+    source_status_counts: dict[str, int]
+    chunk_status_counts: dict[str, int]
+
+
 def sha256_text(value: str) -> str:
     """Hash non-empty text with SHA-256."""
 
@@ -316,6 +331,81 @@ class WikiRegistry:
         if self._mirror_to_source_vault:
             self._mirror_chunks_to_vault(source_id, source_hash, chunk_list, legacy_to_index, now_iso=now_iso)
         return inserted
+
+    def replay_source_vault_mirror(
+        self,
+        *,
+        source_ids: Iterable[str] | None = None,
+        now_iso: str | None = None,
+    ) -> SourceVaultReplayReport:
+        """Replay existing Wiki registry rows into Source Vault.
+
+        Args:
+            source_ids: Optional explicit source ids. When omitted, all registry
+                sources are replayed in registry order.
+            now_iso: Optional stable timestamp used for deterministic tests.
+
+        Returns:
+            Counts for visited sources/chunks and their final mirror statuses.
+        """
+
+        replayed_at = now_iso or utc_now_iso()
+        if not isinstance(replayed_at, str) or not replayed_at.strip():
+            raise ValueError("now_iso cannot be empty")
+
+        if source_ids is None:
+            sources = self.list_sources()
+        else:
+            requested_ids = list(source_ids)
+            if any(not isinstance(source_id, str) or not source_id.strip() for source_id in requested_ids):
+                raise ValueError("source_ids must contain non-empty strings")
+            sources = [source for source_id in requested_ids if (source := self.get_source(source_id)) is not None]
+
+        source_status_counts: dict[str, int] = {}
+        chunk_status_counts: dict[str, int] = {}
+        chunk_count = 0
+        for source in sources:
+            self._mirror_source_to_vault(source, now_iso=replayed_at)
+            source_status = self.get_source_vault_mirror_status(source.source_id)["status"]
+            _increment_count(source_status_counts, source_status)
+
+            chunk_rows = self.get_chunks_by_source(source.source_id)
+            chunk_inputs: list[ChunkInput] = []
+            legacy_to_index: dict[str, int] = {}
+            for row in chunk_rows:
+                chunk_index = int(row["chunk_index"])
+                legacy_chunk_id = str(row["chunk_id"])
+                chunk_inputs.append(
+                    ChunkInput(
+                        text=str(row["text"]),
+                        chunk_index=chunk_index,
+                        page=row["page"] if isinstance(row["page"], str) else None,
+                        section=row["section"] if isinstance(row["section"], str) else None,
+                        span_start=row["span_start"] if isinstance(row["span_start"], int) else None,
+                        span_end=row["span_end"] if isinstance(row["span_end"], int) else None,
+                    )
+                )
+                legacy_to_index[legacy_chunk_id] = chunk_index
+
+            if chunk_inputs:
+                self._mirror_chunks_to_vault(
+                    source.source_id,
+                    source.source_hash,
+                    chunk_inputs,
+                    legacy_to_index,
+                    now_iso=replayed_at,
+                )
+            for legacy_chunk_id in legacy_to_index:
+                chunk_status = self.get_source_vault_chunk_mirror_status(legacy_chunk_id)["status"]
+                _increment_count(chunk_status_counts, chunk_status)
+            chunk_count += len(chunk_inputs)
+
+        return SourceVaultReplayReport(
+            source_count=len(sources),
+            chunk_count=chunk_count,
+            source_status_counts=source_status_counts,
+            chunk_status_counts=chunk_status_counts,
+        )
 
     def get_chunks_by_source(self, source_id: str) -> list[dict[str, object]]:
         """Return legacy chunk rows, including Source Vault chunk ids when known."""
@@ -561,6 +651,10 @@ class WikiRegistry:
 
 def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
     return {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table_name})")}
+
+
+def _increment_count(counts: dict[str, int], key: str) -> None:
+    counts[key] = counts.get(key, 0) + 1
 
 
 def _safe_vault_source_id(source_hash: str) -> str | None:

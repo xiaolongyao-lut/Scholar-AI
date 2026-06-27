@@ -914,6 +914,125 @@ class TestWikiImport:
         finally:
             app.dependency_overrides.pop(knowledge_router.get_source_vault, None)
 
+    def test_preexisting_wiki_registry_rows_replay_into_source_vault(self, client, tmp_path):
+        """Replay mode syncs old registry rows into the Source Vault runtime chain."""
+        import routers.agent_bridge_router as agent_bridge_router
+        import routers.knowledge_router as knowledge_router
+        from wiki.source_registry import ChunkInput, SourceRecord, WikiRegistry, derive_chunk_id, derive_source_id
+        from source_vault import SourceVault
+
+        source = tmp_path / "legacy-source.md"
+        source.write_text("# Legacy Source\n\nLegacy replay body for Source Vault.", encoding="utf-8")
+        source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        source_id = derive_source_id("local_markdown_import", "Legacy Source", source_hash)
+        legacy_chunk_id = derive_chunk_id(source_hash, 0)
+        vault = SourceVault(
+            db_path=tmp_path / "source_vault" / "source_vault.sqlite3",
+            storage_root=tmp_path / "source_vault",
+        )
+        registry = WikiRegistry(
+            tmp_path / "runtime" / "wiki.db",
+            source_vault=vault,
+            mirror_to_source_vault=False,
+        )
+        registry.upsert_source(
+            SourceRecord(
+                source_id=source_id,
+                source_type="local_markdown_import",
+                title="Legacy Source",
+                source_hash=source_hash,
+                source_path=source,
+            ),
+            now_iso="2026-06-27T23:34:00+00:00",
+        )
+        registry.register_chunks(
+            source_id,
+            source_hash,
+            [
+                ChunkInput(
+                    text="Legacy replay body for Source Vault.",
+                    chunk_index=0,
+                    section="legacy/synthesis.md",
+                    span_start=17,
+                    span_end=54,
+                )
+            ],
+            now_iso="2026-06-27T23:34:00+00:00",
+        )
+        assert registry.get_source_vault_mirror_status(source_id)["status"] == "not_mirrored"
+        assert registry.get_source_vault_chunk_mirror_status(legacy_chunk_id)["status"] == "not_mirrored"
+
+        report = registry.replay_source_vault_mirror(now_iso="2026-06-27T23:35:00+00:00")
+
+        assert report.source_count == 1
+        assert report.chunk_count == 1
+        assert report.source_status_counts == {"mirrored": 1}
+        assert report.chunk_status_counts == {"mirrored": 1}
+        source_vault_source_id = registry.get_source_vault_id(source_id)
+        source_vault_chunk_id = registry.get_source_vault_chunk_id(legacy_chunk_id)
+        assert source_vault_source_id is not None
+        assert source_vault_chunk_id is not None
+        source_vault_ref_id = f"source_vault:chunk:{source_vault_chunk_id}"
+        headers = {"X-LitAssist-Capability": get_local_api_capability_token()}
+
+        app.dependency_overrides[knowledge_router.get_source_vault] = lambda: vault
+        try:
+            with patch("routers.agent_bridge_router.SourceVault", lambda: vault), patch(
+                "routers.knowledge_router._agent_bridge_router.SourceVault", lambda: vault
+            ):
+                packages_response = client.get("/api/knowledge/packages", headers=headers)
+                assert packages_response.status_code == 200
+                source_vault_package = {
+                    package["package_id"]: package
+                    for package in packages_response.json()["packages"]
+                }["source_vault"]
+                assert source_vault_package["loaded"] is True
+                assert source_vault_package["manifest"]["empty_runtime"] is False
+                assert source_vault_package["manifest"]["total_sources"] == 1
+                assert source_vault_package["manifest"]["loaded_ref_count"] == 1
+
+                source_vault_search = client.get(
+                    "/api/knowledge/source-vault/search",
+                    params={"q": "Legacy replay body", "limit": 1},
+                    headers=headers,
+                )
+                assert source_vault_search.status_code == 200
+                source_vault_hit = source_vault_search.json()["results"][0]
+                assert source_vault_hit["ref_id"] == source_vault_ref_id
+                assert source_vault_hit["source_id"] == source_vault_source_id
+                assert source_vault_hit["metadata"]["legacy_store"] == "wiki_chunks"
+                assert source_vault_hit["metadata"]["legacy_source_id"] == source_id
+
+                resource_response = client.get(
+                    f"/api/agent-bridge/resource/{source_vault_ref_id}",
+                    params={"max_chars": 200},
+                    headers=headers,
+                )
+                assert resource_response.status_code == 200
+                resource_payload = resource_response.json()
+                assert resource_payload["kind"] == "source_vault"
+                assert "Legacy replay body for Source Vault." in resource_payload["content"]
+                assert resource_payload["metadata"]["legacy_source_id"] == source_id
+
+                receipt_response = client.post(
+                    "/api/knowledge/context-receipt",
+                    json={
+                        "ref_ids": [source_vault_ref_id],
+                        "prompt_name": "wiki_registry_replay_source_vault_proof",
+                        "max_chars_per_ref": 200,
+                    },
+                    headers=headers,
+                )
+                assert receipt_response.status_code == 200
+                receipt_payload = receipt_response.json()
+                assert "Legacy replay body for Source Vault." in receipt_payload["assembled_context_preview"]
+                receipt = receipt_payload["resource_read_receipts"][0]
+                assert receipt["ref_id"] == source_vault_ref_id
+                assert receipt["kind"] == "source_vault"
+                assert receipt["metadata"]["legacy_source_id"] == source_id
+        finally:
+            app.dependency_overrides.pop(knowledge_router.get_source_vault, None)
+
 
 class TestWikiServiceCRUD:
     """G2: WikiService CRUD methods."""
