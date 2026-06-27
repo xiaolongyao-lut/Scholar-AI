@@ -259,6 +259,7 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
         missing: ['authorized live provider smoke artifact with verdict=ok'],
         validation_errors: [],
         required_checks: [
+          'artifact.generated_at.utc_aware',
           'artifact.verdict.ok',
           'artifact.chat_evidence.required_tools',
           'artifact.receipt_hash.final_answer',
@@ -404,6 +405,7 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
     expect(parsed.actual_loading_gate.verdict).toBe('missing_artifact');
     expect(parsed.actual_loading_gate.missing).toEqual(['authorized live provider smoke artifact with verdict=ok']);
     expect(parsed.actual_loading_gate.validation_errors).toEqual([]);
+    expect(parsed.actual_loading_gate.required_checks).toContain('artifact.generated_at.utc_aware');
     expect(parsed.actual_loading_gate.required_checks).toContain('artifact.receipt_hash.final_answer');
     expect(parsed.actual_loading_gate.next_safe_local_actions[0]).toBe(
       'Require provider_preflight.status=proved before running live context-receipt smoke.',

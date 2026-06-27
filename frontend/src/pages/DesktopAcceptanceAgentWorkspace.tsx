@@ -1036,6 +1036,7 @@ const ACCEPTANCE_KNOWLEDGE_RUNTIME: KnowledgeRuntimeConformanceResponse = {
     validation_errors: [],
     required_checks: [
       'artifact.schema.valid',
+      'artifact.generated_at.utc_aware',
       'artifact.verdict.ok',
       'artifact.status_code.200',
       'artifact.required_tools.used',

@@ -309,6 +309,7 @@ function knowledgeRuntimeFixture(): KnowledgeRuntimeConformanceResponse {
       validation_errors: [],
       required_checks: [
         'artifact.schema.valid',
+        'artifact.generated_at.utc_aware',
         'artifact.verdict.ok',
         'artifact.status_code.200',
         'artifact.required_tools.used',
@@ -1048,10 +1049,10 @@ describe('AgentWorkspace', () => {
     expect(within(knowledgeRegion).getByText('proved 1')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('live gate blocked')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('Actual loading gate')).toBeInTheDocument();
-    expect(within(knowledgeRegion).getByText('missing_artifact · evidence 0 · missing 2 · errors 0 · checks 9')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('missing_artifact · evidence 0 · missing 2 · errors 0 · checks 10')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('contract scholar-ai-live-context-receipt-smoke/v1')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('validation errors 0')).toBeInTheDocument();
-    expect(within(knowledgeRegion).getByText('required checks 9')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('required checks 10')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('recovery blocked_provider_preflight_and_missing_live_smoke')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('recovery read-only true')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('blocked by 2')).toBeInTheDocument();
@@ -1062,8 +1063,8 @@ describe('AgentWorkspace', () => {
     expect(within(knowledgeRegion).getByText('preflight records 1')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('live smoke required')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('check artifact.schema.valid')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('check artifact.generated_at.utc_aware')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('check artifact.verdict.ok')).toBeInTheDocument();
-    expect(within(knowledgeRegion).getByText('check artifact.status_code.200')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('recovery blocker provider_preflight:blocked:auth_required')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('recovery blocker live_smoke:missing_artifact')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('recovery ref conformance_endpoint GET · read_only · blocked')).toBeInTheDocument();

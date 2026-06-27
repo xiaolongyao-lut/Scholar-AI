@@ -392,6 +392,7 @@ def test_knowledge_runtime_conformance_uses_read_only_endpoint(
                 "validation_errors": [],
                 "required_checks": [
                     "artifact.schema.valid",
+                    "artifact.generated_at.utc_aware",
                     "artifact.verdict.ok",
                     "artifact.status_code.200",
                     "artifact.required_tools.used",
@@ -519,7 +520,8 @@ def test_knowledge_runtime_conformance_uses_read_only_endpoint(
     assert gate["verdict"] == "missing_artifact"
     assert gate["artifact_contract"] == "scholar-ai-live-context-receipt-smoke/v1"
     assert gate["validation_errors"] == []
-    assert len(gate["required_checks"]) == 9
+    assert len(gate["required_checks"]) == 10
+    assert "artifact.generated_at.utc_aware" in gate["required_checks"]
     assert "artifact.direct_receipt.assembled_context_hash" in gate["required_checks"]
     assert "authorized live provider smoke artifact with verdict=ok" in gate["missing"]
     assert gate["next_safe_local_actions"][0] == (
