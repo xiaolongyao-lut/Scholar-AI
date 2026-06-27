@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from collections import Counter
 import json
 import re
@@ -22,6 +23,15 @@ WIKI_EVAL_SMOKE_VISIBLE_FIXTURES = (
 )
 WIKI_GRAPH_DOCTOR_LOCAL_ONLY_PROBE = (
     "workspace_tests/fixtures/wiki_graph_doctor_smoke/pages/concepts/alpha-model.md"
+)
+KNOWLEDGE_RUNTIME_PACKAGE_KINDS = (
+    "wiki",
+    "source_vault",
+    "academic_english",
+    "bridge_lexicon",
+    "skill_package",
+    "config",
+    "product_docs",
 )
 
 PYTHON_TEST_RE = re.compile(r"(?P<path>(?:tests|agent_mcp_server/tests)/[A-Za-z0-9_./-]+\.py)")
@@ -231,6 +241,48 @@ def _format_paths(paths: set[str]) -> str:
     return "\n".join(f"- {path}" for path in sorted(paths))
 
 
+def _python_test_selectors(path: Path) -> set[str]:
+    """Return function and class-scoped pytest selectors declared in a file."""
+    tree = ast.parse(_read_text(path), filename=str(path))
+    selectors: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
+            selectors.add(node.name)
+        if isinstance(node, ast.ClassDef):
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name.startswith("test_"):
+                    selectors.add(f"{node.name}::{child.name}")
+    return selectors
+
+
+def _knowledge_runtime_test_nodes() -> set[str]:
+    """Return static Knowledge Runtime focused-test evidence node ids."""
+    from literature_assistant.core.routers import knowledge_router
+
+    nodes: set[str] = set()
+    for kind in KNOWLEDGE_RUNTIME_PACKAGE_KINDS:
+        evidence = knowledge_router._test_evidence_for_package(  # noqa: SLF001 - contract test for public evidence.
+            knowledge_router.KnowledgePackageProjectionResponse(
+                package_id=f"{kind}:ci-proof" if kind in {"skill_package", "config"} else kind,
+                kind=kind,
+                title=kind,
+                source_label="ci-proof",
+                status="loaded",
+                available=True,
+                loaded=True,
+                manifest_loaded=True,
+                source_path="ci-proof",
+                source_hash="a" * 64,
+                content_hash="b" * 64,
+                updated_at="2026-06-27T00:00:00Z",
+                read_endpoint="/api/agent-bridge/resource/ci-proof",
+                manifest={},
+            )
+        )
+        nodes.update(evidence.test_nodes)
+    return nodes
+
+
 def test_focused_ci_paths_exist() -> None:
     """Focused CI entries must point at real test files."""
     missing = {path for path in _focused_ci_tests() if not (REPO_ROOT / path).is_file()}
@@ -292,6 +344,30 @@ def test_selected_workspace_fixtures_are_path_explicit() -> None:
         assert (REPO_ROOT / path).is_file()
         assert not _is_git_ignored(path)
     assert _is_git_ignored(WIKI_GRAPH_DOCTOR_LOCAL_ONLY_PROBE)
+
+
+def test_knowledge_runtime_test_evidence_nodes_resolve() -> None:
+    """KRT focused-test evidence must point at real pytest node ids."""
+    missing_files: set[str] = set()
+    missing_selectors: set[str] = set()
+    for node_id in _knowledge_runtime_test_nodes():
+        path_text, separator, selector = node_id.partition("::")
+        if not separator or not selector:
+            missing_selectors.add(node_id)
+            continue
+        path = REPO_ROOT / _normalize_path(path_text)
+        if not path.is_file():
+            missing_files.add(path_text)
+            continue
+        selectors = _python_test_selectors(path)
+        if selector not in selectors:
+            missing_selectors.add(node_id)
+
+    assert not missing_files, "Knowledge Runtime test evidence references missing files:\n" + _format_paths(missing_files)
+    assert not missing_selectors, (
+        "Knowledge Runtime test evidence references missing pytest selectors:\n"
+        + _format_paths(missing_selectors)
+    )
 
 
 def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> None:
