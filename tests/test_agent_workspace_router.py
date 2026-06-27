@@ -285,6 +285,7 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert [probe["label"] for probe in probes] == [
         "Desktop Smoke Evidence",
         "OCR Runtime Status",
+        "Wiki Doctor",
         "Workflow Passport",
         "Evidence Integrity Gate",
         "Research Action Lifecycle",
@@ -302,6 +303,11 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert ocr_probe["mcp_tool"] == "literature.ocr_status"
     assert "OCR policy" in ocr_probe["purpose"]
     assert "readiness blockers" in ocr_probe["purpose"]
+    wiki_doctor_probe = next(probe for probe in probes if probe["label"] == "Wiki Doctor")
+    assert wiki_doctor_probe["route"] == "/api/wiki/doctor"
+    assert wiki_doctor_probe["mcp_tool"] == "literature.wiki_doctor"
+    assert "wiki integrity diagnostics" in wiki_doctor_probe["purpose"]
+    assert "Source Vault mirror backlog" in wiki_doctor_probe["purpose"]
     handoff_probe = next(probe for probe in probes if probe["label"] == "Agent Handoff Card")
     assert handoff_probe["route"] == "/runtime/job/{job_id}/agent-handoff-card"
     assert handoff_probe["requires_identifier"] is True

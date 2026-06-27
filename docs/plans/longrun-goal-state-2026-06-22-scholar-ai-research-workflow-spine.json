@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-28T00:20:00+08:00",
+  "updated_at": "2026-06-28T00:30:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,21 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "n258-mcp-wiki-doctor-closeout-20260628_001244",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n258-mcp-wiki-doctor-closeout-20260628_001244",
-    "latest_goal_state_checkpoint_id": "n258-mcp-wiki-doctor-closeout-20260628_001244",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n258-mcp-wiki-doctor-closeout-20260628_001244",
-    "latest_checkpoint_caveat": "Targeted rollback snapshot for N258 read-only MCP wiki doctor diagnostics, capability map/tests, and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "n259-agent-workspace-wiki-doctor-probe-20260628_002307",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n259-agent-workspace-wiki-doctor-probe-20260628_002307",
+    "latest_goal_state_checkpoint_id": "n259-agent-workspace-wiki-doctor-probe-20260628_002307",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n259-agent-workspace-wiki-doctor-probe-20260628_002307",
+    "latest_checkpoint_caveat": "Targeted rollback snapshot for N259 Agent Workspace Wiki Doctor recovery probe, focused tests, and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N259 Agent Workspace Wiki Doctor recovery probe",
+      "source": "Model Context Protocol tools specification; FastAPI response-model filtering; Testing Library visible-query guidance; W3C PROV entity/activity provenance; Google SRE monitoring stale state visibility",
+      "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools ; https://fastapi.tiangolo.com/tutorial/response-model/ ; https://testing-library.com/docs/queries/about/ ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+      "status": "Official/mature references checked on 2026-06-28 before implementation",
+      "checked_at": "2026-06-28T00:23:07+08:00",
+      "use_in_slice": "Used to expose the existing read-only Wiki Doctor/MCP diagnostic as an Agent Workspace recovery probe without adding replay, auto-repair, write controls, upload, live provider execution, or external implementation code."
+    },
     {
       "topic": "N258 MCP wiki doctor recovery surface",
       "source": "Model Context Protocol tools specification; W3C PROV entity/activity provenance; Google SRE monitoring stale state visibility",
@@ -7297,30 +7305,46 @@
         "Invoke-WebRequest HEAD https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200; https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> HTTP 200."
       ],
       "residual_risk": "This is a read-only MCP recovery surface only. It does not add a replay/write/auto-repair tool, does not mutate Source Vault or Zotero DB, does not modify github/ references, does not run live QA/model actual-loading, and does not execute OCR."
+    },
+    {
+      "id": "N259-agent-workspace-wiki-doctor-recovery-probe",
+      "requirement": "Agent Workspace must list Wiki Doctor as a first-class read-only recovery probe paired with literature.wiki_doctor, so resumed agents can discover wiki integrity diagnostics and Source Vault mirror backlog from the local workspace state without guessing route/tool names.",
+      "source": "Post-N258 recovery visibility audit. N258 registered literature.wiki_doctor through MCP, but /api/agent-workspace/status still omitted Wiki Doctor from workspace_state.recovery_probes and the frontend summary only showed the first six probes.",
+      "status": "proved",
+      "evidence": [
+        "literature_assistant/core/routers/agent_workspace_router.py adds a Wiki Doctor recovery probe for /api/wiki/doctor with mcp_tool=literature.wiki_doctor and updates next_safe_local_actions to read Wiki Doctor before mutating workflow work.",
+        "tests/test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit proves the typed workspace_state.recovery_probes list includes Wiki Doctor, route=/api/wiki/doctor, mcp_tool=literature.wiki_doctor, and Source Vault mirror backlog purpose text.",
+        "frontend/src/pages/AgentWorkspace.tsx expands the workspace recovery probe summary from 6 to 8 entries so the new Wiki Doctor probe is visible without hiding Agent Handoff Card.",
+        "frontend/src/pages/AgentWorkspace.test.tsx fixture and assertions prove the visible Agent Workspace summary includes Wiki Doctor · read-only true · literature.wiki_doctor.",
+        "Created rollback checkpoint C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n259-agent-workspace-wiki-doctor-probe-20260628_002307 before N259 edits.",
+        "Invoke-WebRequest HEAD https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200; https://fastapi.tiangolo.com/tutorial/response-model/ -> HTTP 200; https://testing-library.com/docs/queries/about/ -> HTTP 200; https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> HTTP 200.",
+        ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py -> passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 7 passed.",
+        "cd frontend; npm run test -- AgentWorkspace.test.tsx --run -> 2 files passed, 8 tests passed.",
+        "cd frontend; npm run build -> passed."
+      ],
+      "residual_risk": "This proves Agent Workspace recovery visibility only. It does not add a replay/write/auto-repair tool, does not mutate Source Vault or Zotero DB, does not modify github/ references, does not run live QA/model actual-loading, and does not execute OCR."
     }
   ],
   "changed_files_for_this_slice": [
-    "agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py",
-    "agent_mcp_server/src/lit_assistant_mcp/server.py",
-    "agent_mcp_server/tests/test_runtime_tools.py",
-    "agent_mcp_server/tests/test_server.py",
-    "agent_mcp_server/CAPABILITY_MAP.md",
+    "literature_assistant/core/routers/agent_workspace_router.py",
+    "tests/test_agent_workspace_router.py",
+    "frontend/src/pages/AgentWorkspace.tsx",
+    "frontend/src/pages/AgentWorkspace.test.tsx",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "git status --short --branch -> main...origin/main [ahead 87] with only N258 MCP wiki doctor files and this goal-state JSON dirty.",
-    "Created targeted rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n258-mcp-wiki-doctor-closeout-20260628_001244 for MCP runtime/server/tests, capability map, and this goal-state JSON.",
-    "Invoke-WebRequest HEAD https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200; https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> HTTP 200.",
-    ".\\.venv-1\\Scripts\\python.exe -m py_compile agent_mcp_server\\src\\lit_assistant_mcp\\tools\\runtime.py agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_runtime_tools.py agent_mcp_server\\tests\\test_server.py -> passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_wiki_doctor_uses_read_only_doctor_endpoint agent_mcp_server\\tests\\test_server.py::test_server_registers_source_and_runtime_tools agent_mcp_server\\tests\\test_server.py::test_capability_map_covers_registered_tools_and_is_source_readable -q -> 3 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed",
-    "git diff --check -- agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py agent_mcp_server/src/lit_assistant_mcp/server.py agent_mcp_server/tests/test_runtime_tools.py agent_mcp_server/tests/test_server.py agent_mcp_server/CAPABILITY_MAP.md docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> exit 0; warning only that the goal-state JSON CRLF will be replaced by LF when Git touches it",
-    "git ls-files -ci --exclude-standard -> no ignored tracked files reported"
+    "git status --short --branch -> main...origin/main [ahead 88] clean before N259 edits.",
+    "Created targeted rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n259-agent-workspace-wiki-doctor-probe-20260628_002307 for Agent Workspace backend/frontend tests and this goal-state JSON.",
+    "Invoke-WebRequest HEAD https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200; https://fastapi.tiangolo.com/tutorial/response-model/ -> HTTP 200; https://testing-library.com/docs/queries/about/ -> HTTP 200; https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> HTTP 200.",
+    ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py -> passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 7 passed",
+    "cd frontend; npm run test -- AgentWorkspace.test.tsx --run -> 2 files passed, 8 tests passed",
+    "cd frontend; npm run build -> passed"
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
-    "Continue Knowledge Runtime Pipeline source-to-context proof work by proving another local knowledge family through builder/manifest/retrieval/resource/context tests without external upload, or add an explicit guarded local replay action if a future slice authorizes Source Vault mutation.",
+    "Continue Knowledge Runtime Pipeline source-to-context proof work by proving another local knowledge family through builder/manifest/retrieval/resource/context tests without external upload, or deepen Agent Workspace recovery visibility for existing read-only diagnostics.",
     "If provider credentials are corrected, first rerun /api/chat/tool-capability/test and require provider_preflight.status=proved before any live context-receipt smoke; then require generatedAt and last_probe_at to be timezone-aware and ordered.",
     "Continue OCR provider-readiness/configuration contract work only when it avoids uploading user content and keeps runtime artifacts local.",
     "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
@@ -7332,10 +7356,10 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N258 exposes the existing Wiki Doctor and Source Vault mirror backlog diagnostics through a registered read-only MCP tool.",
+    "this_slice": "N259 exposes Wiki Doctor and literature.wiki_doctor as a visible read-only Agent Workspace recovery probe.",
     "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N258 proves a local read-only MCP recovery surface only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution remains separately gated."
+    "why_not_complete": "N259 proves local Agent Workspace recovery visibility for Wiki Doctor only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution remains separately gated."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -13024,27 +13048,27 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-28T00:20:00+08:00",
+    "updated_at": "2026-06-28T00:30:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 259,
+    "requirements_total": 260,
     "requirement_status_counts": {
-      "proved": 259
+      "proved": 260
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N258-mcp-wiki-doctor-recovery-surface",
-    "latest_slice_id": "N258-mcp-wiki-doctor-recovery-surface",
+    "latest_requirement_id": "N259-agent-workspace-wiki-doctor-recovery-probe",
+    "latest_slice_id": "N259-agent-workspace-wiki-doctor-recovery-probe",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
-        "evidence": "N258 proves deterministic local MCP access to Wiki Doctor mirror backlog diagnostics only; live loading proof still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint."
+        "evidence": "N259 proves deterministic local Agent Workspace visibility for the Wiki Doctor recovery probe only; live loading proof still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N258 proves deterministic read-only MCP recovery visibility for Wiki Doctor diagnostics. The current configured provider still requires authentication for live QA/model actual-loading proof, and OCR execution remains separately gated."
+    "why_not_complete": "N259 proves deterministic read-only Agent Workspace recovery visibility for Wiki Doctor diagnostics. The current configured provider still requires authentication for live QA/model actual-loading proof, and OCR execution remains separately gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -17866,6 +17890,71 @@
     "next_actions": [
       "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
       "Continue KRT with another local knowledge family through builder/manifest/retrieval/resource/context tests, or separately authorize an explicit guarded replay action if Source Vault mutation is desired.",
+      "Keep live QA/model actual-loading blocked until provider preflight is proved; keep OCR execution behind confirm_execution=true and explicit local/remote upload boundaries.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
+    ]
+  },
+  "n259_agent_workspace_wiki_doctor_recovery_probe_slice": {
+    "id": "N259-agent-workspace-wiki-doctor-recovery-probe",
+    "status": "proved",
+    "summary": "N259 lists Wiki Doctor as a read-only Agent Workspace recovery probe paired with literature.wiki_doctor, so resumed agents can discover wiki integrity and Source Vault mirror backlog diagnostics from /api/agent-workspace/status.",
+    "rollback_checkpoint_id": "n259-agent-workspace-wiki-doctor-probe-20260628_002307",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n259-agent-workspace-wiki-doctor-probe-20260628_002307",
+    "mature_references_checked": [
+      {
+        "topic": "N259 MCP read-only recovery tool boundary",
+        "source": "Model Context Protocol tools specification",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+        "status": "Official reference checked on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T00:23:07+08:00",
+        "use_in_slice": "Used to keep literature.wiki_doctor exposed as an existing read-only tool reference, not a new write/replay command. No external code copied."
+      },
+      {
+        "topic": "N259 FastAPI typed response boundary",
+        "source": "FastAPI response model documentation",
+        "url": "https://fastapi.tiangolo.com/tutorial/response-model/",
+        "status": "Official reference checked on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T00:23:07+08:00",
+        "use_in_slice": "Used to keep Agent Workspace recovery probes response-model validated through the existing typed route. No external implementation copied."
+      },
+      {
+        "topic": "N259 frontend visible recovery assertion",
+        "source": "Testing Library query documentation",
+        "url": "https://testing-library.com/docs/queries/about/",
+        "status": "Official reference checked on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T00:23:07+08:00",
+        "use_in_slice": "Used to prove the recovery probe is visible to the user/agent-facing UI through text assertions, not only present in fixtures. No external code copied."
+      },
+      {
+        "topic": "N259 provenance and stale-state visibility",
+        "source": "W3C PROV Overview and Google SRE monitoring distributed systems",
+        "url": "https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+        "status": "Official/mature references checked on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T00:23:07+08:00",
+        "use_in_slice": "Used to keep wiki/source-vault backlog recovery as visible diagnostic state instead of hidden, auto-repaired, or treated as live loading proof."
+      }
+    ],
+    "changed_files": [
+      "literature_assistant/core/routers/agent_workspace_router.py",
+      "tests/test_agent_workspace_router.py",
+      "frontend/src/pages/AgentWorkspace.tsx",
+      "frontend/src/pages/AgentWorkspace.test.tsx",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification_commands": [
+      "git status --short --branch -> main...origin/main [ahead 88] clean before N259 edits.",
+      "Created targeted rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n259-agent-workspace-wiki-doctor-probe-20260628_002307 for Agent Workspace backend/frontend tests and this goal-state JSON.",
+      "Invoke-WebRequest HEAD https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200; https://fastapi.tiangolo.com/tutorial/response-model/ -> HTTP 200; https://testing-library.com/docs/queries/about/ -> HTTP 200; https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> HTTP 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py -> passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 7 passed",
+      "cd frontend; npm run test -- AgentWorkspace.test.tsx --run -> 2 files passed, 8 tests passed",
+      "cd frontend; npm run build -> passed"
+    ],
+    "decision": "Reuse the existing /api/wiki/doctor REST endpoint and N258 literature.wiki_doctor MCP tool as a recovery probe in Agent Workspace, expanding the visible recovery probe summary to eight entries so Wiki Doctor and Agent Handoff Card are both visible.",
+    "residual_risk": "This proves Agent Workspace recovery visibility only. It does not replay wiki registry rows, mutate Source Vault, add write/auto-repair behavior, run live QA/model actual-loading, mutate Zotero DB, modify github/ references, upload content, or execute OCR.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
+      "Continue KRT with another local knowledge family through builder/manifest/retrieval/resource/context tests, or deepen Agent Workspace recovery visibility for existing read-only diagnostics.",
       "Keep live QA/model actual-loading blocked until provider preflight is proved; keep OCR execution behind confirm_execution=true and explicit local/remote upload boundaries.",
       "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
     ]

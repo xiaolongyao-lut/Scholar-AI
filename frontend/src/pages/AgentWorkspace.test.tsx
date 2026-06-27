@@ -254,6 +254,15 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
         mcp_tool: 'literature.ocr_status',
       },
       {
+        label: 'Wiki Doctor',
+        route: '/api/wiki/doctor',
+        read_only: true,
+        requires_identifier: false,
+        identifier_hint: null,
+        purpose: 'Recover wiki integrity diagnostics and Source Vault mirror backlog before claiming Knowledge Runtime Pipeline closure.',
+        mcp_tool: 'literature.wiki_doctor',
+      },
+      {
         label: 'Workflow Passport',
         route: '/runtime/workflow-passport',
         read_only: true,
@@ -304,7 +313,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       'Create a rollback checkpoint and re-check official or mature references before nontrivial edits.',
     ],
     next_safe_local_actions: [
-      'Read Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, and Agent Handoff Cards before resuming mutating work.',
+      'Read Wiki Doctor, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, and Agent Handoff Cards before resuming mutating work.',
       'Inspect git dirty paths and preserve unrelated local work before staging or committing.',
     ],
     ...overrides,
@@ -2564,6 +2573,7 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('docs/plans/local-goal-state.json')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Desktop Smoke Evidence · read-only true · literature.agent_workspace_status')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('OCR Runtime Status · read-only true · literature.ocr_status')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Wiki Doctor · read-only true · literature.wiki_doctor')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Workflow Passport · read-only true · literature.workflow_passport')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Research Action Lifecycle · read-only true · literature.research_action_lifecycle')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Agent Handoff Card · read-only true · needs job_id · literature.agent_handoff_card')).toBeInTheDocument();

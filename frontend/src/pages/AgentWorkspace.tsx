@@ -3639,7 +3639,7 @@ export function WorkspaceStatePanel({
   }
   const git = state.git;
   const dirtyPaths = git.dirty_paths.slice(0, 6);
-  const probes = state.recovery_probes.slice(0, 6);
+  const probes = state.recovery_probes.slice(0, 8);
   const boundaries = state.boundaries.slice(0, 3).map(sanitizeInspectorText);
   const nextActions = state.next_safe_local_actions.slice(0, 3).map(sanitizeInspectorText);
   const goalCompletionClaim = workspaceGoalCompletionClaimSummary(state.goal_state);
