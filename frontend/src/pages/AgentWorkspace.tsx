@@ -3770,6 +3770,11 @@ export function WorkspaceStatePanel({
                     lifecycle blockers {goalLifecycle.completion_blockers.length} · can complete {String(goalLifecycle.can_mark_goal_complete)}
                   </p>
                 ) : null}
+                {goalLifecycle?.why_not_complete?.length ? (
+                  <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    why not complete {sanitizeInspectorText(goalLifecycle.why_not_complete[0])}
+                  </p>
+                ) : null}
               </div>
             ) : null}
             {allOpenRequirements.length > 0 ? (

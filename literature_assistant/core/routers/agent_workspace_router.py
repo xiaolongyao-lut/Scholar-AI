@@ -823,6 +823,17 @@ def _safe_text_list(value: Any, limit: int) -> list[str]:
     return out
 
 
+def _safe_text_list_or_string(value: Any, limit: int) -> list[str]:
+    """Return bounded display strings from a legacy string or list shape."""
+
+    if limit <= 0:
+        return []
+    if isinstance(value, str):
+        text = _redact_text(value).strip()
+        return [text[:240]] if text else []
+    return _safe_text_list(value, limit)
+
+
 def _safe_optional_text(value: Any, *, max_chars: int = 240) -> str | None:
     """Return a bounded redacted string or ``None`` for missing values."""
 
@@ -1136,7 +1147,7 @@ def _safe_goal_lifecycle_rollup(value: Any) -> AgentWorkspaceGoalLifecycleRollup
             value.get("machine_readable_completion_rule"),
             max_chars=240,
         ),
-        why_not_complete=_safe_text_list(value.get("why_not_complete"), MAX_GOAL_STATE_BOUNDARIES),
+        why_not_complete=_safe_text_list_or_string(value.get("why_not_complete"), MAX_GOAL_STATE_BOUNDARIES),
     )
 
 

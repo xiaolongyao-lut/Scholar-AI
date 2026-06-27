@@ -453,12 +453,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                         "git_persistence_user_signoff",
                     ],
                     "machine_readable_completion_rule": "Goal may be complete only when blockers are empty.",
-                    "why_not_complete": [
-                        "All requirement rows are proved, but goal-level proof gates remain.",
-                        "C:/Users/xiao/private should be redacted.",
-                        "Third visible reason.",
-                        "Fourth reason is intentionally omitted.",
-                    ],
+                    "why_not_complete": "All requirement rows are proved, but C:/Users/xiao/private proof gates remain.",
                 },
                 "next_authorized_local_actions": [
                     "Create rollback checkpoint.",
@@ -529,9 +524,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
         "Goal may be complete only when blockers are empty."
     )
     assert summary.lifecycle_rollup.why_not_complete == [
-        "All requirement rows are proved, but goal-level proof gates remain.",
-        "[redacted-local-path] should be redacted.",
-        "Third visible reason.",
+        "All requirement rows are proved, but [redacted-local-path] proof gates remain."
     ]
     assert summary.next_authorized_local_actions == [
         "Create rollback checkpoint.",

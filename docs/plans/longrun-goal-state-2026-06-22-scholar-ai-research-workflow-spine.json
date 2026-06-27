@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-28T01:06:30+08:00",
+  "updated_at": "2026-06-28T01:24:30+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,21 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260628-005956-n262-agent-workspace-krt-ocr-local-recovery-audi",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-005956-n262-agent-workspace-krt-ocr-local-recovery-audi",
-    "latest_goal_state_checkpoint_id": "20260628-005956-n262-agent-workspace-krt-ocr-local-recovery-audi",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-005956-n262-agent-workspace-krt-ocr-local-recovery-audi",
-    "latest_checkpoint_caveat": "Git rollback checkpoint for N262 Agent Workspace visible Goal Requirement Drilldown recovery probes, focused tests, and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260628-011857-n263-goal-lifecycle-why-not-complete",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-011857-n263-goal-lifecycle-why-not-complete",
+    "latest_goal_state_checkpoint_id": "20260628-011857-n263-goal-lifecycle-why-not-complete",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-011857-n263-goal-lifecycle-why-not-complete",
+    "latest_checkpoint_caveat": "Git rollback checkpoint for N263 Agent Workspace goal lifecycle why-not-complete recovery visibility; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N263 Agent Workspace goal lifecycle why-not-complete recovery visibility",
+      "source": "FastAPI response-model filtering; Pydantic model parsing; Testing Library visible-query guidance; W3C PROV entity/activity provenance",
+      "url": "https://fastapi.tiangolo.com/tutorial/response-model/ ; https://docs.pydantic.dev/latest/concepts/models/ ; https://testing-library.com/docs/queries/about/ ; https://www.w3.org/TR/prov-overview/",
+      "status": "Official/mature references checked on 2026-06-28 before implementation",
+      "checked_at": "2026-06-28T01:24:30+08:00",
+      "use_in_slice": "Used to preserve the goal lifecycle completion-blocker reason as bounded read-only Agent Workspace recovery evidence, including the current goal-state string shape, without changing provider, OCR, replay, upload, or write behavior."
+    },
     {
       "topic": "N262 Agent Workspace visible goal-requirement recovery probes",
       "source": "Model Context Protocol tools specification; FastAPI response-model filtering; Testing Library visible-query guidance; W3C PROV entity/activity provenance",
@@ -7405,6 +7413,29 @@
         "cd frontend; npm run test -- AgentWorkspace.test.tsx --run -> 2 files passed, 8 tests passed."
       ],
       "residual_risk": "This proves Agent Workspace recovery visibility and completion-audit discoverability only. It does not execute Source Vault calls, replay or mutate Source Vault, run live QA/model actual-loading, mutate Zotero DB, modify github/ references, upload content, or execute OCR."
+    },
+    {
+      "id": "N263-agent-workspace-goal-lifecycle-why-not-complete-visible",
+      "requirement": "Agent Workspace must preserve and visibly render goal_lifecycle_rollup.why_not_complete even when the longrun goal-state record stores that field as a single string, so resumed agents can see the exact remaining completion boundary instead of only a blocker count.",
+      "source": "Post-N262 recovery audit found docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json stores goal_lifecycle_rollup.why_not_complete as a string while Agent Workspace only accepted list values, hiding the current live-provider/OCR completion reason from the workspace recovery panel.",
+      "status": "proved",
+      "evidence": [
+        "literature_assistant/core/routers/agent_workspace_router.py adds _safe_text_list_or_string and uses it for goal_lifecycle_rollup.why_not_complete so both legacy list and current string goal-state shapes are redacted, bounded, and response-model-compatible.",
+        "tests/test_agent_workspace_router.py covers a string why_not_complete value containing a local path and proves the AgentWorkspaceGoalState lifecycle rollup exposes a one-item redacted list.",
+        "frontend/src/pages/AgentWorkspace.tsx renders the first lifecycle why_not_complete reason in Workspace State visibility when completion blockers or completion claims are present.",
+        "frontend/src/pages/AgentWorkspace.test.tsx asserts the visible Workspace State panel shows why not complete All requirement rows are proved, but goal-level proof gates remain.",
+        "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-011857-n263-goal-lifecycle-why-not-complete before N263 edits.",
+        "Invoke-WebRequest HEAD https://fastapi.tiangolo.com/tutorial/response-model/ -> 200; https://docs.pydantic.dev/latest/concepts/models/ -> 200; https://testing-library.com/docs/queries/about/ -> 200; https://www.w3.org/TR/prov-overview/ -> 200.",
+        ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py -> passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 7 passed.",
+        "npm run test -- AgentWorkspace.test.tsx --run -> 2 files / 8 tests passed.",
+        "npm run build from frontend/ -> passed; prebuild generate:openapi:if-needed, tsc, and vite build completed.",
+        "Current-state projection probe using literature_assistant.core.routers.agent_workspace_router._load_goal_state_summary() -> projection-ok 264 N263-agent-workspace-goal-lifecycle-why-not-complete-visible with why_not_complete visible.",
+        "goal-state JSON validation -> requirements=264, latest=N263, complete=false.",
+        "git diff --check over N263 files -> no whitespace errors; Git warned goal-state JSON CRLF will be replaced by LF when Git touches it.",
+        "git ls-files -ci --exclude-standard -> no ignored tracked files reported."
+      ],
+      "residual_risk": "This is read-only recovery visibility only. It does not satisfy live QA/model actual-loading proof, execute OCR, replay or mutate Source Vault, mutate Zotero DB, modify github/ references, upload content, push, tag, release, or deploy."
     }
   ],
   "changed_files_for_this_slice": [
@@ -7428,11 +7459,9 @@
     "git ls-files -ci --exclude-standard -> no ignored tracked files reported"
   ],
   "next_authorized_local_actions": [
-    "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
-    "Continue Knowledge Runtime Pipeline source-to-context proof work by proving another local knowledge family through builder/manifest/retrieval/resource/context tests without external upload, or deepen Agent Workspace recovery visibility for existing read-only diagnostics.",
-    "If provider credentials are corrected, first rerun /api/chat/tool-capability/test and require provider_preflight.status=proved before any live context-receipt smoke; then require generatedAt and last_probe_at to be timezone-aware and ordered.",
-    "Continue OCR provider-readiness/configuration contract work only when it avoids uploading user content and keeps runtime artifacts local.",
-    "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
+    "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
+    "Continue with local KRT source-to-context recovery evidence, or provider-preflight visibility work that does not claim live loading without authorization.",
+    "Keep OCR execution probes behind confirm_execution=true and explicit local/remote upload boundaries."
   ],
   "stop_boundary": [
     "Do not call the long-run goal complete while goal_lifecycle_rollup.can_mark_goal_complete is false.",
@@ -7441,10 +7470,10 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N262 exposes Agent Workspace Status and Goal Requirement Drilldown as visible read-only Agent Workspace recovery probes and requires drilldown inspection before closure claims.",
+    "this_slice": "N263 exposes the goal lifecycle why_not_complete reason in Agent Workspace recovery state and UI, including the current string-shaped goal-state field.",
     "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N262 proves local Agent Workspace recovery visibility for existing goal requirement drilldown diagnostics only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution remains separately gated."
+    "why_not_complete": "N263 proves deterministic read-only Agent Workspace recovery visibility for goal lifecycle completion-blocker reasons only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution remains separately gated."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -13133,27 +13162,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-28T01:06:30+08:00",
+    "updated_at": "2026-06-28T01:24:30+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 263,
+    "requirements_total": 264,
     "requirement_status_counts": {
-      "proved": 263
+      "proved": 264
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N262-agent-workspace-goal-requirement-visible-probes",
-    "latest_slice_id": "N262-agent-workspace-goal-requirement-visible-probes",
+    "latest_requirement_id": "N263-agent-workspace-goal-lifecycle-why-not-complete-visible",
+    "latest_slice_id": "N263-agent-workspace-goal-lifecycle-why-not-complete-visible",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
-        "evidence": "N262 proves deterministic local Agent Workspace visibility for existing Agent Workspace Status and Goal Requirement Drilldown recovery probes only; live loading proof still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint."
+        "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
+        "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
+        "current_boundary": "N263 proves deterministic Agent Workspace recovery visibility for why_not_complete only; the configured provider remains auth/preflight gated.",
+        "evidence": "N263 exposes the remaining blocker reason in Agent Workspace so a resumed agent can see that live loading proof still requires corrected credentials/provider preflight and an authorized OK smoke."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N262 proves deterministic read-only Agent Workspace recovery visibility for goal requirement drilldown diagnostics. The current configured provider still requires authentication for live QA/model actual-loading proof, and OCR execution remains separately gated."
+    "why_not_complete": "N263 proves deterministic read-only Agent Workspace recovery visibility for goal lifecycle completion-blocker reasons only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution remains separately gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -18250,5 +18282,51 @@
       "Keep live QA/model actual-loading blocked until provider preflight is proved; keep OCR execution behind confirm_execution=true and explicit local/remote upload boundaries.",
       "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
     ]
+  },
+  "n263_agent_workspace_goal_lifecycle_why_not_complete_slice": {
+    "id": "N263-agent-workspace-goal-lifecycle-why-not-complete-visible",
+    "status": "proved",
+    "summary": "N263 preserves string-shaped goal_lifecycle_rollup.why_not_complete as bounded Agent Workspace recovery evidence and renders the first reason in the Workspace State panel.",
+    "rollback_checkpoint_id": "20260628-011857-n263-goal-lifecycle-why-not-complete",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-011857-n263-goal-lifecycle-why-not-complete",
+    "mature_references_checked": [
+      {
+        "topic": "N263 Agent Workspace goal lifecycle why-not-complete recovery visibility",
+        "source": "FastAPI response-model filtering; Pydantic model parsing; Testing Library visible-query guidance; W3C PROV entity/activity provenance",
+        "url": "https://fastapi.tiangolo.com/tutorial/response-model/ ; https://docs.pydantic.dev/latest/concepts/models/ ; https://testing-library.com/docs/queries/about/ ; https://www.w3.org/TR/prov-overview/",
+        "status": "Official/mature references checked on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T01:24:30+08:00",
+        "use_in_slice": "Used to preserve the goal lifecycle completion-blocker reason as bounded read-only Agent Workspace recovery evidence, including the current goal-state string shape, without changing provider, OCR, replay, upload, or write behavior."
+      }
+    ],
+    "changed_files": [
+      "literature_assistant/core/routers/agent_workspace_router.py",
+      "tests/test_agent_workspace_router.py",
+      "frontend/src/pages/AgentWorkspace.tsx",
+      "frontend/src/pages/AgentWorkspace.test.tsx",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification_commands": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, docs/plans/autonomous-execution-planning-playbook.md, longrun-autopilot SKILL.md, and longrun-autopilot references before implementation.",
+      "git status --short --branch -> main...origin/main [ahead 92] clean before N263 edits.",
+      "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-011857-n263-goal-lifecycle-why-not-complete before N263 edits.",
+      "Invoke-WebRequest HEAD FastAPI response-model docs -> 200; Pydantic models docs -> 200; Testing Library queries docs -> 200; W3C PROV overview -> 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py -> passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 7 passed.",
+      "npm run test -- AgentWorkspace.test.tsx --run -> 2 files / 8 tests passed.",
+      "npm run build from frontend/ -> passed; prebuild generate:openapi:if-needed, tsc, and vite build completed.",
+      "Current-state projection probe using literature_assistant.core.routers.agent_workspace_router._load_goal_state_summary() -> projection-ok 264 N263-agent-workspace-goal-lifecycle-why-not-complete-visible with why_not_complete visible.",
+      "goal-state JSON validation -> requirements=264, latest=N263, complete=false.",
+      "git diff --check over N263 files -> no whitespace errors; Git warned goal-state JSON CRLF will be replaced by LF when Git touches it.",
+      "git ls-files -ci --exclude-standard -> no ignored tracked files reported."
+    ],
+    "decision": "Normalize only the goal lifecycle why_not_complete projection at the Agent Workspace boundary, keeping source goal-state history intact and leaving provider/OCR gates unchanged.",
+    "residual_risk": "This proves recovery visibility for the blocker reason only; live model loading and OCR execution remain explicit gates.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
+      "Continue with local KRT source-to-context recovery evidence, or provider-preflight visibility work that does not claim live loading without authorization.",
+      "Keep OCR execution probes behind confirm_execution=true and explicit local/remote upload boundaries."
+    ],
+    "updated_at": "2026-06-28T01:24:30+08:00"
   }
 }
