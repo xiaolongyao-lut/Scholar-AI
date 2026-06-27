@@ -137,6 +137,7 @@ export interface AgentWorkspaceGoalState {
   completion_claim: {
     this_slice: string | null;
     full_goal: string | null;
+    can_mark_goal_complete: boolean | null;
   };
   next_authorized_local_actions: string[];
   stop_boundaries: string[];

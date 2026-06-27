@@ -1808,11 +1808,13 @@ function workspaceGoalStateSummary(state: AgentWorkspaceStatus['workspace_state'
 function workspaceGoalCompletionClaimSummary(goal: AgentWorkspaceStatus['workspace_state']['goal_state']): {
   thisSlice: string | null;
   fullGoal: string | null;
+  canMarkGoalComplete: boolean | null;
 } {
   const claim = goal.completion_claim;
   return {
     thisSlice: claim?.this_slice ? sanitizeInspectorText(claim.this_slice) : null,
     fullGoal: claim?.full_goal ? sanitizeInspectorText(claim.full_goal) : null,
+    canMarkGoalComplete: typeof claim?.can_mark_goal_complete === 'boolean' ? claim.can_mark_goal_complete : null,
   };
 }
 
@@ -3805,7 +3807,10 @@ export function WorkspaceStatePanel({
                 <StatusPill tone="neutral">{sanitizeInspectorText(state.goal_state.path)}</StatusPill>
               ) : null}
             </div>
-            {goalCompletionClaim.thisSlice || goalCompletionClaim.fullGoal || goalLifecycle?.completion_blockers?.length ? (
+            {goalCompletionClaim.thisSlice ||
+            goalCompletionClaim.fullGoal ||
+            goalCompletionClaim.canMarkGoalComplete !== null ||
+            goalLifecycle?.completion_blockers?.length ? (
               <div className="mt-2 grid gap-1.5">
                 {goalCompletionClaim.thisSlice ? (
                   <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
@@ -3815,6 +3820,11 @@ export function WorkspaceStatePanel({
                 {goalCompletionClaim.fullGoal ? (
                   <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
                     full goal {goalCompletionClaim.fullGoal}
+                  </p>
+                ) : null}
+                {goalCompletionClaim.canMarkGoalComplete !== null ? (
+                  <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    completion claim can complete {String(goalCompletionClaim.canMarkGoalComplete)}
                   </p>
                 ) : null}
                 {goalLifecycle && hasLifecycleRecordDetails ? (

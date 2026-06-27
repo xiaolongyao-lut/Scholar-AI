@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-28T04:42:37+08:00",
+  "updated_at": "2026-06-28T04:57:47+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,37 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260628-044026-n281-goal-completion-claim-rollup-consistency",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-044026-n281-goal-completion-claim-rollup-consistency",
-    "latest_goal_state_checkpoint_id": "20260628-044026-n281-goal-completion-claim-rollup-consistency",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-044026-n281-goal-completion-claim-rollup-consistency",
-    "latest_checkpoint_caveat": "Rollback checkpoint for N281 goal completion-claim/rollup consistency; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260628-044928-n282-agent-workspace-completion-claim-can-mark",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-044928-n282-agent-workspace-completion-claim-can-mark",
+    "latest_goal_state_checkpoint_id": "20260628-044928-n282-agent-workspace-completion-claim-can-mark",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-044928-n282-agent-workspace-completion-claim-can-mark",
+    "latest_checkpoint_caveat": "Rollback checkpoint for N282 Agent Workspace completion-claim can-mark projection; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N282 Agent Workspace completion-claim response model",
+      "source": "FastAPI response-model documentation",
+      "url": "https://fastapi.tiangolo.com/tutorial/response-model/",
+      "status": "GET checked 200 on 2026-06-28 before implementation",
+      "checked_at": "2026-06-28T04:57:47+08:00",
+      "use_in_slice": "Used to add can_mark_goal_complete as a typed read-only response-model field instead of an ad hoc UI-only projection."
+    },
+    {
+      "topic": "N282 Pydantic nullable boolean field boundary",
+      "source": "Pydantic fields documentation",
+      "url": "https://docs.pydantic.dev/latest/concepts/fields/",
+      "status": "GET checked 200 on 2026-06-28 before implementation",
+      "checked_at": "2026-06-28T04:57:47+08:00",
+      "use_in_slice": "Used to preserve optional bool parsing for historical goal-state records that may not contain completion_claim.can_mark_goal_complete."
+    },
+    {
+      "topic": "N282 Agent Workspace UI assertion",
+      "source": "React Testing Library introduction",
+      "url": "https://testing-library.com/docs/react-testing-library/intro/",
+      "status": "GET checked 200 on 2026-06-28 before implementation",
+      "checked_at": "2026-06-28T04:57:47+08:00",
+      "use_in_slice": "Used to assert the visible recovery text a resumed user or agent sees rather than implementation details."
+    },
     {
       "topic": "N281 completion-claim and lifecycle-rollup evidence consistency",
       "source": "W3C PROV Overview",
@@ -8121,22 +8145,47 @@
         "Verification after goal-state update: json.tool passed; pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed; pytest tests\\test_ci_visibility_contract.py -q -> 8 passed; Agent Workspace goal-state projection reports latest N281 with can_mark_goal_complete=False and one blocker."
       ],
       "residual_risk": "This proves deterministic goal-state claim consistency only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
+    },
+    {
+      "id": "N282-agent-workspace-completion-claim-can-mark",
+      "requirement": "Agent Workspace REST, MCP, generated OpenAPI, and UI recovery surfaces must expose top-level completion_claim.can_mark_goal_complete so resumed agents can see whether the long goal may be marked complete without deriving that decision from lifecycle prose or blocker rows.",
+      "status": "proved",
+      "evidence": [
+        "literature_assistant/core/routers/agent_workspace_router.py adds AgentWorkspaceGoalCompletionClaim.can_mark_goal_complete and _safe_goal_completion_claim() parses only boolean source values, preserving null for legacy records.",
+        "tests/test_agent_workspace_router.py proves the bounded goal-state parser and status response include completion_claim.can_mark_goal_complete=False from a goal-state JSON record.",
+        "agent_mcp_server/tests/test_runtime_tools.py proves literature.agent_workspace_status passes completion_claim.can_mark_goal_complete through to MCP callers.",
+        "frontend/src/services/agentWorkspaceApi.ts, frontend/openapi/modular-pipeline-openapi.json, and frontend/src/generated/openapi.ts expose the field in the frontend and generated OpenAPI contracts.",
+        "frontend/src/pages/AgentWorkspace.tsx renders completion claim can complete false, and frontend/src/pages/AgentWorkspace.test.tsx asserts the visible recovery text.",
+        "Verification before goal-state update: npm run generate:openapi passed; backend Agent Workspace router focused tests passed; MCP runtime tool focused test passed; npm run test -- AgentWorkspace.test.tsx --run passed; npm run build passed."
+      ],
+      "residual_risk": "This proves deterministic read-only completion-claim visibility only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
     }
   ],
   "changed_files_for_this_slice": [
-    "tests/test_ci_visibility_contract.py",
+    "literature_assistant/core/routers/agent_workspace_router.py",
+    "tests/test_agent_workspace_router.py",
+    "agent_mcp_server/tests/test_runtime_tools.py",
+    "frontend/src/services/agentWorkspaceApi.ts",
+    "frontend/src/pages/AgentWorkspace.tsx",
+    "frontend/src/pages/AgentWorkspace.test.tsx",
+    "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
+    "frontend/openapi/modular-pipeline-openapi.json",
+    "frontend/src/generated/openapi.ts",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read longrun-autopilot and repo-onboarding SKILL.md plus AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, docs/plans/autonomous-execution-planning-playbook.md, README.md, and docs/plans/runbooks/longrun-local-supervisor.md before selecting N281.",
-    "git status --short --branch -> main...origin/main [ahead 110] clean before N281 edits.",
-    "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-044026-n281-goal-completion-claim-rollup-consistency before N281 edits.",
-    "Invoke-WebRequest GET https://www.w3.org/TR/prov-overview/ -> 200; https://sre.google/sre-book/release-engineering/ -> 200; https://martinfowler.com/bliki/BranchByAbstraction.html -> 200.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before goal-state update with the new completion_claim/rollup consistency assertions.",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed after N281 record update.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N281 rollup.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py -q -> 8 passed.",
-    "Current-state projection probe using literature_assistant.core.routers.agent_workspace_router._load_goal_state_summary() -> projection-ok 282 N281-goal-completion-claim-rollup-consistency False 1 not_complete_pending_authorized_actual_loading_provider_proof."
+    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before selecting N282.",
+    "git status --short --branch -> main...origin/main [ahead 111] clean before N282 edits.",
+    "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-044928-n282-agent-workspace-completion-claim-can-mark before N282 edits.",
+    "Invoke-WebRequest GET https://fastapi.tiangolo.com/tutorial/response-model/ -> 200; https://docs.pydantic.dev/latest/concepts/fields/ -> 200; https://testing-library.com/docs/react-testing-library/intro/ -> 200.",
+    "npm run generate:openapi -> passed after backend response-model change.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_goal_state_summary_is_bounded_and_path_safe tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit -q -> 2 passed.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_agent_workspace_status_reads_recovery_state -q -> 1 passed.",
+    "npm run test -- AgentWorkspace.test.tsx --run -> 2 files passed, 8 tests passed.",
+    "npm run build -> passed.",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed after N282 record update.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N282 rollup.",
+    "Current-state projection probe using literature_assistant.core.routers.agent_workspace_router._load_goal_state_summary() -> projection-ok 283 N282-agent-workspace-completion-claim-can-mark False False 1 not_complete_pending_authorized_actual_loading_provider_proof."
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
@@ -8150,10 +8199,10 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N281 adds a deterministic CI contract tying top-level completion_claim.can_mark_goal_complete and why_not_complete to goal_lifecycle_rollup so green requirement rows cannot drift into a false completion claim.",
+    "this_slice": "N282 exposes top-level completion_claim.can_mark_goal_complete through Agent Workspace REST, MCP pass-through, generated OpenAPI, and visible UI recovery text.",
     "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N281 proves completion_claim and goal_lifecycle_rollup completion-gate consistency only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+    "why_not_complete": "N282 proves read-only completion-claim visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -12078,7 +12127,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N281-goal-completion-claim-rollup-consistency",
+  "latest_slice": "N282-agent-workspace-completion-claim-can-mark",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -13842,30 +13891,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-28T04:42:37+08:00",
+    "updated_at": "2026-06-28T04:57:47+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 282,
+    "requirements_total": 283,
     "requirement_status_counts": {
-      "proved": 282
+      "proved": 283
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N281-goal-completion-claim-rollup-consistency",
-    "latest_slice_id": "N281-goal-completion-claim-rollup-consistency",
+    "latest_requirement_id": "N282-agent-workspace-completion-claim-can-mark",
+    "latest_slice_id": "N282-agent-workspace-completion-claim-can-mark",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N281 proves completion_claim/rollup consistency only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N281 CI visibility tests assert completion_claim.can_mark_goal_complete and why_not_complete stay synchronized with the lifecycle rollup while preserving the live-proof authorization boundary."
+        "current_boundary": "N282 proves completion_claim.can_mark_goal_complete read-only recovery visibility only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N282 Agent Workspace REST, MCP, OpenAPI, frontend tests, and build prove deterministic can-mark visibility while preserving the live-proof authorization boundary."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N281 proves completion_claim and goal_lifecycle_rollup completion-gate consistency only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+    "why_not_complete": "N282 proves read-only completion-claim visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -20027,5 +20076,70 @@
       "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
     ],
     "updated_at": "2026-06-28T04:42:37+08:00"
+  },
+  "n282_agent_workspace_completion_claim_can_mark_slice": {
+    "id": "N282-agent-workspace-completion-claim-can-mark",
+    "status": "proved",
+    "summary": "N282 exposes top-level completion_claim.can_mark_goal_complete through Agent Workspace REST, MCP pass-through, generated OpenAPI, and visible UI recovery text.",
+    "rollback_checkpoint_id": "20260628-044928-n282-agent-workspace-completion-claim-can-mark",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-044928-n282-agent-workspace-completion-claim-can-mark",
+    "mature_references_checked": [
+      {
+        "topic": "N282 Agent Workspace completion-claim response model",
+        "source": "FastAPI response-model documentation",
+        "url": "https://fastapi.tiangolo.com/tutorial/response-model/",
+        "status": "GET checked 200 on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T04:57:47+08:00",
+        "use_in_slice": "Used to add can_mark_goal_complete as a typed read-only response-model field instead of an ad hoc UI-only projection."
+      },
+      {
+        "topic": "N282 Pydantic nullable boolean field boundary",
+        "source": "Pydantic fields documentation",
+        "url": "https://docs.pydantic.dev/latest/concepts/fields/",
+        "status": "GET checked 200 on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T04:57:47+08:00",
+        "use_in_slice": "Used to preserve optional bool parsing for historical goal-state records that may not contain completion_claim.can_mark_goal_complete."
+      },
+      {
+        "topic": "N282 Agent Workspace UI assertion",
+        "source": "React Testing Library introduction",
+        "url": "https://testing-library.com/docs/react-testing-library/intro/",
+        "status": "GET checked 200 on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T04:57:47+08:00",
+        "use_in_slice": "Used to assert the visible recovery text a resumed user or agent sees rather than implementation details."
+      }
+    ],
+    "changed_files": [
+      "literature_assistant/core/routers/agent_workspace_router.py",
+      "tests/test_agent_workspace_router.py",
+      "agent_mcp_server/tests/test_runtime_tools.py",
+      "frontend/src/services/agentWorkspaceApi.ts",
+      "frontend/src/pages/AgentWorkspace.tsx",
+      "frontend/src/pages/AgentWorkspace.test.tsx",
+      "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
+      "frontend/openapi/modular-pipeline-openapi.json",
+      "frontend/src/generated/openapi.ts",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification_commands": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before selecting N282.",
+      "git status --short --branch -> main...origin/main [ahead 111] clean before N282 edits.",
+      "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-044928-n282-agent-workspace-completion-claim-can-mark before N282 edits.",
+      "Invoke-WebRequest GET https://fastapi.tiangolo.com/tutorial/response-model/ -> 200; https://docs.pydantic.dev/latest/concepts/fields/ -> 200; https://testing-library.com/docs/react-testing-library/intro/ -> 200.",
+      "npm run generate:openapi -> passed after backend response-model change.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_goal_state_summary_is_bounded_and_path_safe tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit -q -> 2 passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_agent_workspace_status_reads_recovery_state -q -> 1 passed.",
+      "npm run test -- AgentWorkspace.test.tsx --run -> 2 files passed, 8 tests passed.",
+      "npm run build -> passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed after N282 record update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N282 rollup.",
+      "Current-state projection probe using literature_assistant.core.routers.agent_workspace_router._load_goal_state_summary() -> projection-ok 283 N282-agent-workspace-completion-claim-can-mark False False 1 not_complete_pending_authorized_actual_loading_provider_proof."
+    ],
+    "decision": "Extend the existing completion_claim schema and UI summary instead of deriving the can-mark decision from lifecycle prose or adding a mutation/completion tool.",
+    "residual_risk": "This proves deterministic read-only completion-claim visibility only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects.",
+    "next_plan_level_stop_audit": [
+      "The long goal remains active because goal_lifecycle_rollup.can_mark_goal_complete is false and the live provider/model actual-loading blocker remains.",
+      "Continue with deterministic local recovery/proof hardening or an explicitly authorized provider-preflight/live-smoke slice; do not run live provider smoke, OCR execution, or WikiRegistry replay/write repair without explicit authorization."
+    ]
   }
 }

@@ -2669,6 +2669,7 @@ def test_agent_workspace_status_reads_recovery_state(
                     "completion_claim": {
                         "this_slice": "N112 aligned current recovery state with local UIA accessibility-tree evidence.",
                         "full_goal": "The full Scholar AI workflow spine remains active, not complete.",
+                        "can_mark_goal_complete": False,
                     },
                     "lifecycle_rollup": {
                         "schema_version": "scholar_ai_goal_lifecycle_rollup_v1",
@@ -2913,6 +2914,7 @@ def test_agent_workspace_status_reads_recovery_state(
         "N112 aligned current recovery state with local UIA accessibility-tree evidence."
     )
     assert state["goal_state"]["completion_claim"]["full_goal"] == "The full Scholar AI workflow spine remains active, not complete."
+    assert state["goal_state"]["completion_claim"]["can_mark_goal_complete"] is False
     lifecycle_rollup = state["goal_state"]["lifecycle_rollup"]
     assert lifecycle_rollup["status"] == "active_requirements_proved_pending_authorized_gates"
     assert lifecycle_rollup["is_goal_complete"] is False

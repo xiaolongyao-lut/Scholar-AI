@@ -8036,8 +8036,11 @@ export interface components {
          *     Args:
          *         this_slice: Short local slice completion claim.
          *         full_goal: Short full-goal completion boundary claim.
+         *         can_mark_goal_complete: Whether a resumed agent may mark the full goal complete.
          */
         AgentWorkspaceGoalCompletionClaim: {
+            /** Can Mark Goal Complete */
+            can_mark_goal_complete?: boolean | null;
             /** Full Goal */
             full_goal?: string | null;
             /** This Slice */

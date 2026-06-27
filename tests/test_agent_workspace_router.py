@@ -246,6 +246,7 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
             completion_claim=agent_workspace_router.AgentWorkspaceGoalCompletionClaim(
                 this_slice="N112 aligned current recovery state with local UIA accessibility-tree evidence.",
                 full_goal="The full Scholar AI workflow spine remains active, not complete.",
+                can_mark_goal_complete=False,
             ),
             next_authorized_local_actions=[
                 "Create a rollback checkpoint and search mature references before the next slice."
@@ -673,6 +674,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                     "this_slice": "N41 exposed bounded recovery state to Agent Workspace. "
                     + "x" * 280,
                     "full_goal": "The full goal remains active and C:/Users/xiao/private must stay hidden.",
+                    "can_mark_goal_complete": False,
                 },
                 "goal_lifecycle_rollup": {
                     "schema_version": "scholar_ai_goal_lifecycle_rollup_v1",
@@ -754,6 +756,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     assert len(summary.completion_claim.this_slice) == agent_workspace_router.MAX_GOAL_COMPLETION_CHARS
     assert summary.completion_claim.this_slice.startswith("N41 exposed bounded recovery state")
     assert summary.completion_claim.full_goal == "The full goal remains active and [redacted-local-path] must stay hidden."
+    assert summary.completion_claim.can_mark_goal_complete is False
     assert summary.lifecycle_rollup.schema_version == "scholar_ai_goal_lifecycle_rollup_v1"
     assert summary.lifecycle_rollup.status == "active_requirements_proved_pending_authorized_gates"
     assert summary.lifecycle_rollup.is_goal_complete is False

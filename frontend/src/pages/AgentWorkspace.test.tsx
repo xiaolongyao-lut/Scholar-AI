@@ -133,6 +133,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       completion_claim: {
         this_slice: 'N112 aligned current recovery state with local UIA accessibility-tree evidence.',
         full_goal: 'The full Scholar AI workflow spine remains active, not complete.',
+        can_mark_goal_complete: false,
       },
       lifecycle_rollup: {
         schema_version: 'scholar_ai_goal_lifecycle_rollup_v1',
@@ -2833,6 +2834,7 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('lifecycle active_requirements_proved_pending_authorized_gates')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('slice completion N112 aligned current recovery state with local UIA accessibility-tree evidence.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('full goal The full Scholar AI workflow spine remains active, not complete.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('completion claim can complete false')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('lifecycle blockers 1 · can complete false')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('checkpoint 20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json')).toBeInTheDocument();

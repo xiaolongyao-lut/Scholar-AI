@@ -144,10 +144,12 @@ class AgentWorkspaceGoalCompletionClaim(BaseModel):
     Args:
         this_slice: Short local slice completion claim.
         full_goal: Short full-goal completion boundary claim.
+        can_mark_goal_complete: Whether a resumed agent may mark the full goal complete.
     """
 
     this_slice: str | None = Field(default=None, max_length=MAX_GOAL_COMPLETION_CHARS)
     full_goal: str | None = Field(default=None, max_length=MAX_GOAL_COMPLETION_CHARS)
+    can_mark_goal_complete: bool | None = None
 
 
 class AgentWorkspaceGoalRequirementStatus(BaseModel):
@@ -943,6 +945,7 @@ def _safe_goal_completion_claim(value: Any) -> AgentWorkspaceGoalCompletionClaim
         return AgentWorkspaceGoalCompletionClaim()
     this_slice = value.get("this_slice")
     full_goal = value.get("full_goal")
+    can_mark_goal_complete = value.get("can_mark_goal_complete")
     return AgentWorkspaceGoalCompletionClaim(
         this_slice=_redact_text(this_slice).strip()[:MAX_GOAL_COMPLETION_CHARS]
         if isinstance(this_slice, str) and this_slice.strip()
@@ -950,6 +953,7 @@ def _safe_goal_completion_claim(value: Any) -> AgentWorkspaceGoalCompletionClaim
         full_goal=_redact_text(full_goal).strip()[:MAX_GOAL_COMPLETION_CHARS]
         if isinstance(full_goal, str) and full_goal.strip()
         else None,
+        can_mark_goal_complete=can_mark_goal_complete if isinstance(can_mark_goal_complete, bool) else None,
     )
 
 
