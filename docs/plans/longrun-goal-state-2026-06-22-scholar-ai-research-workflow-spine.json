@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T13:35:00+08:00",
+  "updated_at": "2026-06-27T13:40:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,11 +100,11 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260627-132548-dirty-worktree-goal-state-triage",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-132548-dirty-worktree-goal-state-triage",
-    "latest_goal_state_checkpoint_id": "20260627-132548-dirty-worktree-goal-state-triage",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-132548-dirty-worktree-goal-state-triage",
-    "latest_checkpoint_caveat": "Git checkpoint created before dirty-worktree CI/goal-state visibility triage; restore only with explicit user intent after reviewing current dirty worktree ownership."
+    "latest_checkpoint_id": "20260627-133903-n231-post-commit-goal-state",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-133903-n231-post-commit-goal-state",
+    "latest_goal_state_checkpoint_id": "20260627-133903-n231-post-commit-goal-state",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-133903-n231-post-commit-goal-state",
+    "latest_checkpoint_caveat": "Git checkpoint created before the docs-only N231 post-commit goal-state record update; restore only with explicit user intent after reviewing current dirty worktree ownership."
   },
   "mature_references_checked": [
     {
@@ -6418,9 +6418,10 @@
         ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_provider_probe.py tests/test_api_chat_local_literature_tool_use.py tests/test_evidence_pack_build_contract.py tests/test_knowledge_router.py tests/test_live_api_chat_knowledge_context_receipt_smoke_harness.py tests/test_agent_bridge_router.py tests/test_agent_workspace_router.py tests/test_agent_workspace_mcp_contract.py tests/test_runtime_lifecycle_app_contract.py tests/test_runtime_router_contract.py tests/test_ocr_classifier.py tests/test_ocr_engine_registry.py tests/test_ocr_ingestion.py tests/test_ci_visibility_contract.py tests/test_wiki_crud.py tests/wiki/test_query.py tests/wiki/test_wiki_router.py tests/wiki/test_doctor.py agent_mcp_server/tests/test_runtime_tools.py agent_mcp_server/tests/test_server.py agent_mcp_server/tests/test_stdio_smoke.py -q -> 417 passed before the N231 record update.",
         "frontend npm exec tsc -- --noEmit -> passed.",
         "frontend npm run test -- --run src/services/agentWorkspaceApi.test.ts src/services/knowledgeApi.test.tsx src/services/wikiApi.test.ts src/components/knowledge/KnowledgePackagesPanel.test.tsx src/components/wiki/wikiDisplay.test.ts src/components/wiki/WikiImportMarkdownPanel.test.tsx src/components/wiki/WikiStatusCard.test.tsx src/pages/AgentWorkspace.test.tsx src/pages/DesktopAcceptanceAgentWorkspace.test.tsx src/pages/WikiWorkbench.test.tsx -> 10 files / 47 tests passed.",
-        "Official/mature references rechecked for this slice: gitignore documentation HTTP 200, pytest good practices HTTP 200, GitHub Actions workflow syntax HTTP 200, Python json documentation HTTP 200."
+        "Official/mature references rechecked for this slice: gitignore documentation HTTP 200, pytest good practices HTTP 200, GitHub Actions workflow syntax HTTP 200, Python json documentation HTTP 200.",
+        "Local Git commit 689c1407 Add knowledge runtime and workflow evidence contracts persists the verified KRT/runtime/MCP/frontend/CI/docs scope; post-commit git status left only frontend/e2e/agent-workspace-requirement-drilldown.spec.ts plus tools/ and workspace_tests/ as separate uncommitted local follow-up surfaces."
       ],
-      "residual_risk": "This proves the focused CI/visibility boundary in the current local worktree and keeps the goal-state completion claim machine-readable. It does not complete live Knowledge Runtime model-context loading, real RapidOCR runtime execution, remote OCR real execution, native desktop Computer Use accessibility-tree retry, or the remaining uncommitted local-only docs/tools/workspace_tests cleanup."
+      "residual_risk": "Commit 689c1407 persists the verified N231 scope locally, but this does not complete live Knowledge Runtime model-context loading, real RapidOCR runtime execution, remote OCR real execution, native desktop Computer Use accessibility-tree retry, or the remaining frontend/e2e/tools/workspace_tests cleanup."
     }
   ],
   "changed_files_for_this_slice": [
@@ -6434,7 +6435,9 @@
     ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py -q -> 6 passed after wiki-test visibility narrowing.",
     ".\\.venv-1\\Scripts\\python.exe -m pytest <focused backend/MCP CI list> -q -> 417 passed.",
     "frontend: npm exec tsc -- --noEmit -> passed.",
-    "frontend: npm run test -- --run <focused frontend evidence list> -> 10 files / 47 tests passed."
+    "frontend: npm run test -- --run <focused frontend evidence list> -> 10 files / 47 tests passed.",
+    "git commit -m \"Add knowledge runtime and workflow evidence contracts\" -> 689c1407.",
+    "git status --short --branch after 689c1407 -> main...origin/main [ahead 58], remaining uncommitted frontend/e2e/tools/workspace_tests only."
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, 先回档/create rollback checkpoint, 搜索成熟方案/search official or mature references, and record evidence/residual risk.",
@@ -12141,7 +12144,7 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T13:35:00+08:00",
+    "updated_at": "2026-06-27T13:40:00+08:00",
     "status": "requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
@@ -12160,7 +12163,7 @@
       "remaining_local_dirty_worktree_requires_scoped_audit_and_commits"
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N231 proves the focused CI/visibility and goal-state persistence boundary in the local worktree, but live Knowledge Runtime actual-loading, real RapidOCR runtime execution or explicit out-of-scope classification, remote OCR real execution, and remaining dirty-worktree scoped commits remain unresolved."
+    "why_not_complete": "N231 is locally persisted by commit 689c1407, but live Knowledge Runtime actual-loading, real RapidOCR runtime execution or explicit out-of-scope classification, remote OCR real execution, and remaining frontend/e2e/tools/workspace_tests scoped cleanup remain unresolved."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -15565,20 +15568,22 @@
       ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_provider_probe.py tests/test_api_chat_local_literature_tool_use.py tests/test_evidence_pack_build_contract.py tests/test_knowledge_router.py tests/test_live_api_chat_knowledge_context_receipt_smoke_harness.py tests/test_agent_bridge_router.py tests/test_agent_workspace_router.py tests/test_agent_workspace_mcp_contract.py tests/test_runtime_lifecycle_app_contract.py tests/test_runtime_router_contract.py tests/test_ocr_classifier.py tests/test_ocr_engine_registry.py tests/test_ocr_ingestion.py tests/test_ci_visibility_contract.py tests/test_wiki_crud.py tests/wiki/test_query.py tests/wiki/test_wiki_router.py tests/wiki/test_doctor.py agent_mcp_server/tests/test_runtime_tools.py agent_mcp_server/tests/test_server.py agent_mcp_server/tests/test_stdio_smoke.py -q -> 417 passed before the N231 record update.",
       "frontend npm exec tsc -- --noEmit -> passed.",
       "frontend npm run test -- --run src/services/agentWorkspaceApi.test.ts src/services/knowledgeApi.test.tsx src/services/wikiApi.test.ts src/components/knowledge/KnowledgePackagesPanel.test.tsx src/components/wiki/wikiDisplay.test.ts src/components/wiki/WikiImportMarkdownPanel.test.tsx src/components/wiki/WikiStatusCard.test.tsx src/pages/AgentWorkspace.test.tsx src/pages/DesktopAcceptanceAgentWorkspace.test.tsx src/pages/WikiWorkbench.test.tsx -> 10 files / 47 tests passed.",
-      "Official/mature references rechecked for this slice: gitignore documentation HTTP 200, pytest good practices HTTP 200, GitHub Actions workflow syntax HTTP 200, Python json documentation HTTP 200."
+      "Official/mature references rechecked for this slice: gitignore documentation HTTP 200, pytest good practices HTTP 200, GitHub Actions workflow syntax HTTP 200, Python json documentation HTTP 200.",
+      "git commit -m \"Add knowledge runtime and workflow evidence contracts\" -> 689c1407.",
+      "git status --short --branch after 689c1407 -> main...origin/main [ahead 58] with remaining local dirty surfaces: frontend/e2e/agent-workspace-requirement-drilldown.spec.ts, tools/, workspace_tests/."
     ],
     "contract_delta": {
       "before": "The focused visibility contract passed only while the entire tests/wiki subtree was accidentally git-visible and backed by a large exemption list.",
       "after": "Only the focused wiki tests named in CI are git-visible; stale wiki exemptions are removed; the goal-state rollup points at N231 and still blocks goal completion on live/real execution gates.",
       "boundary": "No push, tag, release, deployment, upload, credential change, Zotero DB write, github/ modification, or external runtime artifact commit."
     },
-    "residual_risk": "This proves the focused CI/visibility boundary in the current local worktree and keeps the goal-state completion claim machine-readable. It does not complete live Knowledge Runtime model-context loading, real RapidOCR runtime execution, remote OCR real execution, native desktop Computer Use accessibility-tree retry, or the remaining uncommitted local-only docs/tools/workspace_tests cleanup.",
+    "residual_risk": "Commit 689c1407 persists the verified N231 scope locally. Remaining uncommitted local surfaces are frontend/e2e, tools, and workspace_tests; live KRT actual-loading and real OCR execution gates remain unresolved.",
     "next_actions": [
       "Before the next nontrivial slice, read required docs, run git status, 先回档/create rollback checkpoint, 搜索成熟方案/search official or mature references, and record evidence/residual risk.",
       "Stage and commit only the verified KRT/runtime/frontend/CI visibility files after secret checks, git diff --cached --check, and git ls-files -ci --exclude-standard.",
       "Continue separate cleanup for remaining local-only docs/tools/workspace_tests files without broad git add.",
       "Keep Knowledge Runtime live actual-loading, real RapidOCR execution, and Remote OCR real execution as explicit blockers unless credentials/runtime/consent are available."
     ],
-    "updated_at": "2026-06-27T13:35:00+08:00"
+    "updated_at": "2026-06-27T13:40:00+08:00"
   }
 }
