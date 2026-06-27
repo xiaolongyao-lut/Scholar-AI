@@ -128,6 +128,12 @@ const ACCEPTANCE_WORKSPACE_STATE = {
       'If continuing Computer Use repair, compare Windows UIA host-tree capture with any available deeper accessibility-tree API.',
     ],
     stop_boundaries: ['No push, tag, release, deploy, or external upload.'],
+    authoritative_records: [
+      'AI_WORKSPACE_GUIDE.md',
+      'AGENTS.md',
+      'docs/plans/autonomous-execution-framework.md',
+      'docs/plans/autonomous-execution-planning-playbook.md',
+    ],
     error: null,
   },
   desktop_smoke: {

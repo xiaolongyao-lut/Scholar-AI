@@ -38,6 +38,7 @@ MAX_STATE_PATHS = 8
 MAX_GOAL_STATE_ACTIONS = 3
 MAX_GOAL_STATE_BOUNDARIES = 4
 MAX_GOAL_STATE_OPEN_REQUIREMENTS = 5
+MAX_GOAL_STATE_AUTH_RECORDS = 8
 MAX_GOAL_LIFECYCLE_BLOCKERS = 5
 MAX_GOAL_COMPLETION_CHARS = 240
 MAX_GOAL_REQUIREMENT_EVIDENCE = 8
@@ -311,6 +312,7 @@ class AgentWorkspaceGoalState(BaseModel):
         completion_claim: Bounded slice/full-goal completion summary.
         next_authorized_local_actions: Bounded action labels from the record.
         stop_boundaries: Bounded stop-boundary labels from the record.
+        authoritative_records: Bounded record labels a resumed agent should read first.
         error: Redacted parse/read error when unavailable.
     """
 
@@ -329,6 +331,7 @@ class AgentWorkspaceGoalState(BaseModel):
     completion_claim: AgentWorkspaceGoalCompletionClaim = Field(default_factory=AgentWorkspaceGoalCompletionClaim)
     next_authorized_local_actions: list[str] = Field(default_factory=list)
     stop_boundaries: list[str] = Field(default_factory=list)
+    authoritative_records: list[str] = Field(default_factory=list)
     error: str | None = Field(default=None, max_length=240)
 
 
@@ -1518,6 +1521,7 @@ def _load_goal_state_summary() -> AgentWorkspaceGoalState:
         completion_claim=_safe_goal_completion_claim(payload.get("completion_claim")),
         next_authorized_local_actions=_safe_text_list(payload.get("next_authorized_local_actions"), MAX_GOAL_STATE_ACTIONS),
         stop_boundaries=_safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES),
+        authoritative_records=_safe_text_list(payload.get("authoritative_records"), MAX_GOAL_STATE_AUTH_RECORDS),
     )
 
 

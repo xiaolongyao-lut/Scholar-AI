@@ -142,6 +142,7 @@ export interface AgentWorkspaceGoalState {
   };
   next_authorized_local_actions: string[];
   stop_boundaries: string[];
+  authoritative_records: string[];
   error: string | null;
 }
 

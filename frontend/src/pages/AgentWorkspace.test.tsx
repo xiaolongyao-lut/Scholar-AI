@@ -171,6 +171,12 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
         'Do not run live provider/model or remote OCR upload without explicit authorization.',
         'Do not reset squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization.',
       ],
+      authoritative_records: [
+        'AI_WORKSPACE_GUIDE.md',
+        'AGENTS.md',
+        'docs/plans/autonomous-execution-framework.md',
+        'docs/plans/autonomous-execution-planning-playbook.md',
+      ],
       error: null,
     },
     desktop_smoke: {
@@ -2850,6 +2856,10 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('goal boundary 1 Do not call the long-run goal complete while can_mark_goal_complete is false.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal boundary 3 Do not run live provider/model or remote OCR upload without explicit authorization.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal boundary 4 Do not reset squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('goal record 1 AI_WORKSPACE_GUIDE.md')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('goal record 2 AGENTS.md')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('goal record 3 docs/plans/autonomous-execution-framework.md')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('goal record 4 docs/plans/autonomous-execution-planning-playbook.md')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('lifecycle blockers 1 · can complete false')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('checkpoint 20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json')).toBeInTheDocument();

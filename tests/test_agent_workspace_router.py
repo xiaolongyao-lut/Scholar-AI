@@ -720,6 +720,17 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                     "No Zotero DB mutation.",
                     "This fourth boundary remains visible.",
                 ],
+                "authoritative_records": [
+                    "AI_WORKSPACE_GUIDE.md",
+                    "AGENTS.md",
+                    "docs/plans/autonomous-execution-framework.md",
+                    "docs/plans/autonomous-execution-planning-playbook.md",
+                    "C:/Users/xiao/private/local-only-record.md",
+                    "tests/test_ci_visibility_contract.py",
+                    "agent_mcp_server/tests/test_runtime_tools.py",
+                    "frontend/src/pages/AgentWorkspace.tsx",
+                    "This ninth record is intentionally omitted.",
+                ],
             },
             ensure_ascii=False,
         ),
@@ -791,6 +802,16 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
         "No upload.",
         "No Zotero DB mutation.",
         "This fourth boundary remains visible.",
+    ]
+    assert summary.authoritative_records == [
+        "AI_WORKSPACE_GUIDE.md",
+        "AGENTS.md",
+        "docs/plans/autonomous-execution-framework.md",
+        "docs/plans/autonomous-execution-planning-playbook.md",
+        "[redacted-local-path]",
+        "tests/test_ci_visibility_contract.py",
+        "agent_mcp_server/tests/test_runtime_tools.py",
+        "frontend/src/pages/AgentWorkspace.tsx",
     ]
     serialized = summary.model_dump_json()
     assert "current_objective" not in serialized

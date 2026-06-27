@@ -466,6 +466,16 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
     assert any("Do not call the long-run goal complete" in boundary for boundary in expected_stop_boundaries)
     assert any("live provider/model" in boundary for boundary in expected_stop_boundaries)
     assert any("Zotero DB" in boundary and "github/" in boundary for boundary in expected_stop_boundaries)
+    authoritative_records = payload.get("authoritative_records")
+    assert isinstance(authoritative_records, list) and authoritative_records
+    expected_authoritative_records = [
+        record for record in authoritative_records if isinstance(record, str) and record.strip()
+    ][: agent_workspace_router.MAX_GOAL_STATE_AUTH_RECORDS]
+    assert summary.authoritative_records == expected_authoritative_records
+    assert "AI_WORKSPACE_GUIDE.md" in expected_authoritative_records
+    assert "AGENTS.md" in expected_authoritative_records
+    assert "docs/plans/autonomous-execution-framework.md" in expected_authoritative_records
+    assert "docs/plans/autonomous-execution-planning-playbook.md" in expected_authoritative_records
     why_not_complete = completion_claim.get("why_not_complete")
     assert isinstance(why_not_complete, str) and why_not_complete.strip()
     assert summary.completion_claim.why_not_complete is not None

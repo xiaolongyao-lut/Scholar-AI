@@ -8275,9 +8275,12 @@ export interface components {
          *         completion_claim: Bounded slice/full-goal completion summary.
          *         next_authorized_local_actions: Bounded action labels from the record.
          *         stop_boundaries: Bounded stop-boundary labels from the record.
+         *         authoritative_records: Bounded record labels a resumed agent should read first.
          *         error: Redacted parse/read error when unavailable.
          */
         AgentWorkspaceGoalState: {
+            /** Authoritative Records */
+            authoritative_records?: string[];
             /** Available */
             available: boolean;
             /** Checkpoint Id */

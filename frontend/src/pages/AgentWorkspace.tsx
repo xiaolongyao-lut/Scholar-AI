@@ -3691,6 +3691,7 @@ export function WorkspaceStatePanel({
   const goalCompletionClaim = workspaceGoalCompletionClaimSummary(state.goal_state);
   const goalNextActions = state.goal_state.next_authorized_local_actions.slice(0, 4).map(sanitizeInspectorText);
   const goalStopBoundaries = state.goal_state.stop_boundaries.slice(0, 4).map(sanitizeInspectorText);
+  const goalAuthoritativeRecords = (state.goal_state.authoritative_records ?? []).slice(0, 8).map(sanitizeInspectorText);
   const goalLifecycle = state.goal_state.lifecycle_rollup ?? null;
   const firstLifecycleBlocker = goalLifecycle?.completion_blockers[0] ?? null;
   const hasLifecycleRecordDetails = Boolean(
@@ -3815,6 +3816,7 @@ export function WorkspaceStatePanel({
             goalCompletionClaim.fullGoal ||
             goalCompletionClaim.canMarkGoalComplete !== null ||
             goalCompletionClaim.whyNotComplete ||
+            goalAuthoritativeRecords.length > 0 ||
             goalLifecycle?.completion_blockers?.length ? (
               <div className="mt-2 grid gap-1.5">
                 {goalCompletionClaim.thisSlice ? (
@@ -3888,6 +3890,15 @@ export function WorkspaceStatePanel({
                     {goalStopBoundaries.map((boundary, index) => (
                       <p key={`${boundary}-${index}`} className="break-words">
                         goal boundary {index + 1} {boundary}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+                {goalAuthoritativeRecords.length > 0 ? (
+                  <div className="grid gap-1 rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    {goalAuthoritativeRecords.map((record, index) => (
+                      <p key={`${record}-${index}`} className="break-words">
+                        goal record {index + 1} {record}
                       </p>
                     ))}
                   </div>

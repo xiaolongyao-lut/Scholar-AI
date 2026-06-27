@@ -2707,6 +2707,13 @@ def test_agent_workspace_status_reads_recovery_state(
                         "Do not run live provider/model without explicit authorization.",
                         "Do not mutate Zotero DB, modify github/ references, or add Feishu/Lark integration.",
                     ],
+                    "authoritative_records": [
+                        "AI_WORKSPACE_GUIDE.md",
+                        "AGENTS.md",
+                        "docs/plans/autonomous-execution-framework.md",
+                        "docs/plans/autonomous-execution-planning-playbook.md",
+                        "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
+                    ],
                     "error": None,
                 },
                 "artifact_root": {
@@ -2936,6 +2943,13 @@ def test_agent_workspace_status_reads_recovery_state(
         "No push, tag, release, deploy, or external upload.",
         "Do not run live provider/model without explicit authorization.",
         "Do not mutate Zotero DB, modify github/ references, or add Feishu/Lark integration.",
+    ]
+    assert state["goal_state"]["authoritative_records"] == [
+        "AI_WORKSPACE_GUIDE.md",
+        "AGENTS.md",
+        "docs/plans/autonomous-execution-framework.md",
+        "docs/plans/autonomous-execution-planning-playbook.md",
+        "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
     ]
     lifecycle_rollup = state["goal_state"]["lifecycle_rollup"]
     assert lifecycle_rollup["status"] == "active_requirements_proved_pending_authorized_gates"
