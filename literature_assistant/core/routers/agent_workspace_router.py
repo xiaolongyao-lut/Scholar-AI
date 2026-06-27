@@ -1665,7 +1665,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
         "Create a rollback checkpoint and re-check official or mature references before nontrivial edits.",
     ]
     next_actions = [
-        "Read Wiki Doctor, Knowledge Runtime Conformance, Source Vault Status/Search/Read, Knowledge Context Receipt, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, Agent Handoff Cards, and Goal Requirement Drilldowns before resuming mutating work or claiming closure.",
+        "Read Wiki Doctor, Knowledge Packages, Knowledge Runtime Conformance, Wiki/Product Docs/Academic English/Source Vault search refs, bounded resource reads, Knowledge Context Receipt, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, Agent Handoff Cards, and Goal Requirement Drilldowns before resuming mutating work or claiming closure.",
         "Inspect git dirty paths and preserve unrelated local work before staging or committing.",
         "Use workspace artifacts and audit records as recovery evidence; treat missing evidence as unresolved.",
     ]
@@ -1705,6 +1705,36 @@ def _build_workspace_state() -> AgentWorkspaceState:
                 "/api/knowledge/runtime-conformance",
                 "Recover package conformance, actual-loading gate state, and blocked evidence before claiming model-context readiness.",
                 mcp_tool="literature.knowledge_runtime_conformance",
+            ),
+            _workspace_recovery_probe(
+                "Knowledge Packages",
+                "/api/knowledge/packages",
+                "Recover package source paths, hashes, runtime consumers, and load status before selecting refs for bounded context.",
+                mcp_tool="literature.knowledge_packages",
+            ),
+            _workspace_recovery_probe(
+                "Wiki Search",
+                "/api/wiki/search",
+                "Recover wiki refs before bounded resource reads or context receipts.",
+                mcp_tool="literature.wiki_search",
+                requires_identifier=True,
+                identifier_hint="query",
+            ),
+            _workspace_recovery_probe(
+                "Academic English Search",
+                "/api/knowledge/academic-english/search?q={query}",
+                "Recover academic-English refs before bounded resource reads or context receipts.",
+                mcp_tool="literature.academic_english_search",
+                requires_identifier=True,
+                identifier_hint="query",
+            ),
+            _workspace_recovery_probe(
+                "Product Docs Search",
+                "/api/knowledge/product-docs/search?q={query}",
+                "Recover product-doc refs before bounded resource reads or context receipts.",
+                mcp_tool="literature.product_docs_search",
+                requires_identifier=True,
+                identifier_hint="query",
             ),
             _workspace_recovery_probe(
                 "Source Vault Status",

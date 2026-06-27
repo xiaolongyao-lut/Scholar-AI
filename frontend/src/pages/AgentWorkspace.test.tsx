@@ -341,6 +341,42 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
         mcp_tool: 'literature.knowledge_runtime_conformance',
       },
       {
+        label: 'Knowledge Packages',
+        route: '/api/knowledge/packages',
+        read_only: true,
+        requires_identifier: false,
+        identifier_hint: null,
+        purpose: 'Recover package source paths, hashes, runtime consumers, and load status before selecting refs for bounded context.',
+        mcp_tool: 'literature.knowledge_packages',
+      },
+      {
+        label: 'Wiki Search',
+        route: '/api/wiki/search',
+        read_only: true,
+        requires_identifier: true,
+        identifier_hint: 'query',
+        purpose: 'Recover wiki refs before bounded resource reads or context receipts.',
+        mcp_tool: 'literature.wiki_search',
+      },
+      {
+        label: 'Academic English Search',
+        route: '/api/knowledge/academic-english/search?q={query}',
+        read_only: true,
+        requires_identifier: true,
+        identifier_hint: 'query',
+        purpose: 'Recover academic-English refs before bounded resource reads or context receipts.',
+        mcp_tool: 'literature.academic_english_search',
+      },
+      {
+        label: 'Product Docs Search',
+        route: '/api/knowledge/product-docs/search?q={query}',
+        read_only: true,
+        requires_identifier: true,
+        identifier_hint: 'query',
+        purpose: 'Recover product-doc refs before bounded resource reads or context receipts.',
+        mcp_tool: 'literature.product_docs_search',
+      },
+      {
         label: 'Source Vault Status',
         route: '/api/knowledge/source-vault',
         read_only: true,
@@ -2790,6 +2826,10 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('OCR Runtime Status · read-only true · literature.ocr_status')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Wiki Doctor · read-only true · literature.wiki_doctor')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Knowledge Runtime Conformance · read-only true · literature.knowledge_runtime_conformance')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Knowledge Packages · read-only true · literature.knowledge_packages')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Wiki Search · read-only true · needs query · literature.wiki_search')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Academic English Search · read-only true · needs query · literature.academic_english_search')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Product Docs Search · read-only true · needs query · literature.product_docs_search')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Source Vault Status · read-only true · literature.source_vault_status')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Source Vault Search · read-only true · needs query · literature.source_vault_search')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Source Vault Resource Read · read-only true · needs ref_id · literature.source_vault_read')).toBeInTheDocument();

@@ -491,6 +491,10 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
         "OCR Runtime Status",
         "Wiki Doctor",
         "Knowledge Runtime Conformance",
+        "Knowledge Packages",
+        "Wiki Search",
+        "Academic English Search",
+        "Product Docs Search",
         "Source Vault Status",
         "Source Vault Search",
         "Source Vault Resource Read",
@@ -522,6 +526,29 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert krt_probe["mcp_tool"] == "literature.knowledge_runtime_conformance"
     assert "actual-loading gate state" in krt_probe["purpose"]
     assert "model-context readiness" in krt_probe["purpose"]
+    packages_probe = next(probe for probe in probes if probe["label"] == "Knowledge Packages")
+    assert packages_probe["route"] == "/api/knowledge/packages"
+    assert packages_probe["mcp_tool"] == "literature.knowledge_packages"
+    assert "source paths" in packages_probe["purpose"]
+    assert "runtime consumers" in packages_probe["purpose"]
+    wiki_search_probe = next(probe for probe in probes if probe["label"] == "Wiki Search")
+    assert wiki_search_probe["route"] == "/api/wiki/search"
+    assert wiki_search_probe["mcp_tool"] == "literature.wiki_search"
+    assert wiki_search_probe["requires_identifier"] is True
+    assert wiki_search_probe["identifier_hint"] == "query"
+    assert "wiki refs" in wiki_search_probe["purpose"]
+    academic_search_probe = next(probe for probe in probes if probe["label"] == "Academic English Search")
+    assert academic_search_probe["route"] == "/api/knowledge/academic-english/search?q={query}"
+    assert academic_search_probe["mcp_tool"] == "literature.academic_english_search"
+    assert academic_search_probe["requires_identifier"] is True
+    assert academic_search_probe["identifier_hint"] == "query"
+    assert "academic-English refs" in academic_search_probe["purpose"]
+    product_docs_search_probe = next(probe for probe in probes if probe["label"] == "Product Docs Search")
+    assert product_docs_search_probe["route"] == "/api/knowledge/product-docs/search?q={query}"
+    assert product_docs_search_probe["mcp_tool"] == "literature.product_docs_search"
+    assert product_docs_search_probe["requires_identifier"] is True
+    assert product_docs_search_probe["identifier_hint"] == "query"
+    assert "product-doc refs" in product_docs_search_probe["purpose"]
     source_vault_probe = next(probe for probe in probes if probe["label"] == "Source Vault Status")
     assert source_vault_probe["route"] == "/api/knowledge/source-vault"
     assert source_vault_probe["mcp_tool"] == "literature.source_vault_status"
