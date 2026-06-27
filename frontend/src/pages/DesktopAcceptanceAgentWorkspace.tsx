@@ -206,6 +206,22 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     source_status_counts: { not_mirrored: 1 },
     chunk_status_counts: { not_mirrored: 1 },
     sample_count: 2,
+    samples: [
+      {
+        record_type: 'source',
+        record_id: 'markdown-source-backlog',
+        source_id: 'markdown-source-backlog',
+        status: 'not_mirrored',
+        error: null,
+      },
+      {
+        record_type: 'chunk',
+        record_id: 'markdown-source-backlog:0',
+        source_id: 'markdown-source-backlog',
+        status: 'not_mirrored',
+        error: null,
+      },
+    ],
     action_count: 1,
     next_safe_local_actions: [
       'Read /api/wiki/doctor, then run an explicit local maintenance slice before WikiRegistry.replay_source_vault_mirror().',

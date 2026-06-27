@@ -408,6 +408,24 @@ class AgentWorkspaceOcrRuntimeState(BaseModel):
     error: str | None = Field(default=None, max_length=240)
 
 
+class AgentWorkspaceWikiDoctorSample(BaseModel):
+    """One bounded WikiRegistry row that still needs Source Vault mirror review.
+
+    Args:
+        record_type: Source or chunk row category from the registry backlog.
+        record_id: Registry source_id or chunk_id for locating the row.
+        source_id: Parent source id for joining source/chunk evidence.
+        status: Persisted Source Vault mirror status.
+        error: Redacted mirror error when present.
+    """
+
+    record_type: str = Field(min_length=1, max_length=40)
+    record_id: str = Field(min_length=1, max_length=160)
+    source_id: str = Field(min_length=1, max_length=160)
+    status: str = Field(min_length=1, max_length=80)
+    error: str | None = Field(default=None, max_length=240)
+
+
 class AgentWorkspaceWikiDoctorState(BaseModel):
     """Read-only Wiki Doctor recovery summary for Source Vault mirror backlog."""
 
@@ -424,6 +442,7 @@ class AgentWorkspaceWikiDoctorState(BaseModel):
     source_status_counts: dict[str, int] = Field(default_factory=dict)
     chunk_status_counts: dict[str, int] = Field(default_factory=dict)
     sample_count: int = Field(default=0, ge=0)
+    samples: list[AgentWorkspaceWikiDoctorSample] = Field(default_factory=list)
     action_count: int = Field(default=0, ge=0)
     next_safe_local_actions: list[str] = Field(default_factory=list)
     warning: str | None = Field(default=None, max_length=240)
@@ -1117,6 +1136,16 @@ def _load_wiki_doctor_state() -> AgentWorkspaceWikiDoctorState:
         registry = WikiRegistry(registry_path)
         backlog = registry.source_vault_mirror_backlog(sample_limit=MAX_WIKI_DOCTOR_ACTIONS)
         needs_replay = backlog.needs_replay
+        samples = [
+            AgentWorkspaceWikiDoctorSample(
+                record_type=_redact_text(sample.record_type).strip()[:40] or "unknown",
+                record_id=_redact_text(sample.record_id).strip()[:160] or "unknown",
+                source_id=_redact_text(sample.source_id).strip()[:160] or "unknown",
+                status=_redact_text(sample.status).strip()[:80] or "unknown",
+                error=(_redact_text(sample.error).strip()[:240] or None),
+            )
+            for sample in backlog.samples[:MAX_WIKI_DOCTOR_ACTIONS]
+        ]
         return AgentWorkspaceWikiDoctorState(
             available=True,
             status="warning" if needs_replay else "ok",
@@ -1129,6 +1158,7 @@ def _load_wiki_doctor_state() -> AgentWorkspaceWikiDoctorState:
             source_status_counts=backlog.source_status_counts,
             chunk_status_counts=backlog.chunk_status_counts,
             sample_count=len(backlog.samples),
+            samples=samples,
             action_count=1 if needs_replay else 0,
             next_safe_local_actions=(
                 [

@@ -248,6 +248,22 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       source_status_counts: { mirrored: 2, not_mirrored: 1 },
       chunk_status_counts: { mirrored: 5, not_mirrored: 2 },
       sample_count: 3,
+      samples: [
+        {
+          record_type: 'source',
+          record_id: 'markdown-source-backlog',
+          source_id: 'markdown-source-backlog',
+          status: 'not_mirrored',
+          error: null,
+        },
+        {
+          record_type: 'chunk',
+          record_id: 'markdown-source-backlog:0',
+          source_id: 'markdown-source-backlog',
+          status: 'blocked',
+          error: 'Source Vault write requires explicit replay authority.',
+        },
+      ],
       action_count: 1,
       next_safe_local_actions: [
         'Read /api/wiki/doctor, then run an explicit local maintenance slice before WikiRegistry.replay_source_vault_mirror().',
@@ -2675,6 +2691,14 @@ describe('AgentWorkspace', () => {
     expect(within(wikiDoctorRegion).getByText('source not_mirrored 1')).toBeInTheDocument();
     expect(within(wikiDoctorRegion).getByText('chunk mirrored 5')).toBeInTheDocument();
     expect(within(wikiDoctorRegion).getByText('chunk not_mirrored 2')).toBeInTheDocument();
+    expect(
+      within(wikiDoctorRegion).getByText('sample source markdown-source-backlog · source markdown-source-backlog · not_mirrored'),
+    ).toBeInTheDocument();
+    expect(
+      within(wikiDoctorRegion).getByText(
+        'sample chunk markdown-source-backlog:0 · source markdown-source-backlog · blocked · error Source Vault write requires explicit replay authority.',
+      ),
+    ).toBeInTheDocument();
     expect(
       within(wikiDoctorRegion).getByText('warning Source Vault mirror backlog has 1 source rows and 2 chunk rows pending replay.'),
     ).toBeInTheDocument();

@@ -305,6 +305,17 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert wiki_doctor["source_status_counts"] == {"not_mirrored": 1}
     assert wiki_doctor["chunk_status_counts"] == {"not_mirrored": 1}
     assert wiki_doctor["sample_count"] == 2
+    assert wiki_doctor["samples"][0] == {
+        "record_type": "source",
+        "record_id": "markdown-source-backlog",
+        "source_id": "markdown-source-backlog",
+        "status": "not_mirrored",
+        "error": None,
+    }
+    assert wiki_doctor["samples"][1]["record_type"] == "chunk"
+    assert wiki_doctor["samples"][1]["source_id"] == "markdown-source-backlog"
+    assert wiki_doctor["samples"][1]["status"] == "not_mirrored"
+    assert wiki_doctor["samples"][1]["error"] is None
     assert wiki_doctor["action_count"] == 1
     assert "Source Vault mirror backlog has 1 source rows and 1 chunk rows pending replay." == wiki_doctor["warning"]
     assert wiki_doctor["next_safe_local_actions"] == [

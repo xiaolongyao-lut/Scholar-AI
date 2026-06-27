@@ -77,6 +77,7 @@ type AgentWorkspaceGoalLifecycleBlocker = NonNullable<
 >['completion_blockers'][number];
 type AgentWorkspaceOcrEngine = AgentWorkspaceStatus['workspace_state']['ocr_runtime']['engines'][number];
 type AgentWorkspaceWikiDoctorState = AgentWorkspaceStatus['workspace_state']['wiki_doctor'];
+type AgentWorkspaceWikiDoctorSample = AgentWorkspaceWikiDoctorState['samples'][number];
 
 const KIND_LABELS: Record<string, string> = {
   markdown: 'Markdown',
@@ -1900,6 +1901,11 @@ function workspaceWikiDoctorStatusEntries(counts: Record<string, number> | undef
     .sort(([left], [right]) => left.localeCompare(right));
 }
 
+function workspaceWikiDoctorSampleLabel(sample: AgentWorkspaceWikiDoctorSample): string {
+  const error = sample.error ? ` · error ${sanitizeInspectorText(sample.error)}` : '';
+  return `${sanitizeInspectorText(sample.record_type)} ${sanitizeInspectorText(sample.record_id)} · source ${sanitizeInspectorText(sample.source_id)} · ${sanitizeInspectorText(sample.status)}${error}`;
+}
+
 function firstRecommendationMessage(healthCheck: AgentWorkflowHealthCheck | null): string {
   const recommendation = healthCheck?.recommendations?.find((item) => actionMessage(item));
   return actionMessage(recommendation)
@@ -3692,6 +3698,7 @@ export function WorkspaceStatePanel({
   const wikiDoctorActions = wikiDoctor.next_safe_local_actions ?? [];
   const wikiDoctorSourceStatusEntries = workspaceWikiDoctorStatusEntries(wikiDoctor.source_status_counts);
   const wikiDoctorChunkStatusEntries = workspaceWikiDoctorStatusEntries(wikiDoctor.chunk_status_counts);
+  const wikiDoctorSamples = (wikiDoctor.samples ?? []).slice(0, 4);
   const allOpenRequirements = state.goal_state.open_requirements ?? [];
   const matchingOpenRequirements = allOpenRequirements.filter((item) => matchesOpenRequirementQuery(requirementQuery, item));
   const openRequirements = matchingOpenRequirements.slice(0, 5);
@@ -4144,6 +4151,18 @@ export function WorkspaceStatePanel({
                     <StatusPill key={`wiki-doctor-chunk-status:${status}`} tone={count > 0 ? 'info' : 'neutral'}>
                       chunk {sanitizeInspectorText(status)} {count}
                     </StatusPill>
+                  ))}
+                </div>
+              ) : null}
+              {wikiDoctorSamples.length > 0 ? (
+                <div className="mt-1.5 grid gap-1 md:grid-cols-2">
+                  {wikiDoctorSamples.map((sample) => (
+                    <p
+                      key={`${sample.record_type}:${sample.record_id}:${sample.status}`}
+                      className="break-words rounded-md border border-outline-variant/25 bg-surface px-2 py-1 text-[11px] leading-4 text-foreground/60"
+                    >
+                      sample {workspaceWikiDoctorSampleLabel(sample)}
+                    </p>
                   ))}
                 </div>
               ) : null}

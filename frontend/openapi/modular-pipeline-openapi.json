@@ -3065,6 +3065,55 @@
         "title": "AgentWorkspaceStatus",
         "type": "object"
       },
+      "AgentWorkspaceWikiDoctorSample": {
+        "description": "One bounded WikiRegistry row that still needs Source Vault mirror review.\n\nArgs:\n    record_type: Source or chunk row category from the registry backlog.\n    record_id: Registry source_id or chunk_id for locating the row.\n    source_id: Parent source id for joining source/chunk evidence.\n    status: Persisted Source Vault mirror status.\n    error: Redacted mirror error when present.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "record_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Record Id",
+            "type": "string"
+          },
+          "record_type": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Record Type",
+            "type": "string"
+          },
+          "source_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          },
+          "status": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_type",
+          "record_id",
+          "source_id",
+          "status"
+        ],
+        "title": "AgentWorkspaceWikiDoctorSample",
+        "type": "object"
+      },
       "AgentWorkspaceWikiDoctorState": {
         "description": "Read-only Wiki Doctor recovery summary for Source Vault mirror backlog.",
         "properties": {
@@ -3149,6 +3198,13 @@
             "minimum": 0.0,
             "title": "Sample Count",
             "type": "integer"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/AgentWorkspaceWikiDoctorSample"
+            },
+            "title": "Samples",
+            "type": "array"
           },
           "schema_version": {
             "default": "scholar_ai_wiki_doctor_state_v1",

@@ -198,6 +198,14 @@ export interface AgentWorkspaceOcrRuntimeState {
   error: string | null;
 }
 
+export interface AgentWorkspaceWikiDoctorSample {
+  record_type: string;
+  record_id: string;
+  source_id: string;
+  status: string;
+  error: string | null;
+}
+
 export interface AgentWorkspaceWikiDoctorState {
   schema_version: 'scholar_ai_wiki_doctor_state_v1';
   available: boolean;
@@ -212,6 +220,7 @@ export interface AgentWorkspaceWikiDoctorState {
   source_status_counts: Record<string, number>;
   chunk_status_counts: Record<string, number>;
   sample_count: number;
+  samples: AgentWorkspaceWikiDoctorSample[];
   action_count: number;
   next_safe_local_actions: string[];
   warning: string | null;

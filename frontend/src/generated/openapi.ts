@@ -8482,6 +8482,29 @@ export interface components {
             workspace_state: components["schemas"]["AgentWorkspaceState"];
         };
         /**
+         * AgentWorkspaceWikiDoctorSample
+         * @description One bounded WikiRegistry row that still needs Source Vault mirror review.
+         *
+         *     Args:
+         *         record_type: Source or chunk row category from the registry backlog.
+         *         record_id: Registry source_id or chunk_id for locating the row.
+         *         source_id: Parent source id for joining source/chunk evidence.
+         *         status: Persisted Source Vault mirror status.
+         *         error: Redacted mirror error when present.
+         */
+        AgentWorkspaceWikiDoctorSample: {
+            /** Error */
+            error?: string | null;
+            /** Record Id */
+            record_id: string;
+            /** Record Type */
+            record_type: string;
+            /** Source Id */
+            source_id: string;
+            /** Status */
+            status: string;
+        };
+        /**
          * AgentWorkspaceWikiDoctorState
          * @description Read-only Wiki Doctor recovery summary for Source Vault mirror backlog.
          */
@@ -8533,6 +8556,8 @@ export interface components {
              * @default 0
              */
             sample_count: number;
+            /** Samples */
+            samples?: components["schemas"]["AgentWorkspaceWikiDoctorSample"][];
             /**
              * Schema Version
              * @default scholar_ai_wiki_doctor_state_v1
