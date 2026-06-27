@@ -1150,6 +1150,50 @@ def test_knowledge_runtime_conformance_summary_counts_actual_loading_gate(
     assert body["summary"]["blocked"] == 1
 
 
+def test_knowledge_runtime_manifest_audit_requires_complete_focused_evidence() -> None:
+    """Static KRT audit proof must not be proved by a partial focused-test marker."""
+
+    package = knowledge_router.KnowledgePackageProjectionResponse(
+        package_id="product_docs",
+        kind="product_docs",
+        title="Product Docs",
+        source_label="Product Docs",
+        status="loaded",
+        available=True,
+        loaded=True,
+        manifest_loaded=True,
+        source_path="README.md",
+        source_hash="a" * 64,
+        content_hash="b" * 64,
+        updated_at="2026-06-27T00:00:00Z",
+        read_endpoint="/api/knowledge/product-docs/readme",
+        search_endpoint="/api/knowledge/product-docs/search",
+        manifest={"chunk_count": 1},
+    )
+    test_evidence = knowledge_router.KnowledgeRuntimeTestEvidenceResponse(
+        focused_test_exists=True,
+        source_edit_hash_test=True,
+        context_receipt_test=True,
+        evidence_pack_test=False,
+        agent_resource_read_test=True,
+        mcp_tool_test=True,
+        test_nodes=["tests/test_knowledge_router.py::test_product_docs_source_edit_rebuilds_search_resource_and_context_receipt"],
+    )
+
+    rows = knowledge_router._conformance_items(  # noqa: SLF001 - contract test for public conformance projection.
+        package,
+        [{"consumer": "literature_assistant.core.routers.agent_bridge_router", "use": "bounded read"}],
+        test_evidence,
+    )
+    audit_row = {item.requirement: item for item in rows}["manifest_audit_test_proof"]
+
+    assert audit_row.status == "pending"
+    assert audit_row.evidence_level == "focused_test_evidence"
+    assert audit_row.missing == ["evidence_pack_test"]
+    assert audit_row.evidence == test_evidence.test_nodes
+    assert knowledge_router._overall_conformance_status(rows) == "pending"  # noqa: SLF001
+
+
 def write_ok_live_smoke_artifact(
     path: Path,
     *,

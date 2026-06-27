@@ -1901,7 +1901,20 @@ def _manifest_audit_test_requirement(
     package: KnowledgePackageProjectionResponse,
     test_evidence: KnowledgeRuntimeTestEvidenceResponse,
 ) -> KnowledgeRuntimeConformanceItemResponse:
-    if test_evidence.focused_test_exists:
+    required_evidence = {
+        "source_edit_hash_test": test_evidence.source_edit_hash_test,
+        "context_receipt_test": test_evidence.context_receipt_test,
+        "agent_resource_read_test": test_evidence.agent_resource_read_test,
+        "mcp_tool_test": test_evidence.mcp_tool_test,
+    }
+    if package.kind != "bridge_lexicon":
+        required_evidence["evidence_pack_test"] = test_evidence.evidence_pack_test
+    missing = [key for key, enabled in required_evidence.items() if not enabled]
+    if not test_evidence.focused_test_exists:
+        missing.insert(0, f"focused tests for {package.package_id}")
+    if not test_evidence.test_nodes:
+        missing.append("pytest node ids for focused evidence")
+    if not missing:
         return KnowledgeRuntimeConformanceItemResponse(
             requirement="manifest_audit_test_proof",
             status="proved",
@@ -1909,11 +1922,8 @@ def _manifest_audit_test_requirement(
             evidence_scope=[
                 key
                 for key, enabled in {
-                    "source_edit_hash_test": test_evidence.source_edit_hash_test,
-                    "context_receipt_test": test_evidence.context_receipt_test,
-                    "evidence_pack_test": test_evidence.evidence_pack_test,
-                    "agent_resource_read_test": test_evidence.agent_resource_read_test,
-                    "mcp_tool_test": test_evidence.mcp_tool_test,
+                    **required_evidence,
+                    "test_nodes": True,
                 }.items()
                 if enabled
             ],
@@ -1923,7 +1933,9 @@ def _manifest_audit_test_requirement(
         requirement="manifest_audit_test_proof",
         status="pending",
         evidence_level="focused_test_evidence",
-        missing=[f"focused tests for {package.package_id}"],
+        evidence_scope=[key for key, enabled in required_evidence.items() if enabled],
+        evidence=test_evidence.test_nodes,
+        missing=missing,
     )
 
 
