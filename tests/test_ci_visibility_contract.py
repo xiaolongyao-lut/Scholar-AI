@@ -412,6 +412,10 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
     if completion_blockers:
         assert rollup.get("is_goal_complete") is False
         assert rollup.get("can_mark_goal_complete") is False
+        first_blocker = completion_blockers[0]
+        assert isinstance(first_blocker, dict)
+        blocker_evidence = first_blocker.get("evidence")
+        assert isinstance(blocker_evidence, str) and blocker_evidence.strip()
 
     completion_claim = payload.get("completion_claim")
     assert isinstance(completion_claim, dict)
@@ -519,3 +523,12 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
     if summary.completion_claim.can_mark_goal_complete is False:
         assert summary.completion_claim.why_not_complete
         assert summary.lifecycle_rollup.completion_blockers
+        expected_blockers = [
+            blocker for blocker in rollup.get("completion_blockers", []) if isinstance(blocker, dict)
+        ][: agent_workspace_router.MAX_GOAL_LIFECYCLE_BLOCKERS]
+        assert expected_blockers
+        first_expected_evidence = expected_blockers[0].get("evidence")
+        assert isinstance(first_expected_evidence, str) and first_expected_evidence.strip()
+        assert summary.lifecycle_rollup.completion_blockers[0].evidence == (
+            agent_workspace_router._redact_text(first_expected_evidence).strip()[:240]
+        )

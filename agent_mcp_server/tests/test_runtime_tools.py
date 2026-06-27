@@ -2690,6 +2690,7 @@ def test_agent_workspace_status_reads_recovery_state(
                                 "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
                                 "missing_evidence": "Authorized live provider/model smoke artifact with verdict=ok.",
                                 "current_boundary": "Deterministic contract and harness tests are proved.",
+                                "evidence": "N289 recovery projection evidence confirms deterministic visibility only.",
                             }
                         ],
                         "machine_readable_completion_rule": "Goal may be marked complete only after blockers clear.",
@@ -2986,6 +2987,9 @@ def test_agent_workspace_status_reads_recovery_state(
     assert lifecycle_rollup["is_goal_complete"] is False
     assert lifecycle_rollup["can_mark_goal_complete"] is False
     assert lifecycle_rollup["completion_blockers"][0]["id"] == "actual_loading_gate_live_model_proof"
+    assert lifecycle_rollup["completion_blockers"][0]["evidence"] == (
+        "N289 recovery projection evidence confirms deterministic visibility only."
+    )
     assert state["recovery_probes"][0]["route"] == "/runtime/research-action-lifecycle"
     assert state["recovery_probes"][0]["read_only"] is True
     handoff_probe = state["recovery_probes"][1]

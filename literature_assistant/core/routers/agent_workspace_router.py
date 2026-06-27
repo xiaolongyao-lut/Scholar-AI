@@ -203,6 +203,7 @@ class AgentWorkspaceGoalLifecycleBlocker(BaseModel):
         requirement_surface: Short product or workflow surface affected.
         missing_evidence: Missing proof needed before completion can be claimed.
         current_boundary: Current authorization, tooling, or evidence boundary.
+        evidence: Current bounded evidence explaining why this blocker still applies.
     """
 
     id: str = Field(min_length=1, max_length=160)
@@ -210,6 +211,7 @@ class AgentWorkspaceGoalLifecycleBlocker(BaseModel):
     requirement_surface: str | None = Field(default=None, max_length=240)
     missing_evidence: str | None = Field(default=None, max_length=240)
     current_boundary: str | None = Field(default=None, max_length=240)
+    evidence: str | None = Field(default=None, max_length=240)
 
 
 class AgentWorkspaceGoalLifecycleRollup(BaseModel):
@@ -1380,6 +1382,7 @@ def _safe_goal_lifecycle_blocker(value: Any) -> AgentWorkspaceGoalLifecycleBlock
         requirement_surface=_safe_optional_text(value.get("requirement_surface"), max_chars=240),
         missing_evidence=_safe_optional_text(value.get("missing_evidence"), max_chars=240),
         current_boundary=_safe_optional_text(value.get("current_boundary"), max_chars=240),
+        evidence=_safe_optional_text(value.get("evidence"), max_chars=240),
     )
 
 

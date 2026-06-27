@@ -3879,6 +3879,11 @@ export function WorkspaceStatePanel({
                         current boundary {sanitizeInspectorText(firstLifecycleBlocker.current_boundary)}
                       </p>
                     ) : null}
+                    {firstLifecycleBlocker.evidence ? (
+                      <p className="break-words">
+                        blocker evidence {sanitizeInspectorText(firstLifecycleBlocker.evidence)}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
                 {goalLifecycle?.machine_readable_completion_rule ? (

@@ -726,6 +726,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                             "requirement_surface": "Knowledge Runtime Pipeline at C:/Users/xiao/private",
                             "missing_evidence": "Authorized live provider/model smoke artifact with verdict=ok.",
                             "current_boundary": "Deterministic contract tests are proved only.",
+                            "evidence": "N289 projection evidence at C:/Users/xiao/private proves deterministic visibility only.",
                         },
                         {
                             "id": "real_ocr_provider_execution",
@@ -875,6 +876,9 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     assert summary.lifecycle_rollup.completion_blockers[0].id == "actual_loading_gate_live_model_proof"
     assert summary.lifecycle_rollup.completion_blockers[0].requirement_surface == (
         "Knowledge Runtime Pipeline at [redacted-local-path]"
+    )
+    assert summary.lifecycle_rollup.completion_blockers[0].evidence == (
+        "N289 projection evidence at [redacted-local-path] proves deterministic visibility only."
     )
     assert summary.lifecycle_rollup.completion_blockers[2].id == "git_persistence_user_signoff"
     assert summary.lifecycle_rollup.completion_blockers[2].status is None

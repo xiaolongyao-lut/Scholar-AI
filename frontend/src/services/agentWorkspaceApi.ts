@@ -80,6 +80,7 @@ export interface AgentWorkspaceGoalLifecycleBlocker {
   requirement_surface: string | null;
   missing_evidence: string | null;
   current_boundary: string | null;
+  evidence: string | null;
 }
 
 export interface AgentWorkspaceGoalLifecycleRollup {

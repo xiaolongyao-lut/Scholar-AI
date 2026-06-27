@@ -2064,7 +2064,7 @@
         "type": "object"
       },
       "AgentWorkspaceGoalLifecycleBlocker": {
-        "description": "One bounded goal-level blocker from the longrun lifecycle rollup.\n\nArgs:\n    id: Stable blocker id.\n    status: Current blocker state.\n    requirement_surface: Short product or workflow surface affected.\n    missing_evidence: Missing proof needed before completion can be claimed.\n    current_boundary: Current authorization, tooling, or evidence boundary.",
+        "description": "One bounded goal-level blocker from the longrun lifecycle rollup.\n\nArgs:\n    id: Stable blocker id.\n    status: Current blocker state.\n    requirement_surface: Short product or workflow surface affected.\n    missing_evidence: Missing proof needed before completion can be claimed.\n    current_boundary: Current authorization, tooling, or evidence boundary.\n    evidence: Current bounded evidence explaining why this blocker still applies.",
         "properties": {
           "current_boundary": {
             "anyOf": [
@@ -2077,6 +2077,18 @@
               }
             ],
             "title": "Current Boundary"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence"
           },
           "id": {
             "maxLength": 160,

@@ -154,6 +154,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
             requirement_surface: 'Knowledge Runtime Pipeline QA/agent actual model-context loading',
             missing_evidence: 'Authorized live provider/model smoke artifact with verdict=ok.',
             current_boundary: 'Deterministic contract and harness tests are proved.',
+            evidence: 'N289 recovery projection evidence confirms deterministic visibility only.',
           },
         ],
         machine_readable_completion_rule: 'Goal may be marked complete only after blockers clear.',
@@ -2752,6 +2753,11 @@ describe('AgentWorkspace', () => {
     expect(
       within(workspaceStateRegion).getByText(
         'current boundary Deterministic contract and harness tests are proved.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(workspaceStateRegion).getByText(
+        'blocker evidence N289 recovery projection evidence confirms deterministic visibility only.',
       ),
     ).toBeInTheDocument();
     expect(

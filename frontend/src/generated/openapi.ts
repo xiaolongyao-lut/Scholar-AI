@@ -8059,10 +8059,13 @@ export interface components {
          *         requirement_surface: Short product or workflow surface affected.
          *         missing_evidence: Missing proof needed before completion can be claimed.
          *         current_boundary: Current authorization, tooling, or evidence boundary.
+         *         evidence: Current bounded evidence explaining why this blocker still applies.
          */
         AgentWorkspaceGoalLifecycleBlocker: {
             /** Current Boundary */
             current_boundary?: string | null;
+            /** Evidence */
+            evidence?: string | null;
             /** Id */
             id: string;
             /** Missing Evidence */
