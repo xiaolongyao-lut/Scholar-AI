@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T16:04:38+08:00",
+  "updated_at": "2026-06-27T16:14:16+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,11 +100,11 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "manual-20260627_160219-n242-krt-recovery-state-priority",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_160219-n242-krt-recovery-state-priority",
+    "latest_checkpoint_id": "manual-20260627_161416-n243-windows-ocr-real-execution-proof",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_161416-n243-windows-ocr-real-execution-proof",
     "latest_goal_state_checkpoint_id": "manual-20260627_154635-n241-ocr-provider-proof",
     "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_154635-n241-ocr-provider-proof",
-    "latest_checkpoint_caveat": "Targeted rollback snapshot for N242 KRT recovery-state priority, tests, and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_caveat": "Targeted rollback snapshot for N243 Windows OCR real local execution proof and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
     {
@@ -6850,40 +6850,64 @@
         }
       ],
       "residual_risk": "This fixes recovery-state priority only. Live Knowledge Runtime actual-loading still requires corrected provider credentials and explicit live-provider authorization to produce a matching ok context-receipt artifact; real RapidOCR and remote OCR execution blockers remain unchanged."
+    },
+    {
+      "id": "N243-windows-ocr-real-local-execution-proof",
+      "requirement": "OCR/local processing evidence must include a real local execution proof when a local engine is ready, not only health/readiness metadata or mocked execution receipts.",
+      "source": "Current OCR goal branch requires OCR/local processing capability to be verifiable. Runtime inventory showed LITASSIST_OCR_POLICY default auto selected the ready Windows OCR engine while RapidOCR/PaddleOCR were dependency_missing and remote_api required configuration/consent.",
+      "status": "proved",
+      "evidence": [
+        {
+          "file": "literature_assistant/core/routers/pdf_backend_router.py",
+          "proof": "/api/pdf-backend/ocr-execution-probe returns scholar-ai-ocr-execution-probe/v1 with confirmed=true, engine metadata, bounded input hash, text hash, preview, and duration for explicit local OCR execution."
+        },
+        {
+          "file": "literature_assistant/core/pdf_backends/ocr_builtin_engines.py",
+          "proof": "WindowsOcrEngine uses Windows.Media.Ocr through local PowerShell/WinRT and requires no network upload."
+        },
+        {
+          "command": ".\\.venv-1\\Scripts\\python.exe importlib inventory -> rapidocr=False, rapidocr_onnxruntime=False, paddleocr=False, paddle=False"
+        },
+        {
+          "command": "public_ocr_status() -> policy=auto, selected_engine=windows, warning=None; windows ready, rapidocr dependency_missing, paddleocr_gpu dependency_missing, remote_api configuration_required."
+        },
+        {
+          "command": "Direct health_check inventory -> windows ok=True/readiness_status=ready; rapidocr ok=False/dependency_missing; paddleocr_gpu ok=False/dependency_missing; remote_api ok=False/configuration_required."
+        },
+        {
+          "command": "TestClient POST /api/pdf-backend/ocr-execution-probe with local capability header, confirm_execution=true, engine=windows, image_path=workspace_artifacts/generated/output/ocr_windows_probe_20260627.png -> 200 scholar-ai-ocr-execution-probe/v1; confirmed=true; requires_network=false; input_sha256=2ef4d571468c4b02d74b8df5911019e157abb60813f2e3162f0380d9946136c6; text_sha256=4e9c28dcb44e8eae6463c250adc5a2b3501da3011494e9f841b7676e867fbba1; text_preview='Scholar Al OCR PROOF'."
+        }
+      ],
+      "residual_risk": "This proves real local Windows OCR execution on a generated local image and strengthens OCR/local-processing evidence. It does not prove RapidOCR real execution because the active .venv-1 has no rapidocr or rapidocr_onnxruntime module, and it does not prove remote OCR because remote execution still requires explicit consent plus credentials."
     }
   ],
   "changed_files_for_this_slice": [
-    "literature_assistant/core/routers/pdf_backend_router.py",
-    "tests/test_pdf_backend_router.py",
-    "frontend/openapi/modular-pipeline-openapi.json",
-    "frontend/src/generated/openapi.ts",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_pdf_backend_router.py::test_ocr_execution_probe_blocks_remote_without_upload_consent tests\\test_pdf_backend_router.py::test_ocr_execution_probe_blocks_rapidocr_with_recovery_receipt tests\\test_pdf_backend_router.py::test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability -q -> 3 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py::test_rapidocr_external_python_missing_exposes_readiness_blocker tests\\test_ocr_engine_registry.py::test_rapidocr_external_python_execution_uses_subprocess_receipt agent_mcp_server\\tests\\test_runtime_tools.py::test_ocr_execution_probe_posts_explicit_execution_payload -q -> 3 passed",
-    "npm run generate:openapi from frontend/ -> schema and TypeScript OpenAPI generation passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_pdf_backend_router.py tests\\test_ocr_engine_registry.py -q -> 46 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py -k \"ocr_status or ocr_engines or ocr_health or ocr_execution_probe\" -q -> 6 passed, 99 deselected",
-    "frontend: npm run build -> tsc and vite build passed",
-    "TestClient live contract probe -> rapidocr health 200 dependency_missing; rapidocr execution 409 scholar-ai-ocr-execution-blocked/v1; remote_api execution 409 scholar-ai-ocr-execution-blocked/v1 without uploading content externally"
+    ".\\.venv-1\\Scripts\\python.exe importlib inventory -> rapidocr=False, rapidocr_onnxruntime=False, paddleocr=False, paddle=False",
+    "public_ocr_status() -> policy=auto, selected_engine=windows, warning=None; windows ready, rapidocr dependency_missing, paddleocr_gpu dependency_missing, remote_api configuration_required",
+    "Direct OCR health_check inventory -> windows ok=True/readiness_status=ready; rapidocr ok=False/dependency_missing; paddleocr_gpu ok=False/dependency_missing; remote_api ok=False/configuration_required",
+    "TestClient POST /api/pdf-backend/ocr-execution-probe with local capability header and engine=windows on generated local image -> 200 scholar-ai-ocr-execution-probe/v1 confirmed=true requires_network=false",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_pdf_backend_router.py::test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability tests\\test_ocr_ingestion.py::test_windows_ocr_engine_merges_real_scanned_pdf_page -q -> 2 passed"
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, 先回档/create rollback checkpoint, 搜索成熟方案/search official or mature references, and record evidence/residual risk.",
     "Continue Knowledge Runtime Pipeline proof by using actual_loading_gate.recovery from /api/knowledge/runtime-conformance or literature.knowledge_runtime_conformance before retrying any live proof; do not parse next_safe_local_actions strings as the primary state.",
     "If provider credentials are corrected by the user, rerun provider tool-capability preflight before any live KRT context-receipt smoke.",
-    "Continue OCR/local processing proof only with installed/configured local runtimes or explicit remote-provider consent; current RapidOCR evidence is dependency_missing plus structured blocked receipt, not real OCR execution.",
+    "Continue OCR/local processing proof with installed/configured RapidOCR/PaddleOCR runtimes or explicit remote-provider consent; current Windows OCR has a real local execution receipt, but RapidOCR remains dependency_missing and remote OCR remains consent/credential gated.",
     "Do not call the long-run goal complete while goal_lifecycle_rollup.can_mark_goal_complete is false."
   ],
   "stop_boundary": [
     "Do not call the long-run goal complete while goal_lifecycle_rollup.can_mark_goal_complete is false.",
     "Do not stage/commit/push/tag/release/deploy/upload without explicit authorization and scoped path review.",
-    "Do not run live provider/model or real OCR provider smokes without explicit authorization and credential-safe logging.",
+    "Do not run live provider/model, remote OCR upload, or install OCR runtimes/models without explicit authorization and credential-safe logging.",
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N241 makes OCR execution-gate failures recoverable by returning a structured blocked receipt for missing RapidOCR runtime and remote upload-consent gates, with OpenAPI and focused tests.",
-    "full_goal": "The full Scholar AI workflow spine remains active, not complete: live KRT model-loading proof and unresolved OCR real-runtime gates are still blocked by authorization/runtime boundaries."
+    "this_slice": "N243 records a real local Windows OCR execution receipt through the existing explicit execution probe, proving local OCR can run on this host without network upload.",
+    "full_goal": "The full Scholar AI workflow spine remains active, not complete: live KRT model-loading proof, RapidOCR real-runtime execution, and remote OCR consent/credential gates remain unresolved."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -10808,7 +10832,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N242-krt-recovery-state-priority",
+  "latest_slice": "N243-windows-ocr-real-local-execution-proof",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -12572,25 +12596,25 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T16:04:38+08:00",
+    "updated_at": "2026-06-27T16:14:16+08:00",
     "status": "requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 243,
+    "requirements_total": 244,
     "requirement_status_counts": {
-      "proved": 243
+      "proved": 244
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N242-krt-recovery-state-priority",
-    "latest_slice_id": "N242-krt-recovery-state-priority",
+    "latest_requirement_id": "N243-windows-ocr-real-local-execution-proof",
+    "latest_slice_id": "N243-windows-ocr-real-local-execution-proof",
     "completion_blockers": [
       "actual_loading_gate_live_model_proof_auth_required_current_provider",
       "real_rapidocr_runtime_execution_or_explicit_out_of_scope",
       "remote_ocr_real_execution_requires_explicit_consent_and_credentials_or_out_of_scope"
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N242 makes KRT actual-loading recovery state prioritize provider_preflight auth blockers when live-smoke artifacts are also incomplete, but it does not clear the live model-context proof gate. Corrected provider credentials plus explicit live-provider authorization are still required; real RapidOCR runtime execution and remote OCR consent/credentials also remain completion blockers."
+    "why_not_complete": "N243 proves real local Windows OCR execution through the explicit OCR execution probe, but it does not clear the live KRT model-context proof gate, real RapidOCR runtime execution blocker, or remote OCR consent/credential blocker. Corrected provider credentials plus explicit live-provider authorization are still required for KRT; RapidOCR needs an installed/configured runtime or explicit out-of-scope decision; remote OCR needs explicit consent plus credentials or out-of-scope decision."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -16624,5 +16648,71 @@
     },
     "decision": "Prioritize provider_preflight blockers in recovery.state whenever provider readiness is not proved, while preserving live-smoke artifact details in blocked_by and validation_errors.",
     "residual_risk": "Live Knowledge Runtime actual-loading remains blocked until provider preflight is proved and an explicitly authorized matching live context-receipt smoke artifact is ok. RapidOCR real execution and remote OCR real execution remain separate runtime/authorization blockers."
+  },
+  "n243_windows_ocr_real_local_execution_proof_slice": {
+    "status": "done",
+    "updated_at": "2026-06-27T16:14:16+08:00",
+    "rollback_checkpoint": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_161416-n243-windows-ocr-real-execution-proof",
+    "changed_files": [
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "runtime_artifacts": [
+      "workspace_artifacts/generated/output/ocr_windows_probe_20260627.png"
+    ],
+    "verification": [
+      ".\\.venv-1\\Scripts\\python.exe importlib inventory -> rapidocr=False, rapidocr_onnxruntime=False, paddleocr=False, paddle=False",
+      "public_ocr_status() -> policy=auto, selected_engine=windows, warning=None; windows ready, rapidocr dependency_missing, paddleocr_gpu dependency_missing, remote_api configuration_required",
+      "Direct OCR health_check inventory -> windows ok=True/readiness_status=ready; rapidocr ok=False/dependency_missing; paddleocr_gpu ok=False/dependency_missing; remote_api ok=False/configuration_required",
+      "TestClient POST /api/pdf-backend/ocr-execution-probe with local capability header, confirm_execution=true, engine=windows, image_path=workspace_artifacts/generated/output/ocr_windows_probe_20260627.png -> 200 scholar-ai-ocr-execution-probe/v1; confirmed=true; requires_network=false; input_sha256=2ef4d571468c4b02d74b8df5911019e157abb60813f2e3162f0380d9946136c6; text_sha256=4e9c28dcb44e8eae6463c250adc5a2b3501da3011494e9f841b7676e867fbba1; text_preview='Scholar Al OCR PROOF'.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_pdf_backend_router.py::test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability tests\\test_ocr_ingestion.py::test_windows_ocr_engine_merges_real_scanned_pdf_page -q -> 2 passed"
+    ],
+    "mature_references_checked": {
+      "topic": "N243 Windows OCR real local execution proof",
+      "source": "Microsoft Windows.Media.Ocr OcrEngine docs; FastAPI testing docs",
+      "url": "https://learn.microsoft.com/en-us/uwp/api/windows.media.ocr.ocrengine ; https://fastapi.tiangolo.com/tutorial/testing/",
+      "status": "HTTP 200 for both references checked locally",
+      "checked_at": "2026-06-27T16:14:16+08:00",
+      "use_in_slice": "Used to validate the local Windows OCR execution boundary and TestClient route proof shape. No external code copied and no document upload performed."
+    },
+    "current_runtime_observation": {
+      "policy": "auto",
+      "selected_engine": "windows",
+      "windows_health": {
+        "ok": true,
+        "readiness_status": "ready",
+        "requires_network": false
+      },
+      "rapidocr_health": {
+        "ok": false,
+        "readiness_status": "dependency_missing",
+        "readiness_blockers": [
+          "rapidocr or rapidocr_onnxruntime is not installed"
+        ]
+      },
+      "remote_api_health": {
+        "ok": false,
+        "readiness_status": "configuration_required",
+        "requires_network": true
+      },
+      "execution_probe": {
+        "route": "/api/pdf-backend/ocr-execution-probe",
+        "local_capability_header_required": true,
+        "status_code": 200,
+        "schema_version": "scholar-ai-ocr-execution-probe/v1",
+        "confirmed": true,
+        "engine": "windows",
+        "requires_network": false,
+        "input_kind": "image_path",
+        "input_bytes": 14878,
+        "input_sha256": "2ef4d571468c4b02d74b8df5911019e157abb60813f2e3162f0380d9946136c6",
+        "text_length": 20,
+        "text_sha256": "4e9c28dcb44e8eae6463c250adc5a2b3501da3011494e9f841b7676e867fbba1",
+        "text_preview": "Scholar Al OCR PROOF",
+        "duration_ms": 347
+      }
+    },
+    "decision": "Record Windows OCR as the current host's real local OCR execution proof because auto policy selected a ready local engine. Keep RapidOCR and remote OCR as separate blockers rather than treating Windows OCR as a substitute for those explicit gates.",
+    "residual_risk": "Windows OCR execution proves local OCR capability on this Windows host. It does not prove RapidOCR real execution, PaddleOCR execution, or remote OCR execution; RapidOCR remains dependency_missing in .venv-1, and remote OCR remains consent/credential gated."
   }
 }
