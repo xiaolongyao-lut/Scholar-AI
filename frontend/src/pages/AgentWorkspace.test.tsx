@@ -422,6 +422,15 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
         mcp_tool: 'source.read_file',
       },
       {
+        label: 'Goal Lifecycle Completion Gate',
+        route: '/api/agent-workspace/status',
+        read_only: true,
+        requires_identifier: false,
+        identifier_hint: null,
+        purpose: 'Recover can_mark_goal_complete, completion_blockers, completion_claim, and why_not_complete before treating all-proved requirements as long-goal closure.',
+        mcp_tool: 'literature.agent_workspace_status',
+      },
+      {
         label: 'Workflow Passport',
         route: '/runtime/workflow-passport',
         read_only: true,
@@ -2844,6 +2853,7 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('Source Vault Resource Read · read-only true · needs ref_id · literature.source_vault_read')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Knowledge Context Receipt · read-only true · needs ref_id · literature.knowledge_context_receipt')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('MCP Result Envelope · read-only true · source.read_file')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Goal Lifecycle Completion Gate · read-only true · literature.agent_workspace_status')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Workflow Passport · read-only true · literature.workflow_passport')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Evidence Integrity Gate · read-only true · literature.evidence_integrity_gate')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Research Action Lifecycle · read-only true · literature.research_action_lifecycle')).toBeInTheDocument();
