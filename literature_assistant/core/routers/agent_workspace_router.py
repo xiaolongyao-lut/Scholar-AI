@@ -1426,7 +1426,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
         "Create a rollback checkpoint and re-check official or mature references before nontrivial edits.",
     ]
     next_actions = [
-        "Read Wiki Doctor, Knowledge Runtime Conformance, Source Vault Status, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, and Agent Handoff Cards before resuming mutating work.",
+        "Read Wiki Doctor, Knowledge Runtime Conformance, Source Vault Status/Search/Read, Knowledge Context Receipt, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, and Agent Handoff Cards before resuming mutating work.",
         "Inspect git dirty paths and preserve unrelated local work before staging or committing.",
         "Use workspace artifacts and audit records as recovery evidence; treat missing evidence as unresolved.",
     ]
@@ -1470,6 +1470,30 @@ def _build_workspace_state() -> AgentWorkspaceState:
                 "/api/knowledge/source-vault",
                 "Recover Source Vault manifest, source counts, refs, and empty-runtime blockers before claiming source-to-context proof.",
                 mcp_tool="literature.source_vault_status",
+            ),
+            _workspace_recovery_probe(
+                "Source Vault Search",
+                "/api/knowledge/source-vault/search?q={query}",
+                "Recover Source Vault search refs before reading bounded resources or assembling context receipts.",
+                mcp_tool="literature.source_vault_search",
+                requires_identifier=True,
+                identifier_hint="query",
+            ),
+            _workspace_recovery_probe(
+                "Source Vault Resource Read",
+                "/api/agent-bridge/resource/{ref_id}",
+                "Recover bounded Source Vault resource text, cursor, hash, and provenance before using refs as context.",
+                mcp_tool="literature.source_vault_read",
+                requires_identifier=True,
+                identifier_hint="ref_id",
+            ),
+            _workspace_recovery_probe(
+                "Knowledge Context Receipt",
+                "/api/knowledge/context-receipt",
+                "Recover bounded context receipt proof for selected refs before claiming prompt/context loading.",
+                mcp_tool="literature.knowledge_context_receipt",
+                requires_identifier=True,
+                identifier_hint="ref_id",
             ),
             _workspace_recovery_probe(
                 "Workflow Passport",

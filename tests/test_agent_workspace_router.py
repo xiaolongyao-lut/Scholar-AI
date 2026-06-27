@@ -288,6 +288,9 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
         "Wiki Doctor",
         "Knowledge Runtime Conformance",
         "Source Vault Status",
+        "Source Vault Search",
+        "Source Vault Resource Read",
+        "Knowledge Context Receipt",
         "Workflow Passport",
         "Evidence Integrity Gate",
         "Research Action Lifecycle",
@@ -320,6 +323,24 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert source_vault_probe["mcp_tool"] == "literature.source_vault_status"
     assert "Source Vault manifest" in source_vault_probe["purpose"]
     assert "source-to-context proof" in source_vault_probe["purpose"]
+    source_search_probe = next(probe for probe in probes if probe["label"] == "Source Vault Search")
+    assert source_search_probe["route"] == "/api/knowledge/source-vault/search?q={query}"
+    assert source_search_probe["mcp_tool"] == "literature.source_vault_search"
+    assert source_search_probe["requires_identifier"] is True
+    assert source_search_probe["identifier_hint"] == "query"
+    assert "search refs" in source_search_probe["purpose"]
+    source_read_probe = next(probe for probe in probes if probe["label"] == "Source Vault Resource Read")
+    assert source_read_probe["route"] == "/api/agent-bridge/resource/{ref_id}"
+    assert source_read_probe["mcp_tool"] == "literature.source_vault_read"
+    assert source_read_probe["requires_identifier"] is True
+    assert source_read_probe["identifier_hint"] == "ref_id"
+    assert "bounded Source Vault resource" in source_read_probe["purpose"]
+    context_receipt_probe = next(probe for probe in probes if probe["label"] == "Knowledge Context Receipt")
+    assert context_receipt_probe["route"] == "/api/knowledge/context-receipt"
+    assert context_receipt_probe["mcp_tool"] == "literature.knowledge_context_receipt"
+    assert context_receipt_probe["requires_identifier"] is True
+    assert context_receipt_probe["identifier_hint"] == "ref_id"
+    assert "context receipt proof" in context_receipt_probe["purpose"]
     handoff_probe = next(probe for probe in probes if probe["label"] == "Agent Handoff Card")
     assert handoff_probe["route"] == "/runtime/job/{job_id}/agent-handoff-card"
     assert handoff_probe["requires_identifier"] is True
