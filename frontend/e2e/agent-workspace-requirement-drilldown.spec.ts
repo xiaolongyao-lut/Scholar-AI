@@ -46,19 +46,20 @@ test('desktop acceptance route exposes read-only requirement drilldown evidence'
   await expect(workspaceState).toBeVisible();
   await expect(workspaceState.getByText('workspace ready')).toBeVisible();
   await expect(workspaceState.getByText('read-only true').first()).toBeVisible();
-  await expect(workspaceState.getByText('open requirements 2')).toBeVisible();
+  await expect(workspaceState.getByText('goal-state visible')).toBeVisible();
   await expect(workspaceState.getByText('requirement status visible')).toBeVisible();
+  await expect(workspaceState.getByText('full goal status visible')).toBeVisible();
 
   const requirementDrilldown = workspaceState.getByRole('region', { name: 'Requirement evidence drilldown' });
   await expect(requirementDrilldown).toBeVisible();
   await expect(requirementDrilldown.getByText('Requirement Evidence')).toBeVisible();
   await expect(requirementDrilldown.getByText('drilldown visible')).toBeVisible();
   await expect(requirementDrilldown.getByText('read-only true')).toBeVisible();
-  await expect(requirementDrilldown.getByText('evidence 2')).toBeVisible();
-  await expect(requirementDrilldown.getByText('B01-computer-use-accessibility-tree · incomplete')).toBeVisible();
-  await expect(requirementDrilldown.getByText('tests/test_agent_workspace_router.py · Router contract keeps requirement drilldown bounded and path safe.')).toBeVisible();
-  await expect(requirementDrilldown.getByText('frontend/src/pages/DesktopAcceptanceAgentWorkspace.test.tsx · Desktop acceptance fixture exposes requirement-to-evidence drilldown without native accessibility-tree tooling.')).toBeVisible();
-  await expect(requirementDrilldown.getByText('boundary No Computer Use accessibility-tree retry until sandboxPolicy is fixed.')).toBeVisible();
+  await expect(requirementDrilldown.getByText('evidence 4')).toBeVisible();
+  await expect(requirementDrilldown.getByText('N74-wiki-import-desktop-acceptance · proved')).toBeVisible();
+  await expect(requirementDrilldown.getByText('frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx · Desktop acceptance fixture renders WikiImportRecoveryPanel with local Markdown import runtime recovery metadata.')).toBeVisible();
+  await expect(requirementDrilldown.getByText('frontend/src/pages/DesktopAcceptanceAgentWorkspace.test.tsx · Role-scoped test proves Wiki import recovery visibility, review-gated metadata, and no raw route or local path leakage.')).toBeVisible();
+  await expect(requirementDrilldown.getByText('boundary No push, tag, release, deploy, external upload, approval execution, or Zotero DB mutation.')).toBeVisible();
 
   const crosslinks = page.getByRole('region', { name: 'Research action crosslinks' });
   await expect(crosslinks.getByText('Research Action Crosslinks')).toBeVisible();
@@ -66,7 +67,7 @@ test('desktop acceptance route exposes read-only requirement drilldown evidence'
   await expect(crosslinks.getByText('handoff action refs 1')).toBeVisible();
   await expect(crosslinks.getByText('Do not execute approvals from the handoff action-lifecycle recovery bundle.')).toBeVisible();
 
-  await expect(page.getByText('full goal The full Scholar AI research workflow spine goal remains active, not complete.')).toBeVisible();
+  await expect(page.getByText('full goal The long-running Scholar AI research workflow spine remains active, not complete.')).toBeVisible();
   await expect(page.getByText('C:\\Users\\xiao')).toHaveCount(0);
   await expect(page.getByText('C:\\Users\\Alice\\private\\desktop-acceptance.pdf')).toHaveCount(0);
   await expect(page.getByText('[redacted-local-path]').first()).toBeVisible();
