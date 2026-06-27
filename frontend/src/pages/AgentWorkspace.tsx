@@ -1894,6 +1894,12 @@ function workspaceWikiDoctorSummary(wikiDoctor: AgentWorkspaceWikiDoctorState): 
   return `wiki doctor ${status} · sources ${wikiDoctor.source_count} · chunks ${wikiDoctor.chunk_count} · pending ${wikiDoctor.pending_source_count}/${wikiDoctor.pending_chunk_count}`;
 }
 
+function workspaceWikiDoctorStatusEntries(counts: Record<string, number> | undefined): Array<[string, number]> {
+  return Object.entries(counts ?? {})
+    .filter(([, count]) => Number.isFinite(count) && count >= 0)
+    .sort(([left], [right]) => left.localeCompare(right));
+}
+
 function firstRecommendationMessage(healthCheck: AgentWorkflowHealthCheck | null): string {
   const recommendation = healthCheck?.recommendations?.find((item) => actionMessage(item));
   return actionMessage(recommendation)
@@ -3684,6 +3690,8 @@ export function WorkspaceStatePanel({
   const ocrConfigEntries = Object.entries(ocrRuntime.engine_config).slice(0, 4);
   const wikiDoctor = state.wiki_doctor;
   const wikiDoctorActions = wikiDoctor.next_safe_local_actions ?? [];
+  const wikiDoctorSourceStatusEntries = workspaceWikiDoctorStatusEntries(wikiDoctor.source_status_counts);
+  const wikiDoctorChunkStatusEntries = workspaceWikiDoctorStatusEntries(wikiDoctor.chunk_status_counts);
   const allOpenRequirements = state.goal_state.open_requirements ?? [];
   const matchingOpenRequirements = allOpenRequirements.filter((item) => matchesOpenRequirementQuery(requirementQuery, item));
   const openRequirements = matchingOpenRequirements.slice(0, 5);
@@ -4125,6 +4133,20 @@ export function WorkspaceStatePanel({
                   <StatusPill tone="neutral">{sanitizeInspectorText(wikiDoctor.registry_db_path)}</StatusPill>
                 ) : null}
               </div>
+              {wikiDoctorSourceStatusEntries.length > 0 || wikiDoctorChunkStatusEntries.length > 0 ? (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {wikiDoctorSourceStatusEntries.map(([status, count]) => (
+                    <StatusPill key={`wiki-doctor-source-status:${status}`} tone={count > 0 ? 'info' : 'neutral'}>
+                      source {sanitizeInspectorText(status)} {count}
+                    </StatusPill>
+                  ))}
+                  {wikiDoctorChunkStatusEntries.map(([status, count]) => (
+                    <StatusPill key={`wiki-doctor-chunk-status:${status}`} tone={count > 0 ? 'info' : 'neutral'}>
+                      chunk {sanitizeInspectorText(status)} {count}
+                    </StatusPill>
+                  ))}
+                </div>
+              ) : null}
               {wikiDoctor.warning || wikiDoctor.error ? (
                 <div className="mt-1.5 grid gap-1">
                   {wikiDoctor.warning ? (

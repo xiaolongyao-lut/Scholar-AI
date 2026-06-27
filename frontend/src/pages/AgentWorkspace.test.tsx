@@ -2671,6 +2671,10 @@ describe('AgentWorkspace', () => {
     expect(within(wikiDoctorRegion).getByText('samples 3')).toBeInTheDocument();
     expect(within(wikiDoctorRegion).getByText('actions 1')).toBeInTheDocument();
     expect(within(wikiDoctorRegion).getByText('workspace_artifacts/runtime_state/wiki.db')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('source mirrored 2')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('source not_mirrored 1')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('chunk mirrored 5')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('chunk not_mirrored 2')).toBeInTheDocument();
     expect(
       within(wikiDoctorRegion).getByText('warning Source Vault mirror backlog has 1 source rows and 2 chunk rows pending replay.'),
     ).toBeInTheDocument();

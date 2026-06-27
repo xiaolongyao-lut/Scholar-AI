@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-28T02:12:30+08:00",
+  "updated_at": "2026-06-28T02:19:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,37 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260628-020718-n267-wiki-doctor-backlog-workspace-summary-continuation",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-020718-n267-wiki-doctor-backlog-workspace-summary-continuation",
-    "latest_goal_state_checkpoint_id": "20260628-020718-n267-wiki-doctor-backlog-workspace-summary-continuation",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-020718-n267-wiki-doctor-backlog-workspace-summary-continuation",
-    "latest_checkpoint_caveat": "Git rollback checkpoints for N267 Wiki Doctor backlog Agent Workspace summary and frontend type-contract sync; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260628-021638-n268-wiki-doctor-status-counts-visible",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-021638-n268-wiki-doctor-status-counts-visible",
+    "latest_goal_state_checkpoint_id": "20260628-021638-n268-wiki-doctor-status-counts-visible",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-021638-n268-wiki-doctor-status-counts-visible",
+    "latest_checkpoint_caveat": "Rollback checkpoint for N268 Wiki Doctor status-count visibility; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N268 React list rendering for Wiki Doctor status counts",
+      "source": "React rendering lists documentation",
+      "url": "https://react.dev/learn/rendering-lists",
+      "status": "HEAD checked 200 on 2026-06-28 before implementation",
+      "checked_at": "2026-06-28T02:19:00+08:00",
+      "use_in_slice": "Used to render sorted source/chunk status-count entries with stable keys in the existing read-only Wiki Doctor panel."
+    },
+    {
+      "topic": "N268 visible query assertions for recovery counts",
+      "source": "Testing Library query documentation",
+      "url": "https://testing-library.com/docs/queries/about/",
+      "status": "HEAD checked 200 on 2026-06-28 before implementation",
+      "checked_at": "2026-06-28T02:19:00+08:00",
+      "use_in_slice": "Used to assert user-visible source/chunk status-count text rather than implementation details."
+    },
+    {
+      "topic": "N268 provenance/status separation",
+      "source": "W3C PROV Overview",
+      "url": "https://www.w3.org/TR/prov-overview/",
+      "status": "HEAD checked 200 on 2026-06-28 before implementation",
+      "checked_at": "2026-06-28T02:19:00+08:00",
+      "use_in_slice": "Used to keep status-count visibility as recovery evidence distinct from replay/write execution or live model loading proof."
+    },
     {
       "topic": "N267 Wiki Doctor backlog provenance boundary",
       "source": "W3C PROV Overview",
@@ -7565,37 +7589,41 @@
         ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 7 passed; npm run test -- --run src/pages/AgentWorkspace.test.tsx -> 7 passed; npm run test -- --run src/pages/DesktopAcceptanceAgentWorkspace.test.tsx -> 1 passed; npm run generate:openapi -> passed; npm run build -> passed."
       ],
       "residual_risk": "This proves read-only Agent Workspace visibility for Wiki Doctor mirror backlog only. It does not execute WikiRegistry.replay_source_vault_mirror(), auto-repair Source Vault rows, mutate wiki/Zotero data, run live QA/model actual-loading, execute OCR, modify github/ references, upload content, push, tag, release, or deploy."
+    },
+    {
+      "id": "N268-agent-workspace-wiki-doctor-status-counts-visible",
+      "requirement": "Agent Workspace Wiki Doctor recovery panel must visibly render Source Vault mirror status-count breakdowns for both source rows and chunk rows so resumed agents can distinguish mirrored, not_mirrored, and other registry states without opening the full database or running replay.",
+      "source": "Post-N267 local audit found Agent Workspace exposed Wiki Doctor total/pending counts but did not render the already-typed source_status_counts and chunk_status_counts maps from the status contract.",
+      "status": "proved",
+      "evidence": [
+        "frontend/src/pages/AgentWorkspace.tsx adds workspaceWikiDoctorStatusEntries(), filters non-finite/negative values, sorts keys deterministically, and renders source/chunk status-count pills in the existing read-only Wiki Doctor recovery region.",
+        "frontend/src/pages/AgentWorkspace.test.tsx asserts visible source mirrored/not_mirrored and chunk mirrored/not_mirrored status-count text from the Wiki Doctor fixture.",
+        "Rollback checkpoint: C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-021638-n268-wiki-doctor-status-counts-visible.",
+        "Official/mature references checked: React rendering lists, Testing Library queries, and W3C PROV all returned 200.",
+        "npm run test -- --run src/pages/AgentWorkspace.test.tsx -> 7 passed; npm run build -> passed."
+      ],
+      "residual_risk": "This proves read-only frontend visibility for already-exposed Wiki Doctor status-count maps only. It does not execute replay, mutate Source Vault/wiki/Zotero data, run live model loading, execute OCR, modify github/ references, upload, push, tag, release, or deploy."
     }
   ],
   "changed_files_for_this_slice": [
-    "literature_assistant/core/routers/agent_workspace_router.py",
-    "tests/test_agent_workspace_router.py",
     "frontend/src/pages/AgentWorkspace.tsx",
     "frontend/src/pages/AgentWorkspace.test.tsx",
-    "frontend/src/services/agentWorkspaceApi.ts",
-    "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
-    "frontend/openapi/modular-pipeline-openapi.json",
-    "frontend/src/generated/openapi.ts",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before implementation.",
-    "git status --short --branch -> main...origin/main [ahead 96] with N267 files dirty from prior partial work; current worktree used as authoritative and older N254 objective text treated as stale recovery context.",
-    "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-020718-n267-wiki-doctor-backlog-workspace-summary-continuation before continuing N267 Agent Workspace/backend/frontend/goal-state edits.",
-    "Created supplemental rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-021017-n267-wiki-doctor-frontend-type-contract before editing frontend service types and desktop acceptance fixture.",
-    "Invoke-WebRequest HEAD https://www.w3.org/TR/prov-overview/ -> 200; https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> 200; https://react.dev/learn/conditional-rendering -> 200.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 7 passed.",
-    "cd frontend; npm run test -- --run src/pages/AgentWorkspace.test.tsx -> 1 file / 7 tests passed after Wiki Doctor panel assertions.",
-    "cd frontend; npm run generate:openapi -> schema and generated TypeScript client regenerated successfully.",
-    "cd frontend; npm run test -- --run src/pages/DesktopAcceptanceAgentWorkspace.test.tsx -> 1 file / 1 test passed after fixture type sync.",
+    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md earlier in this continuation before selecting N268.",
+    "git status --short --branch -> main...origin/main [ahead 97] clean after N267 commit and before N268 edits.",
+    "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-021638-n268-wiki-doctor-status-counts-visible for AgentWorkspace UI/test and goal-state before N268 edits.",
+    "Invoke-WebRequest HEAD https://react.dev/learn/rendering-lists -> 200; https://testing-library.com/docs/queries/about/ -> 200; https://www.w3.org/TR/prov-overview/ -> 200.",
+    "cd frontend; npm run test -- --run src/pages/AgentWorkspace.test.tsx -> 1 file / 7 tests passed after status-count assertions.",
     "cd frontend; npm run build -> passed; prebuild generate:openapi:if-needed, tsc, and vite build completed.",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid after N267 record update.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N267 rollup.",
-    "Current-state projection probe using literature_assistant.core.routers.agent_workspace_router._load_goal_state_summary() -> projection-ok 268 N267-agent-workspace-wiki-doctor-backlog-summary-visible with Wiki Doctor backlog slice as latest and can_mark_goal_complete=false."
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid after N268 record update.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N268 rollup.",
+    "Current-state projection probe using literature_assistant.core.routers.agent_workspace_router._load_goal_state_summary() -> projection-ok 269 N268-agent-workspace-wiki-doctor-status-counts-visible with status-count slice as latest and can_mark_goal_complete=false."
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
-    "Continue with another KRT source-to-context or Agent Workspace recovery visibility slice, such as exposing deterministic replay/sync evidence without executing replay automatically.",
+    "Continue with a local KRT recovery evidence slice that improves deterministic source-to-context or replay/sync proof visibility without executing replay automatically.",
     "Keep live QA/model actual-loading blocked until provider preflight is proved and explicit live-smoke authorization is present; keep OCR execution behind confirm_execution=true and explicit local/remote upload boundaries."
   ],
   "stop_boundary": [
@@ -7605,10 +7633,10 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N267 exposes Wiki Doctor Source Vault mirror backlog state as read-only Agent Workspace recovery visibility.",
+    "this_slice": "N268 exposes Wiki Doctor source/chunk status-count maps in the read-only Agent Workspace recovery panel.",
     "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N267 proves deterministic read-only Wiki Doctor backlog visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay remain separately explicit-authority gated."
+    "why_not_complete": "N268 proves deterministic read-only Wiki Doctor status-count visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay remain separately explicit-authority gated."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -13297,30 +13325,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-28T02:12:30+08:00",
+    "updated_at": "2026-06-28T02:19:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 268,
+    "requirements_total": 269,
     "requirement_status_counts": {
-      "proved": 268
+      "proved": 269
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N267-agent-workspace-wiki-doctor-backlog-summary-visible",
-    "latest_slice_id": "N267-agent-workspace-wiki-doctor-backlog-summary-visible",
+    "latest_requirement_id": "N268-agent-workspace-wiki-doctor-status-counts-visible",
+    "latest_slice_id": "N268-agent-workspace-wiki-doctor-status-counts-visible",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N267 proves deterministic Agent Workspace visibility for Wiki Doctor Source Vault mirror backlog only; the configured provider remains auth/preflight gated and WikiRegistry replay remains explicit-authority gated.",
-        "evidence": "N267 exposes read-only Wiki Doctor backlog counts/actions in Agent Workspace so a resumed agent can see mirror recovery state before considering KRT closure or maintenance replay."
+        "current_boundary": "N268 proves deterministic Agent Workspace visibility for Wiki Doctor status-count maps only; the configured provider remains auth/preflight gated and WikiRegistry replay remains explicit-authority gated.",
+        "evidence": "N268 makes source/chunk status-count breakdowns visible in Agent Workspace so a resumed agent can distinguish registry mirror states before considering KRT closure or maintenance replay."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N267 proves deterministic read-only Wiki Doctor backlog visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay remain separately explicit-authority gated."
+    "why_not_complete": "N268 proves deterministic read-only Wiki Doctor status-count visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay remain separately explicit-authority gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -18663,5 +18691,62 @@
       "Keep live QA/model actual-loading blocked until provider preflight is proved and explicit live-smoke authorization is present; keep OCR execution behind confirm_execution=true and explicit local/remote upload boundaries."
     ],
     "updated_at": "2026-06-28T02:12:30+08:00"
+  },
+  "n268_agent_workspace_wiki_doctor_status_counts_visible_slice": {
+    "id": "N268-agent-workspace-wiki-doctor-status-counts-visible",
+    "status": "proved",
+    "summary": "N268 renders sorted Wiki Doctor source/chunk status-count maps in the read-only Agent Workspace recovery panel.",
+    "rollback_checkpoint_id": "20260628-021638-n268-wiki-doctor-status-counts-visible",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-021638-n268-wiki-doctor-status-counts-visible",
+    "mature_references_checked": [
+      {
+        "topic": "N268 React list rendering for Wiki Doctor status counts",
+        "source": "React rendering lists documentation",
+        "url": "https://react.dev/learn/rendering-lists",
+        "status": "HEAD checked 200 on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T02:19:00+08:00",
+        "use_in_slice": "Used to render sorted source/chunk status-count entries with stable keys in the existing read-only Wiki Doctor panel."
+      },
+      {
+        "topic": "N268 visible query assertions for recovery counts",
+        "source": "Testing Library query documentation",
+        "url": "https://testing-library.com/docs/queries/about/",
+        "status": "HEAD checked 200 on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T02:19:00+08:00",
+        "use_in_slice": "Used to assert user-visible source/chunk status-count text rather than implementation details."
+      },
+      {
+        "topic": "N268 provenance/status separation",
+        "source": "W3C PROV Overview",
+        "url": "https://www.w3.org/TR/prov-overview/",
+        "status": "HEAD checked 200 on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T02:19:00+08:00",
+        "use_in_slice": "Used to keep status-count visibility as recovery evidence distinct from replay/write execution or live model loading proof."
+      }
+    ],
+    "changed_files": [
+      "frontend/src/pages/AgentWorkspace.tsx",
+      "frontend/src/pages/AgentWorkspace.test.tsx",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification_commands": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md earlier in this continuation before selecting N268.",
+      "git status --short --branch -> main...origin/main [ahead 97] clean after N267 commit and before N268 edits.",
+      "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-021638-n268-wiki-doctor-status-counts-visible for AgentWorkspace UI/test and goal-state before N268 edits.",
+      "Invoke-WebRequest HEAD https://react.dev/learn/rendering-lists -> 200; https://testing-library.com/docs/queries/about/ -> 200; https://www.w3.org/TR/prov-overview/ -> 200.",
+      "cd frontend; npm run test -- --run src/pages/AgentWorkspace.test.tsx -> 1 file / 7 tests passed after status-count assertions.",
+      "cd frontend; npm run build -> passed; prebuild generate:openapi:if-needed, tsc, and vite build completed.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid after N268 record update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N268 rollup.",
+      "Current-state projection probe using literature_assistant.core.routers.agent_workspace_router._load_goal_state_summary() -> projection-ok 269 N268-agent-workspace-wiki-doctor-status-counts-visible with status-count slice as latest and can_mark_goal_complete=false."
+    ],
+    "decision": "Reuse the existing N267 Wiki Doctor state contract and add frontend-only status-count visibility, without backend schema changes or replay/write controls.",
+    "residual_risk": "This proves read-only frontend visibility for already-exposed Wiki Doctor status-count maps only. It does not execute replay, mutate Source Vault/wiki/Zotero data, run live model loading, execute OCR, modify github/ references, upload, push, tag, release, or deploy.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
+      "Continue with a local KRT recovery evidence slice that improves deterministic source-to-context or replay/sync proof visibility without executing replay automatically.",
+      "Keep live QA/model actual-loading blocked until provider preflight is proved and explicit live-smoke authorization is present; keep OCR execution behind confirm_execution=true and explicit local/remote upload boundaries."
+    ],
+    "updated_at": "2026-06-28T02:19:00+08:00"
   }
 }
