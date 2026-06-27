@@ -3974,6 +3974,18 @@ export function WorkspaceStatePanel({
                         <StatusPill tone={actualLoadingGate.recovery.provider_ready_for_authorized_live_smoke ? 'success' : 'warning'}>
                           provider ready {String(actualLoadingGate.recovery.provider_ready_for_authorized_live_smoke)}
                         </StatusPill>
+                        <StatusPill tone={actualLoadingGate.provider_preflight.auth_required_count > 0 ? 'danger' : 'neutral'}>
+                          auth required {actualLoadingGate.provider_preflight.auth_required_count}
+                        </StatusPill>
+                        <StatusPill tone={actualLoadingGate.provider_preflight.tool_call_ok_count > 0 ? 'success' : 'warning'}>
+                          tool-call ok {actualLoadingGate.provider_preflight.tool_call_ok_count}
+                        </StatusPill>
+                        <StatusPill tone={actualLoadingGate.provider_preflight.provider_ready_for_authorized_live_smoke ? 'success' : 'warning'}>
+                          preflight ready {String(actualLoadingGate.provider_preflight.provider_ready_for_authorized_live_smoke)}
+                        </StatusPill>
+                        <StatusPill tone="neutral">
+                          preflight records {actualLoadingGate.provider_preflight.record_count}
+                        </StatusPill>
                         <StatusPill tone={actualLoadingGate.recovery.completion_requires_authorized_live_smoke ? 'warning' : 'success'}>
                           live smoke {actualLoadingGate.recovery.completion_requires_authorized_live_smoke ? 'required' : 'proved'}
                         </StatusPill>
@@ -4011,6 +4023,21 @@ export function WorkspaceStatePanel({
                         {actualLoadingGate.recovery.recovery_refs.slice(0, 3).map((item) => (
                           <StatusPill key={`actual-loading-recovery-ref:${item.ref_type}:${item.ref}`} tone={item.requires_authorization ? 'warning' : 'info'}>
                             recovery ref {actualLoadingRecoveryRefLabel(item)}
+                          </StatusPill>
+                        ))}
+                        {Object.entries(actualLoadingGate.provider_preflight.status_counts ?? {}).slice(0, 3).map(([status, count]) => (
+                          <StatusPill key={`actual-loading-provider-status:${status}`} tone="neutral">
+                            provider status {sanitizeInspectorText(status)} {count}
+                          </StatusPill>
+                        ))}
+                        {actualLoadingGate.provider_preflight.missing.slice(0, 2).map((item) => (
+                          <StatusPill key={`actual-loading-provider-missing:${item}`} tone="warning">
+                            provider missing {sanitizeInspectorText(item)}
+                          </StatusPill>
+                        ))}
+                        {(actualLoadingGate.provider_preflight.next_safe_local_actions ?? []).slice(0, 2).map((item) => (
+                          <StatusPill key={`actual-loading-provider-action:${item}`} tone="warning">
+                            provider next {sanitizeInspectorText(item)}
                           </StatusPill>
                         ))}
                       </div>

@@ -14423,6 +14423,12 @@
             "title": "Artifact Schema Valid",
             "type": "boolean"
           },
+          "auth_required_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Auth Required Count",
+            "type": "integer"
+          },
           "checked_at": {
             "minLength": 1,
             "title": "Checked At",
@@ -14480,6 +14486,11 @@
             "title": "Next Safe Local Actions",
             "type": "array"
           },
+          "provider_ready_for_authorized_live_smoke": {
+            "default": false,
+            "title": "Provider Ready For Authorized Live Smoke",
+            "type": "boolean"
+          },
           "record_count": {
             "minimum": 0.0,
             "title": "Record Count",
@@ -14501,6 +14512,19 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "status_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Status Counts",
+            "type": "object"
+          },
+          "tool_call_ok_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Tool Call Ok Count",
+            "type": "integer"
           },
           "validation_errors": {
             "items": {

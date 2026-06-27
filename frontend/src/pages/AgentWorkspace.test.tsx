@@ -318,6 +318,10 @@ function knowledgeRuntimeFixture(): KnowledgeRuntimeConformanceResponse {
         'artifact.receipt_hash.query_matches_direct',
         'artifact.direct_receipt.assembled_context_hash',
       ],
+      next_safe_local_actions: [
+        'Require provider_preflight.status=proved before running live context-receipt smoke.',
+        'Run tests/live_api_chat_knowledge_context_receipt_smoke.py only with explicit live-provider authorization.',
+      ],
       claim_boundary: 'Package conformance proves deterministic source-to-context receipts only; no live QA/model actual-loading artifact is present.',
       provider_preflight: {
         status: 'blocked',
@@ -329,6 +333,10 @@ function knowledgeRuntimeFixture(): KnowledgeRuntimeConformanceResponse {
         checked_at: '2026-06-26T03:40:00Z',
         record_count: 1,
         latest_status: 'auth_required',
+        status_counts: { auth_required: 1 },
+        auth_required_count: 1,
+        tool_call_ok_count: 0,
+        provider_ready_for_authorized_live_smoke: false,
         records: [
           {
             fingerprint: 'a'.repeat(64),
@@ -347,6 +355,10 @@ function knowledgeRuntimeFixture(): KnowledgeRuntimeConformanceResponse {
         evidence: ['workspace_artifacts/runtime_state/provider-capabilities.json'],
         missing: ['provider_tool_call_status=tool_call_ok'],
         validation_errors: [],
+        next_safe_local_actions: [
+          'Stop live actual-loading smoke while latest provider status is auth_required.',
+          'After the user corrects provider credentials/config, rerun provider tool-capability preflight.',
+        ],
         claim_boundary: 'Provider preflight has not proven forced tool calls.',
       },
       recovery: {
@@ -1029,6 +1041,10 @@ describe('AgentWorkspace', () => {
     expect(within(knowledgeRegion).getByText('recovery read-only true')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('blocked by 2')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('provider ready false')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('auth required 1')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('tool-call ok 0')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('preflight ready false')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('preflight records 1')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('live smoke required')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('check artifact.schema.valid')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('check artifact.verdict.ok')).toBeInTheDocument();
@@ -1037,6 +1053,9 @@ describe('AgentWorkspace', () => {
     expect(within(knowledgeRegion).getByText('recovery blocker live_smoke:missing_artifact')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('recovery ref conformance_endpoint blocked')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('recovery ref live_smoke_harness authorization_required · auth')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('provider status auth_required 1')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('provider missing provider_tool_call_status=tool_call_ok')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('provider next Stop live actual-loading smoke while latest provider status is auth_required.')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText(/Package conformance proves deterministic source-to-context receipts only/)).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('missing authorized live provider smoke artifact with verdict=ok')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText(/authoritative source -> builder\/loader\/chunker -> runtime artifact/)).toBeInTheDocument();

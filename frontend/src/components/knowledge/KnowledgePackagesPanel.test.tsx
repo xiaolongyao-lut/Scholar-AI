@@ -119,6 +119,9 @@ vi.mock('@/services/knowledgeApi', () => ({
       missing: ['authorized live provider smoke artifact with verdict=ok'],
       validation_errors: [],
       required_checks: ['artifact.verdict.ok'],
+      next_safe_local_actions: [
+        'Require provider_preflight.status=proved before running live context-receipt smoke.',
+      ],
       claim_boundary: 'Package conformance proves deterministic source-to-context receipts only.',
       provider_preflight: {
         status: 'blocked',
@@ -130,6 +133,10 @@ vi.mock('@/services/knowledgeApi', () => ({
         checked_at: '2026-06-26T03:40:00Z',
         record_count: 1,
         latest_status: 'auth_required',
+        status_counts: { auth_required: 1 },
+        auth_required_count: 1,
+        tool_call_ok_count: 0,
+        provider_ready_for_authorized_live_smoke: false,
         records: [
           {
             fingerprint: 'a'.repeat(64),
@@ -148,6 +155,10 @@ vi.mock('@/services/knowledgeApi', () => ({
         evidence: ['workspace_artifacts/runtime_state/provider-capabilities.json'],
         missing: ['provider_tool_call_status=tool_call_ok'],
         validation_errors: [],
+        next_safe_local_actions: [
+          'Stop live actual-loading smoke while latest provider status is auth_required.',
+          'After the user corrects provider credentials/config, rerun provider tool-capability preflight.',
+        ],
         claim_boundary: 'Provider preflight has not proven forced tool calls.',
       },
       recovery: {
@@ -306,14 +317,17 @@ describe('KnowledgePackagesPanel', () => {
     expect(screen.getByText('blocked_provider_preflight_and_missing_live_smoke')).toBeInTheDocument();
     expect(screen.getByText('read_only=true')).toBeInTheDocument();
     expect(screen.getByText('blocked_by=2')).toBeInTheDocument();
-    expect(screen.getByText('provider_ready=false')).toBeInTheDocument();
+    expect(screen.getAllByText('provider_ready=false').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('live_smoke_required=true')).toBeInTheDocument();
     expect(screen.getByText('live_smoke_harness · authorization_required · auth=true')).toBeInTheDocument();
     expect(screen.getByText('Provider preflight')).toBeInTheDocument();
     expect(screen.getByText('auth_required')).toBeInTheDocument();
     expect(screen.getByText('records=1')).toBeInTheDocument();
+    expect(screen.getAllByText('auth_required=1').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('tool_call_ok=0')).toBeInTheDocument();
     expect(screen.getByText('hhl · free.hanhanapi.top · gpt-5.5 · auth_required')).toBeInTheDocument();
     expect(screen.getByText('provider_tool_call_status=tool_call_ok')).toBeInTheDocument();
+    expect(screen.getByText(/Stop live actual-loading smoke while latest provider status is auth_required/)).toBeInTheDocument();
     expect(
       screen.getByText('workspace_artifacts/generated/output/live_api_chat_knowledge_context_receipt_smoke.summary.json'),
     ).toBeInTheDocument();

@@ -637,6 +637,10 @@ class KnowledgeRuntimeProviderPreflightResponse(BaseModel):
     checked_at: str = Field(min_length=1)
     record_count: int = Field(ge=0)
     latest_status: str = Field(default="unknown", max_length=80)
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    auth_required_count: int = Field(default=0, ge=0)
+    tool_call_ok_count: int = Field(default=0, ge=0)
+    provider_ready_for_authorized_live_smoke: bool = False
     records: list[KnowledgeRuntimeProviderPreflightRecordResponse] = Field(default_factory=list)
     evidence_scope: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
@@ -2092,6 +2096,16 @@ def _provider_preflight_record_response(
     return KnowledgeRuntimeProviderPreflightRecordResponse(**record.to_dict())
 
 
+def _provider_preflight_status_counts(records: list[ProviderCapabilityRecord]) -> dict[str, int]:
+    """Return bounded status counts for provider recovery displays."""
+
+    counts: dict[str, int] = {}
+    for record in records:
+        status = str(record.status or "unknown").strip() or "unknown"
+        counts[status] = counts.get(status, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def _provider_preflight_gate() -> KnowledgeRuntimeProviderPreflightResponse:
     """Return the provider tool-call preflight gate used before live loading."""
 
@@ -2198,6 +2212,9 @@ def _provider_preflight_gate() -> KnowledgeRuntimeProviderPreflightResponse:
     ordered_records = sorted(records, key=lambda record: record.last_probe_at or "", reverse=True)
     latest_status = ordered_records[0].status or "unknown"
     response_records = [_provider_preflight_record_response(record) for record in ordered_records]
+    status_counts = _provider_preflight_status_counts(records)
+    auth_required_count = status_counts.get("auth_required", 0)
+    tool_call_ok_count = sum(1 for record in records if record.tool_call_ok)
     if any(record.tool_call_ok for record in records):
         return KnowledgeRuntimeProviderPreflightResponse(
             status="proved",
@@ -2208,6 +2225,10 @@ def _provider_preflight_gate() -> KnowledgeRuntimeProviderPreflightResponse:
             checked_at=checked_at,
             record_count=len(records),
             latest_status=latest_status,
+            status_counts=status_counts,
+            auth_required_count=auth_required_count,
+            tool_call_ok_count=tool_call_ok_count,
+            provider_ready_for_authorized_live_smoke=True,
             records=response_records,
             evidence_scope=list(_PROVIDER_PREFLIGHT_SCOPE),
             evidence=[
@@ -2234,6 +2255,10 @@ def _provider_preflight_gate() -> KnowledgeRuntimeProviderPreflightResponse:
         checked_at=checked_at,
         record_count=len(records),
         latest_status=latest_status,
+        status_counts=status_counts,
+        auth_required_count=auth_required_count,
+        tool_call_ok_count=tool_call_ok_count,
+        provider_ready_for_authorized_live_smoke=False,
         records=response_records,
         evidence_scope=list(_PROVIDER_PREFLIGHT_SCOPE),
         evidence=[

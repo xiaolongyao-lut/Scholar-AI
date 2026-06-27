@@ -263,6 +263,9 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
           'artifact.chat_evidence.required_tools',
           'artifact.receipt_hash.final_answer',
         ],
+        next_safe_local_actions: [
+          'Require provider_preflight.status=proved before running live context-receipt smoke.',
+        ],
         claim_boundary: 'Package conformance proves deterministic source-to-context receipts only.',
         provider_preflight: {
           status: 'blocked',
@@ -274,6 +277,10 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
           checked_at: '2026-06-26T03:40:00Z',
           record_count: 1,
           latest_status: 'auth_required',
+          status_counts: { auth_required: 1 },
+          auth_required_count: 1,
+          tool_call_ok_count: 0,
+          provider_ready_for_authorized_live_smoke: false,
           records: [
             {
               fingerprint: 'a'.repeat(64),
@@ -292,6 +299,10 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
           evidence: ['workspace_artifacts/runtime_state/provider-capabilities.json'],
           missing: ['provider_tool_call_status=tool_call_ok'],
           validation_errors: [],
+          next_safe_local_actions: [
+            'Stop live actual-loading smoke while latest provider status is auth_required.',
+            'After the user corrects provider credentials/config, rerun provider tool-capability preflight.',
+          ],
           claim_boundary: 'Provider preflight has not proven forced tool calls.',
         },
         recovery: {
@@ -381,8 +392,18 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
     expect(parsed.actual_loading_gate.missing).toEqual(['authorized live provider smoke artifact with verdict=ok']);
     expect(parsed.actual_loading_gate.validation_errors).toEqual([]);
     expect(parsed.actual_loading_gate.required_checks).toContain('artifact.receipt_hash.final_answer');
+    expect(parsed.actual_loading_gate.next_safe_local_actions[0]).toBe(
+      'Require provider_preflight.status=proved before running live context-receipt smoke.',
+    );
     expect(parsed.actual_loading_gate.provider_preflight.status).toBe('blocked');
     expect(parsed.actual_loading_gate.provider_preflight.latest_status).toBe('auth_required');
+    expect(parsed.actual_loading_gate.provider_preflight.status_counts).toEqual({ auth_required: 1 });
+    expect(parsed.actual_loading_gate.provider_preflight.auth_required_count).toBe(1);
+    expect(parsed.actual_loading_gate.provider_preflight.tool_call_ok_count).toBe(0);
+    expect(parsed.actual_loading_gate.provider_preflight.provider_ready_for_authorized_live_smoke).toBe(false);
+    expect(parsed.actual_loading_gate.provider_preflight.next_safe_local_actions[0]).toBe(
+      'Stop live actual-loading smoke while latest provider status is auth_required.',
+    );
     expect(parsed.actual_loading_gate.provider_preflight.records[0].base_url_host).toBe('free.hanhanapi.top');
     expect(parsed.actual_loading_gate.recovery.state).toBe('blocked_provider_preflight_and_missing_live_smoke');
     expect(parsed.actual_loading_gate.recovery.blocked_by).toContain('live_smoke:missing_artifact');
@@ -433,6 +454,7 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
           missing: ['authorized live provider smoke artifact with verdict=ok'],
           validation_errors: [],
           required_checks: ['artifact.verdict.ok'],
+          next_safe_local_actions: [],
           claim_boundary: '',
           provider_preflight: {
             status: 'pending',
@@ -444,11 +466,16 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
             checked_at: '2026-06-26T03:40:00Z',
             record_count: 0,
             latest_status: 'unknown',
+            status_counts: {},
+            auth_required_count: 0,
+            tool_call_ok_count: 0,
+            provider_ready_for_authorized_live_smoke: false,
             records: [],
             evidence_scope: [],
             evidence: [],
             missing: ['provider tool-call capability preflight record'],
             validation_errors: [],
+            next_safe_local_actions: [],
             claim_boundary: '',
           },
           recovery: {
@@ -521,6 +548,7 @@ describe('knowledgeApi.getKnowledgeRuntimeConformance', () => {
           missing: ['authorized live provider smoke artifact with verdict=ok'],
           validation_errors: [],
           required_checks: ['artifact.verdict.ok'],
+          next_safe_local_actions: [],
           claim_boundary: '',
           provider_preflight: {
             status: 'pending',
@@ -532,11 +560,16 @@ describe('knowledgeApi.getKnowledgeRuntimeConformance', () => {
             checked_at: '2026-06-26T03:40:00Z',
             record_count: 0,
             latest_status: 'unknown',
+            status_counts: {},
+            auth_required_count: 0,
+            tool_call_ok_count: 0,
+            provider_ready_for_authorized_live_smoke: false,
             records: [],
             evidence_scope: [],
             evidence: [],
             missing: ['provider tool-call capability preflight record'],
             validation_errors: [],
+            next_safe_local_actions: [],
             claim_boundary: '',
           },
           recovery: {

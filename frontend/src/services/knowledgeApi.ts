@@ -79,6 +79,7 @@ export interface KnowledgeRuntimeActualLoadingGate {
   missing: string[];
   validation_errors: string[];
   required_checks: string[];
+  next_safe_local_actions: string[];
   claim_boundary: string;
   provider_preflight: KnowledgeRuntimeProviderPreflight;
   recovery: KnowledgeRuntimeActualLoadingRecovery;
@@ -125,11 +126,16 @@ export interface KnowledgeRuntimeProviderPreflight {
   checked_at: string;
   record_count: number;
   latest_status: string;
+  status_counts: Record<string, number>;
+  auth_required_count: number;
+  tool_call_ok_count: number;
+  provider_ready_for_authorized_live_smoke: boolean;
   records: KnowledgeRuntimeProviderPreflightRecord[];
   evidence_scope: string[];
   evidence: string[];
   missing: string[];
   validation_errors: string[];
+  next_safe_local_actions: string[];
   claim_boundary: string;
 }
 
@@ -190,6 +196,16 @@ function readOptionalBoolean(value: unknown, field: string, fallback: boolean): 
     return fallback;
   }
   return readBoolean(value, field);
+}
+
+function readOptionalNumber(value: unknown, field: string, fallback: number): number {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error(`Invalid Knowledge Packages response: ${field} must be a non-negative finite number`);
+  }
+  return value;
 }
 
 function readNullableString(value: unknown, field: string): string | null {
@@ -283,6 +299,23 @@ function readNumberRecord(value: unknown, field: string): Record<KnowledgeConfor
     }
     if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
       throw new Error(`Invalid Knowledge Runtime response: ${field}.${key} must be a finite number`);
+    }
+    summary[key] = rawValue;
+  });
+  return summary;
+}
+
+function readOptionalCountRecord(value: unknown, field: string): Record<string, number> {
+  if (value === undefined || value === null) {
+    return {};
+  }
+  if (!isRecord(value)) {
+    throw new Error(`Invalid Knowledge Runtime response: ${field} must be an object`);
+  }
+  const summary: Record<string, number> = {};
+  Object.entries(value).forEach(([key, rawValue]) => {
+    if (typeof rawValue !== 'number' || !Number.isFinite(rawValue) || rawValue < 0) {
+      throw new Error(`Invalid Knowledge Runtime response: ${field}.${key} must be a non-negative finite number`);
     }
     summary[key] = rawValue;
   });
@@ -409,6 +442,10 @@ export function parseKnowledgeRuntimeActualLoadingGate(value: unknown): Knowledg
     missing: readStringArray(value.missing, 'actual_loading_gate.missing'),
     validation_errors: readStringArray(value.validation_errors, 'actual_loading_gate.validation_errors'),
     required_checks: readStringArray(value.required_checks, 'actual_loading_gate.required_checks'),
+    next_safe_local_actions: readOptionalStringArray(
+      value.next_safe_local_actions,
+      'actual_loading_gate.next_safe_local_actions',
+    ),
     claim_boundary: readPossiblyEmptyString(value.claim_boundary, 'actual_loading_gate.claim_boundary'),
     provider_preflight: parseKnowledgeRuntimeProviderPreflight(value.provider_preflight),
     recovery: parseKnowledgeRuntimeActualLoadingRecovery(value.recovery),
@@ -538,6 +575,25 @@ export function parseKnowledgeRuntimeProviderPreflight(value: unknown): Knowledg
       value.latest_status,
       'actual_loading_gate.provider_preflight.latest_status',
     ),
+    status_counts: readOptionalCountRecord(
+      value.status_counts,
+      'actual_loading_gate.provider_preflight.status_counts',
+    ),
+    auth_required_count: readOptionalNumber(
+      value.auth_required_count,
+      'actual_loading_gate.provider_preflight.auth_required_count',
+      0,
+    ),
+    tool_call_ok_count: readOptionalNumber(
+      value.tool_call_ok_count,
+      'actual_loading_gate.provider_preflight.tool_call_ok_count',
+      0,
+    ),
+    provider_ready_for_authorized_live_smoke: readOptionalBoolean(
+      value.provider_ready_for_authorized_live_smoke,
+      'actual_loading_gate.provider_preflight.provider_ready_for_authorized_live_smoke',
+      false,
+    ),
     records: value.records.map(parseKnowledgeRuntimeProviderPreflightRecord),
     evidence_scope: readStringArray(value.evidence_scope, 'actual_loading_gate.provider_preflight.evidence_scope'),
     evidence: readStringArray(value.evidence, 'actual_loading_gate.provider_preflight.evidence'),
@@ -545,6 +601,10 @@ export function parseKnowledgeRuntimeProviderPreflight(value: unknown): Knowledg
     validation_errors: readStringArray(
       value.validation_errors,
       'actual_loading_gate.provider_preflight.validation_errors',
+    ),
+    next_safe_local_actions: readOptionalStringArray(
+      value.next_safe_local_actions,
+      'actual_loading_gate.provider_preflight.next_safe_local_actions',
     ),
     claim_boundary: readPossiblyEmptyString(
       value.claim_boundary,

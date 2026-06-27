@@ -213,6 +213,8 @@ function ActualLoadingGatePanel({
     return null;
   }
   const isProved = gate.status === 'proved';
+  const providerPreflightStatusCounts = gate.provider_preflight.status_counts ?? {};
+  const providerPreflightNextActions = gate.provider_preflight.next_safe_local_actions ?? [];
   return (
     <div
       role={isProved ? undefined : 'alert'}
@@ -283,10 +285,20 @@ function ActualLoadingGatePanel({
             </div>
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] opacity-75">
               <span>records={gate.provider_preflight.record_count}</span>
+              <span>auth_required={gate.provider_preflight.auth_required_count}</span>
+              <span>tool_call_ok={gate.provider_preflight.tool_call_ok_count}</span>
+              <span>provider_ready={String(gate.provider_preflight.provider_ready_for_authorized_live_smoke)}</span>
               <span>exists={String(gate.provider_preflight.artifact_exists)}</span>
               <span>schema={String(gate.provider_preflight.artifact_schema_valid)}</span>
               <span>checked={gate.provider_preflight.checked_at}</span>
             </div>
+            {Object.keys(providerPreflightStatusCounts).length > 0 ? (
+              <div className="mt-1 break-words font-mono text-[10px] opacity-75">
+                {Object.entries(providerPreflightStatusCounts)
+                  .map(([status, count]) => `${status}=${count}`)
+                  .join('；')}
+              </div>
+            ) : null}
             {gate.provider_preflight.records.length > 0 ? (
               <div className="mt-1 space-y-1">
                 {gate.provider_preflight.records.map((record) => (
@@ -298,6 +310,11 @@ function ActualLoadingGatePanel({
             ) : null}
             {gate.provider_preflight.missing.length > 0 ? (
               <div className="mt-1 break-words opacity-80">{gate.provider_preflight.missing.join('；')}</div>
+            ) : null}
+            {providerPreflightNextActions.length > 0 ? (
+              <div className="mt-1 break-words opacity-80">
+                {providerPreflightNextActions.slice(0, 2).join('；')}
+              </div>
             ) : null}
           </div>
         </div>

@@ -406,12 +406,63 @@ def test_knowledge_runtime_conformance_uses_read_only_endpoint(
                     "Run tests/live_api_chat_knowledge_context_receipt_smoke.py only with explicit live-provider authorization.",
                 ],
                 "claim_boundary": "Deterministic package conformance is not live QA/model loading proof.",
+                "provider_preflight": {
+                    "status": "blocked",
+                    "evidence_level": "contract_evidence",
+                    "artifact_path": "workspace_artifacts/runtime_state/provider-capabilities.json",
+                    "artifact_ref": "workspace_artifacts/runtime_state/provider-capabilities.json",
+                    "artifact_exists": True,
+                    "artifact_schema_valid": True,
+                    "checked_at": "2026-06-27T09:08:21Z",
+                    "record_count": 1,
+                    "latest_status": "auth_required",
+                    "status_counts": {"auth_required": 1},
+                    "auth_required_count": 1,
+                    "tool_call_ok_count": 0,
+                    "provider_ready_for_authorized_live_smoke": False,
+                    "records": [
+                        {
+                            "fingerprint": "a" * 64,
+                            "provider": "hhl",
+                            "base_url_host": "free.hanhanapi.top",
+                            "model": "gpt-5.5",
+                            "status": "auth_required",
+                            "ordinary_chat_ok": False,
+                            "forced_tool_choice_ok": False,
+                            "last_probe_at": "2026-06-27T09:08:21Z",
+                            "failure_class": "models",
+                            "masked_error": "HTTP 401: Invalid token (request id: [REDACTED])",
+                        }
+                    ],
+                    "evidence_scope": [
+                        "/api/chat/tool-capability/test",
+                        "workspace_artifacts/runtime_state/provider-capabilities.json",
+                        "OpenAI-compatible forced tool_choice preflight",
+                    ],
+                    "evidence": [
+                        "workspace_artifacts/runtime_state/provider-capabilities.json",
+                        "latest_provider_tool_call_status=auth_required",
+                    ],
+                    "missing": [
+                        "provider_tool_call_status=tool_call_ok",
+                        "valid provider credentials before live actual-loading smoke",
+                    ],
+                    "validation_errors": [],
+                    "next_safe_local_actions": [
+                        "Stop live actual-loading smoke while latest provider status is auth_required.",
+                        "After the user corrects provider credentials/config, rerun provider tool-capability preflight.",
+                    ],
+                    "claim_boundary": (
+                        "Provider preflight has not proven forced tool calls; Knowledge Runtime "
+                        "actual-loading remains blocked before any live model-context claim."
+                    ),
+                },
                 "recovery": {
                     "schema_version": "scholar-ai-knowledge-runtime-recovery/v1",
                     "read_only": True,
                     "state": "blocked_provider_preflight_and_missing_live_smoke",
                     "blocked_by": [
-                        "provider_preflight:pending:unknown",
+                        "provider_preflight:blocked:auth_required",
                         "live_smoke_artifact:missing",
                     ],
                     "recovery_refs": [
@@ -463,9 +514,17 @@ def test_knowledge_runtime_conformance_uses_read_only_endpoint(
     )
     assert gate["recovery"]["state"] == "blocked_provider_preflight_and_missing_live_smoke"
     assert gate["recovery"]["blocked_by"] == [
-        "provider_preflight:pending:unknown",
+        "provider_preflight:blocked:auth_required",
         "live_smoke_artifact:missing",
     ]
+    assert gate["provider_preflight"]["latest_status"] == "auth_required"
+    assert gate["provider_preflight"]["status_counts"] == {"auth_required": 1}
+    assert gate["provider_preflight"]["auth_required_count"] == 1
+    assert gate["provider_preflight"]["tool_call_ok_count"] == 0
+    assert gate["provider_preflight"]["provider_ready_for_authorized_live_smoke"] is False
+    assert gate["provider_preflight"]["next_safe_local_actions"][0] == (
+        "Stop live actual-loading smoke while latest provider status is auth_required."
+    )
     assert gate["recovery"]["recovery_refs"][1]["requires_authorization"] is True
     assert result["data"]["packages"][0]["package_id"] == "product_docs"
     assert backend.calls[-1] == (

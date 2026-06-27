@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T17:29:54+08:00",
+  "updated_at": "2026-06-27T18:08:01+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,11 +100,11 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260627-172045-n244-authorized-gate-completion-state-update",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-172045-n244-authorized-gate-completion-state-update",
-    "latest_goal_state_checkpoint_id": "20260627-172045-n244-authorized-gate-completion-state-update",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-172045-n244-authorized-gate-completion-state-update",
-    "latest_checkpoint_caveat": "Git rollback checkpoint for N244 authorized gate completion state update and OCR compatibility fixes; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260627-174209-n245-krt-auth-recovery-visibility",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-174209-n245-krt-auth-recovery-visibility",
+    "latest_goal_state_checkpoint_id": "20260627-174209-n245-krt-auth-recovery-visibility",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-174209-n245-krt-auth-recovery-visibility",
+    "latest_checkpoint_caveat": "Git rollback checkpoint for N245 Knowledge Runtime provider preflight recovery visibility; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
     {
@@ -2878,6 +2878,26 @@
       "source": "W3C PROV Overview",
       "url": "https://www.w3.org/TR/prov-overview/",
       "use_in_slice": "Borrowed source/activity/evidence separation for recording readiness proof boundaries; no external code copied."
+    },
+    {
+      "topic": "MCP structured tool/resource output boundary",
+      "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+      "use_in_slice": "Used to keep literature.knowledge_runtime_conformance as a structured read-only pass-through of backend recovery metadata instead of creating a parallel MCP parser or mutation surface."
+    },
+    {
+      "topic": "FastAPI response models and OpenAPI projection",
+      "url": "https://fastapi.tiangolo.com/tutorial/response-model/",
+      "use_in_slice": "Used to rely on the existing Pydantic response model and generated OpenAPI schema as the contract boundary for provider preflight recovery fields."
+    },
+    {
+      "topic": "React conditional/list rendering",
+      "url": "https://react.dev/learn/conditional-rendering and https://react.dev/learn/rendering-lists",
+      "use_in_slice": "Used to render optional provider recovery fields defensively in existing panels while preserving older desktop/test fixtures."
+    },
+    {
+      "topic": "W3C PROV provenance separation",
+      "url": "https://www.w3.org/TR/prov-overview/",
+      "use_in_slice": "Used as provenance rationale for separating provider preflight artifact state, live smoke artifact state, and UI/MCP recovery projections without claiming actual live loading."
     }
   ],
   "requirements": [
@@ -6917,37 +6937,55 @@
         }
       ],
       "residual_risk": "OCR gate is locally proved for Windows OCR, RapidOCR in .venv-1, configured-external RapidOCR script parsing, and remote_api loopback consent/request/response contract. Remote OCR against an external provider remains intentionally unrun because it would upload content and require real service credentials. Knowledge Runtime live actual-loading remains blocked by current provider authentication failures; do not mark the full goal complete until provider credentials are corrected and a matching ok live context-receipt smoke is recorded."
+    },
+    {
+      "id": "N245-krt-provider-preflight-recovery-visibility",
+      "requirement": "Knowledge Runtime actual-loading recovery must expose provider preflight auth_required blockers as machine-readable, read-only recovery metadata across REST, MCP, OpenAPI, Agent Workspace, desktop acceptance fixture, and Knowledge Packages UI without claiming live model-context loading proof.",
+      "source": "N245 continuation after N244: the full goal still has actual_loading_gate_live_model_proof_auth_required_current_provider blocked; Claude review and subagent read-only audit identified provider_preflight recovery visibility gaps in frontend/MCP/OpenAPI surfaces. Latest user authorized local commits but no push and required Ponytail-style root-cause, existing-path reuse, and mature-solution search.",
+      "status": "proved",
+      "evidence": [
+        "literature_assistant/core/routers/knowledge_router.py adds KnowledgeRuntimeProviderPreflightResponse.status_counts, auth_required_count, tool_call_ok_count, and provider_ready_for_authorized_live_smoke, all derived from existing ProviderCapabilityRecord data in _provider_preflight_gate without adding live calls or a parallel artifact parser.",
+        "tests/test_knowledge_router.py asserts auth_required provider preflight returns status_counts={auth_required:1}, auth_required_count=1, tool_call_ok_count=0, provider_ready_for_authorized_live_smoke=false, and OpenAPI exposes the new provider preflight fields.",
+        "agent_mcp_server/tests/test_runtime_tools.py proves literature.knowledge_runtime_conformance pass-through preserves provider_preflight.latest_status, status_counts, auth_required_count, tool_call_ok_count, provider_ready_for_authorized_live_smoke=false, and next_safe_local_actions from /api/knowledge/runtime-conformance.",
+        "frontend/src/services/knowledgeApi.ts and frontend/src/services/knowledgeApi.test.tsx parse actual_loading_gate.next_safe_local_actions plus provider_preflight status counts, auth_required/tool-call counts, readiness, and next actions while preserving fallback compatibility for older fixtures.",
+        "frontend/src/pages/AgentWorkspace.tsx and frontend/src/pages/AgentWorkspace.test.tsx render auth required count, tool-call ok count, preflight ready false, preflight records, provider status auth_required 1, provider missing provider_tool_call_status=tool_call_ok, and provider next Stop live actual-loading smoke while latest provider status is auth_required.",
+        "frontend/src/components/knowledge/KnowledgePackagesPanel.tsx and .test.tsx expose the same provider preflight count/status/action fields in the Knowledge Packages live gate panel and stay compatible with older direct fixture objects.",
+        "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx fixture now includes the provider preflight recovery fields so the source desktop acceptance route stays aligned with the runtime contract; DesktopAcceptanceAgentWorkspace.test.tsx passed inside the AgentWorkspace vitest run.",
+        "frontend/openapi/modular-pipeline-openapi.json and frontend/src/generated/openapi.ts were regenerated by the frontend test/build preflight and include the new provider preflight schema fields.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_keeps_provider_actions_on_http_error_artifact tests\\test_knowledge_router.py::test_knowledge_packages_openapi_contract agent_mcp_server\\tests\\test_runtime_tools.py::test_knowledge_runtime_conformance_uses_read_only_endpoint -q -> 5 passed",
+        "cd frontend; npm run test -- --run src/services/knowledgeApi.test.tsx src/components/knowledge/KnowledgePackagesPanel.test.tsx src/pages/AgentWorkspace.test.tsx src/pages/DesktopAcceptanceAgentWorkspace.test.tsx -> 4 files passed, 15 tests passed",
+        "cd frontend; npm run build -> tsc && vite build passed",
+        "git diff --check -> exit 0; warning only that frontend/openapi/modular-pipeline-openapi.json CRLF will be replaced by LF when Git touches it"
+      ],
+      "residual_risk": "This slice improves recoverability and visibility only. The current provider state remains auth_required and actual live QA/model context loading is still not proved; do not run or claim live context-receipt smoke until provider_preflight.status=proved and a fresh contract-valid live smoke artifact exists for the same provider/baseHost/model endpoint. Generated OpenAPI JSON has a CRLF-to-LF git warning but diff check found no whitespace errors."
     }
   ],
   "changed_files_for_this_slice": [
-    "literature_assistant/core/pdf_backends/ocr_builtin_engines.py",
-    "tests/test_ocr_engine_registry.py",
-    "tests/test_pdf_backend_router.py",
+    "literature_assistant/core/routers/knowledge_router.py",
+    "tests/test_knowledge_router.py",
+    "agent_mcp_server/tests/test_runtime_tools.py",
+    "frontend/src/services/knowledgeApi.ts",
+    "frontend/src/services/knowledgeApi.test.tsx",
+    "frontend/src/pages/AgentWorkspace.tsx",
+    "frontend/src/pages/AgentWorkspace.test.tsx",
+    "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
+    "frontend/src/components/knowledge/KnowledgePackagesPanel.tsx",
+    "frontend/src/components/knowledge/KnowledgePackagesPanel.test.tsx",
+    "frontend/openapi/modular-pipeline-openapi.json",
+    "frontend/src/generated/openapi.ts",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, docs/plans/autonomous-execution-planning-playbook.md, longrun-autopilot skill, Ponytail skill, and env-test-discipline before N244 edits.",
-    "git status --short --branch -> main...origin/main [ahead 73] plus OCR-related dirty files from this slice before N244 record update.",
-    "py \"$env:USERPROFILE\\.codex\\skills\\longrun-autopilot\\scripts\\checkpoint.py\" create --workspace \"C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\" --label \"n244-authorized-gate-completion-state-update\" -> checkpoint 20260627-172045-n244-authorized-gate-completion-state-update.",
-    "Mature references checked: RapidOCR install docs 200, RapidOCR usage docs 200, FastAPI TestClient docs 200, Python ThreadingHTTPServer docs 200.",
-    "Provider preflight artifact workspace_artifacts/runtime_state/api_probe/n244-authorized-gate-completion/generation-summary.json -> teamReady=false; counts.auth_failed=6.",
-    "Local RapidOCR execution probe on workspace_artifacts/generated/output/rapidocr_probe_20260627.png -> status_code=200; confirmed=True; engine=rapidocr; requires_network=False; text_sha256=c866b9a068d55547352083eef986610de49574109e23bdf0863f865e321f033b.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py::test_builtin_heavy_and_remote_engines_report_readiness_without_secret_leakage tests\\test_ocr_engine_registry.py::test_rapidocr_external_python_execution_uses_subprocess_receipt tests\\test_ocr_engine_registry.py::test_rapidocr_external_python_execution_reads_v3_output_txts_tuple tests\\test_ocr_engine_registry.py::test_rapidocr_engine_reads_v3_output_txts_tuple tests\\test_pdf_backend_router.py::test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability tests\\test_pdf_backend_router.py::test_ocr_execution_probe_runs_remote_api_loopback_with_explicit_consent -q -> 6 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py tests\\test_pdf_backend_router.py -q -> 49 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 3 passed before N244 JSON update",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid after N244 update",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after N244 update",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth -q -> 2 passed after N244 update",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_runtime_router_contract.py agent_mcp_server\\tests\\test_runtime_tools.py::test_knowledge_runtime_conformance_uses_read_only_endpoint -q -> 26 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m compileall -q literature_assistant\\core\\pdf_backends\\ocr_builtin_engines.py literature_assistant\\core\\routers\\pdf_backend_router.py tests\\test_ocr_engine_registry.py tests\\test_pdf_backend_router.py -> passed"
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_keeps_provider_actions_on_http_error_artifact tests\\test_knowledge_router.py::test_knowledge_packages_openapi_contract agent_mcp_server\\tests\\test_runtime_tools.py::test_knowledge_runtime_conformance_uses_read_only_endpoint -q -> 5 passed",
+    "cd frontend; npm run test -- --run src/services/knowledgeApi.test.tsx src/components/knowledge/KnowledgePackagesPanel.test.tsx src/pages/AgentWorkspace.test.tsx src/pages/DesktopAcceptanceAgentWorkspace.test.tsx -> 4 files passed, 15 tests passed",
+    "cd frontend; npm run build -> tsc && vite build passed",
+    "git diff --check -> exit 0; warning only that frontend/openapi/modular-pipeline-openapi.json CRLF will be replaced by LF when Git touches it"
   ],
   "next_authorized_local_actions": [
-    "Before the next nontrivial slice, read required docs, run git status, 先回档/create rollback checkpoint, 搜索成熟方案/search official or mature references, and record evidence/residual risk.",
-    "After this N244 JSON update, rerun json.tool and test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements to prove the new requirement/rollup anchors match.",
-    "If provider credentials are corrected by the user, rerun provider tool-capability preflight before any live KRT context-receipt smoke; keep actual_loading_gate blocked while generation-summary teamReady=false and all candidates auth_failed.",
-    "Continue Knowledge Runtime Pipeline proof only from actual_loading_gate.recovery, provider_preflight artifacts, and matching live context-receipt smoke artifacts; do not treat search hits, file existence, or next_safe_local_actions prose as model-context loading proof.",
-    "For OCR, keep external remote-provider OCR upload as explicit-consent/out-of-scope unless the user authorizes a disposable image, credentials, and endpoint; current local Windows OCR, RapidOCR, external-script compatibility, and loopback Remote API contract are proved locally.",
-    "Do not call the long-run goal complete while goal_lifecycle_rollup.can_mark_goal_complete is false."
+    "Continue deterministic Knowledge Runtime recovery/visibility work that does not require provider credentials or live model calls.",
+    "If provider credentials are corrected, first rerun /api/chat/tool-capability/test and require provider_preflight.status=proved before any live context-receipt smoke.",
+    "Continue OCR provider-readiness/configuration contract work only when it avoids uploading user content and keeps runtime artifacts local.",
+    "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
   ],
   "stop_boundary": [
     "Do not call the long-run goal complete while goal_lifecycle_rollup.can_mark_goal_complete is false.",
@@ -6956,8 +6994,10 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N244 closes the local OCR authorized gates: RapidOCR now has a real local execution receipt, RapidOCR 3.x tuple-valued txts is handled in both in-process and external-Python paths, and remote_api has an explicit-consent loopback execution contract without uploading user content.",
-    "full_goal": "The full Scholar AI workflow spine remains active, not complete: Knowledge Runtime live model-context loading is still blocked by current provider auth failures, and external remote OCR upload remains explicit-consent/out-of-scope rather than a required local completion gate."
+    "this_slice": "N245 proves provider preflight auth_required recovery visibility across REST, MCP, OpenAPI, Agent Workspace, desktop acceptance fixture, Knowledge Packages UI, and focused tests without claiming live model-context loading.",
+    "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
+    "can_mark_goal_complete": false,
+    "why_not_complete": "The current configured provider still requires authentication, so Knowledge Runtime live QA/model actual-loading remains blocked until provider_preflight.status=proved and a fresh contract-valid live context-receipt smoke proves the same endpoint."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -12646,23 +12686,27 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T17:29:54+08:00",
-    "status": "requirements_proved_pending_authorized_gates",
+    "updated_at": "2026-06-27T18:08:01+08:00",
+    "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 245,
+    "requirements_total": 246,
     "requirement_status_counts": {
-      "proved": 245
+      "proved": 246
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N244-authorized-ocr-krt-gate-completion",
-    "latest_slice_id": "N244-authorized-ocr-krt-gate-completion",
+    "latest_requirement_id": "N245-krt-provider-preflight-recovery-visibility",
+    "latest_slice_id": "N245-krt-provider-preflight-recovery-visibility",
     "completion_blockers": [
-      "actual_loading_gate_live_model_proof_auth_required_current_provider"
+      {
+        "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
+        "status": "blocked",
+        "evidence": "N245 surfaces provider_preflight.latest_status=auth_required and auth_required_count=1 through recovery metadata; live loading proof still requires corrected credentials and a fresh OK smoke."
+      }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N244 proves the local OCR gates for Windows OCR, RapidOCR real execution, RapidOCR 3.x in-process/external-Python parsing, and remote_api explicit-consent loopback request/response contracts. The full goal still cannot be marked complete because Knowledge Runtime live model-context loading remains blocked by current provider authentication failures: generation preflight teamReady=false and six configured generation candidates returned auth_failed. External remote OCR provider upload is intentionally not run without separate explicit disposable-image/service authorization."
+    "why_not_complete": "The current configured provider still requires authentication, so Knowledge Runtime live QA/model actual-loading remains blocked until provider_preflight.status=proved and a fresh contract-valid live context-receipt smoke proves the same endpoint."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -16849,5 +16893,65 @@
     },
     "decision": "Record Windows OCR as the current host's real local OCR execution proof because auto policy selected a ready local engine. Keep RapidOCR and remote OCR as separate blockers rather than treating Windows OCR as a substitute for those explicit gates.",
     "residual_risk": "Windows OCR execution proves local OCR capability on this Windows host. It does not prove RapidOCR real execution, PaddleOCR execution, or remote OCR execution; RapidOCR remains dependency_missing in .venv-1, and remote OCR remains consent/credential gated."
+  },
+  "n245_krt_provider_preflight_recovery_visibility_slice": {
+    "id": "N245-krt-provider-preflight-recovery-visibility",
+    "status": "proved",
+    "summary": "N245 proves provider preflight auth_required recovery visibility across REST, MCP, OpenAPI, Agent Workspace, desktop acceptance fixture, Knowledge Packages UI, and focused tests without claiming live model-context loading.",
+    "rollback_checkpoint_id": "20260627-174209-n245-krt-auth-recovery-visibility",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-174209-n245-krt-auth-recovery-visibility",
+    "mature_references_checked": [
+      {
+        "topic": "MCP structured tool/resource output boundary",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+        "use_in_slice": "Used to keep literature.knowledge_runtime_conformance as a structured read-only pass-through of backend recovery metadata instead of creating a parallel MCP parser or mutation surface."
+      },
+      {
+        "topic": "FastAPI response models and OpenAPI projection",
+        "url": "https://fastapi.tiangolo.com/tutorial/response-model/",
+        "use_in_slice": "Used to rely on the existing Pydantic response model and generated OpenAPI schema as the contract boundary for provider preflight recovery fields."
+      },
+      {
+        "topic": "React conditional/list rendering",
+        "url": "https://react.dev/learn/conditional-rendering and https://react.dev/learn/rendering-lists",
+        "use_in_slice": "Used to render optional provider recovery fields defensively in existing panels while preserving older desktop/test fixtures."
+      },
+      {
+        "topic": "W3C PROV provenance separation",
+        "url": "https://www.w3.org/TR/prov-overview/",
+        "use_in_slice": "Used as provenance rationale for separating provider preflight artifact state, live smoke artifact state, and UI/MCP recovery projections without claiming actual live loading."
+      }
+    ],
+    "changed_files": [
+      "literature_assistant/core/routers/knowledge_router.py",
+      "tests/test_knowledge_router.py",
+      "agent_mcp_server/tests/test_runtime_tools.py",
+      "frontend/src/services/knowledgeApi.ts",
+      "frontend/src/services/knowledgeApi.test.tsx",
+      "frontend/src/pages/AgentWorkspace.tsx",
+      "frontend/src/pages/AgentWorkspace.test.tsx",
+      "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
+      "frontend/src/components/knowledge/KnowledgePackagesPanel.tsx",
+      "frontend/src/components/knowledge/KnowledgePackagesPanel.test.tsx",
+      "frontend/openapi/modular-pipeline-openapi.json",
+      "frontend/src/generated/openapi.ts",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification_commands": [
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_keeps_provider_actions_on_http_error_artifact tests\\test_knowledge_router.py::test_knowledge_packages_openapi_contract agent_mcp_server\\tests\\test_runtime_tools.py::test_knowledge_runtime_conformance_uses_read_only_endpoint -q -> 5 passed",
+      "cd frontend; npm run test -- --run src/services/knowledgeApi.test.tsx src/components/knowledge/KnowledgePackagesPanel.test.tsx src/pages/AgentWorkspace.test.tsx src/pages/DesktopAcceptanceAgentWorkspace.test.tsx -> 4 files passed, 15 tests passed",
+      "cd frontend; npm run build -> tsc && vite build passed",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed",
+      "git diff --check -> exit 0; warnings only that docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json and frontend/openapi/modular-pipeline-openapi.json CRLF will be replaced by LF when Git touches them"
+    ],
+    "decision": "Reuse the existing /api/knowledge/runtime-conformance provider_preflight object as the single recovery contract and project its derived auth/readiness counts through MCP and frontend surfaces; do not create a new endpoint, do not run live provider calls, and do not claim actual-loading proof.",
+    "residual_risk": "This slice improves recoverability and visibility only. The current provider state remains auth_required and actual live QA/model context loading is still not proved; do not run or claim live context-receipt smoke until provider_preflight.status=proved and a fresh contract-valid live smoke artifact exists for the same provider/baseHost/model endpoint. The goal-state JSON and generated OpenAPI JSON have CRLF-to-LF git warnings but diff check found no whitespace errors.",
+    "next_actions": [
+      "Continue deterministic Knowledge Runtime recovery/visibility work that does not require provider credentials or live model calls.",
+      "If provider credentials are corrected, first rerun /api/chat/tool-capability/test and require provider_preflight.status=proved before any live context-receipt smoke.",
+      "Continue OCR provider-readiness/configuration contract work only when it avoids uploading user content and keeps runtime artifacts local.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
+    ]
   }
 }

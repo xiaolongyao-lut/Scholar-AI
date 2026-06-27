@@ -13623,6 +13623,11 @@ export interface components {
             artifact_ref: string;
             /** Artifact Schema Valid */
             artifact_schema_valid: boolean;
+            /**
+             * Auth Required Count
+             * @default 0
+             */
+            auth_required_count: number;
             /** Checked At */
             checked_at: string;
             /**
@@ -13649,6 +13654,11 @@ export interface components {
             missing?: string[];
             /** Next Safe Local Actions */
             next_safe_local_actions?: string[];
+            /**
+             * Provider Ready For Authorized Live Smoke
+             * @default false
+             */
+            provider_ready_for_authorized_live_smoke: boolean;
             /** Record Count */
             record_count: number;
             /** Records */
@@ -13658,6 +13668,15 @@ export interface components {
              * @enum {string}
              */
             status: "proved" | "pending" | "blocked" | "not_applicable";
+            /** Status Counts */
+            status_counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Tool Call Ok Count
+             * @default 0
+             */
+            tool_call_ok_count: number;
             /** Validation Errors */
             validation_errors?: string[];
         };

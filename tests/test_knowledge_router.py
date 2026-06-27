@@ -1322,6 +1322,10 @@ def test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary
     assert preflight["artifact_schema_valid"] is True
     assert preflight["record_count"] == 1
     assert preflight["latest_status"] == "auth_required"
+    assert preflight["status_counts"] == {"auth_required": 1}
+    assert preflight["auth_required_count"] == 1
+    assert preflight["tool_call_ok_count"] == 0
+    assert preflight["provider_ready_for_authorized_live_smoke"] is False
     assert preflight["artifact_ref"] == "workspace_artifacts/runtime_state/provider-capabilities.json"
     assert "provider_tool_call_status=tool_call_ok" in preflight["missing"]
     assert "valid provider credentials before live actual-loading smoke" in preflight["missing"]
@@ -1380,6 +1384,9 @@ def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_prefligh
     assert "provider_preflight" in gate["evidence_scope"]
     assert gate["provider_preflight"]["status"] == "blocked"
     assert gate["provider_preflight"]["latest_status"] == "auth_required"
+    assert gate["provider_preflight"]["auth_required_count"] == 1
+    assert gate["provider_preflight"]["tool_call_ok_count"] == 0
+    assert gate["provider_preflight"]["provider_ready_for_authorized_live_smoke"] is False
 
 
 def test_knowledge_runtime_conformance_keeps_provider_actions_on_http_error_artifact(
@@ -1440,6 +1447,10 @@ def test_knowledge_runtime_conformance_keeps_provider_actions_on_http_error_arti
     assert gate["artifact_contract_valid"] is False
     assert gate["provider_preflight"]["status"] == "blocked"
     assert gate["provider_preflight"]["latest_status"] == "auth_required"
+    assert gate["provider_preflight"]["status_counts"] == {"auth_required": 1}
+    assert gate["provider_preflight"]["auth_required_count"] == 1
+    assert gate["provider_preflight"]["tool_call_ok_count"] == 0
+    assert gate["provider_preflight"]["provider_ready_for_authorized_live_smoke"] is False
     assert "artifact.status_code.200" in gate["missing"]
     assert "Fix the listed artifact contract checks and rerun the live context-receipt smoke." in (
         gate["next_safe_local_actions"]
@@ -2088,6 +2099,10 @@ def test_knowledge_packages_openapi_contract() -> None:
         "checked_at",
         "record_count",
         "latest_status",
+        "status_counts",
+        "auth_required_count",
+        "tool_call_ok_count",
+        "provider_ready_for_authorized_live_smoke",
         "records",
         "evidence_scope",
         "evidence",
