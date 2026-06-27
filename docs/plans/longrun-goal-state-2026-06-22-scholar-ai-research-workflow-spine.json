@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T13:56:00+08:00",
+  "updated_at": "2026-06-27T14:07:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,11 +100,11 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "manual-20260627_134828-n232-dirty-worktree-fixture-boundary",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_134828-n232-dirty-worktree-fixture-boundary",
-    "latest_goal_state_checkpoint_id": "manual-20260627_134828-n232-dirty-worktree-fixture-boundary",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260627_134828-n232-dirty-worktree-fixture-boundary",
-    "latest_checkpoint_caveat": "Targeted local rollback snapshot for the N232 dirty-worktree fixture-boundary closure; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260627-140002-n233-import-wiki-runtime-rollback-audit",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-140002-n233-import-wiki-runtime-rollback-audit",
+    "latest_goal_state_checkpoint_id": "20260627-140002-n233-import-wiki-runtime-rollback-audit",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-140002-n233-import-wiki-runtime-rollback-audit",
+    "latest_checkpoint_caveat": "Git rollback checkpoint for the N233 import-to-wiki runtime metadata rollback audit; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
     {
@@ -2747,6 +2747,30 @@
       "status": "HTTP 200",
       "checked_at": "2026-06-27T13:56:00+08:00",
       "use_in_slice": "Used for structured JSON validation and goal-state editing. No external code copied."
+    },
+    {
+      "topic": "N233 pytest monkeypatch and mock failure injection",
+      "source": "pytest monkeypatch documentation",
+      "url": "https://docs.pytest.org/en/stable/how-to/monkeypatch.html",
+      "status": "HTTP 200",
+      "checked_at": "2026-06-27T14:03:00+08:00",
+      "use_in_slice": "Used to keep the half-failure regression focused on the real runtime metadata update boundary. No external code copied."
+    },
+    {
+      "topic": "N233 Python mock side-effect boundary",
+      "source": "Python unittest.mock documentation",
+      "url": "https://docs.python.org/3/library/unittest.mock.html",
+      "status": "HTTP 200",
+      "checked_at": "2026-06-27T14:03:00+08:00",
+      "use_in_slice": "Used for exception side-effect failure injection in the existing TestClient contract. No external code copied."
+    },
+    {
+      "topic": "N233 FastAPI TestClient contract testing",
+      "source": "FastAPI testing documentation",
+      "url": "https://fastapi.tiangolo.com/tutorial/testing/",
+      "status": "HTTP 200",
+      "checked_at": "2026-06-27T14:03:00+08:00",
+      "use_in_slice": "Used to keep the import-to-wiki route proof at the HTTP contract boundary. No external code copied."
     }
   ],
   "requirements": [
@@ -6464,34 +6488,42 @@
         "Official/mature references checked: Git gitignore docs, pytest good practices, and Python json docs returned HTTP 200; used only for boundary and validation practice, with no copied external implementation."
       ],
       "residual_risk": "This closes the visible dirty-worktree fixture boundary and prepares a local commit. Ignored local-only tools/workspace_tests material still exists on disk by design; live KRT actual-loading, real RapidOCR runtime execution, and remote OCR real execution remain separate authorization/runtime gates."
+    },
+    {
+      "id": "N233-import-to-wiki-runtime-metadata-rollback-audit",
+      "requirement": "import-to-wiki guarded write coverage must independently prove that confirm_write refusal, protected workspace roots, and same-transaction rollback still prevent partial wiki/review/runtime state when runtime metadata recording fails after a review item has already been created.",
+      "source": "Claude review concern about test_wiki_crud negative coverage depth; current user instruction to keep quality and clean local worktree; Knowledge Runtime Pipeline requirement for audit/test proof.",
+      "status": "proved",
+      "evidence": [
+        "tests/test_wiki_crud.py::TestWikiImport::test_import_markdown_apply_requires_confirm_write asserts dry_run=false without confirm_write returns 400 and does not call wiki service reads/writes.",
+        "tests/test_wiki_crud.py::TestWikiImport::test_import_markdown_blocks_protected_workspace_paths parametrically asserts .git, .rollback_snapshots, and github/ sources are rejected without create_page calls.",
+        "tests/test_wiki_crud.py::TestWikiImport::test_import_markdown_apply_rolls_back_when_runtime_action_fails asserts runtime action failure removes the review item and deletes the created wiki draft.",
+        "tests/test_wiki_crud.py::TestWikiImport::test_import_markdown_apply_rolls_back_review_item_when_runtime_metadata_update_fails now exercises the more precise half-recorded path where ReviewQueue.update_metadata fails inside _record_wiki_import_runtime_action after session/job/approval creation; it proves imported=0, errored=1, review queue empty, runtime sessions empty, and created draft deleted.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py -q -> 31 passed.",
+        "Rollback checkpoint created before edits: C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-140002-n233-import-wiki-runtime-rollback-audit.",
+        "Official/mature references checked: pytest monkeypatch docs HTTP 200, Python unittest.mock docs HTTP 200, FastAPI testing docs HTTP 200. No external code copied.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py tests\\test_runtime_lifecycle_app_contract.py tests\\test_runtime_router_contract.py::test_runtime_lifecycle_refs_crosslink_passport_gate_boundary_and_handoff tests\\test_runtime_router_contract.py::test_runtime_agent_handoff_card_route_exposes_recovery_drilldowns tests\\test_ci_visibility_contract.py -q -> 51 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed."
+      ],
+      "residual_risk": "This proves the import-to-wiki guarded write and half-recorded runtime rollback contract through focused TestClient tests. It does not expand CI beyond the existing focused surface, does not prove production DB persistence for this endpoint, and does not unblock live Knowledge Runtime model-context loading, real RapidOCR runtime execution, remote OCR execution, or Computer Use sandboxPolicy accessibility-tree retry."
     }
   ],
   "changed_files_for_this_slice": [
-    ".gitignore",
-    "tests/test_ci_visibility_contract.py",
-    "tools/longrun/longrun-prompt.md",
-    "workspace_tests/evaluation_manifests/rerank_canary_dry_run_sample.json",
-    "workspace_tests/evaluation_manifests/rerank_canary_qrels.jsonl",
-    "workspace_tests/evaluation_manifests/rerank_canary_queries.jsonl",
-    "workspace_tests/fixtures/wiki_eval_smoke/manifest.json",
-    "workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/baseline-contrast.md",
-    "workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/paper-a.md",
+    "tests/test_wiki_crud.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py -q -> 7 passed after adding the selected workspace fixture visibility contract.",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool workspace_tests\\evaluation_manifests\\rerank_canary_dry_run_sample.json and workspace_tests\\fixtures\\wiki_eval_smoke\\manifest.json -> both parsed successfully.",
-    "JSONL parser check -> workspace_tests\\evaluation_manifests\\rerank_canary_queries.jsonl has 30 object rows and workspace_tests\\evaluation_manifests\\rerank_canary_qrels.jsonl has 40 object rows.",
-    "git ls-files --others --exclude-standard -> only tools/longrun/longrun-prompt.md, rerank_canary manifest/query/qrels, wiki_eval_smoke manifest, and two referenced wiki_eval_smoke pages are git-visible before staging.",
-    "git check-ignore -v -> wiki_eval_smoke/pages/synthesis/*.md are unignored by the new explicit file rule while wiki_graph_doctor_smoke/pages/concepts/*.md remain ignored by the adjacent local-only fixture rule.",
-    "Targeted secret-pattern scan over the selected files -> no credential-shaped secrets found; matches were limited to policy words in .gitignore/longrun prompt when using the broad scan.",
-    "Official/mature references checked for this slice: Git gitignore docs HTTP 200, pytest good practices HTTP 200, Python json docs HTTP 200. No external code copied."
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py -q -> 31 passed.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py tests\\test_runtime_lifecycle_app_contract.py tests\\test_runtime_router_contract.py::test_runtime_lifecycle_refs_crosslink_passport_gate_boundary_and_handoff tests\\test_runtime_router_contract.py::test_runtime_agent_handoff_card_route_exposes_recovery_drilldowns tests\\test_ci_visibility_contract.py -q -> 51 passed.",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed.",
+    "Official/mature references checked for N233: pytest monkeypatch docs HTTP 200, Python unittest.mock docs HTTP 200, FastAPI testing docs HTTP 200. No external code copied."
   ],
   "next_authorized_local_actions": [
-    "Stage only the N232 audited files and commit locally after git diff --cached --check and git ls-files -ci --exclude-standard pass; do not push/tag/release/upload.",
-    "Continue live Knowledge Runtime actual-loading proof only if configured credentials/runtime are available; otherwise keep it blocked with explicit evidence.",
-    "Continue real RapidOCR/PaddleOCR/Remote OCR proof only within local/private runtime and explicit consent boundaries.",
-    "Before any next slice: read AI_WORKSPACE_GUIDE.md, AGENTS.md, autonomous framework/playbook; run git status; create rollback checkpoint; search mature/official references; record evidence."
+    "Run json.tool on the goal-state, then run runtime lifecycle and CI visibility focused contracts if time permits.",
+    "Stage only tests/test_wiki_crud.py and the longrun goal-state file, run git diff --cached --check and git ls-files -ci --exclude-standard, then commit locally if checks pass.",
+    "Continue next Scholar AI local slice only after the required docs, git status, rollback checkpoint, and mature-reference search preflight.",
+    "Live Knowledge Runtime actual-loading proof remains blocked unless configured credentials/runtime are available.",
+    "Real RapidOCR/PaddleOCR/Remote OCR proof remains bounded by local/private runtime and explicit consent/credential availability."
   ],
   "stop_boundary": [
     "Do not call the long-run goal complete while goal_lifecycle_rollup.can_mark_goal_complete is false.",
@@ -6499,7 +6531,7 @@
     "Do not run live provider/model or real OCR provider smokes without explicit authorization and credential-safe logging.",
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
-  "completion_claim": "Not complete: N232 proves the remaining git-visible dirty-worktree fixture boundary and prepares a local commit, but live/real execution gates remain pending.",
+  "completion_claim": "Not complete: N233 proves import-to-wiki half-recorded runtime rollback coverage, but live/real execution gates remain pending.",
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
     "status": "proved",
@@ -10424,9 +10456,9 @@
     ]
   },
   "latest_slice": {
-    "id": "N232-dirty-worktree-fixture-boundary-closure",
-    "key": "n232_dirty_worktree_fixture_boundary_closure_slice",
-    "updated_at": "2026-06-27T13:56:00+08:00",
+    "id": "N233-import-to-wiki-runtime-metadata-rollback-audit",
+    "key": "n233_import_to_wiki_runtime_metadata_rollback_audit_slice",
+    "updated_at": "2026-06-27T14:07:00+08:00",
     "status": "proved"
   },
   "n151_ocr_health_mcp_visibility_slice": {
@@ -12192,25 +12224,25 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T13:56:00+08:00",
+    "updated_at": "2026-06-27T14:07:00+08:00",
     "status": "requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 233,
+    "requirements_total": 234,
     "requirement_status_counts": {
-      "proved": 233
+      "proved": 234
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N232-dirty-worktree-fixture-boundary-closure",
-    "latest_slice_id": "N232-dirty-worktree-fixture-boundary-closure",
+    "latest_requirement_id": "N233-import-to-wiki-runtime-metadata-rollback-audit",
+    "latest_slice_id": "N233-import-to-wiki-runtime-metadata-rollback-audit",
     "completion_blockers": [
       "actual_loading_gate_live_model_proof_auth_required_current_provider",
       "real_rapidocr_runtime_execution_or_explicit_out_of_scope",
       "remote_ocr_real_execution_requires_explicit_consent_and_credentials_or_out_of_scope"
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N232 closes the visible dirty-worktree fixture boundary locally, but live Knowledge Runtime actual-loading, real RapidOCR runtime execution or explicit out-of-scope classification, and remote OCR real execution remain unresolved authorization/runtime gates."
+    "why_not_complete": "N233 closes import-to-wiki negative rollback coverage, but live Knowledge Runtime actual-loading, real RapidOCR runtime execution or explicit out-of-scope classification, and remote OCR real execution remain unresolved authorization/runtime gates."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -15706,5 +15738,65 @@
       "Continue the next Scholar AI local slice only after reading required docs, running git status, creating a rollback checkpoint, and checking mature/official references."
     ],
     "updated_at": "2026-06-27T13:56:00+08:00"
+  },
+  "n233_import_to_wiki_runtime_metadata_rollback_audit_slice": {
+    "status": "proved",
+    "objective": "Independently close the import-to-wiki negative coverage audit by proving a half-recorded runtime metadata failure rolls back wiki page, review item, and runtime session state.",
+    "summary": "N233 adds one focused regression in the existing TestWikiImport contract. It reuses the current wiki import route, ReviewQueue, and WritingRuntime paths, injecting failure only at ReviewQueue.update_metadata to exercise the real same-transaction rollback boundary after review item creation.",
+    "changed_files": [
+      "tests/test_wiki_crud.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "rollback_checkpoints": [
+      {
+        "id": "20260627-140002-n233-import-wiki-runtime-rollback-audit",
+        "path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-140002-n233-import-wiki-runtime-rollback-audit",
+        "scope": "Git rollback checkpoint before the N233 import-to-wiki runtime metadata rollback audit test and goal-state update."
+      }
+    ],
+    "mature_references_checked": [
+      {
+        "topic": "N233 pytest monkeypatch and mock failure injection",
+        "source": "pytest monkeypatch documentation",
+        "url": "https://docs.pytest.org/en/stable/how-to/monkeypatch.html",
+        "status": "HTTP 200",
+        "checked_at": "2026-06-27T14:03:00+08:00",
+        "use_in_slice": "Used to keep the half-failure regression focused on the real runtime metadata update boundary. No external code copied."
+      },
+      {
+        "topic": "N233 Python mock side-effect boundary",
+        "source": "Python unittest.mock documentation",
+        "url": "https://docs.python.org/3/library/unittest.mock.html",
+        "status": "HTTP 200",
+        "checked_at": "2026-06-27T14:03:00+08:00",
+        "use_in_slice": "Used for exception side-effect failure injection in the existing TestClient contract. No external code copied."
+      },
+      {
+        "topic": "N233 FastAPI TestClient contract testing",
+        "source": "FastAPI testing documentation",
+        "url": "https://fastapi.tiangolo.com/tutorial/testing/",
+        "status": "HTTP 200",
+        "checked_at": "2026-06-27T14:03:00+08:00",
+        "use_in_slice": "Used to keep the import-to-wiki route proof at the HTTP contract boundary. No external code copied."
+      }
+    ],
+    "verification": [
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py -q -> 31 passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py tests\\test_runtime_lifecycle_app_contract.py tests\\test_runtime_router_contract.py::test_runtime_lifecycle_refs_crosslink_passport_gate_boundary_and_handoff tests\\test_runtime_router_contract.py::test_runtime_agent_handoff_card_route_exposes_recovery_drilldowns tests\\test_ci_visibility_contract.py -q -> 51 passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed.",
+      "git diff --cached --check and git ls-files -ci --exclude-standard remain pending until explicit staging."
+    ],
+    "contract_delta": {
+      "before": "Runtime-action failure was covered when the runtime-recording helper was mocked wholesale, but the half-recorded metadata update failure inside the real helper was only indirect.",
+      "after": "A focused TestClient regression proves update_metadata failure leaves no imported page, no pending review item, and no runtime session.",
+      "boundary": "No production implementation change, no broad CI expansion, no external upload/deploy/push/tag, no Zotero DB write, no github/ modification, and no copied external code."
+    },
+    "residual_risk": "This proves the import-to-wiki guarded write and half-recorded runtime rollback contract through focused TestClient tests. It does not expand CI beyond the existing focused surface, does not prove production DB persistence for this endpoint, and does not unblock live Knowledge Runtime model-context loading, real RapidOCR runtime execution, remote OCR execution, or Computer Use sandboxPolicy accessibility-tree retry.",
+    "next_actions": [
+      "Run json.tool on the goal-state, then run runtime lifecycle and CI visibility focused contracts if time permits.",
+      "Stage only tests/test_wiki_crud.py and the longrun goal-state file, run git diff --cached --check and git ls-files -ci --exclude-standard, then commit locally if checks pass.",
+      "Continue next Scholar AI local slice only after the required docs, git status, rollback checkpoint, and mature-reference search preflight."
+    ],
+    "updated_at": "2026-06-27T14:07:00+08:00"
   }
 }

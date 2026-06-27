@@ -603,6 +603,53 @@ class TestWikiImport:
         assert ReviewQueue(review_queue_path).list_items() == []
         mock_wiki_service.delete_page.assert_called_once_with("synthesis-runtime-failure")
 
+    def test_import_markdown_apply_rolls_back_review_item_when_runtime_metadata_update_fails(
+        self,
+        client,
+        mock_wiki_service,
+        mock_wiki_enabled,
+        tmp_path,
+    ):
+        """A half-recorded runtime action must not leave a page, session, or review item behind."""
+        from wiki.models import WikiPage, WikiPageKind, WikiPageStatus
+
+        runtime = WritingRuntime(autosave=False)
+        source = tmp_path / "metadata-failure.md"
+        source.write_text("# Metadata Failure\n\nImported body.", encoding="utf-8")
+        review_queue_path = tmp_path / "runtime" / "review_queue.jsonl"
+        mock_wiki_service.get_page.return_value = None
+        mock_wiki_service.create_page.return_value = WikiPage(
+            stable_slug="synthesis-metadata-failure",
+            kind=WikiPageKind.synthesis,
+            status=WikiPageStatus.draft,
+            title="Metadata Failure",
+            body="Imported body.",
+            evidence_refs=(),
+            source_hashes=("hash",),
+            created_at_iso="2026-06-05T00:00:00Z",
+            updated_at_iso="2026-06-05T00:00:00Z",
+        )
+
+        with patch("routers.wiki_router.REPO_ROOT", tmp_path), patch(
+            "routers.wiki_router.wiki_review_queue_path", lambda: review_queue_path
+        ), patch("routers.wiki_router.get_writing_runtime", lambda: runtime), patch(
+            "routers.wiki_router.ReviewQueue.update_metadata",
+            side_effect=OSError("metadata write failed"),
+        ):
+            resp = client.post(
+                "/api/wiki/import?user_id=owner123",
+                json={"source_paths": [str(source)], "dry_run": False, "confirm_write": True},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["imported"] == 0
+        assert data["errored"] == 1
+        assert "Failed to create pending import runtime action" in data["pages"][0]["error"]
+        assert ReviewQueue(review_queue_path).list_items() == []
+        assert runtime.list_sessions() == []
+        mock_wiki_service.delete_page.assert_called_once_with("synthesis-metadata-failure")
+
     def test_import_markdown_skips_existing_without_overwrite(self, client, mock_wiki_service, mock_wiki_enabled, tmp_path):
         """Existing slugs are skipped by default to avoid overwriting local wiki pages."""
         from wiki.models import WikiPage, WikiPageKind, WikiPageStatus
