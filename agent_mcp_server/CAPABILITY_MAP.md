@@ -84,7 +84,7 @@ literature.list_projects        # 拿 project_id（GET /resources/projects）
 | 工具 | 作用 |
 |---|---|
 | `literature.knowledge_packages` / `knowledge_runtime_conformance` | 知识包列表 / 运行时一致性 |
-| `literature.wiki_status` / `wiki_search` / `wiki_import` | Wiki 状态 / 搜索 / 导入 |
+| `literature.wiki_status` / `wiki_doctor` / `wiki_search` / `wiki_import` | Wiki 状态 / 诊断 / 搜索 / 导入 |
 | `literature.skill_package_status` / `skill_package_search` | 技能包状态 / 搜索 |
 | `literature.source_vault_status` / `source_vault_search` / `source_vault_read` | 源码保险库三件套 |
 | `literature.academic_english_status` / `academic_english_search` | 学术英语库 |
@@ -212,6 +212,7 @@ literature.source_vault_read
 literature.source_vault_search
 literature.source_vault_status
 literature.translate_pack
+literature.wiki_doctor
 literature.wiki_import
 literature.wiki_search
 literature.wiki_status

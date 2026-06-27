@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T23:54:35+08:00",
+  "updated_at": "2026-06-28T00:20:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,21 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "n257-wiki-mirror-backlog-diagnostic-20260627_234924",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n257-wiki-mirror-backlog-diagnostic-20260627_234924",
-    "latest_goal_state_checkpoint_id": "n257-wiki-mirror-backlog-diagnostic-20260627_234924",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n257-wiki-mirror-backlog-diagnostic-20260627_234924",
-    "latest_checkpoint_caveat": "Targeted rollback snapshot for N257 read-only WikiRegistry Source Vault mirror backlog diagnostics and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "n258-mcp-wiki-doctor-closeout-20260628_001244",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n258-mcp-wiki-doctor-closeout-20260628_001244",
+    "latest_goal_state_checkpoint_id": "n258-mcp-wiki-doctor-closeout-20260628_001244",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n258-mcp-wiki-doctor-closeout-20260628_001244",
+    "latest_checkpoint_caveat": "Targeted rollback snapshot for N258 read-only MCP wiki doctor diagnostics, capability map/tests, and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N258 MCP wiki doctor recovery surface",
+      "source": "Model Context Protocol tools specification; W3C PROV entity/activity provenance; Google SRE monitoring stale state visibility",
+      "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+      "status": "Official/mature references checked on 2026-06-28 before implementation",
+      "checked_at": "2026-06-28T00:05:32+08:00",
+      "use_in_slice": "Used to expose existing Wiki doctor and Source Vault mirror backlog diagnostics through a read-only MCP tool without adding replay, auto-repair, upload, live provider execution, or external implementation code."
+    },
     {
       "topic": "N257 read-only WikiRegistry Source Vault mirror backlog diagnostics",
       "source": "W3C PROV entity/activity provenance; Google SRE monitoring stale state visibility; Model Context Protocol tool result/readability boundary",
@@ -7273,24 +7281,42 @@
         ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor_review_extended.py -q -> 29 passed, 1 xfailed."
       ],
       "residual_risk": "This is a read-only visibility/recovery diagnostic only. It does not add a write/replay HTTP endpoint, does not auto-repair Source Vault, does not run live QA/model actual-loading, does not mutate Zotero DB, does not modify github/ references, and does not execute OCR."
+    },
+    {
+      "id": "N258-mcp-wiki-doctor-recovery-surface",
+      "requirement": "MCP consumers must be able to call the existing Wiki Doctor diagnostics, including Source Vault mirror backlog metrics, through a registered read-only structured tool so handoff agents can recover wiki/source-vault state without using REST routes directly or mutating Source Vault.",
+      "source": "Post-N257 KRT recovery visibility follow-up. N257 exposed backlog diagnostics through /api/wiki/doctor, but MCP/agent consumers still had only wiki_status/search/import tools and no direct read-only doctor surface.",
+      "status": "proved",
+      "evidence": [
+        "agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py adds RuntimeTools.wiki_doctor(), which performs a GET to /api/wiki/doctor and returns the existing wrapped structured backend result through literature.wiki_doctor.",
+        "agent_mcp_server/src/lit_assistant_mcp/server.py registers literature.wiki_doctor with structured_output=true and ToolAnnotations readOnlyHint=true, destructiveHint=false, idempotentHint=true, openWorldHint=false.",
+        "agent_mcp_server/tests/test_runtime_tools.py::test_wiki_doctor_uses_read_only_doctor_endpoint proves the MCP runtime tool calls /api/wiki/doctor and preserves Source Vault mirror backlog metrics without write arguments.",
+        "agent_mcp_server/tests/test_server.py::test_server_registers_source_and_runtime_tools proves literature.wiki_doctor is registered and listed with read-only tool annotations.",
+        "agent_mcp_server/CAPABILITY_MAP.md lists literature.wiki_doctor in the knowledge-tool summary and complete tool index so source-readable MCP capability discovery stays synchronized.",
+        "Created rollback checkpoint C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n258-mcp-wiki-doctor-closeout-20260628_001244 before N258 closeout edits.",
+        "Invoke-WebRequest HEAD https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200; https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> HTTP 200."
+      ],
+      "residual_risk": "This is a read-only MCP recovery surface only. It does not add a replay/write/auto-repair tool, does not mutate Source Vault or Zotero DB, does not modify github/ references, does not run live QA/model actual-loading, and does not execute OCR."
     }
   ],
   "changed_files_for_this_slice": [
-    "literature_assistant/core/wiki/source_registry.py",
-    "literature_assistant/core/wiki/doctor.py",
-    "tests/wiki/test_doctor.py",
-    "tests/wiki/test_wiki_router.py",
+    "agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py",
+    "agent_mcp_server/src/lit_assistant_mcp/server.py",
+    "agent_mcp_server/tests/test_runtime_tools.py",
+    "agent_mcp_server/tests/test_server.py",
+    "agent_mcp_server/CAPABILITY_MAP.md",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Invoke-WebRequest HEAD https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> HTTP 200; https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200.",
-    ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\wiki\\source_registry.py literature_assistant\\core\\wiki\\doctor.py tests\\wiki\\test_doctor.py tests\\wiki\\test_wiki_router.py -> passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor.py::test_doctor_registry_reports_source_vault_mirror_backlog tests\\wiki\\test_wiki_router.py::test_doctor_contract_exposes_source_vault_mirror_backlog -q -> 2 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor.py -q -> 12 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_wiki_router.py::test_doctor_and_graph_contract_when_enabled tests\\wiki\\test_wiki_router.py::test_doctor_contract_exposes_source_vault_mirror_backlog tests\\wiki\\test_wiki_router.py::test_wiki_routes_are_registered_in_full_app_openapi -q -> 3 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport::test_preexisting_wiki_registry_rows_replay_into_source_vault -q -> 1 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport -q -> 15 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor_review_extended.py -q -> 29 passed, 1 xfailed"
+    "git status --short --branch -> main...origin/main [ahead 87] with only N258 MCP wiki doctor files and this goal-state JSON dirty.",
+    "Created targeted rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n258-mcp-wiki-doctor-closeout-20260628_001244 for MCP runtime/server/tests, capability map, and this goal-state JSON.",
+    "Invoke-WebRequest HEAD https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200; https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> HTTP 200.",
+    ".\\.venv-1\\Scripts\\python.exe -m py_compile agent_mcp_server\\src\\lit_assistant_mcp\\tools\\runtime.py agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_runtime_tools.py agent_mcp_server\\tests\\test_server.py -> passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_wiki_doctor_uses_read_only_doctor_endpoint agent_mcp_server\\tests\\test_server.py::test_server_registers_source_and_runtime_tools agent_mcp_server\\tests\\test_server.py::test_capability_map_covers_registered_tools_and_is_source_readable -q -> 3 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed",
+    "git diff --check -- agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py agent_mcp_server/src/lit_assistant_mcp/server.py agent_mcp_server/tests/test_runtime_tools.py agent_mcp_server/tests/test_server.py agent_mcp_server/CAPABILITY_MAP.md docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> exit 0; warning only that the goal-state JSON CRLF will be replaced by LF when Git touches it",
+    "git ls-files -ci --exclude-standard -> no ignored tracked files reported"
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
@@ -7306,10 +7332,10 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N257 proves Wiki doctor/API consumers can see Source Vault mirror backlog for preexisting WikiRegistry rows as a bounded read-only recovery diagnostic.",
+    "this_slice": "N258 exposes the existing Wiki Doctor and Source Vault mirror backlog diagnostics through a registered read-only MCP tool.",
     "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N257 proves local read-only mirror backlog visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution remains separately gated."
+    "why_not_complete": "N258 proves a local read-only MCP recovery surface only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution remains separately gated."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -12998,27 +13024,27 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T23:54:35+08:00",
+    "updated_at": "2026-06-28T00:20:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 258,
+    "requirements_total": 259,
     "requirement_status_counts": {
-      "proved": 258
+      "proved": 259
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N257-wiki-source-vault-mirror-backlog-diagnostic",
-    "latest_slice_id": "N257-wiki-source-vault-mirror-backlog-diagnostic",
+    "latest_requirement_id": "N258-mcp-wiki-doctor-recovery-surface",
+    "latest_slice_id": "N258-mcp-wiki-doctor-recovery-surface",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
-        "evidence": "N257 proves deterministic local Source Vault mirror backlog visibility only; live loading proof still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint."
+        "evidence": "N258 proves deterministic local MCP access to Wiki Doctor mirror backlog diagnostics only; live loading proof still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N257 proves deterministic Source Vault mirror backlog visibility for WikiRegistry rows. The current configured provider still requires authentication for live QA/model actual-loading proof, and OCR execution remains separately gated."
+    "why_not_complete": "N258 proves deterministic read-only MCP recovery visibility for Wiki Doctor diagnostics. The current configured provider still requires authentication for live QA/model actual-loading proof, and OCR execution remains separately gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -17777,6 +17803,66 @@
     ],
     "decision": "Expose mirror backlog as a read-only doctor/API diagnostic over persisted WikiRegistry statuses instead of adding a write endpoint, auto-repair, fake Source Vault seed, or live-provider claim.",
     "residual_risk": "This proves diagnostic visibility only. It does not replay rows by itself, add a user-facing write trigger, run live QA/model actual-loading, mutate Zotero DB, modify github/ references, upload content, or execute OCR.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
+      "Continue KRT with another local knowledge family through builder/manifest/retrieval/resource/context tests, or separately authorize an explicit guarded replay action if Source Vault mutation is desired.",
+      "Keep live QA/model actual-loading blocked until provider preflight is proved; keep OCR execution behind confirm_execution=true and explicit local/remote upload boundaries.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
+    ]
+  },
+  "n258_mcp_wiki_doctor_recovery_surface_slice": {
+    "id": "N258-mcp-wiki-doctor-recovery-surface",
+    "status": "proved",
+    "summary": "N258 exposes the existing /api/wiki/doctor recovery diagnostics as a registered read-only MCP tool, so agents can inspect Wiki Doctor and Source Vault mirror backlog state through MCP without adding replay/write behavior.",
+    "rollback_checkpoint_id": "n258-mcp-wiki-doctor-closeout-20260628_001244",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n258-mcp-wiki-doctor-closeout-20260628_001244",
+    "mature_references_checked": [
+      {
+        "topic": "N258 MCP read-only recovery tool boundary",
+        "source": "Model Context Protocol tools specification",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+        "status": "Official reference checked on 2026-06-28 before closeout",
+        "checked_at": "2026-06-28T00:12:44+08:00",
+        "use_in_slice": "Used to expose Wiki Doctor as a structured read-only MCP tool with explicit annotations. No external code copied."
+      },
+      {
+        "topic": "N258 provenance visibility",
+        "source": "W3C PROV Overview",
+        "url": "https://www.w3.org/TR/prov-overview/",
+        "status": "Official reference checked on 2026-06-28 before closeout",
+        "checked_at": "2026-06-28T00:12:44+08:00",
+        "use_in_slice": "Used to keep registry/source-vault mirror state and recovery diagnostics distinct from replay/write activity. No external implementation copied."
+      },
+      {
+        "topic": "N258 stale-state monitoring",
+        "source": "Google SRE monitoring distributed systems",
+        "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+        "status": "Mature reference checked on 2026-06-28 before closeout",
+        "checked_at": "2026-06-28T00:12:44+08:00",
+        "use_in_slice": "Used to keep Source Vault mirror backlog visible as diagnostic state rather than hidden or auto-repaired state. No external implementation copied."
+      }
+    ],
+    "changed_files": [
+      "agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py",
+      "agent_mcp_server/src/lit_assistant_mcp/server.py",
+      "agent_mcp_server/tests/test_runtime_tools.py",
+      "agent_mcp_server/tests/test_server.py",
+      "agent_mcp_server/CAPABILITY_MAP.md",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification_commands": [
+      "git status --short --branch -> main...origin/main [ahead 87] with only N258 MCP wiki doctor files and this goal-state JSON dirty.",
+      "Created targeted rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n258-mcp-wiki-doctor-closeout-20260628_001244 for MCP runtime/server/tests, capability map, and this goal-state JSON.",
+      "Invoke-WebRequest HEAD https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200; https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> HTTP 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m py_compile agent_mcp_server\\src\\lit_assistant_mcp\\tools\\runtime.py agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_runtime_tools.py agent_mcp_server\\tests\\test_server.py -> passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_wiki_doctor_uses_read_only_doctor_endpoint agent_mcp_server\\tests\\test_server.py::test_server_registers_source_and_runtime_tools agent_mcp_server\\tests\\test_server.py::test_capability_map_covers_registered_tools_and_is_source_readable -q -> 3 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed",
+      "git diff --check -- agent_mcp_server/src/lit_assistant_mcp/tools/runtime.py agent_mcp_server/src/lit_assistant_mcp/server.py agent_mcp_server/tests/test_runtime_tools.py agent_mcp_server/tests/test_server.py agent_mcp_server/CAPABILITY_MAP.md docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> exit 0; warning only that the goal-state JSON CRLF will be replaced by LF when Git touches it",
+      "git ls-files -ci --exclude-standard -> no ignored tracked files reported"
+    ],
+    "decision": "Reuse the existing Wiki Doctor REST endpoint and MCP runtime wrapper pattern instead of adding a second diagnostic implementation, replay endpoint, write tool, auto-repair path, or live provider proof.",
+    "residual_risk": "This proves MCP recovery visibility only. It does not replay wiki registry rows, mutate Source Vault, run live QA/model actual-loading, mutate Zotero DB, modify github/ references, upload content, or execute OCR.",
     "next_actions": [
       "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
       "Continue KRT with another local knowledge family through builder/manifest/retrieval/resource/context tests, or separately authorize an explicit guarded replay action if Source Vault mutation is desired.",

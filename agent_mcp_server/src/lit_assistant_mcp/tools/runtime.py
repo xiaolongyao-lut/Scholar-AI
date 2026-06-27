@@ -437,6 +437,14 @@ class RuntimeTools:
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.wiki_status", args, result, started, endpoint)
 
+    def wiki_doctor(self) -> dict[str, Any]:
+        """Return read-only wiki integrity diagnostics for recovery agents."""
+        started = time.perf_counter()
+        endpoint = "/api/wiki/doctor"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.wiki_doctor", {}, result, started, endpoint)
+
     def wiki_search(
         self,
         query: str,

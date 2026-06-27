@@ -846,6 +846,45 @@ def test_wiki_status_uses_read_only_status_endpoint(
     )
 
 
+def test_wiki_doctor_uses_read_only_doctor_endpoint(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """wiki_doctor must expose recovery diagnostics without mutating wiki state."""
+
+    backend.set_json(
+        "/api/wiki/doctor",
+        {
+            "schema_version": "scholar-ai-wiki-doctor/v1",
+            "status": "warning",
+            "checks": [
+                {
+                    "id": "source_registry",
+                    "status": "warning",
+                    "metrics": {
+                        "source_vault_mirror_backlog": {
+                            "needs_replay": True,
+                            "pending_source_count": 1,
+                        }
+                    },
+                }
+            ],
+        },
+    )
+
+    result = tools.wiki_doctor()
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/wiki/doctor",
+        None,
+    )
+    assert result["is_error"] is False
+    backlog = result["data"]["checks"][0]["metrics"]["source_vault_mirror_backlog"]
+    assert backlog["needs_replay"] is True
+    assert backlog["pending_source_count"] == 1
+
+
 def test_wiki_search_returns_refs_only(
     tools: RuntimeTools,
     backend: FakeBackend,

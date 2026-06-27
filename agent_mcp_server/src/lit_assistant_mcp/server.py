@@ -100,6 +100,7 @@ def create_mcp_server(
         "literature.ocr_execution_probe": runtime.ocr_execution_probe,
         "literature.knowledge_context_receipt": runtime.knowledge_context_receipt,
         "literature.wiki_status": runtime.wiki_status,
+        "literature.wiki_doctor": runtime.wiki_doctor,
         "literature.wiki_search": runtime.wiki_search,
         "literature.skill_package_status": runtime.skill_package_status,
         "literature.skill_package_search": runtime.skill_package_search,
@@ -455,6 +456,21 @@ def create_mcp_server(
     def literature_wiki_status(user_id: str | None = None) -> dict[str, Any]:
         """Return the wiki package runtime status and manifest drilldown."""
         return runtime.wiki_status(user_id=user_id)
+
+    @mcp.tool(
+        name="literature.wiki_doctor",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Wiki Doctor",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_wiki_doctor() -> dict[str, Any]:
+        """Return read-only wiki integrity diagnostics for recovery agents."""
+        return runtime.wiki_doctor()
 
     @mcp.tool(
         name="literature.wiki_search",
