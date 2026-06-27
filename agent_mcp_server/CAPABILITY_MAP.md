@@ -53,6 +53,23 @@ literature.knowledge_runtime_conformance # KRT 原始一致性面，含 actual_l
 
 这些字段只证明恢复可见性和门禁状态；不等于 live provider/model actual-loading proof。只有 provider preflight 已证明且用户显式授权后，才可运行 live context-receipt smoke。
 
+## KRT deterministic source-to-context proof
+
+不用 live provider 时，按这个只读链路核对知识是否进入有界上下文：
+
+```text
+literature.knowledge_packages            # package/source/hash/runtime consumer 总览
+literature.knowledge_runtime_conformance # source-to-context 行级证明与 blockers
+literature.wiki_search                   # wiki refs
+literature.source_vault_search           # source_vault refs
+literature.academic_english_search       # academic_english refs
+literature.product_docs_search           # product_docs refs
+literature.agent_resource_read           # bounded resource read
+literature.knowledge_context_receipt     # bounded context receipt
+```
+
+核对顺序：先看 package status/hash，再拿 ref，随后 bounded read，最后生成 context receipt。这个链路证明 deterministic source-to-context；仍不等于 live QA/model actual-loading proof。
+
 ---
 
 ## 分组工具清单
