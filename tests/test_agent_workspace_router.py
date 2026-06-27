@@ -286,6 +286,8 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
         "Desktop Smoke Evidence",
         "OCR Runtime Status",
         "Wiki Doctor",
+        "Knowledge Runtime Conformance",
+        "Source Vault Status",
         "Workflow Passport",
         "Evidence Integrity Gate",
         "Research Action Lifecycle",
@@ -308,6 +310,16 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert wiki_doctor_probe["mcp_tool"] == "literature.wiki_doctor"
     assert "wiki integrity diagnostics" in wiki_doctor_probe["purpose"]
     assert "Source Vault mirror backlog" in wiki_doctor_probe["purpose"]
+    krt_probe = next(probe for probe in probes if probe["label"] == "Knowledge Runtime Conformance")
+    assert krt_probe["route"] == "/api/knowledge/runtime-conformance"
+    assert krt_probe["mcp_tool"] == "literature.knowledge_runtime_conformance"
+    assert "actual-loading gate state" in krt_probe["purpose"]
+    assert "model-context readiness" in krt_probe["purpose"]
+    source_vault_probe = next(probe for probe in probes if probe["label"] == "Source Vault Status")
+    assert source_vault_probe["route"] == "/api/knowledge/source-vault"
+    assert source_vault_probe["mcp_tool"] == "literature.source_vault_status"
+    assert "Source Vault manifest" in source_vault_probe["purpose"]
+    assert "source-to-context proof" in source_vault_probe["purpose"]
     handoff_probe = next(probe for probe in probes if probe["label"] == "Agent Handoff Card")
     assert handoff_probe["route"] == "/runtime/job/{job_id}/agent-handoff-card"
     assert handoff_probe["requires_identifier"] is True

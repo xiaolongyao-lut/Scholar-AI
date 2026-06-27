@@ -263,6 +263,24 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
         mcp_tool: 'literature.wiki_doctor',
       },
       {
+        label: 'Knowledge Runtime Conformance',
+        route: '/api/knowledge/runtime-conformance',
+        read_only: true,
+        requires_identifier: false,
+        identifier_hint: null,
+        purpose: 'Recover package conformance, actual-loading gate state, and blocked evidence before claiming model-context readiness.',
+        mcp_tool: 'literature.knowledge_runtime_conformance',
+      },
+      {
+        label: 'Source Vault Status',
+        route: '/api/knowledge/source-vault',
+        read_only: true,
+        requires_identifier: false,
+        identifier_hint: null,
+        purpose: 'Recover Source Vault manifest, source counts, refs, and empty-runtime blockers before claiming source-to-context proof.',
+        mcp_tool: 'literature.source_vault_status',
+      },
+      {
         label: 'Workflow Passport',
         route: '/runtime/workflow-passport',
         read_only: true,
@@ -313,7 +331,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       'Create a rollback checkpoint and re-check official or mature references before nontrivial edits.',
     ],
     next_safe_local_actions: [
-      'Read Wiki Doctor, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, and Agent Handoff Cards before resuming mutating work.',
+      'Read Wiki Doctor, Knowledge Runtime Conformance, Source Vault Status, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, and Agent Handoff Cards before resuming mutating work.',
       'Inspect git dirty paths and preserve unrelated local work before staging or committing.',
     ],
     ...overrides,
@@ -2574,6 +2592,8 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('Desktop Smoke Evidence · read-only true · literature.agent_workspace_status')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('OCR Runtime Status · read-only true · literature.ocr_status')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Wiki Doctor · read-only true · literature.wiki_doctor')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Knowledge Runtime Conformance · read-only true · literature.knowledge_runtime_conformance')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Source Vault Status · read-only true · literature.source_vault_status')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Workflow Passport · read-only true · literature.workflow_passport')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Research Action Lifecycle · read-only true · literature.research_action_lifecycle')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Agent Handoff Card · read-only true · needs job_id · literature.agent_handoff_card')).toBeInTheDocument();

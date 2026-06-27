@@ -1426,7 +1426,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
         "Create a rollback checkpoint and re-check official or mature references before nontrivial edits.",
     ]
     next_actions = [
-        "Read Wiki Doctor, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, and Agent Handoff Cards before resuming mutating work.",
+        "Read Wiki Doctor, Knowledge Runtime Conformance, Source Vault Status, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, and Agent Handoff Cards before resuming mutating work.",
         "Inspect git dirty paths and preserve unrelated local work before staging or committing.",
         "Use workspace artifacts and audit records as recovery evidence; treat missing evidence as unresolved.",
     ]
@@ -1458,6 +1458,18 @@ def _build_workspace_state() -> AgentWorkspaceState:
                 "/api/wiki/doctor",
                 "Recover wiki integrity diagnostics and Source Vault mirror backlog before claiming Knowledge Runtime Pipeline closure.",
                 mcp_tool="literature.wiki_doctor",
+            ),
+            _workspace_recovery_probe(
+                "Knowledge Runtime Conformance",
+                "/api/knowledge/runtime-conformance",
+                "Recover package conformance, actual-loading gate state, and blocked evidence before claiming model-context readiness.",
+                mcp_tool="literature.knowledge_runtime_conformance",
+            ),
+            _workspace_recovery_probe(
+                "Source Vault Status",
+                "/api/knowledge/source-vault",
+                "Recover Source Vault manifest, source counts, refs, and empty-runtime blockers before claiming source-to-context proof.",
+                mcp_tool="literature.source_vault_status",
             ),
             _workspace_recovery_probe(
                 "Workflow Passport",
