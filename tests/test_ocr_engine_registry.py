@@ -130,7 +130,7 @@ def test_builtin_heavy_and_remote_engines_report_readiness_without_secret_leakag
         assert status["warning"] == "OCR policy is auto but no available OCR engine was found"
         assert status["next_safe_local_actions"]
     else:
-        assert status["selected_engine"] == "windows"
+        assert status["selected_engine"] in {"paddleocr_gpu", "rapidocr", "windows"}
         assert status["warning"] is None
         assert any("ocr_health" in action for action in status["next_safe_local_actions"])
     assert unavailable_by_name["remote_api"] == (
@@ -142,7 +142,7 @@ def test_builtin_heavy_and_remote_engines_report_readiness_without_secret_leakag
     ]
     assert any("api_key" in action for action in actions_by_name["remote_api"])
     assert readiness_by_name["paddleocr_gpu"] in {"dependency_missing", "adapter_not_wired"}
-    assert readiness_by_name["rapidocr"] in {"dependency_missing", "adapter_not_wired"}
+    assert readiness_by_name["rapidocr"] in {"ready", "dependency_missing", "adapter_not_wired"}
     assert readiness_by_name["windows"] in {
         "ready",
         "dependency_missing",
@@ -605,6 +605,39 @@ def test_rapidocr_external_python_execution_uses_subprocess_receipt(
     ]
 
 
+def test_rapidocr_external_python_execution_reads_v3_output_txts_tuple(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_dir = tmp_path / "fake_module"
+    module_dir.mkdir()
+    (module_dir / "rapidocr.py").write_text(
+        """
+class _RapidOCROutput:
+    txts = ("external rapid v3 text",)
+
+
+class RapidOCR:
+    def __init__(self, **_kwargs):
+        pass
+
+    def __call__(self, _image_path):
+        return _RapidOCROutput()
+""".strip(),
+        encoding="utf-8",
+    )
+    image_path = tmp_path / "page.png"
+    image_path.write_bytes(b"png")
+    monkeypatch.setenv("PYTHONPATH", str(module_dir))
+
+    text = RapidOcrEngine({"python_executable": sys.executable}).ocr_image(
+        image_path,
+        language="en",
+    )
+
+    assert text == "external rapid v3 text"
+
+
 def test_rapidocr_external_python_missing_exposes_readiness_blocker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -788,6 +821,40 @@ def test_rapidocr_engine_runs_lazy_optional_adapter(
     assert constructor_calls == [{"det_model_path": "local-det.onnx"}]
     assert runtime_calls == [str(image_path)]
     assert text == "alpha text\nbeta text"
+
+
+def test_rapidocr_engine_reads_v3_output_txts_tuple(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RapidOCR 3.x returns a RapidOCROutput with tuple-valued txts."""
+
+    class _FakeRapidOcrOutput:
+        txts = ("Scholar AI RapidOCR proof 2026",)
+
+    class _FakeRapidOCR:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def __call__(self, _image_path: str) -> _FakeRapidOcrOutput:
+            return _FakeRapidOcrOutput()
+
+    fake_module = types.SimpleNamespace(RapidOCR=_FakeRapidOCR)
+    image_path = tmp_path / "rapidocr-v3.png"
+    image_path.write_bytes(b"png")
+
+    monkeypatch.setattr(
+        ocr_builtin_engines.importlib.util,
+        "find_spec",
+        lambda name: object() if name == "rapidocr" else None,
+    )
+    monkeypatch.setattr(
+        ocr_builtin_engines.importlib,
+        "import_module",
+        lambda name: fake_module if name == "rapidocr" else pytest.fail(name),
+    )
+
+    assert RapidOcrEngine().ocr_image(image_path, language="en") == "Scholar AI RapidOCR proof 2026"
 
 
 def test_rapidocr_engine_rejects_invalid_constructor_config(

@@ -139,6 +139,11 @@ PREFIX = {_EXTERNAL_OCR_JSON_PREFIX!r}
 
 
 def collect_text(value, fragments):
+    txts = getattr(value, "txts", None)
+    if isinstance(txts, (list, tuple)):
+        for item in txts:
+            collect_text(item, fragments)
+        return
     if isinstance(value, dict):
         for key in ("text", "rec_text", "content", "markdown"):
             if key in value:
@@ -265,7 +270,7 @@ def _extract_rapidocr_text(raw_result: Any) -> str:
         return raw_result
 
     txts = getattr(raw_result, "txts", None)
-    if isinstance(txts, list):
+    if isinstance(txts, (list, tuple)):
         return "\n".join(str(item).strip() for item in txts if str(item).strip())
 
     result_payload = raw_result

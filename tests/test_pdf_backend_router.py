@@ -7,6 +7,8 @@ import base64
 import hashlib
 import json
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -345,7 +347,81 @@ def test_ocr_execution_probe_blocks_remote_without_upload_consent() -> None:
     assert any("allow_remote_upload" in action for action in payload["next_safe_local_actions"])
 
 
-def test_ocr_execution_probe_blocks_rapidocr_with_recovery_receipt() -> None:
+def test_ocr_execution_probe_runs_remote_api_loopback_with_explicit_consent() -> None:
+    image_bytes = b"remote-loopback-image"
+    requests: list[dict[str, Any]] = []
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802 - stdlib HTTP handler contract
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length)
+            requests.append(
+                {
+                    "path": self.path,
+                    "authorization": self.headers.get("Authorization", ""),
+                    "payload": json.loads(body.decode("utf-8")),
+                }
+            )
+            response = json.dumps({"data": {"text": "remote loopback OCR text"}}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
+
+        def log_message(self, _format: str, *_args: Any) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        response = run_ocr_execution_probe(
+            OcrExecutionProbeRequest(
+                confirm_execution=True,
+                engine="remote_api",
+                engine_config={
+                    "api_key": "secret-value",
+                    "base_url": f"http://127.0.0.1:{server.server_port}",
+                    "endpoint_path": "/ocr",
+                    "allow_remote_upload": True,
+                },
+                image_base64=base64.b64encode(image_bytes).decode("ascii"),
+                language="en",
+            )
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert response.confirmed is True
+    assert response.engine == "remote_api"
+    assert response.engine_type == "remote"
+    assert response.requires_network is True
+    assert response.input_sha256 == hashlib.sha256(image_bytes).hexdigest()
+    assert response.text_preview == "remote loopback OCR text"
+    assert response.text_sha256 == hashlib.sha256(b"remote loopback OCR text").hexdigest()
+    assert requests == [
+        {
+            "path": "/ocr",
+            "authorization": "Bearer secret-value",
+            "payload": {
+                "image_base64": base64.b64encode(image_bytes).decode("ascii"),
+                "language": "en",
+            },
+        }
+    ]
+
+
+def test_ocr_execution_probe_blocks_rapidocr_with_recovery_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ocr_builtin_engines.importlib.util,
+        "find_spec",
+        lambda _name: None,
+    )
     image_bytes = b"rapid-image"
 
     response = run_ocr_execution_probe(
@@ -490,6 +566,11 @@ def test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _register_mock_local_ocr()
+    monkeypatch.setattr(
+        ocr_builtin_engines.importlib.util,
+        "find_spec",
+        lambda _name: None,
+    )
     monkeypatch.setenv("LITASSIST_OCR_CONFIG_PATH", str(tmp_path / "ocr_config.json"))
     client = TestClient(app)
     headers = {"X-LitAssist-Capability": get_local_api_capability_token()}
