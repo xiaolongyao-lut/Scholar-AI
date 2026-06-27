@@ -121,6 +121,7 @@ const ACCEPTANCE_WORKSPACE_STATE = {
       this_slice: 'N74 completed desktop Wiki Import Recovery acceptance with screenshot and UIA host-tree evidence.',
       full_goal: 'The long-running Scholar AI research workflow spine remains active, not complete.',
       can_mark_goal_complete: false,
+      why_not_complete: 'Live provider/model actual-loading is still blocked.',
     },
     next_authorized_local_actions: [
       'Create a rollback checkpoint and search mature references before nontrivial edits.',

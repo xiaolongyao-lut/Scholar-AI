@@ -1809,12 +1809,14 @@ function workspaceGoalCompletionClaimSummary(goal: AgentWorkspaceStatus['workspa
   thisSlice: string | null;
   fullGoal: string | null;
   canMarkGoalComplete: boolean | null;
+  whyNotComplete: string | null;
 } {
   const claim = goal.completion_claim;
   return {
     thisSlice: claim?.this_slice ? sanitizeInspectorText(claim.this_slice) : null,
     fullGoal: claim?.full_goal ? sanitizeInspectorText(claim.full_goal) : null,
     canMarkGoalComplete: typeof claim?.can_mark_goal_complete === 'boolean' ? claim.can_mark_goal_complete : null,
+    whyNotComplete: claim?.why_not_complete ? sanitizeInspectorText(claim.why_not_complete) : null,
   };
 }
 
@@ -3810,6 +3812,7 @@ export function WorkspaceStatePanel({
             {goalCompletionClaim.thisSlice ||
             goalCompletionClaim.fullGoal ||
             goalCompletionClaim.canMarkGoalComplete !== null ||
+            goalCompletionClaim.whyNotComplete ||
             goalLifecycle?.completion_blockers?.length ? (
               <div className="mt-2 grid gap-1.5">
                 {goalCompletionClaim.thisSlice ? (
@@ -3825,6 +3828,11 @@ export function WorkspaceStatePanel({
                 {goalCompletionClaim.canMarkGoalComplete !== null ? (
                   <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
                     completion claim can complete {String(goalCompletionClaim.canMarkGoalComplete)}
+                  </p>
+                ) : null}
+                {goalCompletionClaim.whyNotComplete ? (
+                  <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    completion claim why not complete {goalCompletionClaim.whyNotComplete}
                   </p>
                 ) : null}
                 {goalLifecycle && hasLifecycleRecordDetails ? (

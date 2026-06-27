@@ -145,11 +145,13 @@ class AgentWorkspaceGoalCompletionClaim(BaseModel):
         this_slice: Short local slice completion claim.
         full_goal: Short full-goal completion boundary claim.
         can_mark_goal_complete: Whether a resumed agent may mark the full goal complete.
+        why_not_complete: Short reason the full goal remains active.
     """
 
     this_slice: str | None = Field(default=None, max_length=MAX_GOAL_COMPLETION_CHARS)
     full_goal: str | None = Field(default=None, max_length=MAX_GOAL_COMPLETION_CHARS)
     can_mark_goal_complete: bool | None = None
+    why_not_complete: str | None = Field(default=None, max_length=MAX_GOAL_COMPLETION_CHARS)
 
 
 class AgentWorkspaceGoalRequirementStatus(BaseModel):
@@ -946,6 +948,7 @@ def _safe_goal_completion_claim(value: Any) -> AgentWorkspaceGoalCompletionClaim
     this_slice = value.get("this_slice")
     full_goal = value.get("full_goal")
     can_mark_goal_complete = value.get("can_mark_goal_complete")
+    why_not_complete = value.get("why_not_complete")
     return AgentWorkspaceGoalCompletionClaim(
         this_slice=_redact_text(this_slice).strip()[:MAX_GOAL_COMPLETION_CHARS]
         if isinstance(this_slice, str) and this_slice.strip()
@@ -954,6 +957,9 @@ def _safe_goal_completion_claim(value: Any) -> AgentWorkspaceGoalCompletionClaim
         if isinstance(full_goal, str) and full_goal.strip()
         else None,
         can_mark_goal_complete=can_mark_goal_complete if isinstance(can_mark_goal_complete, bool) else None,
+        why_not_complete=_redact_text(why_not_complete).strip()[:MAX_GOAL_COMPLETION_CHARS]
+        if isinstance(why_not_complete, str) and why_not_complete.strip()
+        else None,
     )
 
 

@@ -8037,6 +8037,7 @@ export interface components {
          *         this_slice: Short local slice completion claim.
          *         full_goal: Short full-goal completion boundary claim.
          *         can_mark_goal_complete: Whether a resumed agent may mark the full goal complete.
+         *         why_not_complete: Short reason the full goal remains active.
          */
         AgentWorkspaceGoalCompletionClaim: {
             /** Can Mark Goal Complete */
@@ -8045,6 +8046,8 @@ export interface components {
             full_goal?: string | null;
             /** This Slice */
             this_slice?: string | null;
+            /** Why Not Complete */
+            why_not_complete?: string | null;
         };
         /**
          * AgentWorkspaceGoalLifecycleBlocker

@@ -2010,7 +2010,7 @@
         "type": "object"
       },
       "AgentWorkspaceGoalCompletionClaim": {
-        "description": "Bounded longrun completion-claim summary for resume decisions.\n\nArgs:\n    this_slice: Short local slice completion claim.\n    full_goal: Short full-goal completion boundary claim.\n    can_mark_goal_complete: Whether a resumed agent may mark the full goal complete.",
+        "description": "Bounded longrun completion-claim summary for resume decisions.\n\nArgs:\n    this_slice: Short local slice completion claim.\n    full_goal: Short full-goal completion boundary claim.\n    can_mark_goal_complete: Whether a resumed agent may mark the full goal complete.\n    why_not_complete: Short reason the full goal remains active.",
         "properties": {
           "can_mark_goal_complete": {
             "anyOf": [
@@ -2046,6 +2046,18 @@
               }
             ],
             "title": "This Slice"
+          },
+          "why_not_complete": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why Not Complete"
           }
         },
         "title": "AgentWorkspaceGoalCompletionClaim",
