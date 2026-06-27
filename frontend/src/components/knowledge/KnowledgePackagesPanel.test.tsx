@@ -118,7 +118,18 @@ vi.mock('@/services/knowledgeApi', () => ({
       evidence: [],
       missing: ['authorized live provider smoke artifact with verdict=ok'],
       validation_errors: [],
-      required_checks: ['artifact.verdict.ok'],
+      required_checks: [
+        'artifact.schema.valid',
+        'artifact.generated_at.utc_aware',
+        'artifact.verdict.ok',
+        'artifact.status_code.200',
+        'artifact.required_tools.used',
+        'artifact.required_tools.names',
+        'artifact.receipt_hash.preview',
+        'artifact.receipt_hash.final_answer',
+        'artifact.receipt_hash.query_matches_direct',
+        'artifact.direct_receipt.assembled_context_hash',
+      ],
       next_safe_local_actions: [
         'Require provider_preflight.status=proved before running live context-receipt smoke.',
       ],
@@ -313,6 +324,8 @@ describe('KnowledgePackagesPanel', () => {
     expect(screen.getByText('exists=false')).toBeInTheDocument();
     expect(screen.getByText('schema=false')).toBeInTheDocument();
     expect(screen.getByText('contract=false')).toBeInTheDocument();
+    expect(screen.getByText('checks=10')).toBeInTheDocument();
+    expect(screen.getByText('check artifact.generated_at.utc_aware')).toBeInTheDocument();
     expect(screen.getByText('Recovery state')).toBeInTheDocument();
     expect(screen.getByText('blocked_provider_preflight_and_missing_live_smoke')).toBeInTheDocument();
     expect(screen.getByText('read_only=true')).toBeInTheDocument();

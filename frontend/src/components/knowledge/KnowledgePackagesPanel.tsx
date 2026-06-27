@@ -243,8 +243,19 @@ function ActualLoadingGatePanel({
             <span>exists={String(gate.artifact_exists)}</span>
             <span>schema={String(gate.artifact_schema_valid)}</span>
             <span>contract={String(gate.artifact_contract_valid)}</span>
+            <span>checks={gate.required_checks.length}</span>
             <span>checked={gate.artifact_checked_at}</span>
           </div>
+          {gate.required_checks.length > 0 ? (
+            <div className="mt-1 space-y-1 font-mono text-[10px] opacity-75">
+              {gate.required_checks.slice(0, 3).map((check) => (
+                <div key={check} className="break-all">check {check}</div>
+              ))}
+              {gate.required_checks.length > 3 ? (
+                <div>+{gate.required_checks.length - 3} checks</div>
+              ) : null}
+            </div>
+          ) : null}
           {gate.missing.length > 0 ? (
             <div className="mt-1 break-words opacity-80">{gate.missing.join('；')}</div>
           ) : null}
