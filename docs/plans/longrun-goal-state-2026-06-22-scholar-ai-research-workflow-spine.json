@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T14:28:00+08:00",
+  "updated_at": "2026-06-27T14:41:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,37 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260627-142208-n235-blocker-visibility-recovery",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-142208-n235-blocker-visibility-recovery",
-    "latest_goal_state_checkpoint_id": "20260627-142208-n235-blocker-visibility-recovery",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-142208-n235-blocker-visibility-recovery",
-    "latest_checkpoint_caveat": "Git rollback checkpoint for the N235 Knowledge Runtime conformance summary gate; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260627-143547-n236-blocker-revalidation",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-143547-n236-blocker-revalidation",
+    "latest_goal_state_checkpoint_id": "20260627-143547-n236-blocker-revalidation",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-143547-n236-blocker-revalidation",
+    "latest_checkpoint_caveat": "Git rollback checkpoint for the N236 blocker revalidation and goal-state update; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N236 RapidOCR optional local runtime boundary",
+      "source": "RapidOCR installation documentation",
+      "url": "https://rapidai.github.io/RapidOCRDocs/main/install_usage/rapidocr/install/",
+      "status": "HTTP 200",
+      "checked_at": "2026-06-27T14:41:00+08:00",
+      "use_in_slice": "Rechecked to keep RapidOCR real execution behind an installed/configured local runtime. No package, model, cache, or external code was installed or copied."
+    },
+    {
+      "topic": "N236 Python optional dependency detection",
+      "source": "Python importlib.util.find_spec documentation",
+      "url": "https://docs.python.org/3/library/importlib.html#importlib.util.find_spec",
+      "status": "HTTP 200",
+      "checked_at": "2026-06-27T14:41:00+08:00",
+      "use_in_slice": "Rechecked for dependency-presence probing without importing optional OCR runtimes into the parent process."
+    },
+    {
+      "topic": "N236 provenance-linked blocker recovery",
+      "source": "W3C PROV overview",
+      "url": "https://www.w3.org/TR/prov-overview/",
+      "status": "HTTP 200",
+      "checked_at": "2026-06-27T14:41:00+08:00",
+      "use_in_slice": "Rechecked to record blocker evidence as recoverable provenance instead of converting blocked external gates into completion claims."
+    },
     {
       "topic": "N229 PaddlePaddle runtime installation boundary",
       "source": "PaddlePaddle installation documentation",
@@ -6567,23 +6591,44 @@
         ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py -q -> 51 passed"
       ],
       "residual_risk": "This closes a deterministic visibility overclaim in Knowledge Runtime conformance summary only. Live Knowledge Runtime actual-loading still requires authorized provider credentials and a matching ok live context-receipt smoke; real RapidOCR runtime execution and remote OCR execution remain unresolved runtime/authorization gates."
+    },
+    {
+      "id": "N236-blocker-revalidation-no-dirty-worktree",
+      "requirement": "After dirty-worktree cleanup, the current KRT/OCR completion blockers must be revalidated through existing read-only runtime surfaces and focused contract tests, without clearing blockers that still require credentials, local runtimes, consent, or explicit out-of-scope decisions.",
+      "source": "Latest user instruction to inspect/sort dirty files plus current goal_lifecycle_rollup completion blockers after N235.",
+      "status": "proved",
+      "evidence": [
+        "git status --short --branch at recovery start showed ## main...origin/main [ahead 65] and no dirty paths, so there were no leftover dirty files to stage or sort before N236.",
+        "Rollback checkpoint created before goal-state update: C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-143547-n236-blocker-revalidation.",
+        "Mature references checked: RapidOCR install docs HTTP 200; Python importlib.util.find_spec docs HTTP 200; W3C PROV overview HTTP 200. No external implementation copied, no runtime installed.",
+        "Focused KRT/CI contract command passed: 6 passed.",
+        "Focused OCR runtime/MCP boundary command passed: 8 passed.",
+        "Capability-authenticated full-app read-only snapshot returned /api/knowledge/runtime-conformance status_code=200 with actual_loading_gate.status=blocked, verdict=http_error, provider_preflight.status=blocked, provider_preflight.latest_status=auth_required.",
+        "Capability-authenticated OCR snapshot returned policy=auto, selected_engine=windows, windows readiness=ready, rapidocr readiness=dependency_missing, remote_api readiness=configuration_required.",
+        "Current Python optional dependency probe returned rapidocr=False, rapidocr_onnxruntime=False, paddleocr=False in .venv-1, so real RapidOCR execution remains unproved rather than silently converted into proof.",
+        ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed after N236 update.",
+        "tests/test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -> 1 passed after N236 update."
+      ],
+      "residual_risk": "Live Knowledge Runtime actual-loading still requires corrected provider credentials and an authorized ok context-receipt smoke. RapidOCR real execution still requires a local RapidOCR runtime or explicit out-of-scope decision. Remote OCR real execution still requires explicit upload consent and credentials. Goal remains active, not complete."
     }
   ],
   "changed_files_for_this_slice": [
-    "literature_assistant/core/routers/knowledge_router.py",
-    "tests/test_knowledge_router.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\knowledge_router.py tests\\test_knowledge_router.py -> passed",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed",
     ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_summary_counts_actual_loading_gate tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_smoke_artifact tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs agent_mcp_server\\tests\\test_runtime_tools.py::test_knowledge_runtime_conformance_uses_read_only_endpoint tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 6 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py -q -> 51 passed"
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py::test_rapidocr_external_python_missing_exposes_readiness_blocker tests\\test_ocr_engine_registry.py::test_rapidocr_status_can_use_configured_external_python_runtime tests\\test_ocr_engine_registry.py::test_remote_api_adapter_runs_only_with_explicit_upload_consent tests\\test_pdf_backend_router.py::test_ocr_execution_probe_blocks_remote_without_upload_consent tests\\test_pdf_backend_router.py::test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability agent_mcp_server\\tests\\test_runtime_tools.py::test_ocr_status_uses_read_only_pdf_backend_endpoint agent_mcp_server\\tests\\test_runtime_tools.py::test_ocr_health_posts_bounded_readiness_probe_payload agent_mcp_server\\tests\\test_runtime_tools.py::test_ocr_execution_probe_rejects_unconfirmed_or_ambiguous_input_before_backend -q -> 8 passed",
+    "Full-app TestClient runtime snapshot with X-LitAssist-Capability -> /api/knowledge/runtime-conformance 200, /api/pdf-backend/ocr-status 200, /api/pdf-backend/ocr-health rapidocr 200, /api/pdf-backend/ocr-health remote_api 200.",
+    "git status --short --branch -> ## main...origin/main [ahead 65] before N236 edits; no dirty files to sort at recovery start.",
+    ".\\.venv-1\\Scripts\\python.exe -c \"import importlib.util; ...\" -> rapidocr=False, rapidocr_onnxruntime=False, paddleocr=False in .venv-1.",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed after N236 update",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after N236 update"
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, 先回档/create rollback checkpoint, 搜索成熟方案/search official or mature references, and record evidence/residual risk.",
-    "Run the focused Knowledge Runtime router suite and CI rollup contract after N235 goal-state update.",
-    "Keep live Knowledge Runtime actual-loading, real RapidOCR execution, and remote OCR execution as explicit blockers unless credentials/runtime/consent are available."
+    "If the user provides/fixes provider credentials, rerun provider tool-capability preflight before live KRT context-receipt smoke.",
+    "If a RapidOCR runtime is already installed/configured, run the existing OCR execution probe; otherwise keep RapidOCR as dependency_missing instead of installing runtime without authorization.",
+    "Do not run remote OCR real execution unless the user explicitly authorizes a configured provider, credentials, and safe test image upload."
   ],
   "stop_boundary": [
     "Do not call the long-run goal complete while goal_lifecycle_rollup.can_mark_goal_complete is false.",
@@ -10516,9 +10561,9 @@
     ]
   },
   "latest_slice": {
-    "id": "N235-knowledge-runtime-summary-includes-actual-loading-gate",
-    "key": "n235_knowledge_runtime_summary_includes_actual_loading_gate_slice",
-    "updated_at": "2026-06-27T14:28:00+08:00",
+    "id": "N236-blocker-revalidation-no-dirty-worktree",
+    "key": "n236_blocker_revalidation_no_dirty_worktree_slice",
+    "updated_at": "2026-06-27T14:41:00+08:00",
     "status": "proved"
   },
   "n151_ocr_health_mcp_visibility_slice": {
@@ -12284,25 +12329,25 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T14:28:00+08:00",
+    "updated_at": "2026-06-27T14:41:00+08:00",
     "status": "requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 236,
+    "requirements_total": 237,
     "requirement_status_counts": {
-      "proved": 236
+      "proved": 237
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N235-knowledge-runtime-summary-includes-actual-loading-gate",
-    "latest_slice_id": "N235-knowledge-runtime-summary-includes-actual-loading-gate",
+    "latest_requirement_id": "N236-blocker-revalidation-no-dirty-worktree",
+    "latest_slice_id": "N236-blocker-revalidation-no-dirty-worktree",
     "completion_blockers": [
       "actual_loading_gate_live_model_proof_auth_required_current_provider",
       "real_rapidocr_runtime_execution_or_explicit_out_of_scope",
       "remote_ocr_real_execution_requires_explicit_consent_and_credentials_or_out_of_scope"
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N235 closes a deterministic Knowledge Runtime conformance summary visibility gap, but live provider auth remains auth_required and real RapidOCR/remote OCR execution remain unresolved authorization/runtime gates."
+    "why_not_complete": "N236 revalidates that the worktree is clean and existing read-only KRT/OCR surfaces are healthy enough to expose blockers, but live provider auth remains auth_required, RapidOCR is not installed/configured, and remote OCR still lacks explicit consent/credentials."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -15966,6 +16011,103 @@
       "Before the next nontrivial slice, read required docs, run git status, 先回档/create rollback checkpoint, 搜索成熟方案/search official or mature references, and record evidence/residual risk.",
       "Run the focused Knowledge Runtime router suite and CI rollup contract after N235 goal-state update.",
       "Keep live Knowledge Runtime actual-loading, real RapidOCR execution, and remote OCR execution as explicit blockers unless credentials/runtime/consent are available."
+    ]
+  },
+  "n236_blocker_revalidation_no_dirty_worktree_slice": {
+    "id": "N236-blocker-revalidation-no-dirty-worktree",
+    "status": "proved",
+    "updated_at": "2026-06-27T14:41:00+08:00",
+    "summary": "N236 revalidates the current blocker state after the dirty-worktree cleanup: no dirty files were present at recovery start, focused KRT/OCR contract tests pass, full-app capability-authenticated probes return read-only blocker/status surfaces, and completion blockers remain explicit instead of being cleared.",
+    "rollback": {
+      "checkpoint_id": "20260627-143547-n236-blocker-revalidation",
+      "checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-143547-n236-blocker-revalidation",
+      "restore_requires_explicit_user_intent": true
+    },
+    "changed_files": [
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_summary_counts_actual_loading_gate tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_smoke_artifact tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs agent_mcp_server\\tests\\test_runtime_tools.py::test_knowledge_runtime_conformance_uses_read_only_endpoint tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 6 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py::test_rapidocr_external_python_missing_exposes_readiness_blocker tests\\test_ocr_engine_registry.py::test_rapidocr_status_can_use_configured_external_python_runtime tests\\test_ocr_engine_registry.py::test_remote_api_adapter_runs_only_with_explicit_upload_consent tests\\test_pdf_backend_router.py::test_ocr_execution_probe_blocks_remote_without_upload_consent tests\\test_pdf_backend_router.py::test_pdf_backend_ocr_routes_resolve_on_full_app_with_capability agent_mcp_server\\tests\\test_runtime_tools.py::test_ocr_status_uses_read_only_pdf_backend_endpoint agent_mcp_server\\tests\\test_runtime_tools.py::test_ocr_health_posts_bounded_readiness_probe_payload agent_mcp_server\\tests\\test_runtime_tools.py::test_ocr_execution_probe_rejects_unconfirmed_or_ambiguous_input_before_backend -q -> 8 passed",
+      "Full-app TestClient runtime snapshot with X-LitAssist-Capability -> /api/knowledge/runtime-conformance 200, /api/pdf-backend/ocr-status 200, /api/pdf-backend/ocr-health rapidocr 200, /api/pdf-backend/ocr-health remote_api 200.",
+      "git status --short --branch -> ## main...origin/main [ahead 65] before N236 edits; no dirty files to sort at recovery start.",
+      ".\\.venv-1\\Scripts\\python.exe -c \"import importlib.util; ...\" -> rapidocr=False, rapidocr_onnxruntime=False, paddleocr=False in .venv-1.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after N236 update"
+    ],
+    "mature_references": [
+      {
+        "topic": "N236 RapidOCR optional local runtime boundary",
+        "source": "RapidOCR installation documentation",
+        "url": "https://rapidai.github.io/RapidOCRDocs/main/install_usage/rapidocr/install/",
+        "status": "HTTP 200",
+        "checked_at": "2026-06-27T14:41:00+08:00",
+        "use_in_slice": "Rechecked to keep RapidOCR real execution behind an installed/configured local runtime. No package, model, cache, or external code was installed or copied."
+      },
+      {
+        "topic": "N236 Python optional dependency detection",
+        "source": "Python importlib.util.find_spec documentation",
+        "url": "https://docs.python.org/3/library/importlib.html#importlib.util.find_spec",
+        "status": "HTTP 200",
+        "checked_at": "2026-06-27T14:41:00+08:00",
+        "use_in_slice": "Rechecked for dependency-presence probing without importing optional OCR runtimes into the parent process."
+      },
+      {
+        "topic": "N236 provenance-linked blocker recovery",
+        "source": "W3C PROV overview",
+        "url": "https://www.w3.org/TR/prov-overview/",
+        "status": "HTTP 200",
+        "checked_at": "2026-06-27T14:41:00+08:00",
+        "use_in_slice": "Rechecked to record blocker evidence as recoverable provenance instead of converting blocked external gates into completion claims."
+      }
+    ],
+    "runtime_snapshot": {
+      "knowledge_runtime_conformance": {
+        "status_code": 200,
+        "actual_loading_gate_status": "blocked",
+        "actual_loading_gate_verdict": "http_error",
+        "provider_preflight_status": "blocked",
+        "provider_preflight_latest_status": "auth_required",
+        "summary": {
+          "proved": 61,
+          "pending": 0,
+          "blocked": 9,
+          "not_applicable": 1
+        }
+      },
+      "ocr_status": {
+        "status_code": 200,
+        "policy": "auto",
+        "selected_engine": "windows",
+        "windows_readiness_status": "ready",
+        "rapidocr_readiness_status": "dependency_missing",
+        "rapidocr_readiness_blockers": [
+          "rapidocr or rapidocr_onnxruntime is not installed"
+        ],
+        "remote_api_readiness_status": "configuration_required",
+        "remote_api_readiness_blockers": [
+          "remote OCR requires explicit api_key and base_url configuration"
+        ],
+        "paddleocr_gpu_readiness_status": "dependency_missing",
+        "paddleocr_gpu_readiness_blockers": [
+          "paddleocr is not installed in the active Python runtime"
+        ]
+      },
+      "provider_capability_artifact": {
+        "status": "auth_required",
+        "provider": "hhl",
+        "base_url_host": "free.hanhanapi.top",
+        "model": "gpt-5.5",
+        "failure_class": "models",
+        "masked_error": "HTTP 401: Invalid token (request id: [REDACTED])"
+      }
+    },
+    "decision": "Do not install RapidOCR, rerun remote OCR, or rerun live KRT actual-loading without an already configured runtime/credentials/consent. Reuse existing runtime-conformance, OCR status, OCR health, and MCP contract surfaces for recovery evidence.",
+    "residual_risk": "Live Knowledge Runtime actual-loading still requires corrected provider credentials and an authorized ok context-receipt smoke. RapidOCR real execution still requires a local RapidOCR runtime or explicit out-of-scope decision. Remote OCR real execution still requires explicit upload consent and credentials. Goal remains active, not complete.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, 先回档/create rollback checkpoint, 搜索成熟方案/search official or mature references, and record evidence/residual risk.",
+      "If the user provides/fixes provider credentials, rerun provider tool-capability preflight before live KRT context-receipt smoke.",
+      "If a RapidOCR runtime is already installed/configured, run the existing OCR execution probe; otherwise keep RapidOCR as dependency_missing instead of installing runtime without authorization.",
+      "Do not run remote OCR real execution unless the user explicitly authorizes a configured provider, credentials, and safe test image upload."
     ]
   }
 }
