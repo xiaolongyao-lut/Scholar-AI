@@ -106,6 +106,61 @@ class SourceVaultReplayReport:
     chunk_status_counts: dict[str, int]
 
 
+@dataclass(frozen=True)
+class SourceVaultMirrorBacklogItem:
+    """One Wiki registry row that is not currently mirrored into Source Vault."""
+
+    record_type: str
+    record_id: str
+    source_id: str
+    status: str
+    error: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        """Return a stable JSON-safe diagnostic shape."""
+
+        return {
+            "record_type": self.record_type,
+            "record_id": self.record_id,
+            "source_id": self.source_id,
+            "status": self.status,
+            "error": self.error,
+        }
+
+
+@dataclass(frozen=True)
+class SourceVaultMirrorBacklogReport:
+    """Read-only Source Vault mirror backlog summary for Wiki registry rows."""
+
+    source_count: int
+    chunk_count: int
+    source_status_counts: dict[str, int]
+    chunk_status_counts: dict[str, int]
+    pending_source_count: int
+    pending_chunk_count: int
+    samples: tuple[SourceVaultMirrorBacklogItem, ...]
+
+    @property
+    def needs_replay(self) -> bool:
+        """Return whether any registry rows are not mirrored."""
+
+        return self.pending_source_count > 0 or self.pending_chunk_count > 0
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a stable JSON-safe diagnostic shape."""
+
+        return {
+            "source_count": self.source_count,
+            "chunk_count": self.chunk_count,
+            "source_status_counts": self.source_status_counts,
+            "chunk_status_counts": self.chunk_status_counts,
+            "pending_source_count": self.pending_source_count,
+            "pending_chunk_count": self.pending_chunk_count,
+            "needs_replay": self.needs_replay,
+            "samples": [sample.to_dict() for sample in self.samples],
+        }
+
+
 def sha256_text(value: str) -> str:
     """Hash non-empty text with SHA-256."""
 
@@ -407,6 +462,100 @@ class WikiRegistry:
             chunk_status_counts=chunk_status_counts,
         )
 
+    def source_vault_mirror_backlog(self, *, sample_limit: int = 10) -> SourceVaultMirrorBacklogReport:
+        """Return a read-only Source Vault mirror backlog summary.
+
+        Args:
+            sample_limit: Maximum not-mirrored source/chunk samples to include.
+
+        Returns:
+            Counts and bounded sample rows for registry recovery diagnostics.
+        """
+
+        if not isinstance(sample_limit, int):
+            raise TypeError("sample_limit must be an integer")
+        if sample_limit < 0 or sample_limit > 100:
+            raise ValueError("sample_limit must be between 0 and 100")
+
+        with self.connect() as conn:
+            source_status_counts = _status_counts(
+                conn.execute(
+                    """
+                    SELECT COALESCE(source_vault_status, 'unknown') AS status, COUNT(*) AS count
+                    FROM wiki_sources
+                    GROUP BY COALESCE(source_vault_status, 'unknown')
+                    """
+                ).fetchall()
+            )
+            chunk_status_counts = _status_counts(
+                conn.execute(
+                    """
+                    SELECT COALESCE(source_vault_status, 'unknown') AS status, COUNT(*) AS count
+                    FROM wiki_chunks
+                    GROUP BY COALESCE(source_vault_status, 'unknown')
+                    """
+                ).fetchall()
+            )
+            source_count = _row_count(conn, "wiki_sources")
+            chunk_count = _row_count(conn, "wiki_chunks")
+            pending_source_count = source_count - source_status_counts.get("mirrored", 0)
+            pending_chunk_count = chunk_count - chunk_status_counts.get("mirrored", 0)
+            sample_budget = sample_limit
+            samples: list[SourceVaultMirrorBacklogItem] = []
+            if sample_budget:
+                for row in conn.execute(
+                    """
+                    SELECT source_id, COALESCE(source_vault_status, 'unknown') AS status,
+                           COALESCE(source_vault_error, '') AS error
+                    FROM wiki_sources
+                    WHERE COALESCE(source_vault_status, 'unknown') != 'mirrored'
+                    ORDER BY updated_at, source_id
+                    LIMIT ?
+                    """,
+                    (sample_budget,),
+                ).fetchall():
+                    samples.append(
+                        SourceVaultMirrorBacklogItem(
+                            record_type="source",
+                            record_id=str(row["source_id"]),
+                            source_id=str(row["source_id"]),
+                            status=str(row["status"]),
+                            error=str(row["error"] or ""),
+                        )
+                    )
+                sample_budget = sample_limit - len(samples)
+            if sample_budget:
+                for row in conn.execute(
+                    """
+                    SELECT chunk_id, source_id, COALESCE(source_vault_status, 'unknown') AS status,
+                           COALESCE(source_vault_error, '') AS error
+                    FROM wiki_chunks
+                    WHERE COALESCE(source_vault_status, 'unknown') != 'mirrored'
+                    ORDER BY created_at, chunk_index, chunk_id
+                    LIMIT ?
+                    """,
+                    (sample_budget,),
+                ).fetchall():
+                    samples.append(
+                        SourceVaultMirrorBacklogItem(
+                            record_type="chunk",
+                            record_id=str(row["chunk_id"]),
+                            source_id=str(row["source_id"]),
+                            status=str(row["status"]),
+                            error=str(row["error"] or ""),
+                        )
+                    )
+
+        return SourceVaultMirrorBacklogReport(
+            source_count=source_count,
+            chunk_count=chunk_count,
+            source_status_counts=source_status_counts,
+            chunk_status_counts=chunk_status_counts,
+            pending_source_count=pending_source_count,
+            pending_chunk_count=pending_chunk_count,
+            samples=tuple(samples),
+        )
+
     def get_chunks_by_source(self, source_id: str) -> list[dict[str, object]]:
         """Return legacy chunk rows, including Source Vault chunk ids when known."""
 
@@ -651,6 +800,21 @@ class WikiRegistry:
 
 def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
     return {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table_name})")}
+
+
+def _row_count(conn: sqlite3.Connection, table_name: str) -> int:
+    row = conn.execute(f"SELECT COUNT(*) AS count FROM {table_name}").fetchone()
+    if row is None:
+        return 0
+    return int(row["count"])
+
+
+def _status_counts(rows: Iterable[sqlite3.Row]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = str(row["status"] or "unknown")
+        counts[status] = int(row["count"])
+    return counts
 
 
 def _increment_count(counts: dict[str, int], key: str) -> None:

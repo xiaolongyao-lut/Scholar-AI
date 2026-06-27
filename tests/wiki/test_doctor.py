@@ -12,6 +12,7 @@ from literature_assistant.core.wiki.graph import WikiGraphStore, build_wiki_grap
 from literature_assistant.core.wiki.page_store import WikiPageStore, render_page
 from literature_assistant.core.wiki.query import WikiQueryIndex, build_wiki_index
 from literature_assistant.core.wiki.source_registry import (
+    ChunkInput,
     SourceRecord,
     WikiRegistry,
     derive_source_id,
@@ -194,6 +195,54 @@ def test_doctor_citation_final_page_with_missing_citation_errors(tmp_path: Path)
 
     assert citation.status == DoctorStatus.error
     assert citation.metrics["error_count"] == 1
+
+
+def test_doctor_registry_reports_source_vault_mirror_backlog(tmp_path: Path) -> None:
+    page_store = WikiPageStore(tmp_path / "wiki")
+    source_text = "Legacy Source Vault mirror backlog text."
+    source_path = tmp_path / "source.md"
+    source_path.write_text(source_text, encoding="utf-8")
+    source_hash = sha256_text(source_text)
+    source_id = derive_source_id("local_markdown_import", "Backlog Source", source_hash)
+    registry = WikiRegistry(tmp_path / "runtime" / "wiki.db", mirror_to_source_vault=False)
+    registry.upsert_source(
+        SourceRecord(
+            source_id=source_id,
+            source_type="local_markdown_import",
+            title="Backlog Source",
+            source_hash=source_hash,
+            source_path=source_path,
+        ),
+        now_iso="2026-06-27T23:50:00+00:00",
+    )
+    registry.register_chunks(
+        source_id,
+        source_hash,
+        [ChunkInput(text=source_text, chunk_index=0, section="diagnostics.md")],
+        now_iso="2026-06-27T23:50:00+00:00",
+    )
+    write_page(
+        page_store,
+        "synthesis/backlog-source.md",
+        title="Backlog Source",
+        extra_frontmatter={"source_id": source_id},
+    )
+
+    report = WikiDoctor(page_store, registry=registry).run()
+    registry_check = check_by_id(report, "registry")
+
+    assert registry_check.status == DoctorStatus.warning
+    assert "Source Vault mirror backlog" in registry_check.summary
+    mirror_metrics = registry_check.metrics["source_vault_mirror"]
+    assert mirror_metrics["needs_replay"] is True
+    assert mirror_metrics["pending_source_count"] == 1
+    assert mirror_metrics["pending_chunk_count"] == 1
+    assert mirror_metrics["source_status_counts"] == {"not_mirrored": 1}
+    assert mirror_metrics["chunk_status_counts"] == {"not_mirrored": 1}
+    assert mirror_metrics["samples"][0]["record_type"] == "source"
+    assert mirror_metrics["samples"][0]["source_id"] == source_id
+    assert registry_check.actions[-1].safe_auto_repair is False
+    assert registry_check.actions[-1].command == "WikiRegistry.replay_source_vault_mirror()"
 
 
 def test_doctor_report_is_machine_readable(tmp_path: Path) -> None:

@@ -264,27 +264,55 @@ class WikiDoctor:
         source_ids = {source.source_id for source in sources}
         page_source_ids = _source_ids_from_pages(self.page_store)
         orphan_sources = sorted(source_ids - page_source_ids)
-        status = DoctorStatus.warning if orphan_sources else DoctorStatus.ok
-        return DoctorCheck(
-            id="registry",
-            label="Source Registry",
-            status=status,
-            summary=(
+        mirror_backlog = self.registry.source_vault_mirror_backlog(sample_limit=10)
+        status = DoctorStatus.warning if orphan_sources or mirror_backlog.needs_replay else DoctorStatus.ok
+        summary_parts: list[str] = [
+            (
                 f"{len(sources)} registered sources; {len(orphan_sources)} sources have no generated wiki page."
                 if orphan_sources
                 else f"{len(sources)} registered sources are visible to the wiki doctor."
-            ),
-            detail=", ".join(orphan_sources[:10]),
-            metrics={"source_count": len(sources), "orphan_source_count": len(orphan_sources)},
-            actions=(
+            )
+        ]
+        if mirror_backlog.needs_replay:
+            summary_parts.append(
+                "Source Vault mirror backlog has "
+                f"{mirror_backlog.pending_source_count} source rows and "
+                f"{mirror_backlog.pending_chunk_count} chunk rows pending replay."
+            )
+        details = orphan_sources[:10]
+        details.extend(
+            f"{sample.record_type}:{sample.record_id}:{sample.status}"
+            for sample in mirror_backlog.samples[:10]
+        )
+        actions: list[DoctorAction] = []
+        if orphan_sources:
+            actions.append(
                 DoctorAction(
                     command="wiki compile --dry-run",
                     description="Preview missing source pages before writing.",
                     safe_auto_repair=False,
-                ),
+                )
             )
-            if orphan_sources
-            else tuple(),
+        if mirror_backlog.needs_replay:
+            actions.append(
+                DoctorAction(
+                    command="WikiRegistry.replay_source_vault_mirror()",
+                    description="Replay existing registry rows into Source Vault from an explicit local maintenance slice.",
+                    safe_auto_repair=False,
+                )
+            )
+        return DoctorCheck(
+            id="registry",
+            label="Source Registry",
+            status=status,
+            summary=" ".join(summary_parts),
+            detail=", ".join(details),
+            metrics={
+                "source_count": len(sources),
+                "orphan_source_count": len(orphan_sources),
+                "source_vault_mirror": mirror_backlog.to_dict(),
+            },
+            actions=tuple(actions),
         )
 
     def check_retrieval(self) -> DoctorCheck:

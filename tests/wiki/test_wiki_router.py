@@ -11,7 +11,14 @@ from literature_assistant.core.wiki.page_store import WikiPageStore, render_page
 from literature_assistant.core.wiki.query import WikiQueryIndex, build_source_manifest, build_wiki_index
 from literature_assistant.core.wiki.review_queue import ReviewItemKind, ReviewQueue, make_review_item
 from literature_assistant.core.wiki.service import WikiService
-from literature_assistant.core.wiki.source_registry import ChunkInput, SourceRecord, WikiRegistry, utc_now_iso
+from literature_assistant.core.wiki.source_registry import (
+    ChunkInput,
+    SourceRecord,
+    WikiRegistry,
+    derive_source_id,
+    sha256_text,
+    utc_now_iso,
+)
 
 
 def make_client(monkeypatch, tmp_path: Path, *, enabled: bool) -> TestClient:
@@ -528,6 +535,61 @@ def test_doctor_and_graph_contract_when_enabled(monkeypatch, tmp_path: Path) -> 
     assert doctor_response.json()["report"]["checks"]
     assert graph_response.status_code == 200
     assert graph_response.json()["graph"]["node_count"] == 2
+
+
+def test_doctor_contract_exposes_source_vault_mirror_backlog(monkeypatch, tmp_path: Path) -> None:
+    wiki_root = tmp_path / "wiki"
+    runtime_root = tmp_path / "runtime"
+    source_text = "Router visible Source Vault mirror backlog."
+    source_hash = sha256_text(source_text)
+    source_id = derive_source_id("local_markdown_import", "Router Backlog", source_hash)
+    source_path = tmp_path / "router-backlog.md"
+    source_path.write_text(source_text, encoding="utf-8")
+    WikiPageStore(wiki_root).write_rendered(
+        render_page(
+            Path("synthesis/router-backlog.md"),
+            {
+                "id": "synthesis/router-backlog",
+                "source_id": source_id,
+                "kind": "synthesis",
+                "title": "Router Backlog",
+                "status": "draft",
+            },
+            source_text,
+        )
+    )
+    registry = WikiRegistry(runtime_root / "wiki.db", mirror_to_source_vault=False)
+    registry.upsert_source(
+        SourceRecord(
+            source_id=source_id,
+            source_type="local_markdown_import",
+            title="Router Backlog",
+            source_hash=source_hash,
+            source_path=source_path,
+        ),
+        now_iso="2026-06-27T23:55:00+00:00",
+    )
+    registry.register_chunks(
+        source_id,
+        source_hash,
+        [ChunkInput(text=source_text, chunk_index=0, section="synthesis/router-backlog.md")],
+        now_iso="2026-06-27T23:55:00+00:00",
+    )
+    client = make_client(monkeypatch, tmp_path, enabled=True)
+
+    response = client.get("/api/wiki/doctor")
+
+    assert response.status_code == 200
+    registry_check = {
+        check["id"]: check
+        for check in response.json()["report"]["checks"]
+    }["registry"]
+    mirror = registry_check["metrics"]["source_vault_mirror"]
+    assert registry_check["status"] == "warning"
+    assert mirror["needs_replay"] is True
+    assert mirror["pending_source_count"] == 1
+    assert mirror["pending_chunk_count"] == 1
+    assert mirror["samples"][0]["source_id"] == source_id
 
 
 def test_review_approve_and_reject_contract(monkeypatch, tmp_path: Path) -> None:

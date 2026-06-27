@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T23:37:10+08:00",
+  "updated_at": "2026-06-27T23:54:35+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,21 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "n256-wiki-registry-replay-20260627_233341",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n256-wiki-registry-replay-20260627_233341",
-    "latest_goal_state_checkpoint_id": "n256-wiki-registry-replay-20260627_233341",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n256-wiki-registry-replay-20260627_233341",
-    "latest_checkpoint_caveat": "Targeted rollback snapshot for N256 preexisting wiki registry replay/sync coverage and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "n257-wiki-mirror-backlog-diagnostic-20260627_234924",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n257-wiki-mirror-backlog-diagnostic-20260627_234924",
+    "latest_goal_state_checkpoint_id": "n257-wiki-mirror-backlog-diagnostic-20260627_234924",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n257-wiki-mirror-backlog-diagnostic-20260627_234924",
+    "latest_checkpoint_caveat": "Targeted rollback snapshot for N257 read-only WikiRegistry Source Vault mirror backlog diagnostics and goal-state record; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N257 read-only WikiRegistry Source Vault mirror backlog diagnostics",
+      "source": "W3C PROV entity/activity provenance; Google SRE monitoring stale state visibility; Model Context Protocol tool result/readability boundary",
+      "url": "https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/ ; https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+      "status": "Official/mature references checked on 2026-06-27 before implementation",
+      "checked_at": "2026-06-27T23:49:24+08:00",
+      "use_in_slice": "Used to expose not-mirrored/blocked registry rows as observable recovery backlog through existing doctor/API surfaces without writing Source Vault, uploading content, or adding a hidden auto-repair path. No external code copied."
+    },
     {
       "topic": "N256 preexisting wiki registry replay into Source Vault",
       "source": "W3C PROV entity/activity provenance; RO-Crate metadata-with-data packaging; Model Context Protocol resources",
@@ -7243,28 +7251,50 @@
         "git ls-files -ci --exclude-standard -> no ignored tracked files reported."
       ],
       "residual_risk": "This proves deterministic local replay/sync for existing WikiRegistry rows. It does not add a user-facing replay endpoint, does not run live QA/model actual-loading, does not mutate Zotero DB, does not modify github/ references, and does not execute OCR."
+    },
+    {
+      "id": "N257-wiki-source-vault-mirror-backlog-diagnostic",
+      "requirement": "Agents and local health surfaces must be able to see WikiRegistry rows whose Source Vault mirror status is not mirrored, with bounded samples and recovery guidance, without mutating Source Vault or relying on live provider/model proof.",
+      "source": "Post-N256 KRT follow-up. N256 added deterministic replay/sync coverage but left the recovery state invisible to doctor/API consumers unless a test called replay directly.",
+      "status": "proved",
+      "evidence": [
+        "literature_assistant/core/wiki/source_registry.py adds SourceVaultMirrorBacklogItem and SourceVaultMirrorBacklogReport with JSON-safe shapes, status counts, pending source/chunk counts, bounded samples, and explicit needs_replay.",
+        "WikiRegistry.source_vault_mirror_backlog() is read-only SQL over wiki_sources/wiki_chunks, validates sample_limit, counts persisted Source Vault mirror statuses, and samples only non-mirrored rows.",
+        "literature_assistant/core/wiki/doctor.py includes the mirror backlog in the Source Registry doctor check metrics, upgrades registry status to warning when replay is needed, and emits non-auto-repair guidance to run WikiRegistry.replay_source_vault_mirror() from an explicit local maintenance slice.",
+        "tests/wiki/test_doctor.py::test_doctor_registry_reports_source_vault_mirror_backlog proves mirror_to_source_vault=False registry rows surface as warning with not_mirrored source/chunk counts and bounded samples.",
+        "tests/wiki/test_wiki_router.py::test_doctor_contract_exposes_source_vault_mirror_backlog proves /api/wiki/doctor exposes the same backlog metrics for agent/UI consumers.",
+        "Invoke-WebRequest HEAD https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> HTTP 200; https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200.",
+        ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\wiki\\source_registry.py literature_assistant\\core\\wiki\\doctor.py tests\\wiki\\test_doctor.py tests\\wiki\\test_wiki_router.py -> passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor.py::test_doctor_registry_reports_source_vault_mirror_backlog tests\\wiki\\test_wiki_router.py::test_doctor_contract_exposes_source_vault_mirror_backlog -q -> 2 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor.py -q -> 12 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_wiki_router.py::test_doctor_and_graph_contract_when_enabled tests\\wiki\\test_wiki_router.py::test_doctor_contract_exposes_source_vault_mirror_backlog tests\\wiki\\test_wiki_router.py::test_wiki_routes_are_registered_in_full_app_openapi -q -> 3 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport::test_preexisting_wiki_registry_rows_replay_into_source_vault -q -> 1 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport -q -> 15 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor_review_extended.py -q -> 29 passed, 1 xfailed."
+      ],
+      "residual_risk": "This is a read-only visibility/recovery diagnostic only. It does not add a write/replay HTTP endpoint, does not auto-repair Source Vault, does not run live QA/model actual-loading, does not mutate Zotero DB, does not modify github/ references, and does not execute OCR."
     }
   ],
   "changed_files_for_this_slice": [
     "literature_assistant/core/wiki/source_registry.py",
-    "tests/test_wiki_crud.py",
+    "literature_assistant/core/wiki/doctor.py",
+    "tests/wiki/test_doctor.py",
+    "tests/wiki/test_wiki_router.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Invoke-WebRequest HEAD https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://www.researchobject.org/ro-crate/specification/1.2/introduction.html -> HTTP 200; https://modelcontextprotocol.io/specification/2025-03-26/server/resources -> HTTP 200.",
-    ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\wiki\\source_registry.py tests\\test_wiki_crud.py -> passed",
+    "Invoke-WebRequest HEAD https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> HTTP 200; https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200.",
+    ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\wiki\\source_registry.py literature_assistant\\core\\wiki\\doctor.py tests\\wiki\\test_doctor.py tests\\wiki\\test_wiki_router.py -> passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor.py::test_doctor_registry_reports_source_vault_mirror_backlog tests\\wiki\\test_wiki_router.py::test_doctor_contract_exposes_source_vault_mirror_backlog -q -> 2 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor.py -q -> 12 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_wiki_router.py::test_doctor_and_graph_contract_when_enabled tests\\wiki\\test_wiki_router.py::test_doctor_contract_exposes_source_vault_mirror_backlog tests\\wiki\\test_wiki_router.py::test_wiki_routes_are_registered_in_full_app_openapi -q -> 3 passed",
     ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport::test_preexisting_wiki_registry_rows_replay_into_source_vault -q -> 1 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_source_vault.py::test_register_chunks_stores_anchors_sidecar_and_searches tests\\test_knowledge_router.py::test_source_vault_source_edit_rebuilds_hash_ref_resource_and_context_receipt -q -> 2 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport tests\\test_source_vault.py tests\\test_knowledge_router.py::test_knowledge_packages_returns_normalized_registry tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_marks_prompt_context_receipt_proved tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_endpoint_only_claims -q -> 26 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_source_vault_search_returns_refs_only agent_mcp_server\\tests\\test_runtime_tools.py::test_source_vault_read_accepts_only_source_vault_chunk_refs agent_mcp_server\\tests\\test_runtime_tools.py::test_knowledge_context_receipt_posts_bounded_ref_payload -q -> 3 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> JSON valid after N256 record update",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing N256 rollup",
-    "git diff --check -- literature_assistant/core/wiki/source_registry.py tests/test_wiki_crud.py docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> exit 0; warning only that the goal-state JSON CRLF will be replaced by LF when Git touches it",
-    "git ls-files -ci --exclude-standard -> no ignored tracked files reported"
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport -q -> 15 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor_review_extended.py -q -> 29 passed, 1 xfailed"
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
-    "Continue Knowledge Runtime Pipeline source-to-context proof work by adding a deterministic replay/sync path for preexisting wiki registry rows, or by proving another knowledge family through builder/manifest/retrieval/resource/context tests without external upload.",
+    "Continue Knowledge Runtime Pipeline source-to-context proof work by proving another local knowledge family through builder/manifest/retrieval/resource/context tests without external upload, or add an explicit guarded local replay action if a future slice authorizes Source Vault mutation.",
     "If provider credentials are corrected, first rerun /api/chat/tool-capability/test and require provider_preflight.status=proved before any live context-receipt smoke; then require generatedAt and last_probe_at to be timezone-aware and ordered.",
     "Continue OCR provider-readiness/configuration contract work only when it avoids uploading user content and keeps runtime artifacts local.",
     "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
@@ -7276,10 +7306,10 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N256 proves preexisting WikiRegistry source/chunk rows can be deterministically replayed into Source Vault and then loaded through manifest, search, bounded resource read, and context receipt.",
+    "this_slice": "N257 proves Wiki doctor/API consumers can see Source Vault mirror backlog for preexisting WikiRegistry rows as a bounded read-only recovery diagnostic.",
     "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N256 proves deterministic local wiki registry replay/sync only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution remains separately gated."
+    "why_not_complete": "N257 proves local read-only mirror backlog visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution remains separately gated."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -12968,27 +12998,27 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T23:37:10+08:00",
+    "updated_at": "2026-06-27T23:54:35+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 257,
+    "requirements_total": 258,
     "requirement_status_counts": {
-      "proved": 257
+      "proved": 258
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N256-wiki-registry-replay-source-vault-proof",
-    "latest_slice_id": "N256-wiki-registry-replay-source-vault-proof",
+    "latest_requirement_id": "N257-wiki-source-vault-mirror-backlog-diagnostic",
+    "latest_slice_id": "N257-wiki-source-vault-mirror-backlog-diagnostic",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
-        "evidence": "N256 proves deterministic local wiki registry replay/sync into Source Vault only; live loading proof still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint."
+        "evidence": "N257 proves deterministic local Source Vault mirror backlog visibility only; live loading proof still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N256 proves deterministic preexisting wiki registry replay/sync into Source Vault. The current configured provider still requires authentication for live QA/model actual-loading proof, and OCR execution remains separately gated."
+    "why_not_complete": "N257 proves deterministic Source Vault mirror backlog visibility for WikiRegistry rows. The current configured provider still requires authentication for live QA/model actual-loading proof, and OCR execution remains separately gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -17690,6 +17720,66 @@
     "next_actions": [
       "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
       "Continue KRT with another local knowledge family or agent-facing recovery surface that strengthens source-to-context proof without live provider claims.",
+      "Keep live QA/model actual-loading blocked until provider preflight is proved; keep OCR execution behind confirm_execution=true and explicit local/remote upload boundaries.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
+    ]
+  },
+  "n257_wiki_source_vault_mirror_backlog_diagnostic_slice": {
+    "id": "N257-wiki-source-vault-mirror-backlog-diagnostic",
+    "status": "proved",
+    "summary": "N257 exposes a read-only WikiRegistry Source Vault mirror backlog diagnostic through WikiDoctor and /api/wiki/doctor so agents can see preexisting source/chunk rows that still need explicit replay.",
+    "rollback_checkpoint_id": "n257-wiki-mirror-backlog-diagnostic-20260627_234924",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n257-wiki-mirror-backlog-diagnostic-20260627_234924",
+    "mature_references_checked": [
+      {
+        "topic": "N257 provenance boundary",
+        "source": "W3C PROV Overview",
+        "url": "https://www.w3.org/TR/prov-overview/",
+        "status": "Official reference checked on 2026-06-27 before implementation",
+        "checked_at": "2026-06-27T23:49:24+08:00",
+        "use_in_slice": "Used to keep registry rows, mirror state, replay activity, and Source Vault artifacts as separate evidence. No external code copied."
+      },
+      {
+        "topic": "N257 stale-state visibility",
+        "source": "Google SRE monitoring distributed systems",
+        "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+        "status": "Mature reference checked on 2026-06-27 before implementation",
+        "checked_at": "2026-06-27T23:49:24+08:00",
+        "use_in_slice": "Used to expose not-mirrored/blocked rows as visible diagnostic state instead of silent backlog. No external implementation copied."
+      },
+      {
+        "topic": "N257 agent-readable tool boundary",
+        "source": "Model Context Protocol tools specification",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+        "status": "Official reference checked on 2026-06-27 before implementation",
+        "checked_at": "2026-06-27T23:49:24+08:00",
+        "use_in_slice": "Used to keep the recovery surface structured and bounded for agent consumption through existing API/MCP-readable diagnostics. No external code copied."
+      }
+    ],
+    "changed_files": [
+      "literature_assistant/core/wiki/source_registry.py",
+      "literature_assistant/core/wiki/doctor.py",
+      "tests/wiki/test_doctor.py",
+      "tests/wiki/test_wiki_router.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification_commands": [
+      "git status --short --branch -> main...origin/main [ahead 86] clean after N256 commit.",
+      "Created targeted rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n257-wiki-mirror-backlog-diagnostic-20260627_234924 for source_registry.py, doctor.py, wiki doctor/router tests, and this goal-state JSON.",
+      "Invoke-WebRequest HEAD https://www.w3.org/TR/prov-overview/ -> HTTP 200; https://sre.google/sre-book/monitoring-distributed-systems/ -> HTTP 200; https://modelcontextprotocol.io/specification/2025-06-18/server/tools -> HTTP 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\wiki\\source_registry.py literature_assistant\\core\\wiki\\doctor.py tests\\wiki\\test_doctor.py tests\\wiki\\test_wiki_router.py -> passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor.py::test_doctor_registry_reports_source_vault_mirror_backlog tests\\wiki\\test_wiki_router.py::test_doctor_contract_exposes_source_vault_mirror_backlog -q -> 2 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor.py -q -> 12 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_wiki_router.py::test_doctor_and_graph_contract_when_enabled tests\\wiki\\test_wiki_router.py::test_doctor_contract_exposes_source_vault_mirror_backlog tests\\wiki\\test_wiki_router.py::test_wiki_routes_are_registered_in_full_app_openapi -q -> 3 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport::test_preexisting_wiki_registry_rows_replay_into_source_vault -q -> 1 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py::TestWikiImport -q -> 15 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\wiki\\test_doctor_review_extended.py -q -> 29 passed, 1 xfailed"
+    ],
+    "decision": "Expose mirror backlog as a read-only doctor/API diagnostic over persisted WikiRegistry statuses instead of adding a write endpoint, auto-repair, fake Source Vault seed, or live-provider claim.",
+    "residual_risk": "This proves diagnostic visibility only. It does not replay rows by itself, add a user-facing write trigger, run live QA/model actual-loading, mutate Zotero DB, modify github/ references, upload content, or execute OCR.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, 先回档/create a rollback checkpoint, and 搜索成熟方案/search official or mature references before editing.",
+      "Continue KRT with another local knowledge family through builder/manifest/retrieval/resource/context tests, or separately authorize an explicit guarded replay action if Source Vault mutation is desired.",
       "Keep live QA/model actual-loading blocked until provider preflight is proved; keep OCR execution behind confirm_execution=true and explicit local/remote upload boundaries.",
       "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
     ]
