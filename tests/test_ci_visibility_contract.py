@@ -412,3 +412,17 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
     if completion_blockers:
         assert rollup.get("is_goal_complete") is False
         assert rollup.get("can_mark_goal_complete") is False
+
+    completion_claim = payload.get("completion_claim")
+    assert isinstance(completion_claim, dict)
+    claim_can_mark_complete = completion_claim.get("can_mark_goal_complete")
+    if claim_can_mark_complete is not None:
+        assert isinstance(claim_can_mark_complete, bool)
+        assert claim_can_mark_complete is rollup.get("can_mark_goal_complete")
+    if rollup.get("can_mark_goal_complete") is False:
+        full_goal = completion_claim.get("full_goal")
+        why_not_complete = completion_claim.get("why_not_complete")
+        assert isinstance(full_goal, str) and full_goal.strip()
+        assert "complete" not in full_goal.lower() or full_goal.startswith("not_complete")
+        assert isinstance(why_not_complete, str) and why_not_complete.strip()
+        assert isinstance(rollup.get("why_not_complete"), str) and rollup.get("why_not_complete").strip()
