@@ -407,6 +407,21 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
         assert isinstance(latest_slice_record, dict)
         assert latest_slice_record.get("id") == top_latest_slice
         assert latest_slice_record.get("updated_at") == top_updated_at
+        top_mature_references = payload.get("mature_references_checked")
+        latest_mature_references = latest_slice_record.get("mature_references_checked")
+        assert isinstance(top_mature_references, list)
+        assert isinstance(latest_mature_references, list) and latest_mature_references
+        top_reference_topics = [
+            reference.get("topic")
+            for reference in top_mature_references
+            if isinstance(reference, dict)
+        ][: len(latest_mature_references)]
+        latest_reference_topics = [
+            reference.get("topic")
+            for reference in latest_mature_references
+            if isinstance(reference, dict)
+        ]
+        assert top_reference_topics == latest_reference_topics
     assert rollup.get("requirements_all_proved") is all(
         row["status"] == "proved" for row in rows
     )

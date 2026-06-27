@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-28T07:16:18+08:00",
+  "updated_at": "2026-06-28T07:30:42+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,37 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260628-070023-n291-lifecycle-rollup-counts-visibility-preedit",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-070023-n291-lifecycle-rollup-counts-visibility-preedit",
-    "latest_goal_state_checkpoint_id": "20260628-070023-n291-lifecycle-rollup-counts-visibility-preedit",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-070023-n291-lifecycle-rollup-counts-visibility-preedit",
-    "latest_checkpoint_caveat": "Rollback checkpoint for N291 Agent Workspace lifecycle-rollup count visibility; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260628-072951-n293-mature-reference-latest-slice-consistency-resume-preedit",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-072951-n293-mature-reference-latest-slice-consistency-resume-preedit",
+    "latest_goal_state_checkpoint_id": "20260628-072951-n293-mature-reference-latest-slice-consistency-resume-preedit",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-072951-n293-mature-reference-latest-slice-consistency-resume-preedit",
+    "latest_checkpoint_caveat": "Rollback checkpoint for N293 mature-reference/latest-slice consistency; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N293 mature-reference provenance recency",
+      "source": "W3C PROV overview",
+      "url": "https://www.w3.org/TR/prov-overview/",
+      "status": "HEAD checked 200 on 2026-06-28 before implementation",
+      "checked_at": "2026-06-28T07:29:51+08:00",
+      "use_in_slice": "Used to keep top-level mature reference recovery metadata tied to the latest recorded slice activity instead of a stale provenance anchor."
+    },
+    {
+      "topic": "N293 observable recovery-reference drift",
+      "source": "Google SRE monitoring distributed systems chapter",
+      "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+      "status": "HEAD checked 200 on 2026-06-28 before implementation",
+      "checked_at": "2026-06-28T07:29:51+08:00",
+      "use_in_slice": "Used to make stale top-level mature references fail deterministic CI before they mislead resumed agents."
+    },
+    {
+      "topic": "N293 focused pytest projection assertion",
+      "source": "pytest assertion documentation",
+      "url": "https://docs.pytest.org/en/stable/how-to/assert.html",
+      "status": "HEAD checked 200 on 2026-06-28 before implementation",
+      "checked_at": "2026-06-28T07:29:51+08:00",
+      "use_in_slice": "Used to compare latest-slice mature reference topics against the top-level bounded recovery list in the existing CI visibility contract."
+    },
     {
       "topic": "N291 Agent Workspace lifecycle rollup counts response model",
       "source": "FastAPI response-model documentation",
@@ -8538,6 +8562,17 @@
         "N292 preserves the live provider/model actual-loading blocker and does not claim long-goal completion."
       ],
       "residual_risk": "This proves deterministic local timestamp consistency only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
+    },
+    {
+      "id": "N293-mature-reference-latest-slice-consistency",
+      "status": "proved",
+      "requirement": "The longrun goal-state top-level mature_references_checked recovery list must begin with the latest slice record's mature references so resumed agents see the current evidence boundary instead of stale reference anchors.",
+      "evidence": [
+        "tests/test_ci_visibility_contract.py compares the top-level mature_references_checked topics against the latest_slice record mature_references_checked topics.",
+        "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json synchronizes latest_slice, goal_lifecycle_rollup.latest_* ids, requirement totals, status counts, completion_claim, changed_files_for_this_slice, verification_commands, and latest slice mature references to N293.",
+        "N293 preserves the live provider/model actual-loading blocker and does not claim long-goal completion."
+      ],
+      "residual_risk": "This proves deterministic local mature-reference/latest-slice recovery consistency only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
     }
   ],
   "changed_files_for_this_slice": [
@@ -8545,13 +8580,13 @@
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read repo-onboarding SKILL.md plus AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N292 continuation.",
-    "git status --short --branch -> main...origin/main [ahead 121] clean before N292 edits.",
-    "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-071506-n292-goal-state-updated-at-consistency-preedit before N292 edits.",
-    "Official/mature references checked before implementation: W3C PROV overview 200, JSON Schema annotations 200, Google SRE monitoring 200.",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json > $null -> passed after N292 record sync.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 2 passed.",
-    ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed."
+    "Read repo-onboarding SKILL.md plus AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N293 continuation.",
+    "git status --short --branch -> main...origin/main [ahead 122] with only docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json and tests/test_ci_visibility_contract.py dirty before N293 resume edits.",
+    "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-072951-n293-mature-reference-latest-slice-consistency-resume-preedit before N293 resume edits.",
+    "Official/mature references checked before implementation: W3C PROV overview 200, Google SRE monitoring 200, pytest assertion docs 200.",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json > $null -> passed after N293 record sync.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 2 passed after N293 record sync.",
+    ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed after N293 record sync."
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
@@ -8565,10 +8600,10 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N292 synchronizes the longrun goal-state top-level, lifecycle rollup, and latest slice record updated_at fields and adds a CI guard so resumed agents recover from the real newest slice timestamp.",
+    "this_slice": "N293 synchronizes the longrun goal-state top-level mature_references_checked list with the latest slice record and adds a CI guard so resumed agents recover from the current mature-reference evidence boundary.",
     "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N292 proves deterministic goal-state updated_at consistency only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+    "why_not_complete": "N293 proves deterministic mature-reference/latest-slice recovery consistency only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -12493,7 +12528,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N292-goal-state-updated-at-consistency",
+  "latest_slice": "N293-mature-reference-latest-slice-consistency",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -14257,30 +14292,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-28T07:16:18+08:00",
+    "updated_at": "2026-06-28T07:30:42+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 293,
+    "requirements_total": 294,
     "requirement_status_counts": {
-      "proved": 293
+      "proved": 294
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N292-goal-state-updated-at-consistency",
-    "latest_slice_id": "N292-goal-state-updated-at-consistency",
+    "latest_requirement_id": "N293-mature-reference-latest-slice-consistency",
+    "latest_slice_id": "N293-mature-reference-latest-slice-consistency",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N292 proves deterministic goal-state updated_at consistency only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N292 CI visibility tests prove top-level, lifecycle rollup, and latest slice record updated_at values stay synchronized while preserving the live-proof authorization boundary."
+        "current_boundary": "N293 proves deterministic mature-reference/latest-slice recovery consistency only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N293 CI visibility tests prove top-level mature references stay synchronized with the latest slice record while preserving the live-proof authorization boundary."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N291 proves deterministic lifecycle-rollup count visibility only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+    "why_not_complete": "N293 proves deterministic mature-reference/latest-slice recovery consistency only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -21201,5 +21236,58 @@
       "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
     ],
     "updated_at": "2026-06-28T07:16:18+08:00"
+  },
+  "n293_mature_reference_latest_slice_consistency_slice": {
+    "id": "N293-mature-reference-latest-slice-consistency",
+    "status": "proved",
+    "summary": "N293 synchronizes the longrun goal-state top-level mature_references_checked list with the latest slice record and adds a CI guard so resumed agents recover from the current mature-reference evidence boundary.",
+    "rollback_checkpoint_id": "20260628-072951-n293-mature-reference-latest-slice-consistency-resume-preedit",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-072951-n293-mature-reference-latest-slice-consistency-resume-preedit",
+    "mature_references_checked": [
+      {
+        "topic": "N293 mature-reference provenance recency",
+        "source": "W3C PROV overview",
+        "url": "https://www.w3.org/TR/prov-overview/",
+        "status": "HEAD checked 200 on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T07:29:51+08:00",
+        "use_in_slice": "Used to keep top-level mature reference recovery metadata tied to the latest recorded slice activity instead of a stale provenance anchor."
+      },
+      {
+        "topic": "N293 observable recovery-reference drift",
+        "source": "Google SRE monitoring distributed systems chapter",
+        "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+        "status": "HEAD checked 200 on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T07:29:51+08:00",
+        "use_in_slice": "Used to make stale top-level mature references fail deterministic CI before they mislead resumed agents."
+      },
+      {
+        "topic": "N293 focused pytest projection assertion",
+        "source": "pytest assertion documentation",
+        "url": "https://docs.pytest.org/en/stable/how-to/assert.html",
+        "status": "HEAD checked 200 on 2026-06-28 before implementation",
+        "checked_at": "2026-06-28T07:29:51+08:00",
+        "use_in_slice": "Used to compare latest-slice mature reference topics against the top-level bounded recovery list in the existing CI visibility contract."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ci_visibility_contract.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read repo-onboarding SKILL.md plus AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N293 continuation.",
+      "git status --short --branch -> main...origin/main [ahead 122] with only docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json and tests/test_ci_visibility_contract.py dirty before N293 resume edits.",
+      "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260628-072951-n293-mature-reference-latest-slice-consistency-resume-preedit before N293 resume edits.",
+      "Official/mature references checked before implementation: W3C PROV overview 200, Google SRE monitoring 200, pytest assertion docs 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json > $null -> passed after N293 record sync.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 2 passed after N293 record sync.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed after N293 record sync."
+    ],
+    "residual_risk": "This proves deterministic local mature-reference/latest-slice recovery consistency only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
+      "Continue only with deterministic local recovery/proof hardening unless provider preflight and explicit live-smoke authorization are present.",
+      "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
+    ],
+    "updated_at": "2026-06-28T07:30:42+08:00"
   }
 }
