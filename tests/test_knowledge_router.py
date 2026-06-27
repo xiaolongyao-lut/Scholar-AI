@@ -1097,6 +1097,25 @@ def test_knowledge_runtime_conformance_marks_prompt_context_receipt_proved(
     assert body["summary"]["proved"] >= len(packages)
 
 
+def test_knowledge_runtime_conformance_summary_counts_actual_loading_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Top-level conformance summary must include the live-loading gate."""
+
+    artifact = tmp_path / "missing-live-smoke.json"
+    provider_capabilities = tmp_path / "missing-provider-capabilities.json"
+    monkeypatch.setattr(knowledge_router, "output_path", lambda *parts: artifact)
+    monkeypatch.setattr(knowledge_router, "_provider_capabilities_path", lambda: provider_capabilities)
+
+    response = knowledge_router._knowledge_runtime_conformance_from_packages([])
+    body = response.model_dump(mode="json")
+
+    assert body["packages"] == []
+    assert body["actual_loading_gate"]["status"] == "blocked"
+    assert body["summary"]["blocked"] == 1
+
+
 def write_ok_live_smoke_artifact(
     path: Path,
     *,

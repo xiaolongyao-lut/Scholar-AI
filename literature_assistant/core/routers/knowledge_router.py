@@ -2477,12 +2477,14 @@ def _knowledge_runtime_conformance_from_packages(
                 conformance=items,
             )
         )
+    actual_loading_gate = _actual_loading_gate()
+    summary[actual_loading_gate.status] = summary.get(actual_loading_gate.status, 0) + 1
     return KnowledgeRuntimeConformanceResponse(
         schema_version="scholar-ai-knowledge-runtime-conformance/v1",
         generated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         pipeline=list(_PIPELINE_STEPS),
         summary=summary,
-        actual_loading_gate=_actual_loading_gate(),
+        actual_loading_gate=actual_loading_gate,
         packages=package_rows,
     )
 
