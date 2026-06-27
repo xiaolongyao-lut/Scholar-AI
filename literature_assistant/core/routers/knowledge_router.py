@@ -114,6 +114,7 @@ _PROVIDER_PREFLIGHT_SCOPE = [
 ]
 _ACTUAL_LOADING_REQUIRED_CHECKS = [
     "artifact.schema.valid",
+    "artifact.generated_at.utc_aware",
     "artifact.verdict.ok",
     "artifact.status_code.200",
     "artifact.required_tools.used",
@@ -2056,6 +2057,8 @@ def _live_smoke_contract_errors(summary: LiveContextReceiptSmokeSummary) -> list
     evidence = summary.chatEvidence
     tool_names = set(evidence.toolNames)
     required_tools = set(_ACTUAL_LOADING_REQUIRED_TOOLS)
+    if _parse_audit_datetime(summary.generatedAt) is None:
+        errors.append("artifact.generated_at.utc_aware")
     if summary.verdict != "ok":
         errors.append("artifact.verdict.ok")
     if summary.statusCode != 200:
@@ -2305,6 +2308,21 @@ def _provider_preflight_value(value: str) -> str:
     return str(value or "").strip().lower()
 
 
+def _parse_audit_datetime(value: str) -> datetime | None:
+    """Return a UTC-aware audit timestamp, or None for ambiguous values."""
+
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
 def _provider_preflight_match_requirement(summary: LiveContextReceiptSmokeSummary) -> str:
     """Return the endpoint-specific proof requirement for one live artifact."""
 
@@ -2313,7 +2331,7 @@ def _provider_preflight_match_requirement(summary: LiveContextReceiptSmokeSummar
     model = str(summary.model or "unknown").strip() or "unknown"
     return (
         "provider_preflight matching "
-        f"provider={provider} baseHost={base_host} model={model} with tool_call_ok"
+        f"provider={provider} baseHost={base_host} model={model} with tool_call_ok at or before generatedAt"
     )
 
 
@@ -2321,17 +2339,23 @@ def _provider_preflight_proves_live_summary(
     summary: LiveContextReceiptSmokeSummary,
     provider_preflight: KnowledgeRuntimeProviderPreflightResponse,
 ) -> bool:
-    """Return whether preflight proves the exact provider endpoint in the artifact."""
+    """Return whether preflight proves the exact provider endpoint in artifact time."""
 
     provider = _provider_preflight_value(summary.provider)
     base_host = _provider_preflight_value(summary.baseHost)
     model = _provider_preflight_value(summary.model)
+    generated_at = _parse_audit_datetime(summary.generatedAt)
     if not provider or not base_host or not model:
         return False
     if "unknown" in {provider, base_host, model}:
         return False
+    if generated_at is None:
+        return False
     for record in provider_preflight.records:
         if record.status != "tool_call_ok" or not record.forced_tool_choice_ok:
+            continue
+        last_probe_at = _parse_audit_datetime(record.last_probe_at)
+        if last_probe_at is None or last_probe_at > generated_at:
             continue
         if (
             _provider_preflight_value(record.provider) == provider
@@ -2585,7 +2609,8 @@ def _actual_loading_gate() -> KnowledgeRuntimeActualLoadingGateResponse:
                 ),
                 claim_boundary=(
                     "A live smoke artifact satisfies the context-receipt contract, but "
-                    "provider forced-tool preflight is not proved for the same provider/baseHost/model endpoint."
+                    "provider forced-tool preflight is not proved for the same provider/baseHost/model endpoint; "
+                    "the preflight timestamp must not be later than the live smoke artifact generatedAt."
                 ),
                 provider_preflight=provider_preflight,
             )

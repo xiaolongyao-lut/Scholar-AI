@@ -1201,13 +1201,14 @@ def write_ok_live_smoke_artifact(
     provider: str = "hhl",
     base_host: str = "free.hanhanapi.top",
     model: str = "gpt-5.5",
+    generated_at: str = "2026-06-25T22:12:00Z",
 ) -> None:
     """Write a minimal live context-receipt artifact that satisfies the contract."""
 
     path.write_text(
         json.dumps(
             {
-                "generatedAt": "2026-06-25T22:12:00",
+                "generatedAt": generated_at,
                 "surface": "/api/chat",
                 "statusCode": 200,
                 "verdict": "ok",
@@ -1254,6 +1255,7 @@ def write_provider_capability_fixture(
     ordinary_chat_ok: bool = True,
     failure_class: str = "",
     masked_error: str = "",
+    last_probe_at: str = "2026-06-25T20:13:21Z",
 ) -> None:
     """Write a redacted provider capability record for actual-loading gate tests."""
 
@@ -1269,7 +1271,7 @@ def write_provider_capability_fixture(
                         "status": status,
                         "ordinary_chat_ok": ordinary_chat_ok,
                         "forced_tool_choice_ok": forced_tool_choice_ok,
-                        "last_probe_at": "2026-06-25T20:13:21Z",
+                        "last_probe_at": last_probe_at,
                         "failure_class": failure_class,
                         "masked_error": masked_error,
                     }
@@ -1331,6 +1333,68 @@ def test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_s
     refs = {item["ref_type"]: item for item in recovery["recovery_refs"]}
     assert refs["provider_preflight_endpoint"]["status"] == "already_proved"
     assert refs["provider_preflight_endpoint"]["requires_authorization"] is False
+
+
+def test_knowledge_runtime_conformance_accepts_offset_preflight_timestamp_before_live_smoke(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Preflight/live ordering must use parsed aware datetimes, not strings."""
+
+    artifact = tmp_path / "live_api_chat_knowledge_context_receipt_smoke.summary.json"
+    provider_capabilities = tmp_path / "provider-capabilities.json"
+    write_ok_live_smoke_artifact(artifact, generated_at="2026-06-25T22:12:00Z")
+    write_provider_capability_fixture(
+        provider_capabilities,
+        status="tool_call_ok",
+        forced_tool_choice_ok=True,
+        last_probe_at="2026-06-25T23:00:00+02:00",
+    )
+    monkeypatch.setattr(knowledge_router, "output_path", lambda *parts: artifact)
+    monkeypatch.setattr(knowledge_router, "_provider_capabilities_path", lambda: provider_capabilities)
+
+    client = make_client(make_vault(tmp_path))
+    response = client.get("/api/knowledge/runtime-conformance")
+
+    assert response.status_code == 200
+    gate = response.json()["actual_loading_gate"]
+    assert gate["status"] == "proved"
+    assert any(item == "provider_preflight_match=hhl/free.hanhanapi.top/gpt-5.5" for item in gate["evidence"])
+
+
+def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_timestamp_is_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A matching tool-call record needs a parseable aware timestamp."""
+
+    artifact = tmp_path / "live_api_chat_knowledge_context_receipt_smoke.summary.json"
+    provider_capabilities = tmp_path / "provider-capabilities.json"
+    write_ok_live_smoke_artifact(artifact, generated_at="2026-06-25T22:12:00Z")
+    write_provider_capability_fixture(
+        provider_capabilities,
+        status="tool_call_ok",
+        forced_tool_choice_ok=True,
+        last_probe_at="not-a-timestamp",
+    )
+    monkeypatch.setattr(knowledge_router, "output_path", lambda *parts: artifact)
+    monkeypatch.setattr(knowledge_router, "_provider_capabilities_path", lambda: provider_capabilities)
+
+    client = make_client(make_vault(tmp_path))
+    response = client.get("/api/knowledge/runtime-conformance")
+
+    assert response.status_code == 200
+    gate = response.json()["actual_loading_gate"]
+    assert gate["status"] == "blocked"
+    assert gate["verdict"] == "ok"
+    assert gate["artifact_contract_valid"] is True
+    assert gate["provider_preflight"]["status"] == "proved"
+    assert gate["missing"] == [
+        (
+            "provider_preflight matching provider=hhl baseHost=free.hanhanapi.top "
+            "model=gpt-5.5 with tool_call_ok at or before generatedAt"
+        )
+    ]
 
 
 def test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary(
@@ -1563,7 +1627,10 @@ def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_prefligh
     assert gate["provider_preflight"]["status"] == "proved"
     assert "provider_preflight_endpoint_match" in gate["evidence_scope"]
     assert gate["missing"] == [
-        "provider_preflight matching provider=hhl baseHost=free.hanhanapi.top model=gpt-5.5 with tool_call_ok"
+        (
+            "provider_preflight matching provider=hhl baseHost=free.hanhanapi.top "
+            "model=gpt-5.5 with tool_call_ok at or before generatedAt"
+        )
     ]
     assert "provider forced-tool preflight is not proved for the same provider/baseHost/model endpoint" in (
         gate["claim_boundary"]
@@ -1572,6 +1639,80 @@ def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_prefligh
     assert recovery["state"] == "blocked_provider_endpoint_match"
     assert recovery["blocked_by"] == ["provider_preflight:endpoint_mismatch"]
     assert recovery["provider_ready_for_authorized_live_smoke"] is True
+
+
+def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_is_after_live_smoke(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A future preflight record cannot prove an earlier live smoke artifact."""
+
+    artifact = tmp_path / "live_api_chat_knowledge_context_receipt_smoke.summary.json"
+    provider_capabilities = tmp_path / "provider-capabilities.json"
+    write_ok_live_smoke_artifact(artifact, generated_at="2026-06-25T22:12:00Z")
+    write_provider_capability_fixture(
+        provider_capabilities,
+        status="tool_call_ok",
+        forced_tool_choice_ok=True,
+        last_probe_at="2026-06-25T22:13:00Z",
+    )
+    monkeypatch.setattr(knowledge_router, "output_path", lambda *parts: artifact)
+    monkeypatch.setattr(knowledge_router, "_provider_capabilities_path", lambda: provider_capabilities)
+
+    client = make_client(make_vault(tmp_path))
+    response = client.get("/api/knowledge/runtime-conformance")
+
+    assert response.status_code == 200
+    gate = response.json()["actual_loading_gate"]
+    assert gate["status"] == "blocked"
+    assert gate["verdict"] == "ok"
+    assert gate["artifact_schema_valid"] is True
+    assert gate["artifact_contract_valid"] is True
+    assert gate["provider_preflight"]["status"] == "proved"
+    assert "provider_preflight_endpoint_match" in gate["evidence_scope"]
+    assert gate["missing"] == [
+        (
+            "provider_preflight matching provider=hhl baseHost=free.hanhanapi.top "
+            "model=gpt-5.5 with tool_call_ok at or before generatedAt"
+        )
+    ]
+    assert "preflight timestamp must not be later than the live smoke artifact" in gate["claim_boundary"]
+    recovery = gate["recovery"]
+    assert recovery["state"] == "blocked_provider_endpoint_match"
+    assert recovery["blocked_by"] == ["provider_preflight:endpoint_mismatch"]
+
+
+def test_knowledge_runtime_conformance_blocks_ok_artifact_when_live_smoke_timestamp_has_no_timezone(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A live smoke proof timestamp must be timezone-aware for audit recovery."""
+
+    artifact = tmp_path / "live_api_chat_knowledge_context_receipt_smoke.summary.json"
+    provider_capabilities = tmp_path / "provider-capabilities.json"
+    write_ok_live_smoke_artifact(artifact, generated_at="2026-06-25T22:12:00")
+    write_provider_capability_fixture(
+        provider_capabilities,
+        status="tool_call_ok",
+        forced_tool_choice_ok=True,
+    )
+    monkeypatch.setattr(knowledge_router, "output_path", lambda *parts: artifact)
+    monkeypatch.setattr(knowledge_router, "_provider_capabilities_path", lambda: provider_capabilities)
+
+    client = make_client(make_vault(tmp_path))
+    response = client.get("/api/knowledge/runtime-conformance")
+
+    assert response.status_code == 200
+    gate = response.json()["actual_loading_gate"]
+    assert gate["status"] == "blocked"
+    assert gate["verdict"] == "ok"
+    assert gate["artifact_schema_valid"] is True
+    assert gate["artifact_contract_valid"] is False
+    assert gate["provider_preflight"]["status"] == "proved"
+    assert "live_smoke_artifact" in gate["evidence_scope"]
+    assert gate["missing"] == ["artifact.generated_at.utc_aware"]
+    assert gate["validation_errors"] == ["artifact.generated_at.utc_aware"]
+    assert "artifact.generated_at.utc_aware" in gate["required_checks"]
 
 
 def test_knowledge_runtime_conformance_blocks_schema_invalid_live_smoke_artifact(
@@ -1584,7 +1725,7 @@ def test_knowledge_runtime_conformance_blocks_schema_invalid_live_smoke_artifact
     artifact.write_text(
         json.dumps(
             {
-                "generatedAt": "2026-06-25T22:12:00",
+                "generatedAt": "2026-06-25T22:12:00Z",
                 "surface": "/api/chat",
                 "statusCode": 200,
                 "verdict": "ok",
@@ -1623,7 +1764,7 @@ def test_knowledge_runtime_conformance_blocks_contract_incomplete_live_smoke_art
     artifact.write_text(
         json.dumps(
             {
-                "generatedAt": "2026-06-25T22:12:00",
+                "generatedAt": "2026-06-25T22:12:00Z",
                 "surface": "/api/chat",
                 "statusCode": 200,
                 "verdict": "ok",

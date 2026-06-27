@@ -5,7 +5,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,12 @@ _REQUIRED_TOOL_SEQUENCE = [
     "literature.knowledge_context_receipt",
 ]
 _LIVE_SMOKE_OPT_IN_ENV = "LITASSIST_RUN_LIVE_CONTEXT_RECEIPT_SMOKE"
+
+
+def _now_utc_iso() -> str:
+    """Return an unambiguous UTC timestamp for persisted smoke artifacts."""
+
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _artifact_path(name: str) -> Path:
@@ -81,7 +87,7 @@ def _unauthorized_summary() -> dict[str, Any]:
     """Return an audit artifact proving no live provider call was attempted."""
 
     return {
-        "generatedAt": datetime.now().isoformat(timespec="seconds"),
+        "generatedAt": _now_utc_iso(),
         "surface": "/api/chat",
         "statusCode": 0,
         "verdict": "skipped_not_authorized",
@@ -312,7 +318,7 @@ def _summary_from_chat_response(
     else:
         verdict = "ok"
     return {
-        "generatedAt": datetime.now().isoformat(timespec="seconds"),
+        "generatedAt": _now_utc_iso(),
         "surface": "/api/chat",
         "statusCode": status_code,
         "verdict": verdict,
@@ -412,7 +418,7 @@ def main() -> int:
         )
     except Exception as exc:  # noqa: BLE001 - smoke must persist a failure artifact.
         summary = {
-            "generatedAt": datetime.now().isoformat(timespec="seconds"),
+            "generatedAt": _now_utc_iso(),
             "surface": "/api/chat",
             "statusCode": 0,
             "verdict": "setup_failed",

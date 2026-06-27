@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T19:06:51+08:00",
+  "updated_at": "2026-06-27T19:26:15+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,21 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260627-190230-n249-mcp-capability-map-audit",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-190230-n249-mcp-capability-map-audit",
-    "latest_goal_state_checkpoint_id": "20260627-190230-n249-mcp-capability-map-audit",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-190230-n249-mcp-capability-map-audit",
-    "latest_checkpoint_caveat": "Git rollback checkpoint for N249 MCP capability map synchronization; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260627-191547-n250-actual-loading-time-gate",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-191547-n250-actual-loading-time-gate",
+    "latest_goal_state_checkpoint_id": "20260627-191547-n250-actual-loading-time-gate",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-191547-n250-actual-loading-time-gate",
+    "latest_checkpoint_caveat": "Git rollback checkpoint for N250 Knowledge Runtime actual-loading preflight time-order gate; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N250 Knowledge Runtime actual-loading preflight time-order gate",
+      "source": "Python datetime aware/naive datetime documentation; RFC 3339 Internet date-time profile; W3C PROV entity/activity/time provenance; Google SRE monitoring freshness/staleness principle",
+      "url": "https://docs.python.org/3/library/datetime.html ; https://www.rfc-editor.org/rfc/rfc3339 ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+      "status": "Official/mature references checked on 2026-06-27 before implementation",
+      "checked_at": "2026-06-27T19:26:15+08:00",
+      "use_in_slice": "Used to parse audit timestamps with the Python standard library, require timezone-aware generatedAt for live smoke artifacts, require matching provider preflight last_probe_at to be parseable and no later than the live smoke generatedAt, and avoid inventing a TTL without a product threshold. No external code copied."
+    },
     {
       "topic": "N249 MCP capability map synchronization",
       "source": "Model Context Protocol server tools specification; FastMCP/Python SDK server instructions behavior; existing Scholar AI source.read_file path policy",
@@ -7059,24 +7067,45 @@
         ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_source_tools.py::test_read_file_redacts_secrets agent_mcp_server\\tests\\test_stdio_smoke.py::test_stdio_wrapper_initialize_list_and_call -q -> 2 passed."
       ],
       "residual_risk": "The map is a human/agent navigation aid, not an executable API schema. The new test ensures every registered tool name appears in the map, but it does not verify each prose chain's endpoint semantics beyond the existing MCP server/source/stdout smoke tests."
+    },
+    {
+      "id": "N250-krt-actual-loading-preflight-time-order-gate",
+      "requirement": "Knowledge Runtime live actual-loading proof must not accept a stale, malformed, timezone-ambiguous, or post-hoc provider preflight record as proof for an OK live smoke artifact; provider_preflight must prove the same provider/baseHost/model endpoint at or before the live smoke generatedAt.",
+      "source": "N250 continuation from KRT actual-loading hardening after N249. Local and subagent audits found _provider_preflight_proves_live_summary matched provider/baseHost/model and tool_call_ok but did not compare ProviderCapabilityRecord.last_probe_at with LiveContextReceiptSmokeSummary.generatedAt, allowing post-hoc or timezone-ambiguous proof artifacts to be overclaimed.",
+      "status": "proved",
+      "evidence": [
+        "literature_assistant/core/routers/knowledge_router.py adds _parse_audit_datetime() using datetime.fromisoformat plus timezone-awareness checks, returning UTC-aware datetimes or None for ambiguous/malformed values.",
+        "literature_assistant/core/routers/knowledge_router.py adds artifact.generated_at.utc_aware to _ACTUAL_LOADING_REQUIRED_CHECKS and _live_smoke_contract_errors(), so a schema-valid live smoke summary with naive generatedAt remains blocked as an incomplete artifact contract.",
+        "literature_assistant/core/routers/knowledge_router.py updates _provider_preflight_proves_live_summary() to require a matching tool_call_ok record with parseable aware last_probe_at and last_probe_at <= summary.generatedAt, while preserving provider/baseHost/model matching and read-only conformance output.",
+        "tests/live_api_chat_knowledge_context_receipt_smoke.py now writes generatedAt through _now_utc_iso(), producing explicit UTC Z timestamps for skipped, OK, and setup_failed live smoke summaries.",
+        "tests/test_knowledge_router.py updates live-smoke/preflight fixtures with configurable generated_at and last_probe_at, plus regression tests for offset-aware timestamps, malformed preflight timestamps, post-hoc preflight timestamps, and naive live generatedAt blocking.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_knowledge_router.py::test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_smoke_artifact tests/test_knowledge_router.py::test_knowledge_runtime_conformance_accepts_offset_preflight_timestamp_before_live_smoke tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_timestamp_is_invalid tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_is_after_live_smoke tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_live_smoke_timestamp_has_no_timezone tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_contract_incomplete_live_smoke_artifact tests/test_knowledge_router.py::test_knowledge_packages_openapi_contract -q -> 8 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_knowledge_router.py -q -> 57 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_live_api_chat_knowledge_context_receipt_smoke_harness.py -q -> 6 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests/test_ci_visibility_contract.py::test_knowledge_runtime_test_evidence_nodes_resolve -q -> 2 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server/tests/test_runtime_tools.py::test_knowledge_runtime_conformance_uses_read_only_endpoint -q -> 1 passed."
+      ],
+      "residual_risk": "This slice blocks ambiguous/post-hoc provider-preflight proof but deliberately does not add a freshness TTL because no product threshold is authorized. Live QA/model actual-loading remains blocked until the configured provider preflight is proved and a fresh authorized OK context-receipt smoke artifact proves the same provider/baseHost/model endpoint."
     }
   ],
   "changed_files_for_this_slice": [
-    "agent_mcp_server/CAPABILITY_MAP.md",
-    "agent_mcp_server/README.md",
-    "agent_mcp_server/src/lit_assistant_mcp/server.py",
-    "agent_mcp_server/tests/test_server.py",
+    "literature_assistant/core/routers/knowledge_router.py",
+    "tests/live_api_chat_knowledge_context_receipt_smoke.py",
+    "tests/test_knowledge_router.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    ".\\.venv-1\\Scripts\\python.exe -m py_compile agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_server.py -> passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py -q -> 3 passed",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_source_tools.py::test_read_file_redacts_secrets agent_mcp_server\\tests\\test_stdio_smoke.py::test_stdio_wrapper_initialize_list_and_call -q -> 2 passed"
+    ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\knowledge_router.py tests\\test_knowledge_router.py tests\\live_api_chat_knowledge_context_receipt_smoke.py tests\\test_live_api_chat_knowledge_context_receipt_smoke_harness.py -> passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_knowledge_router.py::test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_smoke_artifact tests/test_knowledge_router.py::test_knowledge_runtime_conformance_accepts_offset_preflight_timestamp_before_live_smoke tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_timestamp_is_invalid tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_is_after_live_smoke tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_live_smoke_timestamp_has_no_timezone tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_contract_incomplete_live_smoke_artifact tests/test_knowledge_router.py::test_knowledge_packages_openapi_contract -q -> 8 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_knowledge_router.py -q -> 57 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_live_api_chat_knowledge_context_receipt_smoke_harness.py -q -> 6 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests/test_ci_visibility_contract.py::test_knowledge_runtime_test_evidence_nodes_resolve -q -> 2 passed",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server/tests/test_runtime_tools.py::test_knowledge_runtime_conformance_uses_read_only_endpoint -q -> 1 passed"
   ],
   "next_authorized_local_actions": [
-    "Continue deterministic Knowledge Runtime recovery/visibility work that does not require provider credentials or live model calls.",
+    "Continue deterministic Knowledge Runtime recovery/visibility work that does not require provider credentials or live model calls, especially freshness policy visibility if a concrete TTL/window is authorized later.",
     "Continue Knowledge Runtime Pipeline source-to-context proof work for wiki/official/academic-English/source-vault packages where it can be proved through builder/manifest/retrieval/resource tests without external upload.",
-    "If provider credentials are corrected, first rerun /api/chat/tool-capability/test and require provider_preflight.status=proved before any live context-receipt smoke.",
+    "If provider credentials are corrected, first rerun /api/chat/tool-capability/test and require provider_preflight.status=proved before any live context-receipt smoke; then require generatedAt and last_probe_at to be timezone-aware and ordered.",
     "Continue OCR provider-readiness/configuration contract work only when it avoids uploading user content and keeps runtime artifacts local.",
     "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
   ],
@@ -7087,10 +7116,10 @@
     "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
   ],
   "completion_claim": {
-    "this_slice": "N249 proves the Scholar AI MCP server now exposes a source-readable capability map and tested tool-name index so agents can recover available tools without stale hardcoded counts.",
+    "this_slice": "N250 proves the Knowledge Runtime actual-loading gate now requires timezone-aware live smoke generatedAt and a matching provider preflight last_probe_at that is parseable and no later than the live smoke artifact, blocking post-hoc or ambiguous proof.",
     "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
     "can_mark_goal_complete": false,
-    "why_not_complete": "The current configured provider still requires authentication and no fresh authorized live context-receipt smoke has proved the same provider/baseHost/model endpoint, so Knowledge Runtime live QA/model actual-loading remains blocked."
+    "why_not_complete": "The current configured provider still requires authentication and no fresh authorized live context-receipt smoke has proved the same provider/baseHost/model endpoint under the strengthened timestamp-order gate, so Knowledge Runtime live QA/model actual-loading remains blocked."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -12779,27 +12808,27 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T19:06:51+08:00",
+    "updated_at": "2026-06-27T19:26:15+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 250,
+    "requirements_total": 251,
     "requirement_status_counts": {
-      "proved": 250
+      "proved": 251
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N249-mcp-capability-map-synchronization",
-    "latest_slice_id": "N249-mcp-capability-map-synchronization",
+    "latest_requirement_id": "N250-krt-actual-loading-preflight-time-order-gate",
+    "latest_slice_id": "N250-krt-actual-loading-preflight-time-order-gate",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
-        "evidence": "N249 improves MCP capability visibility only; live loading proof still requires corrected credentials and a fresh OK smoke."
+        "evidence": "N250 strengthens deterministic timestamp-order gating only; live loading proof still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "The current configured provider still requires authentication and no fresh authorized live context-receipt smoke has proved the same provider/baseHost/model endpoint, so Knowledge Runtime live QA/model actual-loading remains blocked."
+    "why_not_complete": "The current configured provider still requires authentication and no fresh authorized live context-receipt smoke has proved the same provider/baseHost/model endpoint under the strengthened timestamp-order gate, so Knowledge Runtime live QA/model actual-loading remains blocked."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -17155,6 +17184,46 @@
       "Continue deterministic Knowledge Runtime recovery/visibility work that does not require provider credentials or live model calls.",
       "Continue Knowledge Runtime Pipeline source-to-context proof work for wiki/official/academic-English/source-vault packages where it can be proved through builder/manifest/retrieval/resource tests without external upload.",
       "If provider credentials are corrected, first rerun /api/chat/tool-capability/test and require provider_preflight.status=proved before any live context-receipt smoke.",
+      "Continue OCR provider-readiness/configuration contract work only when it avoids uploading user content and keeps runtime artifacts local.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
+    ]
+  },
+  "n250_krt_actual_loading_preflight_time_order_gate_slice": {
+    "id": "N250-krt-actual-loading-preflight-time-order-gate",
+    "status": "proved",
+    "summary": "N250 hardens the Knowledge Runtime live actual-loading gate so an OK smoke artifact only proves model-context loading when its generatedAt is timezone-aware and the matching provider preflight record is parseable, aware, same endpoint, tool_call_ok, and not later than the live smoke artifact.",
+    "rollback_checkpoint_id": "20260627-191547-n250-actual-loading-time-gate",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-191547-n250-actual-loading-time-gate",
+    "mature_references_checked": [
+      {
+        "topic": "N250 Knowledge Runtime actual-loading preflight time-order gate",
+        "source": "Python datetime aware/naive datetime documentation; RFC 3339 Internet date-time profile; W3C PROV entity/activity/time provenance; Google SRE monitoring freshness/staleness principle",
+        "url": "https://docs.python.org/3/library/datetime.html ; https://www.rfc-editor.org/rfc/rfc3339 ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+        "status": "Official/mature references checked on 2026-06-27 before implementation",
+        "checked_at": "2026-06-27T19:26:15+08:00",
+        "use_in_slice": "Used to parse audit timestamps with the Python standard library, require timezone-aware generatedAt for live smoke artifacts, require matching provider preflight last_probe_at to be parseable and no later than the live smoke generatedAt, and avoid inventing a TTL without a product threshold. No external code copied."
+      }
+    ],
+    "changed_files": [
+      "literature_assistant/core/routers/knowledge_router.py",
+      "tests/live_api_chat_knowledge_context_receipt_smoke.py",
+      "tests/test_knowledge_router.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification_commands": [
+      ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\knowledge_router.py tests\\test_knowledge_router.py tests\\live_api_chat_knowledge_context_receipt_smoke.py tests\\test_live_api_chat_knowledge_context_receipt_smoke_harness.py -> passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_knowledge_router.py::test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_smoke_artifact tests/test_knowledge_router.py::test_knowledge_runtime_conformance_accepts_offset_preflight_timestamp_before_live_smoke tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_timestamp_is_invalid tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_is_after_live_smoke tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_live_smoke_timestamp_has_no_timezone tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_contract_incomplete_live_smoke_artifact tests/test_knowledge_router.py::test_knowledge_packages_openapi_contract -q -> 8 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_knowledge_router.py -q -> 57 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_live_api_chat_knowledge_context_receipt_smoke_harness.py -q -> 6 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests/test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests/test_ci_visibility_contract.py::test_knowledge_runtime_test_evidence_nodes_resolve -q -> 2 passed",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server/tests/test_runtime_tools.py::test_knowledge_runtime_conformance_uses_read_only_endpoint -q -> 1 passed"
+    ],
+    "decision": "Reuse the existing actual_loading_gate/provider_preflight contract and Python standard-library datetime parsing; do not add a new endpoint, new schema family, dependency, or freshness TTL without an authorized product threshold.",
+    "residual_risk": "This is deterministic proof hardening only. It does not prove live QA/model loading because provider credentials/live smoke remain authorization-gated, and it does not define a staleness TTL beyond blocking post-hoc or ambiguous timestamps.",
+    "next_actions": [
+      "Continue deterministic Knowledge Runtime recovery/visibility work that does not require provider credentials or live model calls, especially freshness policy visibility if a concrete TTL/window is authorized later.",
+      "Continue Knowledge Runtime Pipeline source-to-context proof work for wiki/official/academic-English/source-vault packages where it can be proved through builder/manifest/retrieval/resource tests without external upload.",
+      "If provider credentials are corrected, first rerun /api/chat/tool-capability/test and require provider_preflight.status=proved before any live context-receipt smoke; then require generatedAt and last_probe_at to be timezone-aware and ordered.",
       "Continue OCR provider-readiness/configuration contract work only when it avoids uploading user content and keeps runtime artifacts local.",
       "Run requirement-to-evidence consistency checks and update this goal-state after each slice before local commit."
     ]
