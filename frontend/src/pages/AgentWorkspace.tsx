@@ -3799,6 +3799,11 @@ export function WorkspaceStatePanel({
                     ) : null}
                   </div>
                 ) : null}
+                {goalLifecycle?.machine_readable_completion_rule ? (
+                  <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    completion rule {sanitizeInspectorText(goalLifecycle.machine_readable_completion_rule)}
+                  </p>
+                ) : null}
                 {goalLifecycle?.why_not_complete?.length ? (
                   <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
                     why not complete {sanitizeInspectorText(goalLifecycle.why_not_complete[0])}

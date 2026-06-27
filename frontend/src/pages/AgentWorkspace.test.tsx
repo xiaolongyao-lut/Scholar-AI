@@ -2593,6 +2593,11 @@ describe('AgentWorkspace', () => {
         'current boundary Deterministic contract and harness tests are proved.',
       ),
     ).toBeInTheDocument();
+    expect(
+      within(workspaceStateRegion).getByText(
+        'completion rule Goal may be marked complete only after blockers clear.',
+      ),
+    ).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('why not complete All requirement rows are proved, but goal-level proof gates remain.')).toBeInTheDocument();
     const desktopSmokeRegion = within(workspaceStateRegion).getByRole('region', { name: 'Desktop smoke evidence' });
     expect(within(desktopSmokeRegion).getByText('Desktop Smoke Evidence')).toBeInTheDocument();
