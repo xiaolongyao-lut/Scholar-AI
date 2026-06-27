@@ -352,13 +352,22 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
         purpose: 'Recover local artifact, audit, git, root, and recovery-probe state.',
         mcp_tool: 'literature.agent_workspace_status',
       },
+      {
+        label: 'Goal Requirement Drilldown',
+        route: '/api/agent-workspace/goal-requirements/{requirement_id}',
+        read_only: true,
+        requires_identifier: true,
+        identifier_hint: 'requirement_id',
+        purpose: 'Recover one requirement-to-evidence row by id before claiming closure.',
+        mcp_tool: 'literature.agent_workspace_requirement',
+      },
     ],
     boundaries: [
       'Do not execute approvals, import-to-wiki writes, external uploads, push, tag, release, publish, or deploy from this status surface.',
       'Create a rollback checkpoint and re-check official or mature references before nontrivial edits.',
     ],
     next_safe_local_actions: [
-      'Read Wiki Doctor, Knowledge Runtime Conformance, Source Vault Status/Search/Read, Knowledge Context Receipt, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, and Agent Handoff Cards before resuming mutating work.',
+      'Read Wiki Doctor, Knowledge Runtime Conformance, Source Vault Status/Search/Read, Knowledge Context Receipt, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, Agent Handoff Cards, and Goal Requirement Drilldowns before resuming mutating work or claiming closure.',
       'Inspect git dirty paths and preserve unrelated local work before staging or committing.',
     ],
     ...overrides,
@@ -2625,8 +2634,11 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('Source Vault Resource Read · read-only true · needs ref_id · literature.source_vault_read')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Knowledge Context Receipt · read-only true · needs ref_id · literature.knowledge_context_receipt')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Workflow Passport · read-only true · literature.workflow_passport')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Evidence Integrity Gate · read-only true · literature.evidence_integrity_gate')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Research Action Lifecycle · read-only true · literature.research_action_lifecycle')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Agent Handoff Card · read-only true · needs job_id · literature.agent_handoff_card')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Agent Workspace Status · read-only true · literature.agent_workspace_status')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Goal Requirement Drilldown · read-only true · needs requirement_id · literature.agent_workspace_requirement')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Create a rollback checkpoint and re-check official or mature references before nontrivial edits.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('/runtime/workflow-passport')).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('/runtime/job/{job_id}/agent-handoff-card')).not.toBeInTheDocument();

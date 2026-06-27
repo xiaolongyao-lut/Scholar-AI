@@ -353,6 +353,7 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert requirement_probe["identifier_hint"] == "requirement_id"
     assert requirement_probe["mcp_tool"] == "literature.agent_workspace_requirement"
     assert "requirement-to-evidence" in requirement_probe["purpose"]
+    assert any("Goal Requirement Drilldowns" in item for item in payload["workspace_state"]["next_safe_local_actions"])
     assert any("rollback checkpoint" in item for item in payload["workspace_state"]["boundaries"])
     assert payload["artifacts"][0]["path"] == "reports/summary.md"
     assert ".audit" not in payload["artifacts"][0]["path"]
