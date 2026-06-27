@@ -2580,6 +2580,11 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('requirement status visible')).toBeInTheDocument();
     expect(
       within(workspaceStateRegion).getByText(
+        'lifecycle record updated 2026-06-25T23:59:30+08:00 · latest requirement N173-goal-lifecycle-rollup · latest slice N173-goal-lifecycle-rollup',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(workspaceStateRegion).getByText(
         'blocker detail actual_loading_gate_live_model_proof · blocked_pending_explicit_authorization · Knowledge Runtime Pipeline QA/agent actual model-context loading',
       ),
     ).toBeInTheDocument();

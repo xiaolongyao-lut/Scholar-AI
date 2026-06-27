@@ -3656,6 +3656,9 @@ export function WorkspaceStatePanel({
   const goalCompletionClaim = workspaceGoalCompletionClaimSummary(state.goal_state);
   const goalLifecycle = state.goal_state.lifecycle_rollup ?? null;
   const firstLifecycleBlocker = goalLifecycle?.completion_blockers[0] ?? null;
+  const hasLifecycleRecordDetails = Boolean(
+    goalLifecycle?.updated_at || goalLifecycle?.latest_requirement_id || goalLifecycle?.latest_slice_id,
+  );
   const desktopSmoke = state.desktop_smoke;
   const ocrRuntime = state.ocr_runtime;
   const visibleOcrEngines = ocrRuntime.engines.slice(0, 4);
@@ -3775,6 +3778,11 @@ export function WorkspaceStatePanel({
                 {goalCompletionClaim.fullGoal ? (
                   <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
                     full goal {goalCompletionClaim.fullGoal}
+                  </p>
+                ) : null}
+                {goalLifecycle && hasLifecycleRecordDetails ? (
+                  <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    lifecycle record updated {sanitizeInspectorText(goalLifecycle.updated_at ?? 'unknown')} · latest requirement {sanitizeInspectorText(goalLifecycle.latest_requirement_id ?? 'unknown')} · latest slice {sanitizeInspectorText(goalLifecycle.latest_slice_id ?? 'unknown')}
                   </p>
                 ) : null}
                 {goalLifecycle?.completion_blockers?.length ? (
