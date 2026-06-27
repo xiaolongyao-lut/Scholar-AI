@@ -6,10 +6,10 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 try:  # pragma: no cover - package import path used by the running app.
     from literature_assistant.core.academic_english_resources import (
@@ -646,6 +646,33 @@ class KnowledgeRuntimeProviderPreflightResponse(BaseModel):
     claim_boundary: str = Field(default="", max_length=1000)
 
 
+class KnowledgeRuntimeRecoveryRefResponse(BaseModel):
+    """One recovery reference for a blocked Knowledge Runtime loading gate."""
+
+    ref_type: Literal[
+        "conformance_endpoint",
+        "provider_preflight_artifact",
+        "live_smoke_artifact",
+        "live_smoke_harness",
+    ]
+    ref: str = Field(min_length=1, max_length=500)
+    status: str = Field(default="", max_length=120)
+    required_before_completion: bool = True
+    requires_authorization: bool = False
+
+
+class KnowledgeRuntimeActualLoadingRecoveryResponse(BaseModel):
+    """Machine-readable recovery state for the live actual-loading gate."""
+
+    schema_version: str = Field(default="scholar-ai-knowledge-runtime-recovery/v1", min_length=1)
+    read_only: bool = True
+    state: str = Field(min_length=1, max_length=120)
+    blocked_by: list[str] = Field(default_factory=list, max_length=8)
+    recovery_refs: list[KnowledgeRuntimeRecoveryRefResponse] = Field(default_factory=list, max_length=8)
+    provider_ready_for_authorized_live_smoke: bool = False
+    completion_requires_authorized_live_smoke: bool = True
+
+
 class KnowledgeRuntimeActualLoadingGateResponse(BaseModel):
     """Top-level proof gate for live QA/model context loading.
 
@@ -672,6 +699,16 @@ class KnowledgeRuntimeActualLoadingGateResponse(BaseModel):
     next_safe_local_actions: list[str] = Field(default_factory=list, max_length=8)
     claim_boundary: str = Field(default="", max_length=1000)
     provider_preflight: KnowledgeRuntimeProviderPreflightResponse
+    recovery: KnowledgeRuntimeActualLoadingRecoveryResponse = Field(
+        default_factory=lambda: KnowledgeRuntimeActualLoadingRecoveryResponse(state="unclassified"),
+    )
+
+    @model_validator(mode="after")
+    def attach_recovery(self) -> Self:
+        """Attach recovery state after all gate fields are validated."""
+
+        self.recovery = _actual_loading_recovery_state(self)
+        return self
 
 
 class LiveContextReceiptSmokeDirectReceipt(BaseModel):
@@ -2256,6 +2293,77 @@ def _provider_preflight_proves_live_summary(
         ):
             return True
     return False
+
+
+def _actual_loading_recovery_state(
+    gate: KnowledgeRuntimeActualLoadingGateResponse,
+) -> KnowledgeRuntimeActualLoadingRecoveryResponse:
+    """Return typed recovery state without parsing human action text."""
+
+    provider_ready = gate.provider_preflight.status == "proved"
+    blocked_by: list[str] = []
+    state = "proved_live_actual_loading"
+    if gate.status != "proved":
+        if not provider_ready:
+            latest = gate.provider_preflight.latest_status or gate.provider_preflight.status
+            blocked_by.append(f"provider_preflight:{gate.provider_preflight.status}:{latest}")
+        if not gate.artifact_exists:
+            blocked_by.append("live_smoke_artifact:missing")
+        elif not gate.artifact_schema_valid:
+            blocked_by.append("live_smoke_artifact:invalid_schema")
+        elif not gate.artifact_contract_valid:
+            blocked_by.append("live_smoke_artifact:contract_incomplete")
+        elif provider_ready:
+            blocked_by.append("provider_preflight:endpoint_mismatch")
+        if not blocked_by:
+            blocked_by = list(gate.missing[:8])
+        if not gate.artifact_exists and not provider_ready:
+            state = "blocked_provider_preflight_and_missing_live_smoke"
+        elif not gate.artifact_exists:
+            state = "blocked_missing_live_smoke"
+        elif not gate.artifact_schema_valid:
+            state = "blocked_invalid_live_smoke_artifact"
+        elif not gate.artifact_contract_valid:
+            state = "blocked_incomplete_live_smoke_contract"
+        elif not provider_ready:
+            state = "blocked_provider_preflight"
+        elif gate.missing:
+            state = "blocked_provider_endpoint_match"
+        else:
+            state = "blocked_unclassified"
+    return KnowledgeRuntimeActualLoadingRecoveryResponse(
+        state=state,
+        blocked_by=list(dict.fromkeys(blocked_by))[:8],
+        recovery_refs=[
+            KnowledgeRuntimeRecoveryRefResponse(
+                ref_type="conformance_endpoint",
+                ref="/api/knowledge/runtime-conformance",
+                status=gate.status,
+                required_before_completion=True,
+            ),
+            KnowledgeRuntimeRecoveryRefResponse(
+                ref_type="provider_preflight_artifact",
+                ref=gate.provider_preflight.artifact_ref,
+                status=gate.provider_preflight.status,
+                required_before_completion=True,
+            ),
+            KnowledgeRuntimeRecoveryRefResponse(
+                ref_type="live_smoke_artifact",
+                ref=gate.artifact_ref,
+                status=gate.verdict,
+                required_before_completion=True,
+            ),
+            KnowledgeRuntimeRecoveryRefResponse(
+                ref_type="live_smoke_harness",
+                ref="tests/live_api_chat_knowledge_context_receipt_smoke.py",
+                status="requires_explicit_authorization" if gate.status != "proved" else "already_proved",
+                required_before_completion=gate.status != "proved",
+                requires_authorization=gate.status != "proved",
+            ),
+        ],
+        provider_ready_for_authorized_live_smoke=provider_ready,
+        completion_requires_authorized_live_smoke=gate.status != "proved",
+    )
 
 
 def _actual_loading_gate() -> KnowledgeRuntimeActualLoadingGateResponse:

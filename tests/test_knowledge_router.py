@@ -648,6 +648,11 @@ def test_knowledge_packages_returns_normalized_registry(monkeypatch: pytest.Monk
     )
     monkeypatch.setattr(academic_english_resources, "output_path", lambda *parts: tmp_path.joinpath(*parts))
     monkeypatch.setattr(knowledge_router, "output_path", lambda *parts: tmp_path.joinpath(*parts))
+    monkeypatch.setattr(
+        knowledge_router,
+        "_provider_capabilities_path",
+        lambda: tmp_path / "missing-provider-capabilities.json",
+    )
 
     class _FakeManifestDrilldown:
         status = "aligned"
@@ -866,6 +871,11 @@ def test_knowledge_runtime_conformance_marks_prompt_context_receipt_proved(
     )
     monkeypatch.setattr(academic_english_resources, "output_path", lambda *parts: tmp_path.joinpath(*parts))
     monkeypatch.setattr(knowledge_router, "output_path", lambda *parts: tmp_path.joinpath(*parts))
+    monkeypatch.setattr(
+        knowledge_router,
+        "_provider_capabilities_path",
+        lambda: tmp_path / "missing-provider-capabilities-for-conformance.json",
+    )
 
     class _FakeManifestDrilldown:
         status = "aligned"
@@ -962,6 +972,20 @@ def test_knowledge_runtime_conformance_marks_prompt_context_receipt_proved(
     assert "Run tests/live_api_chat_knowledge_context_receipt_smoke.py only with explicit live-provider authorization." in (
         body["actual_loading_gate"]["next_safe_local_actions"]
     )
+    recovery = body["actual_loading_gate"]["recovery"]
+    assert recovery["schema_version"] == "scholar-ai-knowledge-runtime-recovery/v1"
+    assert recovery["read_only"] is True
+    assert recovery["state"] == "blocked_provider_preflight_and_missing_live_smoke"
+    assert recovery["blocked_by"] == [
+        "provider_preflight:pending:unknown",
+        "live_smoke_artifact:missing",
+    ]
+    assert recovery["provider_ready_for_authorized_live_smoke"] is False
+    assert recovery["completion_requires_authorized_live_smoke"] is True
+    refs = {item["ref_type"]: item for item in recovery["recovery_refs"]}
+    assert refs["conformance_endpoint"]["ref"] == "/api/knowledge/runtime-conformance"
+    assert refs["provider_preflight_artifact"]["ref"] == "workspace_artifacts/runtime_state/provider-capabilities.json"
+    assert refs["live_smoke_harness"]["requires_authorization"] is True
     packages = {package["package_id"]: package for package in body["packages"]}
     assert set(packages) == {
         "wiki",
@@ -1244,6 +1268,12 @@ def test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_s
     assert gate["provider_preflight"]["status"] == "proved"
     assert any(item == "baseHost=free.hanhanapi.top" for item in gate["evidence"])
     assert any(item == "provider_preflight_match=hhl/free.hanhanapi.top/gpt-5.5" for item in gate["evidence"])
+    recovery = gate["recovery"]
+    assert recovery["state"] == "proved_live_actual_loading"
+    assert recovery["blocked_by"] == []
+    assert recovery["provider_ready_for_authorized_live_smoke"] is True
+    assert recovery["completion_requires_authorized_live_smoke"] is False
+    assert recovery["recovery_refs"][-1]["status"] == "already_proved"
 
 
 def test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary(
@@ -1304,6 +1334,13 @@ def test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary
     assert preflight["records"][0]["base_url_host"] == "free.hanhanapi.top"
     assert preflight["records"][0]["status"] == "auth_required"
     assert preflight["records"][0]["masked_error"] == "HTTP 401: Invalid token (request id: [REDACTED])"
+    recovery = gate["recovery"]
+    assert recovery["state"] == "blocked_provider_preflight_and_missing_live_smoke"
+    assert recovery["blocked_by"] == [
+        "provider_preflight:blocked:auth_required",
+        "live_smoke_artifact:missing",
+    ]
+    assert recovery["provider_ready_for_authorized_live_smoke"] is False
 
 
 def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth(
@@ -1452,6 +1489,10 @@ def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_prefligh
     assert "provider forced-tool preflight is not proved for the same provider/baseHost/model endpoint" in (
         gate["claim_boundary"]
     )
+    recovery = gate["recovery"]
+    assert recovery["state"] == "blocked_provider_endpoint_match"
+    assert recovery["blocked_by"] == ["provider_preflight:endpoint_mismatch"]
+    assert recovery["provider_ready_for_authorized_live_smoke"] is True
 
 
 def test_knowledge_runtime_conformance_blocks_schema_invalid_live_smoke_artifact(
@@ -2010,11 +2051,26 @@ def test_knowledge_packages_openapi_contract() -> None:
         "next_safe_local_actions",
         "claim_boundary",
         "provider_preflight",
+        "recovery",
     }
     assert (
         actual_gate_schema["properties"]["provider_preflight"]["$ref"]
         == "#/components/schemas/KnowledgeRuntimeProviderPreflightResponse"
     )
+    assert (
+        actual_gate_schema["properties"]["recovery"]["$ref"]
+        == "#/components/schemas/KnowledgeRuntimeActualLoadingRecoveryResponse"
+    )
+    recovery_schema = schema["components"]["schemas"]["KnowledgeRuntimeActualLoadingRecoveryResponse"]
+    assert set(recovery_schema["properties"]) >= {
+        "schema_version",
+        "read_only",
+        "state",
+        "blocked_by",
+        "recovery_refs",
+        "provider_ready_for_authorized_live_smoke",
+        "completion_requires_authorized_live_smoke",
+    }
     provider_preflight_schema = schema["components"]["schemas"]["KnowledgeRuntimeProviderPreflightResponse"]
     assert set(provider_preflight_schema["properties"]) >= {
         "status",

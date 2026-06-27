@@ -406,6 +406,33 @@ def test_knowledge_runtime_conformance_uses_read_only_endpoint(
                     "Run tests/live_api_chat_knowledge_context_receipt_smoke.py only with explicit live-provider authorization.",
                 ],
                 "claim_boundary": "Deterministic package conformance is not live QA/model loading proof.",
+                "recovery": {
+                    "schema_version": "scholar-ai-knowledge-runtime-recovery/v1",
+                    "read_only": True,
+                    "state": "blocked_provider_preflight_and_missing_live_smoke",
+                    "blocked_by": [
+                        "provider_preflight:pending:unknown",
+                        "live_smoke_artifact:missing",
+                    ],
+                    "recovery_refs": [
+                        {
+                            "ref_type": "conformance_endpoint",
+                            "ref": "/api/knowledge/runtime-conformance",
+                            "status": "blocked",
+                            "required_before_completion": True,
+                            "requires_authorization": False,
+                        },
+                        {
+                            "ref_type": "live_smoke_harness",
+                            "ref": "tests/live_api_chat_knowledge_context_receipt_smoke.py",
+                            "status": "requires_explicit_authorization",
+                            "required_before_completion": True,
+                            "requires_authorization": True,
+                        },
+                    ],
+                    "provider_ready_for_authorized_live_smoke": False,
+                    "completion_requires_authorized_live_smoke": True,
+                },
             },
             "packages": [
                 {
@@ -434,6 +461,12 @@ def test_knowledge_runtime_conformance_uses_read_only_endpoint(
     assert gate["next_safe_local_actions"][0] == (
         "Require provider_preflight.status=proved before running live context-receipt smoke."
     )
+    assert gate["recovery"]["state"] == "blocked_provider_preflight_and_missing_live_smoke"
+    assert gate["recovery"]["blocked_by"] == [
+        "provider_preflight:pending:unknown",
+        "live_smoke_artifact:missing",
+    ]
+    assert gate["recovery"]["recovery_refs"][1]["requires_authorization"] is True
     assert result["data"]["packages"][0]["package_id"] == "product_docs"
     assert backend.calls[-1] == (
         "json",
