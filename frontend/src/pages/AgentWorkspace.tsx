@@ -72,6 +72,9 @@ import type { WikiReviewItemModel, WikiReviewListModel } from '@/types/wiki';
 type WorkspaceTab = 'agents' | 'artifacts' | 'audit';
 
 type AgentWorkspaceOpenRequirement = NonNullable<AgentWorkspaceStatus['workspace_state']['goal_state']['open_requirements']>[number];
+type AgentWorkspaceGoalLifecycleBlocker = NonNullable<
+  AgentWorkspaceStatus['workspace_state']['goal_state']['lifecycle_rollup']
+>['completion_blockers'][number];
 type AgentWorkspaceOcrEngine = AgentWorkspaceStatus['workspace_state']['ocr_runtime']['engines'][number];
 
 const KIND_LABELS: Record<string, string> = {
@@ -1819,6 +1822,14 @@ function workspaceGoalOpenRequirementLabel(
   const requirement = item.requirement ? ` · ${sanitizeInspectorText(item.requirement)}` : '';
   const residualRisk = item.residual_risk ? ` · risk ${sanitizeInspectorText(item.residual_risk)}` : '';
   return `${id} · ${status}${requirement}${residualRisk}`;
+}
+
+function workspaceGoalLifecycleBlockerLabel(
+  blocker: AgentWorkspaceGoalLifecycleBlocker,
+): string {
+  const status = blocker.status ? ` · ${sanitizeInspectorText(blocker.status)}` : '';
+  const surface = blocker.requirement_surface ? ` · ${sanitizeInspectorText(blocker.requirement_surface)}` : '';
+  return `${sanitizeInspectorText(blocker.id)}${status}${surface}`;
 }
 
 function workspaceDesktopSmokeSummary(state: AgentWorkspaceStatus['workspace_state']): string {
@@ -3644,6 +3655,7 @@ export function WorkspaceStatePanel({
   const nextActions = state.next_safe_local_actions.slice(0, 3).map(sanitizeInspectorText);
   const goalCompletionClaim = workspaceGoalCompletionClaimSummary(state.goal_state);
   const goalLifecycle = state.goal_state.lifecycle_rollup ?? null;
+  const firstLifecycleBlocker = goalLifecycle?.completion_blockers[0] ?? null;
   const desktopSmoke = state.desktop_smoke;
   const ocrRuntime = state.ocr_runtime;
   const visibleOcrEngines = ocrRuntime.engines.slice(0, 4);
@@ -3769,6 +3781,23 @@ export function WorkspaceStatePanel({
                   <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
                     lifecycle blockers {goalLifecycle.completion_blockers.length} · can complete {String(goalLifecycle.can_mark_goal_complete)}
                   </p>
+                ) : null}
+                {firstLifecycleBlocker ? (
+                  <div className="grid gap-1 rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    <p className="break-words">
+                      blocker detail {workspaceGoalLifecycleBlockerLabel(firstLifecycleBlocker)}
+                    </p>
+                    {firstLifecycleBlocker.missing_evidence ? (
+                      <p className="break-words">
+                        missing evidence {sanitizeInspectorText(firstLifecycleBlocker.missing_evidence)}
+                      </p>
+                    ) : null}
+                    {firstLifecycleBlocker.current_boundary ? (
+                      <p className="break-words">
+                        current boundary {sanitizeInspectorText(firstLifecycleBlocker.current_boundary)}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
                 {goalLifecycle?.why_not_complete?.length ? (
                   <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">

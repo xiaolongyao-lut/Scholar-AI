@@ -2578,6 +2578,21 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('goal-state 125 rows · proved 125 · incomplete 0 · out-of-scope 0 · latest N112-sandboxpolicy-current-state-alignment · lifecycle active_requirements_proved_pending_authorized_gates')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal-state visible')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('requirement status visible')).toBeInTheDocument();
+    expect(
+      within(workspaceStateRegion).getByText(
+        'blocker detail actual_loading_gate_live_model_proof · blocked_pending_explicit_authorization · Knowledge Runtime Pipeline QA/agent actual model-context loading',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(workspaceStateRegion).getByText(
+        'missing evidence Authorized live provider/model smoke artifact with verdict=ok.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(workspaceStateRegion).getByText(
+        'current boundary Deterministic contract and harness tests are proved.',
+      ),
+    ).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('why not complete All requirement rows are proved, but goal-level proof gates remain.')).toBeInTheDocument();
     const desktopSmokeRegion = within(workspaceStateRegion).getByRole('region', { name: 'Desktop smoke evidence' });
     expect(within(desktopSmokeRegion).getByText('Desktop Smoke Evidence')).toBeInTheDocument();
