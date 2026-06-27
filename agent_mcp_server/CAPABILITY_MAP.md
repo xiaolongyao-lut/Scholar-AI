@@ -25,6 +25,16 @@ literature.list_projects        # 拿 project_id（GET /resources/projects）
 
 后端没起时 `literature.*` 返回有界的 "backend unavailable"，需用户手动开 `文献助手` 桌面端；`source.*` 不依赖后端，始终可用。
 
+## 结果信封与截断边界
+
+所有工具结果先经过 `agent_mcp_server/src/lit_assistant_mcp/result.py::safe_result`：
+
+- 顶层始终保留 `is_error` / `error_code` / `message` / `data` / `truncated`。
+- 密钥、Bearer、Authorization 等敏感片段会先递归脱敏，再进入结果信封。
+- 大型 `dict` / `list` 不会退化成纯字符串预览；会尽量保留机器可读结构，并在 `data` 内加入 `_truncated` / `_omitted_keys` / `omitted_items`。
+- `truncation.limit_bytes` / `truncation.original_bytes` 只说明 MCP 结果信封的 JSON byte budget，不等于后端 resource/read 接口自己的分页或 cursor 边界。
+- 若 `data` 无法 JSON 序列化，结果会变成 `serialization_failed` 错误信封，而不是抛出未包装异常。
+
 ## 典型链路（按研究动作）
 
 | 动作 | 工具链 |
