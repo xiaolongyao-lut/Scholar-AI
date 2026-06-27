@@ -499,6 +499,7 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
         "Source Vault Search",
         "Source Vault Resource Read",
         "Knowledge Context Receipt",
+        "MCP Result Envelope",
         "Workflow Passport",
         "Evidence Integrity Gate",
         "Research Action Lifecycle",
@@ -572,6 +573,13 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert context_receipt_probe["requires_identifier"] is True
     assert context_receipt_probe["identifier_hint"] == "ref_id"
     assert "context receipt proof" in context_receipt_probe["purpose"]
+    result_envelope_probe = next(probe for probe in probes if probe["label"] == "MCP Result Envelope")
+    assert result_envelope_probe["route"] == "/api/agent-workspace/status"
+    assert result_envelope_probe["mcp_tool"] == "source.read_file"
+    assert result_envelope_probe["requires_identifier"] is False
+    assert "safe_result envelope fields" in result_envelope_probe["purpose"]
+    assert "structured truncation metadata" in result_envelope_probe["purpose"]
+    assert "serialization_failed" in result_envelope_probe["purpose"]
     handoff_probe = next(probe for probe in probes if probe["label"] == "Agent Handoff Card")
     assert handoff_probe["route"] == "/runtime/job/{job_id}/agent-handoff-card"
     assert handoff_probe["requires_identifier"] is True
@@ -584,6 +592,7 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert requirement_probe["identifier_hint"] == "requirement_id"
     assert requirement_probe["mcp_tool"] == "literature.agent_workspace_requirement"
     assert "requirement-to-evidence" in requirement_probe["purpose"]
+    assert any("MCP Result Envelope" in item for item in payload["workspace_state"]["next_safe_local_actions"])
     assert any("Goal Requirement Drilldowns" in item for item in payload["workspace_state"]["next_safe_local_actions"])
     assert any("rollback checkpoint" in item for item in payload["workspace_state"]["boundaries"])
     assert payload["artifacts"][0]["path"] == "reports/summary.md"

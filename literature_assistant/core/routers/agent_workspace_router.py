@@ -1665,7 +1665,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
         "Create a rollback checkpoint and re-check official or mature references before nontrivial edits.",
     ]
     next_actions = [
-        "Read Wiki Doctor, Knowledge Packages, Knowledge Runtime Conformance, Wiki/Product Docs/Academic English/Source Vault search refs, bounded resource reads, Knowledge Context Receipt, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, Agent Handoff Cards, and Goal Requirement Drilldowns before resuming mutating work or claiming closure.",
+        "Read Wiki Doctor, Knowledge Packages, Knowledge Runtime Conformance, Wiki/Product Docs/Academic English/Source Vault search refs, bounded resource reads, Knowledge Context Receipt, MCP Result Envelope, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, Agent Handoff Cards, and Goal Requirement Drilldowns before resuming mutating work or claiming closure.",
         "Inspect git dirty paths and preserve unrelated local work before staging or committing.",
         "Use workspace artifacts and audit records as recovery evidence; treat missing evidence as unresolved.",
     ]
@@ -1765,6 +1765,12 @@ def _build_workspace_state() -> AgentWorkspaceState:
                 mcp_tool="literature.knowledge_context_receipt",
                 requires_identifier=True,
                 identifier_hint="ref_id",
+            ),
+            _workspace_recovery_probe(
+                "MCP Result Envelope",
+                "/api/agent-workspace/status",
+                "Recover safe_result envelope fields, recursive redaction, structured truncation metadata, and serialization_failed boundaries from the source-readable MCP capability map before interpreting large tool outputs.",
+                mcp_tool="source.read_file",
             ),
             _workspace_recovery_probe(
                 "Workflow Passport",

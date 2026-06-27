@@ -413,6 +413,15 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
         mcp_tool: 'literature.knowledge_context_receipt',
       },
       {
+        label: 'MCP Result Envelope',
+        route: '/api/agent-workspace/status',
+        read_only: true,
+        requires_identifier: false,
+        identifier_hint: null,
+        purpose: 'Recover safe_result envelope fields, recursive redaction, structured truncation metadata, and serialization_failed boundaries from the source-readable MCP capability map before interpreting large tool outputs.',
+        mcp_tool: 'source.read_file',
+      },
+      {
         label: 'Workflow Passport',
         route: '/runtime/workflow-passport',
         read_only: true,
@@ -472,7 +481,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       'Create a rollback checkpoint and re-check official or mature references before nontrivial edits.',
     ],
     next_safe_local_actions: [
-      'Read Wiki Doctor, Knowledge Runtime Conformance, Source Vault Status/Search/Read, Knowledge Context Receipt, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, Agent Handoff Cards, and Goal Requirement Drilldowns before resuming mutating work or claiming closure.',
+      'Read Wiki Doctor, Knowledge Runtime Conformance, Source Vault Status/Search/Read, Knowledge Context Receipt, MCP Result Envelope, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, Agent Handoff Cards, and Goal Requirement Drilldowns before resuming mutating work or claiming closure.',
       'Inspect git dirty paths and preserve unrelated local work before staging or committing.',
     ],
     ...overrides,
@@ -2834,6 +2843,7 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('Source Vault Search · read-only true · needs query · literature.source_vault_search')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Source Vault Resource Read · read-only true · needs ref_id · literature.source_vault_read')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Knowledge Context Receipt · read-only true · needs ref_id · literature.knowledge_context_receipt')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('MCP Result Envelope · read-only true · source.read_file')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Workflow Passport · read-only true · literature.workflow_passport')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Evidence Integrity Gate · read-only true · literature.evidence_integrity_gate')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Research Action Lifecycle · read-only true · literature.research_action_lifecycle')).toBeInTheDocument();
