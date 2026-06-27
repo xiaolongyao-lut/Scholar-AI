@@ -8264,6 +8264,7 @@ export interface components {
          *         path: Repository-relative or redacted label for the selected record.
          *         updated_at: Timestamp from the selected goal-state record.
          *         checkpoint_id: Rollback checkpoint id, without local checkpoint path.
+         *         rollback_caveat: Bounded rollback caution text, without local paths or commands.
          *         requirement_count: Number of requirement-to-evidence rows.
          *         proved_count: Number of rows currently proved.
          *         incomplete_count: Number of incomplete rows.
@@ -8318,6 +8319,8 @@ export interface components {
              */
             requirement_count: number;
             requirement_status?: components["schemas"]["AgentWorkspaceGoalRequirementStatus"];
+            /** Rollback Caveat */
+            rollback_caveat?: string | null;
             /** Stop Boundaries */
             stop_boundaries?: string[];
             /** Updated At */

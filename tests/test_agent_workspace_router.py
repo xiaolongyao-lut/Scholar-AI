@@ -230,6 +230,7 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
             path="docs/plans/longrun-goal-state-local.json",
             updated_at="2026-06-24T17:55:00+08:00",
             checkpoint_id="20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio",
+            rollback_caveat="Restore only with explicit user intent after checking dirty worktree ownership.",
             requirement_count=125,
             proved_count=125,
             incomplete_count=0,
@@ -470,6 +471,9 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert goal_state["available"] is True
     assert goal_state["path"] == "docs/plans/longrun-goal-state-local.json"
     assert goal_state["checkpoint_id"] == "20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio"
+    assert goal_state["rollback_caveat"] == (
+        "Restore only with explicit user intent after checking dirty worktree ownership."
+    )
     assert goal_state["requirement_count"] == 125
     assert goal_state["proved_count"] == 125
     assert goal_state["incomplete_count"] == 0
@@ -628,6 +632,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                     "checkpoint_id": "20260622-213822-n41-goal-state-workspace-visibility",
                     "latest_checkpoint_id": "20260626-061743-n201-agent-workspace-latest-checkpoint",
                     "latest_goal_state_checkpoint_id": "20260626-061744-n201-goal-state-latest-checkpoint",
+                    "latest_checkpoint_caveat": "Rollback checkpoint for C:/Users/xiao/private N201 goal-state projection; restore only with explicit user intent.",
                     "checkpoint_path": "C:/Users/xiao/.codex/rollback-checkpoints/private",
                     "restore_command": "restore C:/Users/xiao/private",
                 },
@@ -744,6 +749,9 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     assert summary.path == "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
     assert summary.updated_at == "2026-06-22T21:36:00+08:00"
     assert summary.checkpoint_id == "20260626-061744-n201-goal-state-latest-checkpoint"
+    assert summary.rollback_caveat == (
+        "Rollback checkpoint for [redacted-local-path] N201 goal-state projection; restore only with explicit user intent."
+    )
     assert summary.requirement_count == 8
     assert summary.proved_count == 2
     assert summary.incomplete_count == 1

@@ -117,6 +117,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       path: 'docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json',
       updated_at: '2026-06-24T17:55:00+08:00',
       checkpoint_id: '20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio',
+      rollback_caveat: 'Restore only with explicit user intent after checking dirty worktree ownership.',
       requirement_count: 125,
       proved_count: 125,
       incomplete_count: 0,
@@ -2850,6 +2851,7 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('full goal The full Scholar AI workflow spine remains active, not complete.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('completion claim can complete false')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('completion claim why not complete Live provider/model actual-loading is still blocked.')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('rollback caveat Restore only with explicit user intent after checking dirty worktree ownership.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal next 1 Create a rollback checkpoint and search mature references before nontrivial edits.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal next 2 Continue deterministic local recovery and proof hardening.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('goal next 3 Keep live provider/model actual-loading blocked until preflight is proved.')).toBeInTheDocument();

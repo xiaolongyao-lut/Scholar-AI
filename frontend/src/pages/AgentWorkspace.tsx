@@ -3689,6 +3689,9 @@ export function WorkspaceStatePanel({
   const boundaries = state.boundaries.slice(0, 3).map(sanitizeInspectorText);
   const nextActions = state.next_safe_local_actions.slice(0, 3).map(sanitizeInspectorText);
   const goalCompletionClaim = workspaceGoalCompletionClaimSummary(state.goal_state);
+  const goalRollbackCaveat = state.goal_state.rollback_caveat
+    ? sanitizeInspectorText(state.goal_state.rollback_caveat)
+    : null;
   const goalNextActions = state.goal_state.next_authorized_local_actions.slice(0, 4).map(sanitizeInspectorText);
   const goalStopBoundaries = state.goal_state.stop_boundaries.slice(0, 4).map(sanitizeInspectorText);
   const goalAuthoritativeRecords = (state.goal_state.authoritative_records ?? []).slice(0, 8).map(sanitizeInspectorText);
@@ -3816,6 +3819,7 @@ export function WorkspaceStatePanel({
             goalCompletionClaim.fullGoal ||
             goalCompletionClaim.canMarkGoalComplete !== null ||
             goalCompletionClaim.whyNotComplete ||
+            goalRollbackCaveat ||
             goalAuthoritativeRecords.length > 0 ||
             goalLifecycle?.completion_blockers?.length ? (
               <div className="mt-2 grid gap-1.5">
@@ -3837,6 +3841,11 @@ export function WorkspaceStatePanel({
                 {goalCompletionClaim.whyNotComplete ? (
                   <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
                     completion claim why not complete {goalCompletionClaim.whyNotComplete}
+                  </p>
+                ) : null}
+                {goalRollbackCaveat ? (
+                  <p className="break-words rounded-md border border-outline-variant/35 bg-surface px-2 py-1.5 text-[11px] leading-4 text-foreground/60">
+                    rollback caveat {goalRollbackCaveat}
                   </p>
                 ) : null}
                 {goalLifecycle && hasLifecycleRecordDetails ? (

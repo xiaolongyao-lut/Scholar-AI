@@ -43,6 +43,7 @@ MAX_GOAL_LIFECYCLE_BLOCKERS = 5
 MAX_GOAL_COMPLETION_CHARS = 240
 MAX_GOAL_REQUIREMENT_EVIDENCE = 8
 MAX_GOAL_REQUIREMENT_TEXT_CHARS = 480
+MAX_GOAL_ROLLBACK_CAVEAT_CHARS = 240
 MAX_DESKTOP_SMOKE_TEXT_ITEMS = 3
 MAX_OCR_RUNTIME_ENGINES = 12
 MAX_OCR_RUNTIME_ACTIONS = 5
@@ -301,6 +302,7 @@ class AgentWorkspaceGoalState(BaseModel):
         path: Repository-relative or redacted label for the selected record.
         updated_at: Timestamp from the selected goal-state record.
         checkpoint_id: Rollback checkpoint id, without local checkpoint path.
+        rollback_caveat: Bounded rollback caution text, without local paths or commands.
         requirement_count: Number of requirement-to-evidence rows.
         proved_count: Number of rows currently proved.
         incomplete_count: Number of incomplete rows.
@@ -320,6 +322,7 @@ class AgentWorkspaceGoalState(BaseModel):
     path: str | None = Field(default=None, max_length=240)
     updated_at: str | None = Field(default=None, max_length=80)
     checkpoint_id: str | None = Field(default=None, max_length=120)
+    rollback_caveat: str | None = Field(default=None, max_length=MAX_GOAL_ROLLBACK_CAVEAT_CHARS)
     requirement_count: int = Field(default=0, ge=0)
     proved_count: int = Field(default=0, ge=0)
     incomplete_count: int = Field(default=0, ge=0)
@@ -1468,6 +1471,25 @@ def _goal_state_checkpoint_id(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def _goal_state_rollback_caveat(payload: dict[str, Any]) -> str | None:
+    """Return bounded rollback caveat text without exposing restore details.
+
+    Args:
+        payload: Parsed longrun goal-state JSON object.
+
+    Returns:
+        Redacted caution text from rollback metadata, or ``None`` when absent.
+    """
+
+    rollback = payload.get("rollback")
+    if not isinstance(rollback, dict):
+        return None
+    value = rollback.get("latest_checkpoint_caveat")
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return _redact_text(value.strip())[:MAX_GOAL_ROLLBACK_CAVEAT_CHARS]
+
+
 def _load_goal_state_summary() -> AgentWorkspaceGoalState:
     """Load a bounded local goal-state summary without exposing full records."""
 
@@ -1504,6 +1526,7 @@ def _load_goal_state_summary() -> AgentWorkspaceGoalState:
         path=path_label,
         updated_at=_redact_text(updated_at)[:80] if isinstance(updated_at, str) and updated_at.strip() else None,
         checkpoint_id=checkpoint_id,
+        rollback_caveat=_goal_state_rollback_caveat(payload),
         requirement_count=len(requirements),
         proved_count=statuses.get("proved", 0),
         incomplete_count=statuses.get("incomplete", 0),

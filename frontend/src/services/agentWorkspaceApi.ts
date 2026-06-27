@@ -126,6 +126,7 @@ export interface AgentWorkspaceGoalState {
   path: string | null;
   updated_at: string | null;
   checkpoint_id: string | null;
+  rollback_caveat: string | null;
   requirement_count: number;
   proved_count: number;
   incomplete_count: number;

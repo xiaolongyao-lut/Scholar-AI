@@ -476,6 +476,14 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
     assert "AGENTS.md" in expected_authoritative_records
     assert "docs/plans/autonomous-execution-framework.md" in expected_authoritative_records
     assert "docs/plans/autonomous-execution-planning-playbook.md" in expected_authoritative_records
+    rollback = payload.get("rollback")
+    assert isinstance(rollback, dict)
+    latest_checkpoint_caveat = rollback.get("latest_checkpoint_caveat")
+    assert isinstance(latest_checkpoint_caveat, str) and latest_checkpoint_caveat.strip()
+    assert summary.rollback_caveat is not None
+    assert latest_checkpoint_caveat.startswith(summary.rollback_caveat[:120])
+    assert "rollback-checkpoints" not in summary.rollback_caveat
+    assert "Restore-Item" not in summary.rollback_caveat
     why_not_complete = completion_claim.get("why_not_complete")
     assert isinstance(why_not_complete, str) and why_not_complete.strip()
     assert summary.completion_claim.why_not_complete is not None

@@ -104,6 +104,7 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     path: 'docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json',
     updated_at: '2026-06-23T19:49:30+08:00',
     checkpoint_id: '20260623-194244-n74-main-wiki-import-desktop-acceptance',
+    rollback_caveat: 'Restore only with explicit user intent after checking dirty worktree ownership.',
     requirement_count: 82,
     proved_count: 82,
     incomplete_count: 0,

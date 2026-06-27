@@ -2653,6 +2653,7 @@ def test_agent_workspace_status_reads_recovery_state(
                     "path": "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
                     "updated_at": "2026-06-24T17:55:00+08:00",
                     "checkpoint_id": "20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio",
+                    "rollback_caveat": "Restore only with explicit user intent after checking dirty worktree ownership.",
                     "requirement_count": 125,
                     "proved_count": 125,
                     "incomplete_count": 0,
@@ -2916,6 +2917,9 @@ def test_agent_workspace_status_reads_recovery_state(
     )
     assert state["goal_state"]["available"] is True
     assert state["goal_state"]["checkpoint_id"] == "20260624-173328-n112-sandboxpolicy-knowledge-runtime-continuatio"
+    assert state["goal_state"]["rollback_caveat"] == (
+        "Restore only with explicit user intent after checking dirty worktree ownership."
+    )
     assert state["goal_state"]["requirement_count"] == 125
     assert state["goal_state"]["incomplete_count"] == 0
     assert state["goal_state"]["latest_requirement_id"] == "N112-sandboxpolicy-current-state-alignment"
