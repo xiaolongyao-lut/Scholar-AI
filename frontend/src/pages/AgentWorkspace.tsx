@@ -583,8 +583,10 @@ function actualLoadingRecoveryTone(gate: KnowledgeRuntimeActualLoadingGate): Sta
 
 function actualLoadingRecoveryRefLabel(ref: KnowledgeRuntimeActualLoadingGate['recovery']['recovery_refs'][number]): string {
   const status = sanitizeInspectorText(ref.status || 'unknown');
+  const method = sanitizeInspectorText(ref.method || 'GET');
+  const accessMode = sanitizeInspectorText(ref.access_mode || 'read_only');
   const auth = ref.requires_authorization ? ' · auth' : '';
-  return `${sanitizeInspectorText(ref.ref_type)} ${status}${auth}`;
+  return `${sanitizeInspectorText(ref.ref_type)} ${method} · ${accessMode} · ${status}${auth}`;
 }
 
 function packageEvidenceSummary(pkg: KnowledgeRuntimeConformancePackage): string {

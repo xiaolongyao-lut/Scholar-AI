@@ -13685,13 +13685,25 @@ export interface components {
          * @description One recovery reference for a blocked Knowledge Runtime loading gate.
          */
         KnowledgeRuntimeRecoveryRefResponse: {
+            /**
+             * Access Mode
+             * @default read_only
+             * @enum {string}
+             */
+            access_mode: "read_only" | "local_artifact" | "authorized_provider_preflight" | "explicit_live_provider_smoke";
+            /**
+             * Method
+             * @default GET
+             * @enum {string}
+             */
+            method: "GET" | "POST" | "READ" | "RUN";
             /** Ref */
             ref: string;
             /**
              * Ref Type
              * @enum {string}
              */
-            ref_type: "conformance_endpoint" | "provider_preflight_artifact" | "live_smoke_artifact" | "live_smoke_harness";
+            ref_type: "conformance_endpoint" | "provider_preflight_artifact" | "provider_preflight_endpoint" | "live_smoke_artifact" | "live_smoke_harness";
             /**
              * Required Before Completion
              * @default true

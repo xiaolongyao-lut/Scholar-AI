@@ -85,10 +85,20 @@ export interface KnowledgeRuntimeActualLoadingGate {
   recovery: KnowledgeRuntimeActualLoadingRecovery;
 }
 
+export type KnowledgeRuntimeRecoveryMethod = 'GET' | 'POST' | 'READ' | 'RUN';
+
+export type KnowledgeRuntimeRecoveryAccessMode =
+  | 'read_only'
+  | 'local_artifact'
+  | 'authorized_provider_preflight'
+  | 'explicit_live_provider_smoke';
+
 export interface KnowledgeRuntimeRecoveryRef {
   ref_type: string;
   ref: string;
   status: string;
+  method: KnowledgeRuntimeRecoveryMethod;
+  access_mode: KnowledgeRuntimeRecoveryAccessMode;
   required_before_completion: boolean;
   requires_authorization: boolean;
 }
@@ -206,6 +216,26 @@ function readOptionalNumber(value: unknown, field: string, fallback: number): nu
     throw new Error(`Invalid Knowledge Packages response: ${field} must be a non-negative finite number`);
   }
   return value;
+}
+
+function readOptionalString(value: unknown, field: string, fallback: string): string {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  return readPossiblyEmptyString(value, field);
+}
+
+function readOptionalEnum<const T extends readonly string[]>(
+  value: unknown,
+  field: string,
+  allowed: T,
+  fallback: T[number],
+): T[number] {
+  const text = readOptionalString(value, field, fallback);
+  if ((allowed as readonly string[]).includes(text)) {
+    return text;
+  }
+  throw new Error(`Invalid Knowledge Runtime response: ${field} must be one of ${allowed.join(', ')}`);
 }
 
 function readNullableString(value: unknown, field: string): string | null {
@@ -460,6 +490,13 @@ export function parseKnowledgeRuntimeRecoveryRef(value: unknown): KnowledgeRunti
     ref_type: readString(value.ref_type, 'actual_loading_gate.recovery.recovery_refs[].ref_type'),
     ref: readString(value.ref, 'actual_loading_gate.recovery.recovery_refs[].ref'),
     status: readPossiblyEmptyString(value.status, 'actual_loading_gate.recovery.recovery_refs[].status'),
+    method: readOptionalEnum(value.method, 'actual_loading_gate.recovery.recovery_refs[].method', ['GET', 'POST', 'READ', 'RUN'] as const, 'GET'),
+    access_mode: readOptionalEnum(
+      value.access_mode,
+      'actual_loading_gate.recovery.recovery_refs[].access_mode',
+      ['read_only', 'local_artifact', 'authorized_provider_preflight', 'explicit_live_provider_smoke'] as const,
+      'read_only',
+    ),
     required_before_completion: readOptionalBoolean(
       value.required_before_completion,
       'actual_loading_gate.recovery.recovery_refs[].required_before_completion',

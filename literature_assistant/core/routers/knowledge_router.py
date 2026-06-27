@@ -78,6 +78,13 @@ PackageKind = Literal[
     "product_docs",
 ]
 PackageLoadStatus = Literal["loaded", "missing", "disabled", "stale", "unknown"]
+KnowledgeRuntimeRecoveryMethod = Literal["GET", "POST", "READ", "RUN"]
+KnowledgeRuntimeRecoveryAccessMode = Literal[
+    "read_only",
+    "local_artifact",
+    "authorized_provider_preflight",
+    "explicit_live_provider_smoke",
+]
 ConformanceStatus = Literal["proved", "pending", "blocked", "not_applicable"]
 ConformanceEvidenceLevel = Literal[
     "runtime_projection",
@@ -656,11 +663,14 @@ class KnowledgeRuntimeRecoveryRefResponse(BaseModel):
     ref_type: Literal[
         "conformance_endpoint",
         "provider_preflight_artifact",
+        "provider_preflight_endpoint",
         "live_smoke_artifact",
         "live_smoke_harness",
     ]
     ref: str = Field(min_length=1, max_length=500)
     status: str = Field(default="", max_length=120)
+    method: KnowledgeRuntimeRecoveryMethod = "GET"
+    access_mode: KnowledgeRuntimeRecoveryAccessMode = "read_only"
     required_before_completion: bool = True
     requires_authorization: bool = False
 
@@ -2368,24 +2378,41 @@ def _actual_loading_recovery_state(
                 ref_type="conformance_endpoint",
                 ref="/api/knowledge/runtime-conformance",
                 status=gate.status,
+                method="GET",
+                access_mode="read_only",
                 required_before_completion=True,
             ),
             KnowledgeRuntimeRecoveryRefResponse(
                 ref_type="provider_preflight_artifact",
                 ref=gate.provider_preflight.artifact_ref,
                 status=gate.provider_preflight.status,
+                method="READ",
+                access_mode="local_artifact",
                 required_before_completion=True,
             ),
             KnowledgeRuntimeRecoveryRefResponse(
                 ref_type="live_smoke_artifact",
                 ref=gate.artifact_ref,
                 status=gate.verdict,
+                method="READ",
+                access_mode="local_artifact",
                 required_before_completion=True,
+            ),
+            KnowledgeRuntimeRecoveryRefResponse(
+                ref_type="provider_preflight_endpoint",
+                ref="/api/chat/tool-capability/test",
+                status="requires_configured_credentials" if not provider_ready else "already_proved",
+                method="POST",
+                access_mode="authorized_provider_preflight",
+                required_before_completion=not provider_ready,
+                requires_authorization=not provider_ready,
             ),
             KnowledgeRuntimeRecoveryRefResponse(
                 ref_type="live_smoke_harness",
                 ref="tests/live_api_chat_knowledge_context_receipt_smoke.py",
                 status="requires_explicit_authorization" if gate.status != "proved" else "already_proved",
+                method="RUN",
+                access_mode="explicit_live_provider_smoke",
                 required_before_completion=gate.status != "proved",
                 requires_authorization=gate.status != "proved",
             ),

@@ -315,13 +315,26 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
               ref_type: 'conformance_endpoint',
               ref: '/api/knowledge/runtime-conformance',
               status: 'blocked',
+              method: 'GET',
+              access_mode: 'read_only',
               required_before_completion: true,
               requires_authorization: false,
+            },
+            {
+              ref_type: 'provider_preflight_endpoint',
+              ref: '/api/chat/tool-capability/test',
+              status: 'requires_configured_credentials',
+              method: 'POST',
+              access_mode: 'authorized_provider_preflight',
+              required_before_completion: true,
+              requires_authorization: true,
             },
             {
               ref_type: 'live_smoke_harness',
               ref: 'workspace_tests/evaluation_scripts/live_api_chat_knowledge_context_receipt_smoke.py',
               status: 'authorization_required',
+              method: 'RUN',
+              access_mode: 'explicit_live_provider_smoke',
               required_before_completion: true,
               requires_authorization: true,
             },
@@ -407,7 +420,10 @@ describe('knowledgeApi.parseKnowledgeRuntimeConformanceResponse', () => {
     expect(parsed.actual_loading_gate.provider_preflight.records[0].base_url_host).toBe('free.hanhanapi.top');
     expect(parsed.actual_loading_gate.recovery.state).toBe('blocked_provider_preflight_and_missing_live_smoke');
     expect(parsed.actual_loading_gate.recovery.blocked_by).toContain('live_smoke:missing_artifact');
+    expect(parsed.actual_loading_gate.recovery.recovery_refs[1].method).toBe('POST');
+    expect(parsed.actual_loading_gate.recovery.recovery_refs[1].access_mode).toBe('authorized_provider_preflight');
     expect(parsed.actual_loading_gate.recovery.recovery_refs[1].requires_authorization).toBe(true);
+    expect(parsed.actual_loading_gate.recovery.recovery_refs[2].method).toBe('RUN');
     expect(parsed.packages[0].overall_status).toBe('blocked');
     expect(parsed.packages[0].manifest.empty_runtime).toBe(true);
     expect(parsed.packages[0].runtime_consumers[0].consumer).toBe(

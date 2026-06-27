@@ -470,13 +470,26 @@ def test_knowledge_runtime_conformance_uses_read_only_endpoint(
                             "ref_type": "conformance_endpoint",
                             "ref": "/api/knowledge/runtime-conformance",
                             "status": "blocked",
+                            "method": "GET",
+                            "access_mode": "read_only",
                             "required_before_completion": True,
                             "requires_authorization": False,
+                        },
+                        {
+                            "ref_type": "provider_preflight_endpoint",
+                            "ref": "/api/chat/tool-capability/test",
+                            "status": "requires_configured_credentials",
+                            "method": "POST",
+                            "access_mode": "authorized_provider_preflight",
+                            "required_before_completion": True,
+                            "requires_authorization": True,
                         },
                         {
                             "ref_type": "live_smoke_harness",
                             "ref": "tests/live_api_chat_knowledge_context_receipt_smoke.py",
                             "status": "requires_explicit_authorization",
+                            "method": "RUN",
+                            "access_mode": "explicit_live_provider_smoke",
                             "required_before_completion": True,
                             "requires_authorization": True,
                         },
@@ -525,7 +538,12 @@ def test_knowledge_runtime_conformance_uses_read_only_endpoint(
     assert gate["provider_preflight"]["next_safe_local_actions"][0] == (
         "Stop live actual-loading smoke while latest provider status is auth_required."
     )
-    assert gate["recovery"]["recovery_refs"][1]["requires_authorization"] is True
+    refs = {item["ref_type"]: item for item in gate["recovery"]["recovery_refs"]}
+    assert refs["provider_preflight_endpoint"]["method"] == "POST"
+    assert refs["provider_preflight_endpoint"]["access_mode"] == "authorized_provider_preflight"
+    assert refs["provider_preflight_endpoint"]["requires_authorization"] is True
+    assert refs["live_smoke_harness"]["method"] == "RUN"
+    assert refs["live_smoke_harness"]["requires_authorization"] is True
     assert result["data"]["packages"][0]["package_id"] == "product_docs"
     assert backend.calls[-1] == (
         "json",

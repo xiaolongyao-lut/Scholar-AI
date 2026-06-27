@@ -371,6 +371,8 @@ function knowledgeRuntimeFixture(): KnowledgeRuntimeConformanceResponse {
             ref_type: 'conformance_endpoint',
             ref: '/api/knowledge/runtime-conformance',
             status: 'blocked',
+            method: 'GET',
+            access_mode: 'read_only',
             required_before_completion: true,
             requires_authorization: false,
           },
@@ -378,13 +380,26 @@ function knowledgeRuntimeFixture(): KnowledgeRuntimeConformanceResponse {
             ref_type: 'provider_preflight_artifact',
             ref: 'workspace_artifacts/runtime_state/provider-capabilities.json',
             status: 'blocked',
+            method: 'READ',
+            access_mode: 'local_artifact',
             required_before_completion: true,
             requires_authorization: false,
+          },
+          {
+            ref_type: 'provider_preflight_endpoint',
+            ref: '/api/chat/tool-capability/test',
+            status: 'requires_configured_credentials',
+            method: 'POST',
+            access_mode: 'authorized_provider_preflight',
+            required_before_completion: true,
+            requires_authorization: true,
           },
           {
             ref_type: 'live_smoke_harness',
             ref: 'workspace_tests/evaluation_scripts/live_api_chat_knowledge_context_receipt_smoke.py',
             status: 'authorization_required',
+            method: 'RUN',
+            access_mode: 'explicit_live_provider_smoke',
             required_before_completion: true,
             requires_authorization: true,
           },
@@ -1051,8 +1066,12 @@ describe('AgentWorkspace', () => {
     expect(within(knowledgeRegion).getByText('check artifact.status_code.200')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('recovery blocker provider_preflight:blocked:auth_required')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('recovery blocker live_smoke:missing_artifact')).toBeInTheDocument();
-    expect(within(knowledgeRegion).getByText('recovery ref conformance_endpoint blocked')).toBeInTheDocument();
-    expect(within(knowledgeRegion).getByText('recovery ref live_smoke_harness authorization_required · auth')).toBeInTheDocument();
+    expect(within(knowledgeRegion).getByText('recovery ref conformance_endpoint GET · read_only · blocked')).toBeInTheDocument();
+    expect(
+      within(knowledgeRegion).getByText(
+        'recovery ref provider_preflight_endpoint POST · authorized_provider_preflight · requires_configured_credentials · auth',
+      ),
+    ).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('provider status auth_required 1')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('provider missing provider_tool_call_status=tool_call_ok')).toBeInTheDocument();
     expect(within(knowledgeRegion).getByText('provider next Stop live actual-loading smoke while latest provider status is auth_required.')).toBeInTheDocument();

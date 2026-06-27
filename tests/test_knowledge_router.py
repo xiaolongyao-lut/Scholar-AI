@@ -984,8 +984,18 @@ def test_knowledge_runtime_conformance_marks_prompt_context_receipt_proved(
     assert recovery["completion_requires_authorized_live_smoke"] is True
     refs = {item["ref_type"]: item for item in recovery["recovery_refs"]}
     assert refs["conformance_endpoint"]["ref"] == "/api/knowledge/runtime-conformance"
+    assert refs["conformance_endpoint"]["method"] == "GET"
+    assert refs["conformance_endpoint"]["access_mode"] == "read_only"
     assert refs["provider_preflight_artifact"]["ref"] == "workspace_artifacts/runtime_state/provider-capabilities.json"
+    assert refs["provider_preflight_artifact"]["method"] == "READ"
+    assert refs["provider_preflight_artifact"]["access_mode"] == "local_artifact"
+    assert refs["provider_preflight_endpoint"]["ref"] == "/api/chat/tool-capability/test"
+    assert refs["provider_preflight_endpoint"]["method"] == "POST"
+    assert refs["provider_preflight_endpoint"]["access_mode"] == "authorized_provider_preflight"
+    assert refs["provider_preflight_endpoint"]["requires_authorization"] is True
     assert refs["live_smoke_harness"]["requires_authorization"] is True
+    assert refs["live_smoke_harness"]["method"] == "RUN"
+    assert refs["live_smoke_harness"]["access_mode"] == "explicit_live_provider_smoke"
     packages = {package["package_id"]: package for package in body["packages"]}
     assert set(packages) == {
         "wiki",
@@ -1274,6 +1284,9 @@ def test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_s
     assert recovery["provider_ready_for_authorized_live_smoke"] is True
     assert recovery["completion_requires_authorized_live_smoke"] is False
     assert recovery["recovery_refs"][-1]["status"] == "already_proved"
+    refs = {item["ref_type"]: item for item in recovery["recovery_refs"]}
+    assert refs["provider_preflight_endpoint"]["status"] == "already_proved"
+    assert refs["provider_preflight_endpoint"]["requires_authorization"] is False
 
 
 def test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary(
@@ -1345,6 +1358,11 @@ def test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary
         "live_smoke_artifact:missing",
     ]
     assert recovery["provider_ready_for_authorized_live_smoke"] is False
+    refs = {item["ref_type"]: item for item in recovery["recovery_refs"]}
+    assert refs["provider_preflight_endpoint"]["ref"] == "/api/chat/tool-capability/test"
+    assert refs["provider_preflight_endpoint"]["method"] == "POST"
+    assert refs["provider_preflight_endpoint"]["access_mode"] == "authorized_provider_preflight"
+    assert refs["provider_preflight_endpoint"]["requires_authorization"] is True
 
 
 def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth(
@@ -2087,6 +2105,16 @@ def test_knowledge_packages_openapi_contract() -> None:
         "recovery_refs",
         "provider_ready_for_authorized_live_smoke",
         "completion_requires_authorized_live_smoke",
+    }
+    recovery_ref_schema = schema["components"]["schemas"]["KnowledgeRuntimeRecoveryRefResponse"]
+    assert set(recovery_ref_schema["properties"]) >= {
+        "ref_type",
+        "ref",
+        "status",
+        "method",
+        "access_mode",
+        "required_before_completion",
+        "requires_authorization",
     }
     provider_preflight_schema = schema["components"]["schemas"]["KnowledgeRuntimeProviderPreflightResponse"]
     assert set(provider_preflight_schema["properties"]) >= {
