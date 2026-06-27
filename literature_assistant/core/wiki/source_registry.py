@@ -373,6 +373,50 @@ class WikiRegistry:
             value = row["source_vault_chunk_id"]
             return value if isinstance(value, str) and value.strip() else None
 
+    def get_source_vault_mirror_status(self, source_id: str) -> dict[str, str]:
+        """Return Source Vault mirror status for one legacy Wiki source."""
+
+        if not isinstance(source_id, str) or not source_id.strip():
+            raise ValueError("source_id cannot be empty")
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT source_vault_status, source_vault_error
+                FROM wiki_sources
+                WHERE source_id = ?
+                """,
+                (source_id,),
+            ).fetchone()
+            if row is None:
+                return {"status": "missing_source", "error": ""}
+            error = row["source_vault_error"]
+            return {
+                "status": str(row["source_vault_status"] or "unknown"),
+                "error": error if isinstance(error, str) else "",
+            }
+
+    def get_source_vault_chunk_mirror_status(self, chunk_id: str) -> dict[str, str]:
+        """Return Source Vault mirror status for one legacy Wiki chunk."""
+
+        if not isinstance(chunk_id, str) or not chunk_id.strip():
+            raise ValueError("chunk_id cannot be empty")
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT source_vault_status, source_vault_error
+                FROM wiki_chunks
+                WHERE chunk_id = ?
+                """,
+                (chunk_id,),
+            ).fetchone()
+            if row is None:
+                return {"status": "missing_chunk", "error": ""}
+            error = row["source_vault_error"]
+            return {
+                "status": str(row["source_vault_status"] or "unknown"),
+                "error": error if isinstance(error, str) else "",
+            }
+
     @staticmethod
     def _ensure_compat_columns(conn: sqlite3.Connection) -> None:
         source_columns = _table_columns(conn, "wiki_sources")

@@ -16,7 +16,7 @@ core_path = Path(__file__).parent.parent / "literature_assistant" / "core"
 if str(core_path) not in sys.path:
     sys.path.insert(0, str(core_path))
 
-from python_adapter_server import app
+from python_adapter_server import app, get_local_api_capability_token
 from literature_assistant.core.wiki.review_queue import ReviewQueue
 from writing_runtime import WritingRuntime
 
@@ -730,87 +730,189 @@ class TestWikiImport:
 
     def test_import_markdown_apply_writes_page_with_real_service(self, client, mock_wiki_enabled, tmp_path):
         """Apply mode can write a real generated wiki page in an isolated store."""
+        import routers.agent_bridge_router as agent_bridge_router
+        import routers.knowledge_router as knowledge_router
         from wiki.page_store import WikiPageStore
         from wiki.service import WikiService
+        from wiki.source_registry import WikiRegistry
+        from source_vault import SourceVault
 
         wiki_root = tmp_path / "wiki"
-        review_queue_path = tmp_path / "runtime" / "review_queue.jsonl"
+        runtime_root = tmp_path / "runtime"
+        review_queue_path = runtime_root / "review_queue.jsonl"
+        vault = SourceVault(
+            db_path=tmp_path / "source_vault" / "source_vault.sqlite3",
+            storage_root=tmp_path / "source_vault",
+        )
+        registry = WikiRegistry(runtime_root / "wiki.db", source_vault=vault)
         service = WikiService(WikiPageStore(wiki_root, create=True))
         source = tmp_path / "local-source.md"
         source.write_text("# Local Source\n\nBody from local note.", encoding="utf-8")
+        headers = {"X-LitAssist-Capability": get_local_api_capability_token()}
 
-        with patch("routers.wiki_router.REPO_ROOT", tmp_path), patch(
-            "routers.wiki_router.wiki_generated_root", lambda *parts: wiki_root.joinpath(*parts)
-        ), patch("routers.wiki_router.wiki_review_queue_path", lambda: review_queue_path), patch(
-            "routers.agent_bridge_router.wiki_generated_root", lambda *parts: wiki_root.joinpath(*parts)
-        ), patch(
-            "wiki.service.get_wiki_service", return_value=service
-        ):
-            resp = client.post(
-                "/api/wiki/import?user_id=owner123",
-                json={
-                    "source_paths": [str(source)],
-                    "dry_run": False,
-                    "confirm_write": True,
-                    "status": "final",
-                },
-            )
+        app.dependency_overrides[knowledge_router.get_source_vault] = lambda: vault
+        try:
+            with patch("routers.wiki_router.REPO_ROOT", tmp_path), patch(
+                "routers.wiki_router.wiki_generated_root", lambda *parts: wiki_root.joinpath(*parts)
+            ), patch("routers.wiki_router.wiki_review_queue_path", lambda: review_queue_path), patch(
+                "routers.wiki_router._wiki_import_registry", lambda: registry
+            ), patch(
+                "routers.agent_bridge_router.wiki_generated_root", lambda *parts: wiki_root.joinpath(*parts)
+            ), patch("routers.agent_bridge_router.SourceVault", lambda: vault), patch(
+                "routers.knowledge_router._agent_bridge_router.SourceVault", lambda: vault
+            ), patch(
+                "wiki.service.get_wiki_service", return_value=service
+            ):
+                resp = client.post(
+                    "/api/wiki/import?user_id=owner123",
+                    json={
+                        "source_paths": [str(source)],
+                        "dry_run": False,
+                        "confirm_write": True,
+                        "status": "final",
+                    },
+                    headers=headers,
+                )
 
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["imported"] == 1
-        page_payload = data["pages"][0]
-        assert page_payload["review_item_id"] == "import-synthesis-local-source"
-        assert page_payload["import_source_hash"] == hashlib.sha256(source.read_bytes()).hexdigest()
-        assert page_payload["path"] == "synthesis/synthesis-local-source.md"
-        assert page_payload["ref_id"] == "wiki:synthesis/synthesis-local-source.md"
-        assert page_payload["chunk_id"].startswith("wiki:synthesis/synthesis-local-source.md#")
-        assert page_payload["read_endpoint"] == "/api/agent-bridge/resource/wiki:synthesis/synthesis-local-source.md"
-        assert page_payload["span_start"] == 0
-        assert page_payload["span_end"] > 0
-        page_file = wiki_root / "synthesis" / "synthesis-local-source.md"
-        assert page_file.exists()
-        text = page_file.read_text(encoding="utf-8")
-        assert page_payload["source_hash"] == hashlib.sha256(text.encode("utf-8")).hexdigest()
-        assert page_payload["content_hash"] == hashlib.sha256(
-            "# Local Source\n\nBody from local note.".encode("utf-8")
-        ).hexdigest()
-        assert "Body from local note." in text
-        assert '"owner": "owner123"' in text
-        assert '"visibility": "private"' in text
-        assert '"type": "local_markdown"' in text
-        assert '"entry_source": "local_markdown_import"' in text
-        assert '"status": "draft"' in text
-        assert '"status": "final"' not in text
-        review_items = ReviewQueue(review_queue_path).list_items()
-        assert [item.source for item in review_items] == ["local_markdown_import"]
-        assert review_items[0].metadata["requested_status"] == "final"
-        assert review_items[0].metadata["evidence_integrity_gate"]["status"] == "block"
-        assert review_items[0].metadata["agent_handoff_recovery"]["review_queue_probe"] == (
-            "/api/wiki/review?status=pending&kind=draft"
-        )
+                assert resp.status_code == 200
+                data = resp.json()
+                assert data["imported"] == 1
+                page_payload = data["pages"][0]
+                assert page_payload["review_item_id"] == "import-synthesis-local-source"
+                assert page_payload["import_source_hash"] == hashlib.sha256(source.read_bytes()).hexdigest()
+                assert page_payload["path"] == "synthesis/synthesis-local-source.md"
+                assert page_payload["ref_id"] == "wiki:synthesis/synthesis-local-source.md"
+                assert page_payload["chunk_id"].startswith("wiki:synthesis/synthesis-local-source.md#")
+                assert page_payload["read_endpoint"] == "/api/agent-bridge/resource/wiki:synthesis/synthesis-local-source.md"
+                assert page_payload["source_registry_id"].startswith("local_markdown_import-local-source-")
+                assert page_payload["source_vault_status"] == "mirrored"
+                assert page_payload["source_vault_source_id"].startswith("src_")
+                assert page_payload["source_vault_chunk_id"]
+                assert page_payload["source_vault_ref_id"] == f"source_vault:chunk:{page_payload['source_vault_chunk_id']}"
+                assert page_payload["source_vault_read_endpoint"] == (
+                    f"/api/agent-bridge/resource/{page_payload['source_vault_ref_id']}"
+                )
+                assert page_payload["span_start"] == 0
+                assert page_payload["span_end"] > 0
+                page_file = wiki_root / "synthesis" / "synthesis-local-source.md"
+                assert page_file.exists()
+                text = page_file.read_text(encoding="utf-8")
+                assert page_payload["source_hash"] == hashlib.sha256(text.encode("utf-8")).hexdigest()
+                assert page_payload["content_hash"] == hashlib.sha256(
+                    "# Local Source\n\nBody from local note.".encode("utf-8")
+                ).hexdigest()
+                assert "Body from local note." in text
+                assert '"owner": "owner123"' in text
+                assert '"visibility": "private"' in text
+                assert '"type": "local_markdown"' in text
+                assert '"entry_source": "local_markdown_import"' in text
+                assert '"status": "draft"' in text
+                assert '"status": "final"' not in text
+                review_items = ReviewQueue(review_queue_path).list_items()
+                assert [item.source for item in review_items] == ["local_markdown_import"]
+                assert review_items[0].metadata["requested_status"] == "final"
+                assert review_items[0].metadata["evidence_integrity_gate"]["status"] == "block"
+                assert review_items[0].metadata["agent_handoff_recovery"]["review_queue_probe"] == (
+                    "/api/wiki/review?status=pending&kind=draft"
+                )
 
-        list_response = client.get("/api/wiki/pages?user_id=owner123")
-        assert list_response.status_code == 200
-        assert list_response.json()["pages"] == []
+                list_response = client.get("/api/wiki/pages?user_id=owner123", headers=headers)
+                assert list_response.status_code == 200
+                assert list_response.json()["pages"] == []
 
-        with patch("routers.agent_bridge_router.wiki_generated_root", lambda *parts: wiki_root.joinpath(*parts)):
-            resource_response = client.get(page_payload["read_endpoint"], params={"max_chars": 100})
-        assert resource_response.status_code == 200
-        resource_payload = resource_response.json()
-        assert resource_payload["ref_id"] == page_payload["ref_id"]
-        assert resource_payload["kind"] == "wiki"
-        assert "Body from local note." in resource_payload["content"]
-        assert resource_payload["metadata"]["knowledge_ref_schema_version"] == "scholar-ai-wiki-knowledge-ref/v1"
-        assert resource_payload["metadata"]["source_path"] == page_payload["path"]
-        assert resource_payload["metadata"]["source_hash"] == page_payload["source_hash"]
-        assert resource_payload["metadata"]["import_source_hash"] == page_payload["import_source_hash"]
-        assert resource_payload["metadata"]["import_source_path"] == "local-source.md"
-        assert resource_payload["metadata"]["import_source_type"] == "local_markdown"
-        assert resource_payload["metadata"]["entry_source"] == "local_markdown_import"
-        assert resource_payload["metadata"]["content_hash"] == page_payload["content_hash"]
-        assert resource_payload["metadata"]["span_end"] == page_payload["span_end"]
-        assert resource_payload["metadata"]["read_endpoint"] == page_payload["read_endpoint"]
+                resource_response = client.get(
+                    page_payload["read_endpoint"],
+                    params={"max_chars": 100},
+                    headers=headers,
+                )
+                assert resource_response.status_code == 200
+                resource_payload = resource_response.json()
+                assert resource_payload["ref_id"] == page_payload["ref_id"]
+                assert resource_payload["kind"] == "wiki"
+                assert "Body from local note." in resource_payload["content"]
+                assert resource_payload["metadata"]["knowledge_ref_schema_version"] == "scholar-ai-wiki-knowledge-ref/v1"
+                assert resource_payload["metadata"]["source_path"] == page_payload["path"]
+                assert resource_payload["metadata"]["source_hash"] == page_payload["source_hash"]
+                assert resource_payload["metadata"]["import_source_hash"] == page_payload["import_source_hash"]
+                assert resource_payload["metadata"]["import_source_path"] == "local-source.md"
+                assert resource_payload["metadata"]["import_source_type"] == "local_markdown"
+                assert resource_payload["metadata"]["entry_source"] == "local_markdown_import"
+                assert resource_payload["metadata"]["content_hash"] == page_payload["content_hash"]
+                assert resource_payload["metadata"]["span_end"] == page_payload["span_end"]
+                assert resource_payload["metadata"]["read_endpoint"] == page_payload["read_endpoint"]
+
+                packages_response = client.get("/api/knowledge/packages", headers=headers)
+                assert packages_response.status_code == 200
+                source_vault_package = {
+                    package["package_id"]: package
+                    for package in packages_response.json()["packages"]
+                }["source_vault"]
+                assert source_vault_package["loaded"] is True
+                assert source_vault_package["manifest"]["empty_runtime"] is False
+                assert source_vault_package["manifest"]["total_sources"] == 1
+                assert source_vault_package["manifest"]["chunk_count"] == 1
+                assert source_vault_package["manifest"]["loaded_ref_count"] == 1
+
+                conformance_response = client.get("/api/knowledge/runtime-conformance", headers=headers)
+                assert conformance_response.status_code == 200
+                source_vault_conformance = {
+                    package["package_id"]: package
+                    for package in conformance_response.json()["packages"]
+                }["source_vault"]
+                assert source_vault_conformance["overall_status"] == "proved"
+                source_items = {
+                    item["requirement"]: item
+                    for item in source_vault_conformance["conformance"]
+                }
+                assert source_items["authoritative_source"]["status"] == "proved"
+                assert source_items["structured_runtime_artifact"]["status"] == "proved"
+                assert source_items["searchable_index"]["status"] == "proved"
+                assert source_items["bounded_context_loading"]["status"] == "proved"
+                assert source_items["prompt_assembly_context_receipt"]["status"] == "proved"
+
+                source_vault_search = client.get(
+                    "/api/knowledge/source-vault/search",
+                    params={"q": "Body from local note", "limit": 1},
+                    headers=headers,
+                )
+                assert source_vault_search.status_code == 200
+                source_vault_hit = source_vault_search.json()["results"][0]
+                assert source_vault_hit["ref_id"] == page_payload["source_vault_ref_id"]
+                assert source_vault_hit["source_id"] == page_payload["source_vault_source_id"]
+                assert source_vault_hit["metadata"]["legacy_store"] == "wiki_chunks"
+                assert source_vault_hit["metadata"]["legacy_source_id"] == page_payload["source_registry_id"]
+
+                source_vault_resource = client.get(
+                    page_payload["source_vault_read_endpoint"],
+                    params={"max_chars": 200},
+                    headers=headers,
+                )
+                assert source_vault_resource.status_code == 200
+                source_vault_resource_payload = source_vault_resource.json()
+                assert source_vault_resource_payload["kind"] == "source_vault"
+                assert "Body from local note." in source_vault_resource_payload["content"]
+                assert source_vault_resource_payload["metadata"]["source_id"] == page_payload["source_vault_source_id"]
+                assert source_vault_resource_payload["metadata"]["legacy_source_id"] == page_payload["source_registry_id"]
+
+                receipt_response = client.post(
+                    "/api/knowledge/context-receipt",
+                    json={
+                        "ref_ids": [page_payload["source_vault_ref_id"]],
+                        "prompt_name": "wiki_import_source_vault_loaded_proof",
+                        "max_chars_per_ref": 200,
+                    },
+                    headers=headers,
+                )
+                assert receipt_response.status_code == 200
+                receipt_payload = receipt_response.json()
+                assert "Body from local note." in receipt_payload["assembled_context_preview"]
+                receipt = receipt_payload["resource_read_receipts"][0]
+                assert receipt["ref_id"] == page_payload["source_vault_ref_id"]
+                assert receipt["kind"] == "source_vault"
+                assert receipt["metadata"]["source_id"] == page_payload["source_vault_source_id"]
+                assert receipt["metadata"]["legacy_source_id"] == page_payload["source_registry_id"]
+        finally:
+            app.dependency_overrides.pop(knowledge_router.get_source_vault, None)
 
 
 class TestWikiServiceCRUD:

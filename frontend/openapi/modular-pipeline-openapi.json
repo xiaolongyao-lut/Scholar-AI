@@ -26340,6 +26340,36 @@
             "title": "Source Path",
             "type": "string"
           },
+          "source_registry_id": {
+            "default": "",
+            "title": "Source Registry Id",
+            "type": "string"
+          },
+          "source_vault_chunk_id": {
+            "default": "",
+            "title": "Source Vault Chunk Id",
+            "type": "string"
+          },
+          "source_vault_read_endpoint": {
+            "default": "",
+            "title": "Source Vault Read Endpoint",
+            "type": "string"
+          },
+          "source_vault_ref_id": {
+            "default": "",
+            "title": "Source Vault Ref Id",
+            "type": "string"
+          },
+          "source_vault_source_id": {
+            "default": "",
+            "title": "Source Vault Source Id",
+            "type": "string"
+          },
+          "source_vault_status": {
+            "default": "",
+            "title": "Source Vault Status",
+            "type": "string"
+          },
           "span_end": {
             "anyOf": [
               {

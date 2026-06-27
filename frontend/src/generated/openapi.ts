@@ -18964,6 +18964,36 @@ export interface components {
             source_hash: string;
             /** Source Path */
             source_path: string;
+            /**
+             * Source Registry Id
+             * @default
+             */
+            source_registry_id: string;
+            /**
+             * Source Vault Chunk Id
+             * @default
+             */
+            source_vault_chunk_id: string;
+            /**
+             * Source Vault Read Endpoint
+             * @default
+             */
+            source_vault_read_endpoint: string;
+            /**
+             * Source Vault Ref Id
+             * @default
+             */
+            source_vault_ref_id: string;
+            /**
+             * Source Vault Source Id
+             * @default
+             */
+            source_vault_source_id: string;
+            /**
+             * Source Vault Status
+             * @default
+             */
+            source_vault_status: string;
             /** Span End */
             span_end?: number | null;
             /** Span Start */

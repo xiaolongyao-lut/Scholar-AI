@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any, Mapping
 from uuid import uuid4
@@ -23,6 +24,10 @@ from literature_assistant.core.project_paths import (
     wiki_runtime_db_path,
 )
 from literature_assistant.core.runtime_env import wiki_enabled
+from literature_assistant.core.source_vault import (
+    build_source_vault_chunk_read_endpoint,
+    build_source_vault_chunk_ref_id,
+)
 from literature_assistant.core.wiki.compiler import WikiCompiler
 from literature_assistant.core.wiki.doctor import WikiDoctor
 from literature_assistant.core.wiki.graph import WikiGraphStore, build_wiki_graph
@@ -54,7 +59,14 @@ from literature_assistant.core.wiki.review_queue import (
     ReviewQueue,
     make_review_item,
 )
-from literature_assistant.core.wiki.source_registry import WikiRegistry, derive_chunk_id
+from literature_assistant.core.wiki.source_registry import (
+    ChunkInput,
+    SourceRecord,
+    WikiRegistry,
+    derive_chunk_id,
+    derive_source_id,
+    utc_now_iso,
+)
 from harness_protocols import ArtifactType, JobKind, SessionMode
 from writing_runtime import get_writing_runtime
 
@@ -331,12 +343,18 @@ class WikiImportItemPayload(BaseModel):
     """Per-source result for local Markdown import."""
 
     source_path: str
+    source_registry_id: str = ""
     import_source_hash: str = ""
     source_hash: str = ""
     content_hash: str = ""
     ref_id: str = ""
     chunk_id: str = ""
     read_endpoint: str = ""
+    source_vault_source_id: str = ""
+    source_vault_chunk_id: str = ""
+    source_vault_ref_id: str = ""
+    source_vault_read_endpoint: str = ""
+    source_vault_status: str = ""
     span_start: int | None = None
     span_end: int | None = None
     title: str = ""
@@ -1244,6 +1262,123 @@ def _wiki_knowledge_ref_payload(
     return payload
 
 
+def _wiki_import_registry() -> WikiRegistry:
+    """Return the registry that mirrors accepted local Markdown into Source Vault."""
+
+    return WikiRegistry(wiki_runtime_db_path())
+
+
+def _source_text_span(source_text: str, chunk_text: str) -> tuple[int, int]:
+    """Return a best-effort character span for imported Markdown body text."""
+
+    if not isinstance(source_text, str) or not isinstance(chunk_text, str):
+        raise TypeError("source_text and chunk_text must be strings")
+    if not chunk_text:
+        raise ValueError("chunk_text cannot be empty")
+    start = source_text.find(chunk_text)
+    if start < 0:
+        start = 0
+    return start, start + len(chunk_text)
+
+
+def _registry_record_class(registry: WikiRegistry) -> type[SourceRecord]:
+    """Return the SourceRecord class used by a package or legacy flat registry."""
+
+    module = sys.modules.get(type(registry).__module__)
+    candidate = getattr(module, "SourceRecord", None) if module is not None else None
+    if isinstance(candidate, type):
+        return candidate
+    return SourceRecord
+
+
+def _registry_chunk_input_class(registry: WikiRegistry) -> type[ChunkInput]:
+    """Return the ChunkInput class used by a package or legacy flat registry."""
+
+    module = sys.modules.get(type(registry).__module__)
+    candidate = getattr(module, "ChunkInput", None) if module is not None else None
+    if isinstance(candidate, type):
+        return candidate
+    return ChunkInput
+
+
+def _source_vault_sync_from_import(
+    *,
+    source_path: Path,
+    source_label: str,
+    source_hash: str,
+    source_text: str,
+    chunk_text: str,
+    title: str,
+    page_path: str,
+) -> dict[str, str]:
+    """Register one imported Markdown source and expose mirrored Source Vault refs."""
+
+    if not isinstance(source_path, Path):
+        raise TypeError("source_path must be a Path")
+    if not source_label.strip():
+        raise ValueError("source_label cannot be empty")
+    if not re.fullmatch(r"[0-9a-f]{64}", source_hash):
+        raise ValueError("source_hash must be a lowercase sha256 hex digest")
+    if not chunk_text.strip():
+        raise ValueError("chunk_text cannot be empty")
+
+    registry = _wiki_import_registry()
+    now_iso = utc_now_iso()
+    source_id = derive_source_id("local_markdown_import", title, source_hash)
+    span_start, span_end = _source_text_span(source_text, chunk_text)
+    legacy_chunk_id = derive_chunk_id(source_hash, 0)
+    source_record_cls = _registry_record_class(registry)
+    chunk_input_cls = _registry_chunk_input_class(registry)
+    registry.upsert_source(
+        source_record_cls(
+            source_id=source_id,
+            source_type="local_markdown_import",
+            title=title,
+            source_hash=source_hash,
+            source_path=source_path,
+        ),
+        now_iso=now_iso,
+    )
+    registry.register_chunks(
+        source_id,
+        source_hash,
+        [
+            chunk_input_cls(
+                text=chunk_text,
+                chunk_index=0,
+                section=page_path,
+                span_start=span_start,
+                span_end=span_end,
+            )
+        ],
+        now_iso=now_iso,
+    )
+    source_status = registry.get_source_vault_mirror_status(source_id)
+    chunk_status = registry.get_source_vault_chunk_mirror_status(legacy_chunk_id)
+    source_vault_status = (
+        "mirrored"
+        if source_status["status"] == "mirrored" and chunk_status["status"] == "mirrored"
+        else f"{source_status['status']}:{chunk_status['status']}"
+    )
+    source_vault_source_id = registry.get_source_vault_id(source_id) if source_status["status"] == "mirrored" else ""
+    source_vault_chunk_id = registry.get_source_vault_chunk_id(legacy_chunk_id) if chunk_status["status"] == "mirrored" else ""
+    source_vault_ref_id = build_source_vault_chunk_ref_id(source_vault_chunk_id) if source_vault_chunk_id else ""
+    source_vault_read_endpoint = (
+        build_source_vault_chunk_read_endpoint(source_vault_chunk_id)
+        if source_vault_chunk_id
+        else ""
+    )
+    return {
+        "source_registry_id": source_id,
+        "source_vault_source_id": source_vault_source_id,
+        "source_vault_chunk_id": source_vault_chunk_id,
+        "source_vault_ref_id": source_vault_ref_id,
+        "source_vault_read_endpoint": source_vault_read_endpoint,
+        "source_vault_status": source_vault_status,
+        "source_vault_error": source_status["error"] or chunk_status["error"],
+    }
+
+
 def _append_wiki_draft_review_item(
     *,
     item_prefix: str,
@@ -1981,6 +2116,15 @@ def wiki_import(
                     "span_start": 0,
                     "span_end": len(page.body or body),
                 }
+            source_vault_sync: dict[str, str] = {
+                "source_registry_id": "",
+                "source_vault_source_id": "",
+                "source_vault_chunk_id": "",
+                "source_vault_ref_id": "",
+                "source_vault_read_endpoint": "",
+                "source_vault_status": "",
+                "source_vault_error": "",
+            }
             try:
                 review_item_id = _append_wiki_draft_review_item(
                     item_prefix="import",
@@ -2054,16 +2198,54 @@ def wiki_import(
                 )
                 rollback_status = "rollback attempt failed" if rollback_error is not None else "wiki page mutation was rolled back"
                 raise ValueError(f"Failed to create pending import runtime action; {rollback_status}: {exc}") from exc
+            if rendered_content is not None:
+                try:
+                    source_vault_sync = _source_vault_sync_from_import(
+                        source_path=source_path,
+                        source_label=source_label,
+                        source_hash=content_hash,
+                        source_text=content,
+                        chunk_text=ref_content,
+                        title=title,
+                        page_path=page_path,
+                    )
+                except (ValueError, OSError, TypeError, RuntimeError) as exc:
+                    rollback_error = _rollback_wiki_import_governance(
+                        service=service,
+                        action=action,
+                        page=page,
+                        existing_page=existing_page,
+                        review_item_id=review_item_id,
+                    )
+                    rollback_status = "rollback attempt failed" if rollback_error is not None else "wiki page mutation was rolled back"
+                    raise ValueError(f"Failed to sync import into Source Vault; {rollback_status}: {exc}") from exc
+                if source_vault_sync["source_vault_status"] != "mirrored":
+                    rollback_error = _rollback_wiki_import_governance(
+                        service=service,
+                        action=action,
+                        page=page,
+                        existing_page=existing_page,
+                        review_item_id=review_item_id,
+                    )
+                    rollback_status = "rollback attempt failed" if rollback_error is not None else "wiki page mutation was rolled back"
+                    detail = source_vault_sync["source_vault_error"] or source_vault_sync["source_vault_status"]
+                    raise ValueError(f"Failed to sync import into Source Vault; {rollback_status}: {detail}") from None
             imported += 1
             pages.append(
                 WikiImportItemPayload(
                     source_path=source_label,
+                    source_registry_id=source_vault_sync["source_registry_id"],
                     import_source_hash=content_hash,
                     source_hash=str(knowledge_ref["source_hash"]),
                     content_hash=str(knowledge_ref["content_hash"]),
                     ref_id=str(knowledge_ref["ref_id"]),
                     chunk_id=str(knowledge_ref["chunk_id"]),
                     read_endpoint=str(knowledge_ref["read_endpoint"]),
+                    source_vault_source_id=source_vault_sync["source_vault_source_id"],
+                    source_vault_chunk_id=source_vault_sync["source_vault_chunk_id"],
+                    source_vault_ref_id=source_vault_sync["source_vault_ref_id"],
+                    source_vault_read_endpoint=source_vault_sync["source_vault_read_endpoint"],
+                    source_vault_status=source_vault_sync["source_vault_status"],
                     span_start=int(knowledge_ref["span_start"]),
                     span_end=int(knowledge_ref["span_end"]),
                     title=title,
