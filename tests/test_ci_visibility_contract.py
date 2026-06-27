@@ -400,6 +400,13 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
     top_latest_slice = payload.get("latest_slice")
     if top_latest_slice is not None:
         assert top_latest_slice == rows[-1]["id"]
+        latest_slice_key = (
+            re.sub(r"[^a-z0-9]+", "_", top_latest_slice.lower()).strip("_") + "_slice"
+        )
+        latest_slice_record = payload.get(latest_slice_key)
+        assert isinstance(latest_slice_record, dict)
+        assert latest_slice_record.get("id") == top_latest_slice
+        assert latest_slice_record.get("updated_at") == top_updated_at
     assert rollup.get("requirements_all_proved") is all(
         row["status"] == "proved" for row in rows
     )
