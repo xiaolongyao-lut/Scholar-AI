@@ -705,6 +705,7 @@ class LiveContextReceiptSmokeSummary(BaseModel):
     verdict: str = Field(min_length=1, max_length=120)
     claimBoundary: str = Field(default="", max_length=1000)
     provider: str = Field(default="unknown", max_length=120)
+    baseHost: str = Field(default="unknown", max_length=240)
     model: str = Field(default="unknown", max_length=200)
     directReceipt: LiveContextReceiptSmokeDirectReceipt
     chatEvidence: LiveContextReceiptSmokeChatEvidence
@@ -2198,6 +2199,49 @@ def _provider_preflight_gate() -> KnowledgeRuntimeProviderPreflightResponse:
     )
 
 
+def _provider_preflight_value(value: str) -> str:
+    """Return the comparison form for redacted provider endpoint fields."""
+
+    return str(value or "").strip().lower()
+
+
+def _provider_preflight_match_requirement(summary: LiveContextReceiptSmokeSummary) -> str:
+    """Return the endpoint-specific proof requirement for one live artifact."""
+
+    provider = str(summary.provider or "unknown").strip() or "unknown"
+    base_host = str(summary.baseHost or "unknown").strip() or "unknown"
+    model = str(summary.model or "unknown").strip() or "unknown"
+    return (
+        "provider_preflight matching "
+        f"provider={provider} baseHost={base_host} model={model} with tool_call_ok"
+    )
+
+
+def _provider_preflight_proves_live_summary(
+    summary: LiveContextReceiptSmokeSummary,
+    provider_preflight: KnowledgeRuntimeProviderPreflightResponse,
+) -> bool:
+    """Return whether preflight proves the exact provider endpoint in the artifact."""
+
+    provider = _provider_preflight_value(summary.provider)
+    base_host = _provider_preflight_value(summary.baseHost)
+    model = _provider_preflight_value(summary.model)
+    if not provider or not base_host or not model:
+        return False
+    if "unknown" in {provider, base_host, model}:
+        return False
+    for record in provider_preflight.records:
+        if record.status != "tool_call_ok" or not record.forced_tool_choice_ok:
+            continue
+        if (
+            _provider_preflight_value(record.provider) == provider
+            and _provider_preflight_value(record.base_url_host) == base_host
+            and _provider_preflight_value(record.model) == model
+        ):
+            return True
+    return False
+
+
 def _actual_loading_gate() -> KnowledgeRuntimeActualLoadingGateResponse:
     """Return the live QA/model loading proof gate for the runtime pipeline."""
 
@@ -2320,6 +2364,39 @@ def _actual_loading_gate() -> KnowledgeRuntimeActualLoadingGateResponse:
                 ),
                 provider_preflight=provider_preflight,
             )
+        if not _provider_preflight_proves_live_summary(summary, provider_preflight):
+            missing = [_provider_preflight_match_requirement(summary)]
+            return KnowledgeRuntimeActualLoadingGateResponse(
+                status="blocked",
+                evidence_level="contract_evidence",
+                artifact_path=artifact_text,
+                artifact_ref=artifact_ref,
+                artifact_exists=True,
+                artifact_schema_valid=True,
+                artifact_contract_valid=True,
+                artifact_checked_at=artifact_checked_at,
+                verdict=summary.verdict,
+                evidence_scope=list(_ACTUAL_LOADING_GATE_SCOPE)
+                + ["live_smoke_artifact", "provider_preflight", "provider_preflight_endpoint_match"],
+                evidence=[
+                    artifact_ref,
+                    summary.surface,
+                    f"provider_preflight_status={provider_preflight.status}",
+                    f"provider={summary.provider or 'unknown'}",
+                    f"baseHost={summary.baseHost or 'unknown'}",
+                    f"model={summary.model or 'unknown'}",
+                ],
+                missing=missing,
+                next_safe_local_actions=_next_safe_local_actions(
+                    _ACTUAL_LOADING_PROVIDER_BLOCKED_ACTIONS,
+                    _ACTUAL_LOADING_BASE_ACTIONS,
+                ),
+                claim_boundary=(
+                    "A live smoke artifact satisfies the context-receipt contract, but "
+                    "provider forced-tool preflight is not proved for the same provider/baseHost/model endpoint."
+                ),
+                provider_preflight=provider_preflight,
+            )
         return KnowledgeRuntimeActualLoadingGateResponse(
             status="proved",
             evidence_level="focused_test_evidence",
@@ -2335,7 +2412,9 @@ def _actual_loading_gate() -> KnowledgeRuntimeActualLoadingGateResponse:
                 artifact_ref,
                 summary.surface,
                 f"provider={summary.provider or 'unknown'}",
+                f"baseHost={summary.baseHost or 'unknown'}",
                 f"model={summary.model or 'unknown'}",
+                f"provider_preflight_match={summary.provider}/{summary.baseHost}/{summary.model}",
                 f"assembledContextHash={summary.directReceipt.assembledContextHash}",
             ],
             claim_boundary=claim_boundary,

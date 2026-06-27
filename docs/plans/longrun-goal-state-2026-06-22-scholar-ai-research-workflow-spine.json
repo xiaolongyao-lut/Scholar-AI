@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-27T14:07:00+08:00",
+  "updated_at": "2026-06-27T14:25:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,11 +100,11 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "20260627-140002-n233-import-wiki-runtime-rollback-audit",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-140002-n233-import-wiki-runtime-rollback-audit",
-    "latest_goal_state_checkpoint_id": "20260627-140002-n233-import-wiki-runtime-rollback-audit",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-140002-n233-import-wiki-runtime-rollback-audit",
-    "latest_checkpoint_caveat": "Git rollback checkpoint for the N233 import-to-wiki runtime metadata rollback audit; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "20260627-141031-n234-goal-rollup-blocker-reconcile",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-141031-n234-goal-rollup-blocker-reconcile",
+    "latest_goal_state_checkpoint_id": "20260627-141031-n234-goal-rollup-blocker-reconcile",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-141031-n234-goal-rollup-blocker-reconcile",
+    "latest_checkpoint_caveat": "Git rollback checkpoint for the N234 Knowledge Runtime provider endpoint-match gate; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
     {
@@ -6506,21 +6506,44 @@
         ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed."
       ],
       "residual_risk": "This proves the import-to-wiki guarded write and half-recorded runtime rollback contract through focused TestClient tests. It does not expand CI beyond the existing focused surface, does not prove production DB persistence for this endpoint, and does not unblock live Knowledge Runtime model-context loading, real RapidOCR runtime execution, remote OCR execution, or Computer Use sandboxPolicy accessibility-tree retry."
+    },
+    {
+      "id": "N234-knowledge-runtime-provider-endpoint-match-gate",
+      "requirement": "Knowledge Runtime actual-loading proof must require the provider tool-call preflight to match the same provider, baseHost, and model recorded by the live context-receipt smoke artifact, so a proved capability for one endpoint cannot be reused to overclaim another endpoint.",
+      "source": "Current Knowledge Runtime Pipeline goal requires QA/agent actual-loading proof rather than artifact existence; local audit found _provider_preflight_gate proved if any provider/model endpoint had tool_call_ok, while the live smoke summary carries its own provider/baseHost/model endpoint.",
+      "status": "proved",
+      "evidence": [
+        "literature_assistant/core/routers/knowledge_router.py adds LiveContextReceiptSmokeSummary.baseHost and requires _provider_preflight_proves_live_summary() before returning actual_loading_gate.status=proved.",
+        "The gate now blocks a contract-valid ok live artifact when provider_preflight.status is proved only by a different provider/baseHost/model endpoint, reporting provider_preflight_endpoint_match and a precise missing requirement.",
+        "tests/test_knowledge_router.py::test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_smoke_artifact now proves the happy path includes baseHost and provider_preflight_match evidence for the same endpoint.",
+        "tests/test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs proves an ok artifact remains blocked when the preflight record belongs to a different provider/model endpoint.",
+        ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\knowledge_router.py tests\\test_knowledge_router.py -> passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_smoke_artifact tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs -q -> 3 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py -q -> 50 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed after synchronizing goal_lifecycle_rollup.updated_at to the top-level updated_at.",
+        ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed.",
+        "Rollback checkpoint created before edits: C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-141031-n234-goal-rollup-blocker-reconcile.",
+        "Official/mature references checked: pytest assertion documentation HTTP 200 and W3C PROV overview HTTP 200. Used only for test/provenance boundary discipline; no external code copied."
+      ],
+      "residual_risk": "This closes an overclaim path in deterministic actual-loading gate logic. It still does not run a live provider/model smoke, does not fix the current provider auth_required artifact, does not install or run real RapidOCR, and does not authorize remote OCR upload."
     }
   ],
   "changed_files_for_this_slice": [
-    "tests/test_wiki_crud.py",
+    "literature_assistant/core/routers/knowledge_router.py",
+    "tests/test_knowledge_router.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py -q -> 31 passed.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_wiki_crud.py tests\\test_runtime_lifecycle_app_contract.py tests\\test_runtime_router_contract.py::test_runtime_lifecycle_refs_crosslink_passport_gate_boundary_and_handoff tests\\test_runtime_router_contract.py::test_runtime_agent_handoff_card_route_exposes_recovery_drilldowns tests\\test_ci_visibility_contract.py -q -> 51 passed.",
+    ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\knowledge_router.py tests\\test_knowledge_router.py -> passed.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_smoke_artifact tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs -q -> 3 passed.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py -q -> 50 passed.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed.",
     ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed.",
-    "Official/mature references checked for N233: pytest monkeypatch docs HTTP 200, Python unittest.mock docs HTTP 200, FastAPI testing docs HTTP 200. No external code copied."
+    "Official/mature references checked for N234: pytest assertion documentation HTTP 200 and W3C PROV overview HTTP 200. No external code copied."
   ],
   "next_authorized_local_actions": [
-    "Run json.tool on the goal-state, then run runtime lifecycle and CI visibility focused contracts if time permits.",
-    "Stage only tests/test_wiki_crud.py and the longrun goal-state file, run git diff --cached --check and git ls-files -ci --exclude-standard, then commit locally if checks pass.",
+    "Run json.tool on the goal-state, then run focused Knowledge Runtime and CI visibility contracts.",
+    "Stage only literature_assistant/core/routers/knowledge_router.py, tests/test_knowledge_router.py, and the longrun goal-state file; run git diff --cached --check and git ls-files -ci --exclude-standard, then commit locally if checks pass.",
     "Continue next Scholar AI local slice only after the required docs, git status, rollback checkpoint, and mature-reference search preflight.",
     "Live Knowledge Runtime actual-loading proof remains blocked unless configured credentials/runtime are available.",
     "Real RapidOCR/PaddleOCR/Remote OCR proof remains bounded by local/private runtime and explicit consent/credential availability."
@@ -10456,9 +10479,9 @@
     ]
   },
   "latest_slice": {
-    "id": "N233-import-to-wiki-runtime-metadata-rollback-audit",
-    "key": "n233_import_to_wiki_runtime_metadata_rollback_audit_slice",
-    "updated_at": "2026-06-27T14:07:00+08:00",
+    "id": "N234-knowledge-runtime-provider-endpoint-match-gate",
+    "key": "n234_knowledge_runtime_provider_endpoint_match_gate_slice",
+    "updated_at": "2026-06-27T14:25:00+08:00",
     "status": "proved"
   },
   "n151_ocr_health_mcp_visibility_slice": {
@@ -12224,25 +12247,25 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-27T14:07:00+08:00",
+    "updated_at": "2026-06-27T14:25:00+08:00",
     "status": "requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 234,
+    "requirements_total": 235,
     "requirement_status_counts": {
-      "proved": 234
+      "proved": 235
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N233-import-to-wiki-runtime-metadata-rollback-audit",
-    "latest_slice_id": "N233-import-to-wiki-runtime-metadata-rollback-audit",
+    "latest_requirement_id": "N234-knowledge-runtime-provider-endpoint-match-gate",
+    "latest_slice_id": "N234-knowledge-runtime-provider-endpoint-match-gate",
     "completion_blockers": [
       "actual_loading_gate_live_model_proof_auth_required_current_provider",
       "real_rapidocr_runtime_execution_or_explicit_out_of_scope",
       "remote_ocr_real_execution_requires_explicit_consent_and_credentials_or_out_of_scope"
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N233 closes import-to-wiki negative rollback coverage, but live Knowledge Runtime actual-loading, real RapidOCR runtime execution or explicit out-of-scope classification, and remote OCR real execution remain unresolved authorization/runtime gates."
+    "why_not_complete": "N234 closes a deterministic Knowledge Runtime actual-loading overclaim path by requiring provider endpoint matching, but live provider auth remains auth_required and real RapidOCR/remote OCR execution remain unresolved authorization/runtime gates."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -15798,5 +15821,59 @@
       "Continue next Scholar AI local slice only after the required docs, git status, rollback checkpoint, and mature-reference search preflight."
     ],
     "updated_at": "2026-06-27T14:07:00+08:00"
+  },
+  "n234_knowledge_runtime_provider_endpoint_match_gate_slice": {
+    "status": "proved",
+    "objective": "Harden the Knowledge Runtime actual-loading gate so provider preflight proof must match the same provider/baseHost/model endpoint recorded by the live context-receipt smoke artifact.",
+    "summary": "N234 keeps the existing provider-capabilities artifact and runtime-conformance endpoint, but prevents an OK live smoke artifact from being marked proved when provider tool-call capability was proven only for a different endpoint.",
+    "changed_files": [
+      "literature_assistant/core/routers/knowledge_router.py",
+      "tests/test_knowledge_router.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "rollback_checkpoints": [
+      {
+        "id": "20260627-141031-n234-goal-rollup-blocker-reconcile",
+        "path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260627-141031-n234-goal-rollup-blocker-reconcile",
+        "scope": "Git rollback checkpoint before N234 Knowledge Runtime provider endpoint-match gate edits."
+      }
+    ],
+    "mature_references_checked": [
+      {
+        "topic": "N234 focused assertion boundary",
+        "source": "pytest assertion documentation",
+        "url": "https://docs.pytest.org/en/stable/how-to/assert.html",
+        "status": "HTTP 200",
+        "checked_at": "2026-06-27T14:25:00+08:00",
+        "use_in_slice": "Used to keep the endpoint-match regression as a direct contract assertion. No external code copied."
+      },
+      {
+        "topic": "N234 provider provenance matching",
+        "source": "W3C PROV overview",
+        "url": "https://www.w3.org/TR/prov-overview/",
+        "status": "HTTP 200",
+        "checked_at": "2026-06-27T14:25:00+08:00",
+        "use_in_slice": "Used only as provenance framing: the provider capability entity must match the live smoke activity endpoint. No external code copied."
+      }
+    ],
+    "verification": [
+      ".\\.venv-1\\Scripts\\python.exe -m py_compile literature_assistant\\core\\routers\\knowledge_router.py tests\\test_knowledge_router.py -> passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_smoke_artifact tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_requires_auth tests\\test_knowledge_router.py::test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs -q -> 3 passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_knowledge_router.py -q -> 50 passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json -> passed."
+    ],
+    "contract_delta": {
+      "before": "A provider preflight could be considered proved if any provider/model endpoint had a tool_call_ok record.",
+      "after": "A contract-valid live smoke artifact proves actual-loading only when provider_preflight contains a tool_call_ok record for the same provider/baseHost/model endpoint.",
+      "boundary": "No live provider call, credential edit, remote upload, dependency install, deployment, push, tag, release, Zotero DB write, github/ modification, or copied external code."
+    },
+    "residual_risk": "The current runtime provider capability artifact still reports auth_required for hhl/free.hanhanapi.top/gpt-5.5, so live Knowledge Runtime actual-loading remains blocked until valid configured credentials and an authorized live smoke prove the same endpoint. Real RapidOCR runtime execution and remote OCR execution remain separate runtime/authorization gates.",
+    "next_actions": [
+      "Run the broader focused Knowledge Runtime/router/CI tests and JSON validation.",
+      "Stage only the N234 scoped files, run git diff --cached --check and git ls-files -ci --exclude-standard, then commit locally if checks pass.",
+      "Continue next Scholar AI local slice only after the required docs, git status, rollback checkpoint, and mature-reference search preflight."
+    ],
+    "updated_at": "2026-06-27T14:25:00+08:00"
   }
 }

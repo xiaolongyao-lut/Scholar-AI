@@ -1097,7 +1097,14 @@ def test_knowledge_runtime_conformance_marks_prompt_context_receipt_proved(
     assert body["summary"]["proved"] >= len(packages)
 
 
-def write_ok_live_smoke_artifact(path: Path, *, digest: str = "e" * 64) -> None:
+def write_ok_live_smoke_artifact(
+    path: Path,
+    *,
+    digest: str = "e" * 64,
+    provider: str = "hhl",
+    base_host: str = "free.hanhanapi.top",
+    model: str = "gpt-5.5",
+) -> None:
     """Write a minimal live context-receipt artifact that satisfies the contract."""
 
     path.write_text(
@@ -1111,8 +1118,9 @@ def write_ok_live_smoke_artifact(path: Path, *, digest: str = "e" * 64) -> None:
                     "Proves one real provider turn saw a Knowledge Runtime context receipt "
                     "through the SmartRead local-tool loop and returned the assembled_context_hash."
                 ),
-                "provider": "OpenAI",
-                "model": "gpt-test",
+                "provider": provider,
+                "baseHost": base_host,
+                "model": model,
                 "directReceipt": {
                     "assembledContextHash": digest,
                 },
@@ -1143,6 +1151,9 @@ def write_provider_capability_fixture(
     *,
     status: str,
     forced_tool_choice_ok: bool,
+    provider: str = "hhl",
+    base_url_host: str = "free.hanhanapi.top",
+    model: str = "gpt-5.5",
     ordinary_chat_ok: bool = True,
     failure_class: str = "",
     masked_error: str = "",
@@ -1155,9 +1166,9 @@ def write_provider_capability_fixture(
                 "records": {
                     "a" * 64: {
                         "fingerprint": "a" * 64,
-                        "provider": "hhl",
-                        "base_url_host": "free.hanhanapi.top",
-                        "model": "gpt-5.5",
+                        "provider": provider,
+                        "base_url_host": base_url_host,
+                        "model": model,
                         "status": status,
                         "ordinary_chat_ok": ordinary_chat_ok,
                         "forced_tool_choice_ok": forced_tool_choice_ok,
@@ -1212,6 +1223,8 @@ def test_knowledge_runtime_conformance_proves_actual_loading_only_from_ok_live_s
     assert gate["evidence"][0] == gate["artifact_ref"]
     assert any(item == f"assembledContextHash={'e' * 64}" for item in gate["evidence"])
     assert gate["provider_preflight"]["status"] == "proved"
+    assert any(item == "baseHost=free.hanhanapi.top" for item in gate["evidence"])
+    assert any(item == "provider_preflight_match=hhl/free.hanhanapi.top/gpt-5.5" for item in gate["evidence"])
 
 
 def test_knowledge_runtime_conformance_surfaces_provider_preflight_auth_boundary(
@@ -1311,6 +1324,45 @@ def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_prefligh
     assert "provider_preflight" in gate["evidence_scope"]
     assert gate["provider_preflight"]["status"] == "blocked"
     assert gate["provider_preflight"]["latest_status"] == "auth_required"
+
+
+def test_knowledge_runtime_conformance_blocks_ok_artifact_when_provider_preflight_endpoint_differs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Provider preflight must prove the same endpoint used by the live artifact."""
+
+    artifact = tmp_path / "live_api_chat_knowledge_context_receipt_smoke.summary.json"
+    provider_capabilities = tmp_path / "provider-capabilities.json"
+    write_ok_live_smoke_artifact(artifact)
+    write_provider_capability_fixture(
+        provider_capabilities,
+        status="tool_call_ok",
+        forced_tool_choice_ok=True,
+        provider="OpenAI",
+        base_url_host="api.openai.com",
+        model="gpt-test",
+    )
+    monkeypatch.setattr(knowledge_router, "output_path", lambda *parts: artifact)
+    monkeypatch.setattr(knowledge_router, "_provider_capabilities_path", lambda: provider_capabilities)
+
+    client = make_client(make_vault(tmp_path))
+    response = client.get("/api/knowledge/runtime-conformance")
+
+    assert response.status_code == 200
+    gate = response.json()["actual_loading_gate"]
+    assert gate["status"] == "blocked"
+    assert gate["verdict"] == "ok"
+    assert gate["artifact_schema_valid"] is True
+    assert gate["artifact_contract_valid"] is True
+    assert gate["provider_preflight"]["status"] == "proved"
+    assert "provider_preflight_endpoint_match" in gate["evidence_scope"]
+    assert gate["missing"] == [
+        "provider_preflight matching provider=hhl baseHost=free.hanhanapi.top model=gpt-5.5 with tool_call_ok"
+    ]
+    assert "provider forced-tool preflight is not proved for the same provider/baseHost/model endpoint" in (
+        gate["claim_boundary"]
+    )
 
 
 def test_knowledge_runtime_conformance_blocks_schema_invalid_live_smoke_artifact(
