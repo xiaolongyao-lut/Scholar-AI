@@ -76,6 +76,7 @@ type AgentWorkspaceGoalLifecycleBlocker = NonNullable<
   AgentWorkspaceStatus['workspace_state']['goal_state']['lifecycle_rollup']
 >['completion_blockers'][number];
 type AgentWorkspaceOcrEngine = AgentWorkspaceStatus['workspace_state']['ocr_runtime']['engines'][number];
+type AgentWorkspaceWikiDoctorState = AgentWorkspaceStatus['workspace_state']['wiki_doctor'];
 
 const KIND_LABELS: Record<string, string> = {
   markdown: 'Markdown',
@@ -1875,6 +1876,24 @@ function workspaceOcrEngineLabel(engine: AgentWorkspaceOcrEngine): string {
   return `${displayName} · ${readiness} · ${engine.available ? 'available' : 'unavailable'} · ${sanitizeInspectorText(engine.engine_type)}${network}`;
 }
 
+function workspaceWikiDoctorTone(wikiDoctor: AgentWorkspaceWikiDoctorState): StatusTone {
+  if (!wikiDoctor.available || wikiDoctor.error) {
+    return 'danger';
+  }
+  if (wikiDoctor.needs_replay || wikiDoctor.warning) {
+    return 'warning';
+  }
+  return 'success';
+}
+
+function workspaceWikiDoctorSummary(wikiDoctor: AgentWorkspaceWikiDoctorState): string {
+  if (!wikiDoctor.available) {
+    return `wiki doctor unavailable${wikiDoctor.error ? ` · ${sanitizeInspectorText(wikiDoctor.error)}` : ''}`;
+  }
+  const status = sanitizeInspectorText(wikiDoctor.status || 'unknown');
+  return `wiki doctor ${status} · sources ${wikiDoctor.source_count} · chunks ${wikiDoctor.chunk_count} · pending ${wikiDoctor.pending_source_count}/${wikiDoctor.pending_chunk_count}`;
+}
+
 function firstRecommendationMessage(healthCheck: AgentWorkflowHealthCheck | null): string {
   const recommendation = healthCheck?.recommendations?.find((item) => actionMessage(item));
   return actionMessage(recommendation)
@@ -3663,6 +3682,8 @@ export function WorkspaceStatePanel({
   const ocrRuntime = state.ocr_runtime;
   const visibleOcrEngines = ocrRuntime.engines.slice(0, 4);
   const ocrConfigEntries = Object.entries(ocrRuntime.engine_config).slice(0, 4);
+  const wikiDoctor = state.wiki_doctor;
+  const wikiDoctorActions = wikiDoctor.next_safe_local_actions ?? [];
   const allOpenRequirements = state.goal_state.open_requirements ?? [];
   const matchingOpenRequirements = allOpenRequirements.filter((item) => matchesOpenRequirementQuery(requirementQuery, item));
   const openRequirements = matchingOpenRequirements.slice(0, 5);
@@ -4066,6 +4087,61 @@ export function WorkspaceStatePanel({
               {ocrRuntime.next_safe_local_actions.length > 0 ? (
                 <p className="mt-1.5 break-words text-[11px] leading-4 text-foreground/55">
                   next {sanitizeInspectorText(ocrRuntime.next_safe_local_actions[0])}
+                </p>
+              ) : null}
+            </div>
+            <div
+              role="region"
+              aria-label="Wiki Doctor recovery"
+              className="min-w-0 rounded-md border border-outline-variant/35 bg-surface-lowest px-2 py-2 md:col-span-2"
+            >
+              <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                <h4 className="mr-auto font-label text-[11px] font-semibold text-foreground/45">Wiki Doctor</h4>
+                <StatusPill tone={workspaceWikiDoctorTone(wikiDoctor)}>
+                  wiki doctor {wikiDoctor.available ? 'visible' : 'missing'}
+                </StatusPill>
+                <StatusPill tone="neutral">read-only {String(wikiDoctor.read_only)}</StatusPill>
+                <StatusPill tone={wikiDoctor.needs_replay ? 'warning' : 'success'}>
+                  needs replay {String(wikiDoctor.needs_replay)}
+                </StatusPill>
+                <StatusPill tone={wikiDoctor.pending_source_count > 0 ? 'warning' : 'neutral'}>
+                  pending sources {wikiDoctor.pending_source_count}
+                </StatusPill>
+                <StatusPill tone={wikiDoctor.pending_chunk_count > 0 ? 'warning' : 'neutral'}>
+                  pending chunks {wikiDoctor.pending_chunk_count}
+                </StatusPill>
+              </div>
+              <p className="break-words text-[11px] leading-4 text-foreground/60">
+                {workspaceWikiDoctorSummary(wikiDoctor)}
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <StatusPill tone="neutral">sources {wikiDoctor.source_count}</StatusPill>
+                <StatusPill tone="neutral">chunks {wikiDoctor.chunk_count}</StatusPill>
+                <StatusPill tone="neutral">samples {wikiDoctor.sample_count}</StatusPill>
+                <StatusPill tone={wikiDoctor.action_count > 0 ? 'warning' : 'success'}>
+                  actions {wikiDoctor.action_count}
+                </StatusPill>
+                {wikiDoctor.registry_db_path ? (
+                  <StatusPill tone="neutral">{sanitizeInspectorText(wikiDoctor.registry_db_path)}</StatusPill>
+                ) : null}
+              </div>
+              {wikiDoctor.warning || wikiDoctor.error ? (
+                <div className="mt-1.5 grid gap-1">
+                  {wikiDoctor.warning ? (
+                    <p className="break-words rounded-md border border-outline-variant/25 bg-surface px-2 py-1 text-[11px] leading-4 text-foreground/60">
+                      warning {sanitizeInspectorText(wikiDoctor.warning)}
+                    </p>
+                  ) : null}
+                  {wikiDoctor.error ? (
+                    <p className="break-words rounded-md border border-danger/20 bg-danger/5 px-2 py-1 text-[11px] leading-4 text-danger">
+                      error {sanitizeInspectorText(wikiDoctor.error)}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              {wikiDoctorActions.length > 0 ? (
+                <p className="mt-1.5 break-words text-[11px] leading-4 text-foreground/55">
+                  next {sanitizeInspectorText(wikiDoctorActions[0])}
                 </p>
               ) : null}
             </div>

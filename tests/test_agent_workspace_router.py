@@ -14,6 +14,7 @@ if str(core_path) not in sys.path:
 
 import routers.agent_workspace_router as agent_workspace_router
 import python_adapter_server as server
+from wiki.source_registry import ChunkInput, SourceRecord, WikiRegistry
 
 
 def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, monkeypatch) -> None:
@@ -100,6 +101,36 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     monkeypatch.setattr(agent_workspace_router, "WORKSPACE_RUNTIME_STATE_ROOT", runtime_root)
     monkeypatch.setattr(agent_workspace_router, "WORKSPACE_OUTPUT_ROOT", output_root)
     monkeypatch.setattr(agent_workspace_router, "REPO_ROOT", tmp_path)
+    wiki_db_path = runtime_root / "wiki.db"
+    source_hash = "a" * 64
+    registry = WikiRegistry(wiki_db_path, mirror_to_source_vault=False)
+    registry.upsert_source(
+        SourceRecord(
+            source_id="markdown-source-backlog",
+            source_type="markdown",
+            title="Backlog Source",
+            source_hash=source_hash,
+            source_path=tmp_path / "source.md",
+        ),
+        now_iso="2026-06-28T02:00:00+00:00",
+    )
+    registry.register_chunks(
+        "markdown-source-backlog",
+        source_hash,
+        [
+            ChunkInput(
+                chunk_index=0,
+                text="Backlog source text should be visible only as counts.",
+                page=None,
+                section="Overview",
+                span_start=0,
+                span_end=52,
+            )
+        ],
+        now_iso="2026-06-28T02:00:00+00:00",
+    )
+    monkeypatch.setattr(agent_workspace_router, "wiki_enabled", lambda: True)
+    monkeypatch.setattr(agent_workspace_router, "wiki_runtime_db_path", lambda: wiki_db_path)
     monkeypatch.setattr(
         agent_workspace_router,
         "_read_git_workspace_state",
@@ -260,6 +291,25 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
         "remote_api: allow_remote_upload must be true",
     ]
     assert ocr_runtime["next_safe_local_actions"] == ["Inspect literature.ocr_engines before running OCR."]
+    wiki_doctor = payload["workspace_state"]["wiki_doctor"]
+    assert wiki_doctor["schema_version"] == "scholar_ai_wiki_doctor_state_v1"
+    assert wiki_doctor["available"] is True
+    assert wiki_doctor["read_only"] is True
+    assert wiki_doctor["status"] == "warning"
+    assert wiki_doctor["registry_db_path"] == "runtime_state/wiki.db"
+    assert wiki_doctor["source_count"] == 1
+    assert wiki_doctor["chunk_count"] == 1
+    assert wiki_doctor["pending_source_count"] == 1
+    assert wiki_doctor["pending_chunk_count"] == 1
+    assert wiki_doctor["needs_replay"] is True
+    assert wiki_doctor["source_status_counts"] == {"not_mirrored": 1}
+    assert wiki_doctor["chunk_status_counts"] == {"not_mirrored": 1}
+    assert wiki_doctor["sample_count"] == 2
+    assert wiki_doctor["action_count"] == 1
+    assert "Source Vault mirror backlog has 1 source rows and 1 chunk rows pending replay." == wiki_doctor["warning"]
+    assert wiki_doctor["next_safe_local_actions"] == [
+        "Read /api/wiki/doctor, then run an explicit local maintenance slice before WikiRegistry.replay_source_vault_mirror()."
+    ]
     goal_state = payload["workspace_state"]["goal_state"]
     assert goal_state["available"] is True
     assert goal_state["path"] == "docs/plans/longrun-goal-state-local.json"

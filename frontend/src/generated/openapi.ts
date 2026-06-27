@@ -8456,6 +8456,7 @@ export interface components {
              * @default scholar_ai_agent_workspace_state_v1
              */
             schema_version: string;
+            wiki_doctor: components["schemas"]["AgentWorkspaceWikiDoctorState"];
             /** Workspace Ready */
             workspace_ready: boolean;
         };
@@ -8479,6 +8480,80 @@ export interface components {
             /** Total Artifact Bytes */
             total_artifact_bytes: number;
             workspace_state: components["schemas"]["AgentWorkspaceState"];
+        };
+        /**
+         * AgentWorkspaceWikiDoctorState
+         * @description Read-only Wiki Doctor recovery summary for Source Vault mirror backlog.
+         */
+        AgentWorkspaceWikiDoctorState: {
+            /**
+             * Action Count
+             * @default 0
+             */
+            action_count: number;
+            /** Available */
+            available: boolean;
+            /**
+             * Chunk Count
+             * @default 0
+             */
+            chunk_count: number;
+            /** Chunk Status Counts */
+            chunk_status_counts?: {
+                [key: string]: number;
+            };
+            /** Error */
+            error?: string | null;
+            /**
+             * Needs Replay
+             * @default false
+             */
+            needs_replay: boolean;
+            /** Next Safe Local Actions */
+            next_safe_local_actions?: string[];
+            /**
+             * Pending Chunk Count
+             * @default 0
+             */
+            pending_chunk_count: number;
+            /**
+             * Pending Source Count
+             * @default 0
+             */
+            pending_source_count: number;
+            /**
+             * Read Only
+             * @default true
+             */
+            read_only: boolean;
+            /** Registry Db Path */
+            registry_db_path?: string | null;
+            /**
+             * Sample Count
+             * @default 0
+             */
+            sample_count: number;
+            /**
+             * Schema Version
+             * @default scholar_ai_wiki_doctor_state_v1
+             */
+            schema_version: string;
+            /**
+             * Source Count
+             * @default 0
+             */
+            source_count: number;
+            /** Source Status Counts */
+            source_status_counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Status
+             * @default unknown
+             */
+            status: string;
+            /** Warning */
+            warning?: string | null;
         };
         /**
          * ApplyFixesRequest

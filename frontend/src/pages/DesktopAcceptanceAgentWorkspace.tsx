@@ -192,6 +192,27 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     next_safe_local_actions: ['Inspect literature.ocr_health before claiming OCR execution readiness.'],
     error: null,
   },
+  wiki_doctor: {
+    schema_version: 'scholar_ai_wiki_doctor_state_v1',
+    available: true,
+    read_only: true,
+    status: 'warning',
+    registry_db_path: 'workspace_artifacts/runtime_state/wiki.db',
+    source_count: 1,
+    chunk_count: 1,
+    pending_source_count: 1,
+    pending_chunk_count: 1,
+    needs_replay: true,
+    source_status_counts: { not_mirrored: 1 },
+    chunk_status_counts: { not_mirrored: 1 },
+    sample_count: 2,
+    action_count: 1,
+    next_safe_local_actions: [
+      'Read /api/wiki/doctor, then run an explicit local maintenance slice before WikiRegistry.replay_source_vault_mirror().',
+    ],
+    warning: 'Source Vault mirror backlog has 1 source rows and 1 chunk rows pending replay.',
+    error: null,
+  },
   recovery_probes: [
     {
       label: 'Desktop Smoke Evidence',
@@ -201,6 +222,15 @@ const ACCEPTANCE_WORKSPACE_STATE = {
       identifier_hint: null,
       purpose: 'Recover latest source desktop screenshot and accessibility-tree artifact labels before claiming UI acceptance.',
       mcp_tool: 'literature.agent_workspace_status',
+    },
+    {
+      label: 'Wiki Doctor',
+      route: '/api/wiki/doctor',
+      read_only: true,
+      requires_identifier: false,
+      identifier_hint: null,
+      purpose: 'Recover WikiRegistry Source Vault mirror backlog before replaying or claiming KRT recovery closure.',
+      mcp_tool: 'literature.wiki_doctor',
     },
     {
       label: 'Workflow Passport',

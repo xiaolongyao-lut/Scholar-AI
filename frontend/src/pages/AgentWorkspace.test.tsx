@@ -234,6 +234,27 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       next_safe_local_actions: ['Inspect literature.ocr_engines before running OCR.'],
       error: null,
     },
+    wiki_doctor: {
+      schema_version: 'scholar_ai_wiki_doctor_state_v1' as const,
+      available: true,
+      read_only: true,
+      status: 'warning',
+      registry_db_path: 'workspace_artifacts/runtime_state/wiki.db',
+      source_count: 3,
+      chunk_count: 7,
+      pending_source_count: 1,
+      pending_chunk_count: 2,
+      needs_replay: true,
+      source_status_counts: { mirrored: 2, not_mirrored: 1 },
+      chunk_status_counts: { mirrored: 5, not_mirrored: 2 },
+      sample_count: 3,
+      action_count: 1,
+      next_safe_local_actions: [
+        'Read /api/wiki/doctor, then run an explicit local maintenance slice before WikiRegistry.replay_source_vault_mirror().',
+      ],
+      warning: 'Source Vault mirror backlog has 1 source rows and 2 chunk rows pending replay.',
+      error: null,
+    },
     recovery_probes: [
       {
         label: 'Desktop Smoke Evidence',
@@ -2637,6 +2658,29 @@ describe('AgentWorkspace', () => {
     expect(within(ocrRuntimeRegion).getByText('Mock Local OCR · ready · available · local')).toBeInTheDocument();
     expect(within(ocrRuntimeRegion).getByText('next Inspect literature.ocr_engines before running OCR.')).toBeInTheDocument();
     expect(within(ocrRuntimeRegion).queryByText('raw-secret-should-not-leak')).not.toBeInTheDocument();
+    const wikiDoctorRegion = within(workspaceStateRegion).getByRole('region', { name: 'Wiki Doctor recovery' });
+    expect(within(wikiDoctorRegion).getByText('Wiki Doctor')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('wiki doctor visible')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('read-only true')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('needs replay true')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('pending sources 1')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('pending chunks 2')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('wiki doctor warning · sources 3 · chunks 7 · pending 1/2')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('sources 3')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('chunks 7')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('samples 3')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('actions 1')).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).getByText('workspace_artifacts/runtime_state/wiki.db')).toBeInTheDocument();
+    expect(
+      within(wikiDoctorRegion).getByText('warning Source Vault mirror backlog has 1 source rows and 2 chunk rows pending replay.'),
+    ).toBeInTheDocument();
+    expect(
+      within(wikiDoctorRegion).getByText(
+        'next Read /api/wiki/doctor, then run an explicit local maintenance slice before WikiRegistry.replay_source_vault_mirror().',
+      ),
+    ).toBeInTheDocument();
+    expect(within(wikiDoctorRegion).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(wikiDoctorRegion).queryByText(/replay now/i)).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('Open Requirements')).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText(/B01-computer-use-accessibility-tree · incomplete/)).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByRole('region', { name: 'Requirement evidence drilldown' })).not.toBeInTheDocument();

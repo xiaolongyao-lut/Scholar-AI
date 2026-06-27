@@ -2981,6 +2981,9 @@
             "title": "Schema Version",
             "type": "string"
           },
+          "wiki_doctor": {
+            "$ref": "#/components/schemas/AgentWorkspaceWikiDoctorState"
+          },
           "workspace_ready": {
             "title": "Workspace Ready",
             "type": "boolean"
@@ -2995,7 +2998,8 @@
           "git",
           "goal_state",
           "desktop_smoke",
-          "ocr_runtime"
+          "ocr_runtime",
+          "wiki_doctor"
         ],
         "title": "AgentWorkspaceState",
         "type": "object"
@@ -3059,6 +3063,134 @@
           "workspace_state"
         ],
         "title": "AgentWorkspaceStatus",
+        "type": "object"
+      },
+      "AgentWorkspaceWikiDoctorState": {
+        "description": "Read-only Wiki Doctor recovery summary for Source Vault mirror backlog.",
+        "properties": {
+          "action_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Action Count",
+            "type": "integer"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "chunk_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "chunk_status_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Chunk Status Counts",
+            "type": "object"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "needs_replay": {
+            "default": false,
+            "title": "Needs Replay",
+            "type": "boolean"
+          },
+          "next_safe_local_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Safe Local Actions",
+            "type": "array"
+          },
+          "pending_chunk_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Pending Chunk Count",
+            "type": "integer"
+          },
+          "pending_source_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Pending Source Count",
+            "type": "integer"
+          },
+          "read_only": {
+            "default": true,
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "registry_db_path": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registry Db Path"
+          },
+          "sample_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": "scholar_ai_wiki_doctor_state_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Source Count",
+            "type": "integer"
+          },
+          "source_status_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Source Status Counts",
+            "type": "object"
+          },
+          "status": {
+            "default": "unknown",
+            "maxLength": 80,
+            "title": "Status",
+            "type": "string"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "AgentWorkspaceWikiDoctorState",
         "type": "object"
       },
       "ApplyFixesRequest": {

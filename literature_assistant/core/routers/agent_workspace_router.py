@@ -14,7 +14,15 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from pdf_backends import public_ocr_status
-from project_paths import REPO_ROOT, WORKSPACE_ARTIFACTS_ROOT, WORKSPACE_OUTPUT_ROOT, WORKSPACE_RUNTIME_STATE_ROOT
+from project_paths import (
+    REPO_ROOT,
+    WORKSPACE_ARTIFACTS_ROOT,
+    WORKSPACE_OUTPUT_ROOT,
+    WORKSPACE_RUNTIME_STATE_ROOT,
+    wiki_runtime_db_path,
+)
+from runtime_env import wiki_enabled
+from wiki.source_registry import WikiRegistry
 
 
 router = APIRouter(prefix="/api/agent-workspace", tags=["Agent Workspace"])
@@ -38,6 +46,7 @@ MAX_DESKTOP_SMOKE_TEXT_ITEMS = 3
 MAX_OCR_RUNTIME_ENGINES = 12
 MAX_OCR_RUNTIME_ACTIONS = 5
 MAX_OCR_RUNTIME_BLOCKERS = 5
+MAX_WIKI_DOCTOR_ACTIONS = 4
 AGENT_WORKSPACE_DESKTOP_ACCEPTANCE_PATH = "/__desktop_acceptance/agent-workspace"
 GIT_STATUS_TIMEOUT_SECONDS = 2.0
 OPEN_REQUIREMENT_STATUSES = frozenset(
@@ -399,6 +408,28 @@ class AgentWorkspaceOcrRuntimeState(BaseModel):
     error: str | None = Field(default=None, max_length=240)
 
 
+class AgentWorkspaceWikiDoctorState(BaseModel):
+    """Read-only Wiki Doctor recovery summary for Source Vault mirror backlog."""
+
+    schema_version: str = "scholar_ai_wiki_doctor_state_v1"
+    available: bool
+    read_only: bool = True
+    status: str = Field(default="unknown", max_length=80)
+    registry_db_path: str | None = Field(default=None, max_length=240)
+    source_count: int = Field(default=0, ge=0)
+    chunk_count: int = Field(default=0, ge=0)
+    pending_source_count: int = Field(default=0, ge=0)
+    pending_chunk_count: int = Field(default=0, ge=0)
+    needs_replay: bool = False
+    source_status_counts: dict[str, int] = Field(default_factory=dict)
+    chunk_status_counts: dict[str, int] = Field(default_factory=dict)
+    sample_count: int = Field(default=0, ge=0)
+    action_count: int = Field(default=0, ge=0)
+    next_safe_local_actions: list[str] = Field(default_factory=list)
+    warning: str | None = Field(default=None, max_length=240)
+    error: str | None = Field(default=None, max_length=240)
+
+
 class AgentWorkspaceState(BaseModel):
     """Machine-readable local workspace state for resumable agents."""
 
@@ -413,6 +444,7 @@ class AgentWorkspaceState(BaseModel):
     goal_state: AgentWorkspaceGoalState
     desktop_smoke: AgentWorkspaceDesktopSmokeState
     ocr_runtime: AgentWorkspaceOcrRuntimeState
+    wiki_doctor: AgentWorkspaceWikiDoctorState
     recovery_probes: list[AgentWorkspaceRecoveryProbe] = Field(default_factory=list)
     boundaries: list[str] = Field(default_factory=list)
     next_safe_local_actions: list[str] = Field(default_factory=list)
@@ -1061,6 +1093,66 @@ def _load_ocr_runtime_state() -> AgentWorkspaceOcrRuntimeState:
     )
 
 
+def _load_wiki_doctor_state() -> AgentWorkspaceWikiDoctorState:
+    """Load read-only Wiki registry mirror backlog without replaying rows."""
+
+    try:
+        if not wiki_enabled():
+            return AgentWorkspaceWikiDoctorState(
+                available=False,
+                status="disabled",
+                warning="Wiki runtime is disabled",
+                next_safe_local_actions=["Enable wiki runtime before relying on Wiki Doctor recovery state."],
+            )
+        registry_path = wiki_runtime_db_path()
+        path_label = _workspace_state_path(registry_path)
+        if not registry_path.exists():
+            return AgentWorkspaceWikiDoctorState(
+                available=False,
+                status="missing_registry",
+                registry_db_path=path_label,
+                warning="Wiki registry database is missing",
+                next_safe_local_actions=["Run /api/wiki/doctor before claiming WikiRegistry Source Vault mirror health."],
+            )
+        registry = WikiRegistry(registry_path)
+        backlog = registry.source_vault_mirror_backlog(sample_limit=MAX_WIKI_DOCTOR_ACTIONS)
+        needs_replay = backlog.needs_replay
+        return AgentWorkspaceWikiDoctorState(
+            available=True,
+            status="warning" if needs_replay else "ok",
+            registry_db_path=path_label,
+            source_count=backlog.source_count,
+            chunk_count=backlog.chunk_count,
+            pending_source_count=backlog.pending_source_count,
+            pending_chunk_count=backlog.pending_chunk_count,
+            needs_replay=needs_replay,
+            source_status_counts=backlog.source_status_counts,
+            chunk_status_counts=backlog.chunk_status_counts,
+            sample_count=len(backlog.samples),
+            action_count=1 if needs_replay else 0,
+            next_safe_local_actions=(
+                [
+                    "Read /api/wiki/doctor, then run an explicit local maintenance slice before WikiRegistry.replay_source_vault_mirror()."
+                ]
+                if needs_replay
+                else ["Keep Wiki Doctor and Source Vault Status in the recovery audit before KRT closure."]
+            ),
+            warning=(
+                f"Source Vault mirror backlog has {backlog.pending_source_count} source rows and "
+                f"{backlog.pending_chunk_count} chunk rows pending replay."
+                if needs_replay
+                else None
+            ),
+        )
+    except Exception as exc:
+        return AgentWorkspaceWikiDoctorState(
+            available=False,
+            status="error",
+            error=_redact_text(str(exc))[:240] or "Wiki Doctor state could not be loaded",
+            next_safe_local_actions=["Run /api/wiki/doctor directly and inspect the bounded error before KRT closure."],
+        )
+
+
 def _safe_goal_open_requirement(row: dict[str, Any]) -> AgentWorkspaceGoalOpenRequirement | None:
     """Return one bounded open requirement row when it is safe to expose."""
 
@@ -1431,6 +1523,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
     goal_state = _load_goal_state_summary()
     desktop_smoke = _load_desktop_smoke_state()
     ocr_runtime = _load_ocr_runtime_state()
+    wiki_doctor = _load_wiki_doctor_state()
     boundaries = [
         "Do not execute approvals, import-to-wiki writes, external uploads, push, tag, release, publish, or deploy from this status surface.",
         "Do not mutate Zotero databases or github/ reference repositories from Agent Workspace state.",
@@ -1451,6 +1544,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
         goal_state=goal_state,
         desktop_smoke=desktop_smoke,
         ocr_runtime=ocr_runtime,
+        wiki_doctor=wiki_doctor,
         recovery_probes=[
             _workspace_recovery_probe(
                 "Desktop Smoke Evidence",

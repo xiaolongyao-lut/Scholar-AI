@@ -198,6 +198,26 @@ export interface AgentWorkspaceOcrRuntimeState {
   error: string | null;
 }
 
+export interface AgentWorkspaceWikiDoctorState {
+  schema_version: 'scholar_ai_wiki_doctor_state_v1';
+  available: boolean;
+  read_only: boolean;
+  status: string;
+  registry_db_path: string | null;
+  source_count: number;
+  chunk_count: number;
+  pending_source_count: number;
+  pending_chunk_count: number;
+  needs_replay: boolean;
+  source_status_counts: Record<string, number>;
+  chunk_status_counts: Record<string, number>;
+  sample_count: number;
+  action_count: number;
+  next_safe_local_actions: string[];
+  warning: string | null;
+  error: string | null;
+}
+
 export interface AgentWorkspaceState {
   schema_version: 'scholar_ai_agent_workspace_state_v1';
   generated_at: string;
@@ -210,6 +230,7 @@ export interface AgentWorkspaceState {
   goal_state: AgentWorkspaceGoalState;
   desktop_smoke: AgentWorkspaceDesktopSmokeState;
   ocr_runtime: AgentWorkspaceOcrRuntimeState;
+  wiki_doctor: AgentWorkspaceWikiDoctorState;
   recovery_probes: AgentWorkspaceRecoveryProbe[];
   boundaries: string[];
   next_safe_local_actions: string[];
