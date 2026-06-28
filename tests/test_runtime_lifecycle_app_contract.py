@@ -724,3 +724,45 @@ def test_full_app_source_vault_real_file_enters_search_resource_and_context(
         assert receipt["metadata"]["proof"] == "n135_full_app_real_file"
     finally:
         app.dependency_overrides.pop(knowledge_router_module.get_source_vault, None)
+
+
+def test_research_action_lifecycle_resume_probes_resolve_to_registered_read_only_routes() -> None:
+    """build_research_action_lifecycle resume probes must be real read-only GET routes.
+
+    The lifecycle payload advertises cross-links to Workflow Passport, Evidence
+    Integrity Gate, Research Action Lifecycle, and Workflow Replay Index so a
+    resumed agent can recover context. Each advertised probe must resolve to a
+    registered full-app GET route, stay read-only, and avoid underscore aliases
+    that never resolve over HTTP.
+    """
+
+    runtime = WritingRuntime()
+    lifecycle = runtime.build_research_action_lifecycle()
+
+    probes = lifecycle["resume_probes"]
+    assert isinstance(probes, list) and probes, "lifecycle must advertise resume probes"
+    for probe in probes:
+        _assert_registered_read_only_probe(probe)
+
+    probe_paths = {_probe_path(probe) for probe in probes}
+    expected_probe_paths = {
+        "/runtime/research-action-lifecycle",
+        "/runtime/workflow-passport",
+        "/runtime/evidence-integrity-gate",
+        "/runtime/workflow-replay-index",
+    }
+    missing = expected_probe_paths - probe_paths
+    assert not missing, f"lifecycle resume probes missing cross-links: {sorted(missing)}"
+
+    # Negative self-check: an underscore alias that never resolves over HTTP must
+    # be rejected, proving the audit has teeth.
+    with pytest.raises(AssertionError):
+        _assert_registered_read_only_probe(
+            {
+                "label": "Read workflow passport (underscore alias)",
+                "method": "GET",
+                "endpoint": "/runtime/workflow_passport",
+                "url": "/runtime/workflow_passport",
+                "read_only": True,
+            }
+        )
