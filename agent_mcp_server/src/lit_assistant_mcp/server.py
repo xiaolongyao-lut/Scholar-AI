@@ -1628,7 +1628,17 @@ def create_mcp_server(
             query=query,
         )
 
-    @mcp.tool(name="workflow.create_plan", structured_output=True)
+    @mcp.tool(
+        name="workflow.create_plan",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Workflow Create Plan",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def workflow_create_plan(
         goal: str,
         suggested_steps: list[dict[str, Any]] | None = None,
@@ -1636,7 +1646,17 @@ def create_mcp_server(
         """Create a JSON workflow plan skeleton."""
         return workflow_impl.create_plan(goal=goal, suggested_steps=suggested_steps)
 
-    @mcp.tool(name="workflow.write_json_workflow", structured_output=True)
+    @mcp.tool(
+        name="workflow.write_json_workflow",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Workflow Write JSON",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def workflow_write_json_workflow(
         path: str,
         workflow: dict[str, Any],
@@ -1659,7 +1679,17 @@ def create_mcp_server(
         """Experimental Python sandbox entrypoint; disabled by default."""
         return experimental.run_python_sandbox(script=script)
 
-    @mcp.tool(name="artifact.write_markdown", structured_output=True)
+    @mcp.tool(
+        name="artifact.write_markdown",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Artifact Write Markdown",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def artifact_write_markdown(
         path: str,
         content: str,

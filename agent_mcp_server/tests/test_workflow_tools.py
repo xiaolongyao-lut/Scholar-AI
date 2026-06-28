@@ -79,6 +79,47 @@ def test_artifact_workspace_blocks_traversal_and_audit_read(tmp_path: Path) -> N
         workspace.read_text(".audit/2026-01-01.jsonl")
 
 
+def test_create_plan_returns_skeleton_without_artifact_write(tmp_path: Path) -> None:
+    """Plan skeleton generation must not create workflow artifacts."""
+    tools = WorkflowTools(
+        workspace=ArtifactWorkspace(repo_root=tmp_path),
+        tool_registry={"mock.ok": lambda: _ok({"ok": True})},
+    )
+
+    result = tools.create_plan("Check local workflow")
+
+    assert result["is_error"] is False
+    assert result["data"]["workflow"]["id"] == "check-local-workflow"
+    assert result["data"]["allowed_tools"] == ["mock.ok"]
+    assert tools.workspace.list_artifacts() == []
+
+
+def test_write_json_workflow_stays_bounded_and_controls_overwrite(tmp_path: Path) -> None:
+    """JSON workflow writes stay under the artifact workspace and gate replacement."""
+    tools = WorkflowTools(
+        workspace=ArtifactWorkspace(repo_root=tmp_path),
+        tool_registry={"mock.ok": lambda: _ok({"ok": True})},
+    )
+    workflow = {"id": "demo", "steps": [{"id": "ok", "tool": "mock.ok"}]}
+
+    result = tools.write_json_workflow("plans/demo.json", workflow, overwrite=False)
+
+    assert result["is_error"] is False
+    assert result["data"]["path"] == "plans/demo.json"
+    assert tools.workspace.read_json("plans/demo.json") == workflow
+    with pytest.raises(FileExistsError):
+        tools.write_json_workflow("plans/demo.json", {"id": "replacement"}, overwrite=False)
+    overwrite_result = tools.write_json_workflow(
+        "plans/demo.json",
+        {"id": "replacement"},
+        overwrite=True,
+    )
+    assert overwrite_result["is_error"] is False
+    assert tools.workspace.read_json("plans/demo.json") == {"id": "replacement"}
+    with pytest.raises(ValueError):
+        tools.write_json_workflow("../escape.json", workflow, overwrite=False)
+
+
 def test_workflow_run_can_write_markdown_artifact(tmp_path: Path) -> None:
     """JSON workflow can invoke registered tools and artifact writer only."""
     workspace = ArtifactWorkspace(repo_root=tmp_path)

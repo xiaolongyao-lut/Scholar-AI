@@ -44,6 +44,17 @@ def _assert_local_write_annotations(tool: object) -> None:
     assert annotations.openWorldHint is False
 
 
+def _assert_destructive_local_write_annotations(tool: object) -> None:
+    """Assert a tool declares local write operations that may replace artifacts."""
+
+    annotations = getattr(tool, "annotations", None)
+    assert annotations is not None
+    assert annotations.readOnlyHint is False
+    assert annotations.destructiveHint is True
+    assert annotations.idempotentHint is False
+    assert annotations.openWorldHint is False
+
+
 def test_server_registers_source_and_runtime_tools() -> None:
     """FastMCP server exposes source, runtime, and workflow-spine tool names."""
     server = create_mcp_server()
@@ -199,6 +210,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.agent_resource_read",
         "literature.agent_workspace_status",
         "literature.agent_workspace_requirement",
+        "workflow.create_plan",
         "artifact.read_artifact",
         "artifact.list_artifacts",
     ]
@@ -213,6 +225,8 @@ def test_server_registers_source_and_runtime_tools() -> None:
     assert wiki_import_annotations.idempotentHint is False
     assert wiki_import_annotations.openWorldHint is False
     _assert_local_write_annotations(tools_by_name["literature.behavior_eval_pack"])
+    _assert_destructive_local_write_annotations(tools_by_name["workflow.write_json_workflow"])
+    _assert_destructive_local_write_annotations(tools_by_name["artifact.write_markdown"])
 
 
 def test_server_instructions_point_to_capability_map_without_stale_count() -> None:

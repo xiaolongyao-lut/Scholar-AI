@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-29T03:55:00+08:00",
+  "updated_at": "2026-06-29T04:05:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -97,16 +97,24 @@
   ],
   "rollback": {
     "checkpoint_id": "n33-runtime-crosslink-audit-20260626_020647",
-    "latest_checkpoint_id": "manual-20260629_035100-n317-behavior-eval-local-write-annotations",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_035100-n317-behavior-eval-local-write-annotations",
-    "latest_goal_state_checkpoint_id": "manual-20260629_035100-n317-behavior-eval-local-write-annotations",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_035100-n317-behavior-eval-local-write-annotations",
-    "latest_checkpoint_caveat": "Rollback checkpoint for N317 behavior-eval MCP local-write annotation assertions; restore only with explicit user intent after inspecting current dirty worktree ownership.",
+    "latest_checkpoint_id": "manual-20260629_035918-n318-workflow-artifact-annotations",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_035918-n318-workflow-artifact-annotations",
+    "latest_goal_state_checkpoint_id": "manual-20260629_035918-n318-workflow-artifact-annotations",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_035918-n318-workflow-artifact-annotations",
+    "latest_checkpoint_caveat": "Rollback checkpoint for N318 workflow/artifact MCP annotation assertions and focused WorkflowTools tests; restore only with explicit user intent after inspecting current dirty worktree ownership.",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647"
   },
   "mature_references_checked": [
+    {
+      "topic": "N318 workflow/artifact MCP annotations",
+      "source": "MCP ToolAnnotations docs, SDK ToolAnnotations, WorkflowTools, ArtifactWorkspace, and workflow tests",
+      "url": "https://modelcontextprotocol.io/specification/2025-06-18/schema#toolannotations ; https://modelcontextprotocol.io/specification/2025-06-18/server/tools#tool-annotations ; local mcp.types.ToolAnnotations ; agent_mcp_server/src/lit_assistant_mcp/tools/workflow.py ; agent_mcp_server/src/lit_assistant_mcp/workflow_runtime/workspace.py ; agent_mcp_server/tests/test_workflow_tools.py",
+      "status": "Official MCP schema and tool-annotation guide returned 200; SDK fields and local workflow/artifact write contracts checked before N318.",
+      "checked_at": "2026-06-29T04:05:00+08:00",
+      "use_in_slice": "Used to classify workflow.create_plan as non-mutating closed-world plan generation and workflow.write_json_workflow/artifact.write_markdown as bounded local artifact writes with destructive replacement risk when overwrite=True."
+    },
     {
       "topic": "N317 behavior-eval MCP local-write annotations",
       "source": "MCP ToolAnnotations schema, MCP tools annotation guide, SDK ToolAnnotations type, RuntimeTools behavior_eval_pack wrapper, and deterministic behavior-eval tests",
@@ -9242,30 +9250,47 @@
         "N317 executes no live provider/model loading, no OCR, no Source Vault/WikiRegistry replay or write repair, no Zotero mutation, no github/ reference edits, no push/tag/release/deploy/upload, and preserves the live actual-loading blocker."
       ],
       "residual_risk": "This proves MCP registration metadata now reflects behavior_eval_pack as a bounded local-write deterministic eval surface. It does not make the tool read-only, does not run provider preflight or live model-context loading, clear the actual-loading blocker, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, clean squad/git objects, or prune Git loose objects."
+    },
+    {
+      "id": "N318-workflow-artifact-mcp-annotations",
+      "status": "proved",
+      "requirement": "Workflow/artifact MCP tools must advertise risk-accurate registration metadata: workflow.create_plan must declare a non-mutating read-only closed-world contract because it returns a skeleton without artifact writes, while workflow.write_json_workflow and artifact.write_markdown must declare non-read-only, destructive-capable, non-idempotent, closed-world contracts because they write bounded local workflow artifacts and can replace existing artifacts when overwrite=True.",
+      "evidence": [
+        "agent_mcp_server/src/lit_assistant_mcp/server.py registers workflow.create_plan with readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False.",
+        "agent_mcp_server/src/lit_assistant_mcp/server.py registers workflow.write_json_workflow and artifact.write_markdown with readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False.",
+        "agent_mcp_server/tests/test_server.py includes workflow.create_plan in read_only_tool_names and asserts destructive local write annotations for workflow.write_json_workflow and artifact.write_markdown.",
+        "agent_mcp_server/tests/test_workflow_tools.py::test_create_plan_returns_skeleton_without_artifact_write proves create_plan returns a deterministic skeleton and leaves ArtifactWorkspace.list_artifacts empty.",
+        "agent_mcp_server/tests/test_workflow_tools.py::test_write_json_workflow_stays_bounded_and_controls_overwrite proves JSON workflow writes stay under the artifact workspace, refuse replacement without overwrite=True, allow replacement with overwrite=True, and reject traversal.",
+        "Focused registration run: .venv-1 pytest agent_mcp_server/tests/test_server.py -> 3 passed.",
+        "Focused workflow run: .venv-1 pytest four workflow/artifact selectors -> 4 passed.",
+        "Goal-state visibility run: .venv-1 pytest three test_ci_visibility_contract selectors -> 3 passed.",
+        "N318 executes no live provider/model loading, no OCR, no Source Vault/WikiRegistry replay or write repair, no Zotero mutation, no github/ reference edits, no push/tag/release/deploy/upload, and preserves the live actual-loading blocker."
+      ],
+      "residual_risk": "This proves MCP registration metadata now reflects workflow.create_plan as non-mutating plan generation and workflow.write_json_workflow/artifact.write_markdown as bounded local artifact writes with replacement risk. It does not annotate workflow.run_json_workflow or workflow.run_python_sandbox, execute live provider/model loading, clear the actual-loading blocker, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, clean squad/git objects, or prune Git loose objects."
     }
   ],
   "changed_files_for_this_slice": [
     "agent_mcp_server/src/lit_assistant_mcp/server.py",
     "agent_mcp_server/tests/test_server.py",
+    "agent_mcp_server/tests/test_workflow_tools.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, docs/plans/autonomous-execution-planning-playbook.md, and repo-onboarding SKILL.md before N317.",
-    "git status --short --branch -> main...origin/main [ahead 146] clean before N317 edits; N316 already committed as latest slice.",
-    "Created rollback snapshot .rollback_snapshots/manual-20260629_035100-n317-behavior-eval-local-write-annotations containing server.py, test_server.py, and the longrun goal-state JSON before N317 edits.",
-    "Official/mature references checked before implementation: MCP 2025-06-18 ToolAnnotations schema and tool-annotation guide returned 200, installed mcp.types.ToolAnnotations exposes destructiveHint/idempotentHint/openWorldHint/readOnlyHint/title, and RuntimeTools.behavior_eval_pack plus tests prove default write_record=True persists a local workspace_artifacts run record while write_record=False remains backend-free.",
+    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, docs/plans/autonomous-execution-planning-playbook.md, and repo-onboarding SKILL.md before N318.",
+    "git status --short --branch -> main...origin/main [ahead 147] clean before N318 edits; N317 already committed as latest slice.",
+    "Created rollback snapshot .rollback_snapshots/manual-20260629_035918-n318-workflow-artifact-annotations containing server.py, test_server.py, test_workflow_tools.py, and the longrun goal-state JSON before N318 edits.",
+    "Official/mature references checked before implementation: MCP 2025-06-18 ToolAnnotations schema and tool-annotation guide returned 200, installed mcp.types.ToolAnnotations exposes destructiveHint/idempotentHint/openWorldHint/readOnlyHint/title, and WorkflowTools/ArtifactWorkspace tests prove create_plan does not create artifacts while JSON and Markdown writers stay under workspace_artifacts/agent_mcp_workflows and gate overwrite replacement.",
     ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py -q -> 3 passed.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py::test_behavior_eval_pack_runs_builtin_canaries_without_backend agent_mcp_server\\tests\\test_runtime_tools.py::test_behavior_eval_pack_persists_local_run_record agent_mcp_server\\tests\\test_runtime_tools.py::test_behavior_eval_pack_accepts_safe_observations agent_mcp_server\\tests\\test_runtime_tools.py::test_behavior_eval_pack_flags_observation_red_flags_and_redacts agent_mcp_server\\tests\\test_runtime_tools.py::test_behavior_eval_pack_rejects_unbounded_observation_payload -q -> 5 passed.",
-    ".\\.venv-1\\Scripts\\python.exe -m compileall -q agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_server.py -> passed.",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N317 goal-state update.",
-    "Initial Agent Workspace projection check failed because one next_authorized_local_actions entry exceeded the bounded summary text; shortened the action text and recorded a playbook upgrade proposal in this N317 goal-state record.",
-    "Second Agent Workspace projection check required the fixed deterministic local recovery/proof hardening phrase; revised the bounded next-action text to preserve that machine-visible contract.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N317 goal-state update; confirms top-level changed_files_for_this_slice and verification_commands match the latest slice record.",
-    "N317 only adds deterministic MCP ToolAnnotations for behavior-eval registration metadata; it records that the tool may write a local workspace_artifacts run record by default, calls no backend or external service, executes no live provider/model loading, runs no OCR, writes no WikiRegistry/Source Vault runtime store, mutates no Zotero DB, and does not push, tag, release, deploy, upload, clean squad/git objects, or edit github/ references."
+    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_workflow_tools.py::test_create_plan_returns_skeleton_without_artifact_write agent_mcp_server\\tests\\test_workflow_tools.py::test_write_json_workflow_stays_bounded_and_controls_overwrite agent_mcp_server\\tests\\test_workflow_tools.py::test_workflow_run_can_write_markdown_artifact agent_mcp_server\\tests\\test_workflow_tools.py::test_workflow_tools_audit_redacts_secret_preview -q -> 4 passed.",
+    ".\\.venv-1\\Scripts\\python.exe -m compileall -q agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_server.py agent_mcp_server\\tests\\test_workflow_tools.py -> passed.",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N318 goal-state update.",
+    "Initial Agent Workspace projection check failed because N318 mature_references_checked[0].source exceeded the bounded 160-character summary; shortened the source field and kept full reference details in url/use_in_slice.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N318 goal-state update; confirms top-level changed_files_for_this_slice and verification_commands match the latest slice record.",
+    "N318 only adds deterministic MCP ToolAnnotations for workflow plan generation and local artifact writer registration metadata plus focused local workflow tests; it runs no workflow execution tool beyond existing deterministic unit coverage, executes no live provider/model loading, runs no OCR, writes no WikiRegistry/Source Vault runtime store, mutates no Zotero DB, and does not push, tag, release, deploy, upload, clean squad/git objects, or edit github/ references."
   ],
   "next_authorized_local_actions": [
     "Continue deterministic local recovery/proof hardening after required preflight.",
-    "Next likely slice: classify remaining unannotated MCP tools and add precise ToolAnnotations with tests.",
+    "Next likely slice: classify remaining unannotated export, job-mutation, OCR, and workflow execution tools.",
     "Keep live model loading, OCR execution, Source Vault/WikiRegistry writes, push, tag, release, deploy, and upload approval-gated."
   ],
   "stop_boundary": [
@@ -9373,12 +9398,12 @@
     "updated_at": "2026-06-28T20:55:00+08:00"
   },
   "completion_claim": {
-    "this_slice": "N317 proves behavior-eval MCP advertises bounded local-write, non-destructive, non-idempotent, closed-world ToolAnnotations.",
+    "this_slice": "N318 proves workflow/artifact MCP tools advertise read-only plan generation and bounded local write/replacement ToolAnnotations.",
     "full_goal": "not_complete: deterministic local proof is advanced, but live provider/model actual-loading remains authorization gated.",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N317 proves behavior-eval MCP local-write annotation parity only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated.",
-    "updated_at": "2026-06-29T03:55:00+08:00",
-    "latest_slice_id": "N317-behavior-eval-local-write-annotations"
+    "why_not_complete": "N318 proves workflow/artifact MCP annotation parity only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated.",
+    "updated_at": "2026-06-29T04:05:00+08:00",
+    "latest_slice_id": "N318-workflow-artifact-mcp-annotations"
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -13303,7 +13328,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N317-behavior-eval-local-write-annotations",
+  "latest_slice": "N318-workflow-artifact-mcp-annotations",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -15067,30 +15092,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-29T03:55:00+08:00",
+    "updated_at": "2026-06-29T04:05:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 318,
+    "requirements_total": 319,
     "requirement_status_counts": {
-      "proved": 318
+      "proved": 319
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N317-behavior-eval-local-write-annotations",
-    "latest_slice_id": "N317-behavior-eval-local-write-annotations",
+    "latest_requirement_id": "N318-workflow-artifact-mcp-annotations",
+    "latest_slice_id": "N318-workflow-artifact-mcp-annotations",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N317 proves behavior-eval MCP local-write annotation parity only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N317 adds and passes deterministic MCP registration tests proving behavior_eval_pack advertises a bounded local-write, non-destructive, non-idempotent, closed-world contract, while running no live model loading."
+        "current_boundary": "N318 proves workflow/artifact MCP annotation parity only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N318 adds and passes deterministic MCP registration and WorkflowTools tests proving workflow.create_plan is non-mutating while JSON/Markdown artifact writers advertise bounded local destructive-capable write contracts, while running no live model loading."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N317 proves behavior-eval MCP local-write annotation parity only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+    "why_not_complete": "N318 proves workflow/artifact MCP annotation parity only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -23005,5 +23030,48 @@
     ],
     "updated_at": "2026-06-29T03:55:00+08:00",
     "playbook_upgrade_proposal": "Add a future playbook note that goal-state next_authorized_local_actions must stay within Agent Workspace bounded-text limits before running CI visibility projection tests."
+  },
+  "n318_workflow_artifact_mcp_annotations_slice": {
+    "id": "N318-workflow-artifact-mcp-annotations",
+    "status": "proved",
+    "summary": "N318 classifies workflow plan generation and local artifact writer MCP tools with explicit ToolAnnotations. workflow.create_plan now advertises a read-only closed-world contract; workflow.write_json_workflow and artifact.write_markdown now advertise local destructive-capable, non-idempotent, closed-world write contracts because overwrite=True can replace bounded workspace artifacts.",
+    "rollback_snapshot_id": "manual-20260629_035918-n318-workflow-artifact-annotations",
+    "rollback_snapshot_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_035918-n318-workflow-artifact-annotations",
+    "mature_references_checked": [
+      {
+        "topic": "N318 workflow/artifact MCP annotations",
+        "source": "MCP ToolAnnotations docs, SDK ToolAnnotations, WorkflowTools, ArtifactWorkspace, and workflow tests",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/schema#toolannotations ; https://modelcontextprotocol.io/specification/2025-06-18/server/tools#tool-annotations ; local mcp.types.ToolAnnotations ; agent_mcp_server/src/lit_assistant_mcp/tools/workflow.py ; agent_mcp_server/src/lit_assistant_mcp/workflow_runtime/workspace.py ; agent_mcp_server/tests/test_workflow_tools.py",
+        "status": "Official MCP schema and tool-annotation guide returned 200; SDK fields and local workflow/artifact write contracts checked before N318.",
+        "checked_at": "2026-06-29T04:05:00+08:00",
+        "use_in_slice": "Used to classify workflow.create_plan as non-mutating closed-world plan generation and workflow.write_json_workflow/artifact.write_markdown as bounded local artifact writes with destructive replacement risk when overwrite=True."
+      }
+    ],
+    "changed_files": [
+      "agent_mcp_server/src/lit_assistant_mcp/server.py",
+      "agent_mcp_server/tests/test_server.py",
+      "agent_mcp_server/tests/test_workflow_tools.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, docs/plans/autonomous-execution-planning-playbook.md, and repo-onboarding SKILL.md before N318.",
+      "git status --short --branch -> main...origin/main [ahead 147] clean before N318 edits; N317 already committed as latest slice.",
+      "Created rollback snapshot .rollback_snapshots/manual-20260629_035918-n318-workflow-artifact-annotations containing server.py, test_server.py, test_workflow_tools.py, and the longrun goal-state JSON before N318 edits.",
+      "Official/mature references checked before implementation: MCP 2025-06-18 ToolAnnotations schema and tool-annotation guide returned 200, installed mcp.types.ToolAnnotations exposes destructiveHint/idempotentHint/openWorldHint/readOnlyHint/title, and WorkflowTools/ArtifactWorkspace tests prove create_plan does not create artifacts while JSON and Markdown writers stay under workspace_artifacts/agent_mcp_workflows and gate overwrite replacement.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py -q -> 3 passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_workflow_tools.py::test_create_plan_returns_skeleton_without_artifact_write agent_mcp_server\\tests\\test_workflow_tools.py::test_write_json_workflow_stays_bounded_and_controls_overwrite agent_mcp_server\\tests\\test_workflow_tools.py::test_workflow_run_can_write_markdown_artifact agent_mcp_server\\tests\\test_workflow_tools.py::test_workflow_tools_audit_redacts_secret_preview -q -> 4 passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_server.py agent_mcp_server\\tests\\test_workflow_tools.py -> passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N318 goal-state update.",
+      "Initial Agent Workspace projection check failed because N318 mature_references_checked[0].source exceeded the bounded 160-character summary; shortened the source field and kept full reference details in url/use_in_slice.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N318 goal-state update; confirms top-level changed_files_for_this_slice and verification_commands match the latest slice record.",
+      "N318 only adds deterministic MCP ToolAnnotations for workflow plan generation and local artifact writer registration metadata plus focused local workflow tests; it runs no workflow execution tool beyond existing deterministic unit coverage, executes no live provider/model loading, runs no OCR, writes no WikiRegistry/Source Vault runtime store, mutates no Zotero DB, and does not push, tag, release, deploy, upload, clean squad/git objects, or edit github/ references."
+    ],
+    "residual_risk": "This proves MCP registration metadata now reflects workflow.create_plan as non-mutating plan generation and workflow.write_json_workflow/artifact.write_markdown as bounded local artifact writes with replacement risk. It does not annotate workflow.run_json_workflow or workflow.run_python_sandbox, execute live provider/model loading, clear the actual-loading blocker, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, clean squad/git objects, or prune Git loose objects.",
+    "next_authorized_local_actions": [
+      "Continue deterministic local recovery/proof hardening after required preflight.",
+      "Next likely slice: classify remaining unannotated export, job-mutation, OCR, and workflow execution tools.",
+      "Keep live model loading, OCR execution, Source Vault/WikiRegistry writes, push, tag, release, deploy, and upload approval-gated."
+    ],
+    "updated_at": "2026-06-29T04:05:00+08:00"
   }
 }
