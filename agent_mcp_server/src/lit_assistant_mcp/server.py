@@ -1716,7 +1716,17 @@ def create_mcp_server(
         """Fail a runtime-visible agent request job."""
         return runtime.agent_fail(request_id=request_id, error=error)
 
-    @mcp.tool(name="literature.ocr_material", structured_output=True)
+    @mcp.tool(
+        name="literature.ocr_material",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="OCR Material",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_ocr_material(
         material_id: str,
         pages: list[int] | None = None,

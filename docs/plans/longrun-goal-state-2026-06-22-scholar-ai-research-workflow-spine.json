@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-29T04:55:32+08:00",
+  "updated_at": "2026-06-29T05:03:30+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -97,16 +97,24 @@
   ],
   "rollback": {
     "checkpoint_id": "n33-runtime-crosslink-audit-20260626_020647",
-    "latest_checkpoint_id": "manual-20260629_045411-n325-export-project-pack-mcp-annotation",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_045411-n325-export-project-pack-mcp-annotation",
-    "latest_goal_state_checkpoint_id": "manual-20260629_045411-n325-export-project-pack-mcp-annotation",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_045411-n325-export-project-pack-mcp-annotation",
-    "latest_checkpoint_caveat": "Rollback checkpoint for N325 export-project-pack MCP annotation; restore only with explicit user intent after inspecting current dirty worktree ownership.",
+    "latest_checkpoint_id": "manual-20260629_050154-n326-ocr-material-mcp-annotation",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_050154-n326-ocr-material-mcp-annotation",
+    "latest_goal_state_checkpoint_id": "manual-20260629_050154-n326-ocr-material-mcp-annotation",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_050154-n326-ocr-material-mcp-annotation",
+    "latest_checkpoint_caveat": "Rollback checkpoint for N326 ocr-material MCP annotation; restore only with explicit user intent after inspecting current dirty worktree ownership.",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647"
   },
   "mature_references_checked": [
+    {
+      "topic": "N326 ocr-material MCP annotation",
+      "source": "MCP ToolAnnotations docs, SDK ToolAnnotations, ExperimentalTools ocr_material implementation, and deterministic experimental tool tests",
+      "url": "https://modelcontextprotocol.io/specification/2025-06-18/schema#toolannotations ; https://modelcontextprotocol.io/specification/2025-06-18/server/tools#tool-annotations ; local mcp.types.ToolAnnotations ; agent_mcp_server/src/lit_assistant_mcp/tools/experimental.py ; agent_mcp_server/tests/test_experimental_tools.py",
+      "status": "Official MCP server ToolAnnotations docs returned 200; SDK fields and local ocr_material artifact-write/OCR-boundary contract checked before N326.",
+      "checked_at": "2026-06-29T05:03:30+08:00",
+      "use_in_slice": "Used to annotate literature.ocr_material as a disabled-by-default, non-read-only, destructive-capable, non-idempotent, closed-world local artifact/OCR preparation surface because it reads backend-served material bytes and writes redacted OCR artifacts with overwrite enabled when explicitly enabled."
+    },
     {
       "topic": "N325 export-project-pack MCP annotation",
       "source": "MCP ToolAnnotations docs, SDK ToolAnnotations, ExperimentalTools export_project_pack implementation, and deterministic experimental tool tests",
@@ -9433,6 +9441,22 @@
         "N325 goal-state CI visibility selectors passed after update, proving latest_slice, changed_files_for_this_slice, verification_commands, and goal_lifecycle_rollup are synchronized with this requirement row."
       ],
       "residual_risk": "This proves export_project_pack MCP registration metadata and deterministic fixture behavior only. It does not export a real user project, run live provider/model calls, run OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or clean squad/git objects."
+    },
+    {
+      "id": "N326-ocr-material-mcp-annotation",
+      "status": "proved",
+      "requirement": "The literature.ocr_material MCP tool must advertise risk-accurate registration metadata: it is not read-only, not idempotent, destructive-capable, and closed-world because the disabled-by-default experimental tool reads backend-served material bytes and writes redacted OCR/text artifacts under the local agent workflow workspace with overwrite enabled when explicitly enabled.",
+      "evidence": [
+        "agent_mcp_server/src/lit_assistant_mcp/server.py registers literature.ocr_material with ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False).",
+        "agent_mcp_server/tests/test_server.py::test_server_registers_source_and_runtime_tools asserts literature.ocr_material satisfies the destructive local-write annotation helper.",
+        "agent_mcp_server/src/lit_assistant_mcp/tools/experimental.py::ExperimentalTools.ocr_material is disabled by default, reads material bytes through RuntimeTools.get_material_file_base64(), redacts output, and writes experimental/ocr-* artifacts with overwrite=True when enabled.",
+        "agent_mcp_server/tests/test_experimental_tools.py::test_experimental_tools_disabled_by_default proves literature.ocr_material is blocked unless experimental tools are explicitly enabled.",
+        "agent_mcp_server/tests/test_experimental_tools.py::test_ocr_material_text_file_writes_redacted_artifact proves the enabled deterministic text-file fixture writes a redacted local artifact without running live provider/model calls or remote OCR.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py -q -> 3 passed.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_experimental_tools.py::test_experimental_tools_disabled_by_default agent_mcp_server\\tests\\test_experimental_tools.py::test_ocr_material_text_file_writes_redacted_artifact -q -> 2 passed.",
+        "N326 goal-state CI visibility selectors passed after update, proving latest_slice, changed_files_for_this_slice, verification_commands, and goal_lifecycle_rollup are synchronized with this requirement row."
+      ],
+      "residual_risk": "This proves ocr_material MCP registration metadata and deterministic text-file fixture behavior only. It does not run local OCR over PDF/image inputs, remote OCR, live provider/model calls, real user project export, WikiRegistry/Source Vault runtime writes, Zotero DB mutation, github/ reference edits, upload, push, tag, release, deploy, or squad/git cleanup."
     }
   ],
   "changed_files_for_this_slice": [
@@ -9441,19 +9465,17 @@
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N325.",
-    "git status --short --branch -> main...origin/main [ahead 154] clean before N325 edits; N324 already committed as latest slice.",
-    "Created rollback snapshot .rollback_snapshots/manual-20260629_045411-n325-export-project-pack-mcp-annotation containing server.py, test_server.py, test_experimental_tools.py, tests/test_ci_visibility_contract.py, and the longrun goal-state JSON before N325 edits.",
-    "Created rollback snapshot .rollback_snapshots/manual-20260629_045833-n325-verification-record-update containing the dirty N325 server.py, test_server.py, and longrun goal-state JSON before replacing pending verification records.",
-    "Official/mature references checked before implementation: MCP 2025-06-18 ToolAnnotations schema returned 200; installed mcp.types.ToolAnnotations exposes title/readOnlyHint/destructiveHint/idempotentHint/openWorldHint; ExperimentalTools.export_project_pack is disabled by default and, when enabled, reads project materials, optionally adds a redacted search preview, and writes experimental/project-pack-*.json through ArtifactWorkspace.write_json(..., overwrite=True).",
-    "Official reference recheck before N325 verification record update: Invoke-WebRequest https://modelcontextprotocol.io/specification/2025-06-18/schema#toolannotations -> MCP ToolAnnotations schema status: 200.",
+    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N326.",
+    "git status --short --branch -> main...origin/main [ahead 155] clean before N326 edits; N325 already committed as latest slice.",
+    "Created rollback snapshot .rollback_snapshots/manual-20260629_050154-n326-ocr-material-mcp-annotation containing server.py, test_server.py, test_experimental_tools.py, tests/test_ci_visibility_contract.py, and the longrun goal-state JSON before N326 edits.",
+    "Official/mature references checked before implementation: MCP 2025-06-18 ToolAnnotations server docs returned 200; installed mcp.types.ToolAnnotations fields were already verified in the active MCP annotation convergence run; ExperimentalTools.ocr_material is disabled by default and, when enabled, reads backend-served material bytes, redacts output, and writes experimental/ocr-* artifacts through ArtifactWorkspace.write_json(..., overwrite=True).",
     ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py -q -> 3 passed.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_experimental_tools.py::test_experimental_tools_disabled_by_default agent_mcp_server\\tests\\test_experimental_tools.py::test_export_project_pack_writes_redacted_artifact_when_enabled -q -> 2 passed.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_experimental_tools.py::test_experimental_tools_disabled_by_default agent_mcp_server\\tests\\test_experimental_tools.py::test_ocr_material_text_file_writes_redacted_artifact -q -> 2 passed.",
     ".\\.venv-1\\Scripts\\python.exe -m compileall -q agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_server.py -> passed.",
     ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N325 goal-state update; confirms top-level changed_files_for_this_slice and verification_commands match the latest slice record.",
-    "Unannotated MCP tool audit after N325 -> 5 tools remain without annotations: literature.ocr_material, literature.prepare_visual_review, literature.translate_pack, workflow.run_json_workflow, workflow.run_python_sandbox; literature.export_project_pack is no longer in the unannotated set.",
-    "N325 only adds deterministic MCP ToolAnnotations for disabled-by-default local project-pack export registration metadata plus focused local tests; it does not execute real project export outside fixtures, run live provider/model loading, run OCR, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, or push, tag, release, deploy, upload, clean squad/git objects, or edit github/ references."
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N326 goal-state update; confirms top-level changed_files_for_this_slice and verification_commands match the latest slice record.",
+    "Unannotated MCP tool audit after N326 -> 4 tools remain without annotations: literature.prepare_visual_review, literature.translate_pack, workflow.run_json_workflow, workflow.run_python_sandbox; literature.ocr_material is no longer in the unannotated set.",
+    "N326 only adds deterministic MCP ToolAnnotations for disabled-by-default local OCR artifact registration metadata plus focused local tests; it does not execute local OCR over PDF/image inputs, remote OCR, real project export, live provider/model loading, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, or push, tag, release, deploy, upload, clean squad/git objects, or edit github/ references."
   ],
   "next_authorized_local_actions": [
     "Continue deterministic local recovery/proof hardening after required preflight.",
@@ -9565,12 +9587,12 @@
     "updated_at": "2026-06-28T20:55:00+08:00"
   },
   "completion_claim": {
-    "this_slice": "N325 proves export_project_pack advertises disabled-by-default destructive-capable local artifact export ToolAnnotations while leaving real project export out of scope.",
+    "this_slice": "N326 proves ocr_material advertises disabled-by-default destructive-capable local OCR artifact ToolAnnotations while leaving PDF/image OCR execution out of scope.",
     "full_goal": "not_complete: deterministic local proof is advanced, but live provider/model actual-loading remains authorization gated.",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N325 proves export_project_pack MCP annotation parity only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution, real project export, PDF rendering over real user files, real outline generation through a live provider, real figure materialization, WikiRegistry replay/write repair, and Zotero DB mutation remain separately explicit-authority gated.",
-    "updated_at": "2026-06-29T04:55:32+08:00",
-    "latest_slice_id": "N325-export-project-pack-mcp-annotation"
+    "why_not_complete": "N326 proves ocr_material MCP annotation parity only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution over PDF/image inputs, real project export, PDF rendering over real user files, real outline generation through a live provider, real figure materialization, WikiRegistry replay/write repair, and Zotero DB mutation remain separately explicit-authority gated.",
+    "updated_at": "2026-06-29T05:03:30+08:00",
+    "latest_slice_id": "N326-ocr-material-mcp-annotation"
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -13495,7 +13517,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N325-export-project-pack-mcp-annotation",
+  "latest_slice": "N326-ocr-material-mcp-annotation",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -15259,30 +15281,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-29T04:55:32+08:00",
+    "updated_at": "2026-06-29T05:03:30+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 326,
+    "requirements_total": 327,
     "requirement_status_counts": {
-      "proved": 326
+      "proved": 327
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N325-export-project-pack-mcp-annotation",
-    "latest_slice_id": "N325-export-project-pack-mcp-annotation",
+    "latest_requirement_id": "N326-ocr-material-mcp-annotation",
+    "latest_slice_id": "N326-ocr-material-mcp-annotation",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N325 proves export_project_pack MCP annotation parity only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N325 adds deterministic MCP registration and experimental-tool fixture tests proving export_project_pack is a disabled-by-default, destructive-capable, closed-world local artifact export, while running no live model loading and exporting no real user project."
+        "current_boundary": "N326 proves ocr_material MCP annotation parity only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N326 adds deterministic MCP registration and experimental-tool fixture tests proving ocr_material is a disabled-by-default, destructive-capable, closed-world local OCR artifact surface, while running no live model loading and no PDF/image OCR execution."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N325 proves export_project_pack MCP annotation parity only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution, real project export, PDF rendering over real user files, real outline generation through a live provider, real figure materialization, WikiRegistry replay/write repair, and Zotero DB mutation remain separately explicit-authority gated."
+    "why_not_complete": "N326 proves ocr_material MCP annotation parity only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution over PDF/image inputs, real project export, PDF rendering over real user files, real outline generation through a live provider, real figure materialization, WikiRegistry replay/write repair, and Zotero DB mutation remain separately explicit-authority gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -23527,5 +23549,43 @@
     ],
     "residual_risk": "This proves export_project_pack MCP registration metadata and deterministic fixture behavior only. It does not export a real user project, run live provider/model calls, run OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or clean squad/git objects.",
     "next_authorized_local_action": "Continue deterministic MCP ToolAnnotations convergence for the remaining unannotated tools: literature.ocr_material, literature.prepare_visual_review, literature.translate_pack, workflow.run_json_workflow, and workflow.run_python_sandbox."
+  },
+  "n326_ocr_material_mcp_annotation_slice": {
+    "id": "N326-ocr-material-mcp-annotation",
+    "status": "proved",
+    "updated_at": "2026-06-29T05:03:30+08:00",
+    "summary": "N326 classifies literature.ocr_material with explicit ToolAnnotations. The tool is a disabled-by-default local OCR artifact surface that reads backend-served material bytes and writes redacted OCR/text artifacts under the agent workflow workspace, so it is marked non-read-only, destructive-capable, non-idempotent, and closed-world.",
+    "rollback_snapshot_id": "manual-20260629_050154-n326-ocr-material-mcp-annotation",
+    "rollback_snapshot_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_050154-n326-ocr-material-mcp-annotation",
+    "mature_references_checked": [
+      {
+        "topic": "N326 ocr-material MCP annotation",
+        "source": "MCP ToolAnnotations docs, SDK ToolAnnotations, ExperimentalTools ocr_material implementation, and deterministic experimental tool tests",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/schema#toolannotations ; https://modelcontextprotocol.io/specification/2025-06-18/server/tools#tool-annotations ; local mcp.types.ToolAnnotations ; agent_mcp_server/src/lit_assistant_mcp/tools/experimental.py ; agent_mcp_server/tests/test_experimental_tools.py",
+        "status": "Official MCP server ToolAnnotations docs returned 200; SDK fields and local ocr_material artifact-write/OCR-boundary contract checked before N326.",
+        "checked_at": "2026-06-29T05:03:30+08:00",
+        "use_in_slice": "Used to annotate literature.ocr_material as a disabled-by-default, non-read-only, destructive-capable, non-idempotent, closed-world local artifact/OCR preparation surface because it reads backend-served material bytes and writes redacted OCR artifacts with overwrite enabled when explicitly enabled."
+      }
+    ],
+    "changed_files": [
+      "agent_mcp_server/src/lit_assistant_mcp/server.py",
+      "agent_mcp_server/tests/test_server.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N326.",
+      "git status --short --branch -> main...origin/main [ahead 155] clean before N326 edits; N325 already committed as latest slice.",
+      "Created rollback snapshot .rollback_snapshots/manual-20260629_050154-n326-ocr-material-mcp-annotation containing server.py, test_server.py, test_experimental_tools.py, tests/test_ci_visibility_contract.py, and the longrun goal-state JSON before N326 edits.",
+      "Official/mature references checked before implementation: MCP 2025-06-18 ToolAnnotations server docs returned 200; installed mcp.types.ToolAnnotations fields were already verified in the active MCP annotation convergence run; ExperimentalTools.ocr_material is disabled by default and, when enabled, reads backend-served material bytes, redacts output, and writes experimental/ocr-* artifacts through ArtifactWorkspace.write_json(..., overwrite=True).",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py -q -> 3 passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_experimental_tools.py::test_experimental_tools_disabled_by_default agent_mcp_server\\tests\\test_experimental_tools.py::test_ocr_material_text_file_writes_redacted_artifact -q -> 2 passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_server.py -> passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N326 goal-state update; confirms top-level changed_files_for_this_slice and verification_commands match the latest slice record.",
+      "Unannotated MCP tool audit after N326 -> 4 tools remain without annotations: literature.prepare_visual_review, literature.translate_pack, workflow.run_json_workflow, workflow.run_python_sandbox; literature.ocr_material is no longer in the unannotated set.",
+      "N326 only adds deterministic MCP ToolAnnotations for disabled-by-default local OCR artifact registration metadata plus focused local tests; it does not execute local OCR over PDF/image inputs, remote OCR, real project export, live provider/model loading, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, or push, tag, release, deploy, upload, clean squad/git objects, or edit github/ references."
+    ],
+    "residual_risk": "This proves ocr_material MCP registration metadata and deterministic text-file fixture behavior only. It does not run local OCR over PDF/image inputs, remote OCR, live provider/model calls, real user project export, WikiRegistry/Source Vault runtime writes, Zotero DB mutation, github/ reference edits, upload, push, tag, release, deploy, or squad/git cleanup.",
+    "next_authorized_local_action": "Continue deterministic MCP ToolAnnotations convergence for the remaining unannotated tools: literature.prepare_visual_review, literature.translate_pack, workflow.run_json_workflow, and workflow.run_python_sandbox."
   }
 }

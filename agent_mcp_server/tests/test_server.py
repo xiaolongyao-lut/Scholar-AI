@@ -245,6 +245,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
     _assert_local_write_annotations(tools_by_name["literature.agent_progress"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.agent_result"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.agent_fail"])
+    _assert_destructive_local_write_annotations(tools_by_name["literature.ocr_material"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.export_docx"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.journal_style_spec_draft"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.journal_style_spec_confirm"])
