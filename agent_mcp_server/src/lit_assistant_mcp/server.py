@@ -322,12 +322,32 @@ def create_mcp_server(
         """Sketch imports reachable from a Python entrypoint."""
         return source.explain_entrypoints(path=path, max_depth=max_depth, max_files=max_files)
 
-    @mcp.tool(name="literature.config_status", structured_output=True)
+    @mcp.tool(
+        name="literature.config_status",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Config Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_config_status() -> dict[str, Any]:
         """Return Literature Assistant backend health."""
         return runtime.config_status()
 
-    @mcp.tool(name="literature.health_check", structured_output=True)
+    @mcp.tool(
+        name="literature.health_check",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Health Check",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_health_check(include_live: bool = False) -> dict[str, Any]:
         """Return passive Scholar AI workflow readiness diagnostics."""
         return runtime.health_check(include_live=include_live)
@@ -349,22 +369,62 @@ def create_mcp_server(
             write_reports=write_reports,
         )
 
-    @mcp.tool(name="literature.list_projects", structured_output=True)
+    @mcp.tool(
+        name="literature.list_projects",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="List Projects",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_list_projects() -> dict[str, Any]:
         """List Literature Assistant projects."""
         return runtime.list_projects()
 
-    @mcp.tool(name="literature.list_materials", structured_output=True)
+    @mcp.tool(
+        name="literature.list_materials",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="List Materials",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_list_materials(project_id: str) -> dict[str, Any]:
         """List materials for a project."""
         return runtime.list_materials(project_id=project_id)
 
-    @mcp.tool(name="literature.read_material", structured_output=True)
+    @mcp.tool(
+        name="literature.read_material",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Read Material",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_read_material(material_id: str) -> dict[str, Any]:
         """Read a material record."""
         return runtime.read_material(material_id=material_id)
 
-    @mcp.tool(name="literature.get_material_chunks", structured_output=True)
+    @mcp.tool(
+        name="literature.get_material_chunks",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Get Material Chunks",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_get_material_chunks(project_id: str, material_id: str) -> dict[str, Any]:
         """Read chunks for a material."""
         return runtime.get_material_chunks(project_id=project_id, material_id=material_id)
