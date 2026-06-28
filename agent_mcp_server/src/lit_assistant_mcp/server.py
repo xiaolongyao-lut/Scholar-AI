@@ -1739,7 +1739,17 @@ def create_mcp_server(
             ocr_language=ocr_language,
         )
 
-    @mcp.tool(name="literature.prepare_visual_review", structured_output=True)
+    @mcp.tool(
+        name="literature.prepare_visual_review",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Prepare Visual Review",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_prepare_visual_review(
         project_id: str,
         query: str,
