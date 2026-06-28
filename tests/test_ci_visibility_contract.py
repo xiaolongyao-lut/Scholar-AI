@@ -435,6 +435,9 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
         completion_claim = payload.get("completion_claim")
         assert isinstance(completion_claim, dict)
         assert completion_claim.get("latest_slice_id") == top_latest_slice
+        completion_this_slice = completion_claim.get("this_slice")
+        assert isinstance(completion_this_slice, str) and completion_this_slice.strip()
+        assert top_latest_slice in completion_this_slice
         completion_why_not_complete = completion_claim.get("why_not_complete")
         rollup_why_not_complete = rollup.get("why_not_complete")
         assert isinstance(completion_why_not_complete, str) and completion_why_not_complete.strip()
