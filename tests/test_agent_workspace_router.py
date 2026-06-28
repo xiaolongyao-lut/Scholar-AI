@@ -18,23 +18,53 @@ if str(core_path) not in sys.path:
     sys.path.insert(0, str(core_path))
 
 import routers.agent_workspace_router as agent_workspace_router
+import routers.runtime_router as runtime_router_module
 import python_adapter_server as server
+from harness_protocols import JobKind, SessionMode
 from wiki.source_registry import ChunkInput, SourceRecord, WikiRegistry
+from writing_runtime import WritingRuntime
 
 
-def _agent_workspace_probe_path(probe: Mapping[str, object]) -> str:
-    """Return the local path advertised by an Agent Workspace recovery probe."""
+def _agent_workspace_probe_url(
+    probe: Mapping[str, object],
+    *,
+    identifiers: Mapping[str, str] | None = None,
+) -> str:
+    """Return the concrete local URL advertised by an Agent Workspace recovery probe."""
 
     raw_route = probe.get("route")
     if not isinstance(raw_route, str) or not raw_route.strip():
         raise AssertionError("Agent Workspace recovery probe route must be a non-empty string.")
-    concrete_route = raw_route.strip().replace("{job_id}", "job-route-proof")
-    concrete_route = concrete_route.replace("{requirement_id}", "N306-agent-workspace-readonly-annotations")
-    concrete_route = concrete_route.replace("{ref_id}", "source-vault:route-proof")
-    concrete_route = concrete_route.replace("{query}", "route-proof")
+    replacements = {
+        "{job_id}": "job-route-proof",
+        "{requirement_id}": "N306-agent-workspace-readonly-annotations",
+        "{ref_id}": "source-vault:route-proof",
+        "{query}": "route-proof",
+    }
+    if identifiers is not None:
+        for token, value in identifiers.items():
+            if not token.startswith("{") or not token.endswith("}") or not value.strip():
+                raise AssertionError(f"Invalid Agent Workspace recovery probe identifier: {token!r}")
+            replacements[token] = value
+    concrete_route = raw_route.strip()
+    for token, value in replacements.items():
+        concrete_route = concrete_route.replace(token, value)
+    if "{" in concrete_route or "}" in concrete_route:
+        raise AssertionError(f"Agent Workspace recovery probe route has unresolved identifiers: {raw_route}")
+    return concrete_route
+
+
+def _agent_workspace_probe_path(
+    probe: Mapping[str, object],
+    *,
+    identifiers: Mapping[str, str] | None = None,
+) -> str:
+    """Return the local path advertised by an Agent Workspace recovery probe."""
+
+    concrete_route = _agent_workspace_probe_url(probe, identifiers=identifiers)
     path = urlsplit(concrete_route).path
     if not path.startswith("/"):
-        raise AssertionError(f"Agent Workspace recovery probe route must be absolute: {raw_route}")
+        raise AssertionError(f"Agent Workspace recovery probe route must be absolute: {concrete_route}")
     return path
 
 
@@ -42,13 +72,14 @@ def _assert_agent_workspace_probe_resolves_to_full_app_read_route(
     probe: Mapping[str, object],
     *,
     method: str,
+    identifiers: Mapping[str, str] | None = None,
 ) -> None:
     """Assert an Agent Workspace recovery probe points at a registered local read route."""
 
     if method not in {"GET", "POST"}:
         raise AssertionError(f"Unsupported Agent Workspace recovery probe method: {method}")
     assert probe.get("read_only") is True
-    path = _agent_workspace_probe_path(probe)
+    path = _agent_workspace_probe_path(probe, identifiers=identifiers)
     assert "_passport" not in path
     assert "_gate" not in path
     assert "_card" not in path
@@ -70,10 +101,41 @@ def _assert_agent_workspace_probe_resolves_to_full_app_read_route(
 
 def _assert_agent_workspace_probe_resolves_to_full_app_get_route(
     probe: Mapping[str, object],
+    *,
+    identifiers: Mapping[str, str] | None = None,
 ) -> None:
     """Assert an Agent Workspace recovery probe points at a registered local GET route."""
 
-    _assert_agent_workspace_probe_resolves_to_full_app_read_route(probe, method="GET")
+    _assert_agent_workspace_probe_resolves_to_full_app_read_route(
+        probe,
+        method="GET",
+        identifiers=identifiers,
+    )
+
+
+def _assert_agent_workspace_probe_returns_http_success(
+    client: TestClient,
+    probe: Mapping[str, object],
+    *,
+    headers: Mapping[str, str],
+    identifiers: Mapping[str, str] | None = None,
+) -> None:
+    """Assert a read-only Agent Workspace recovery probe returns local HTTP 200.
+
+    Args:
+        client: FastAPI TestClient bound to the full Scholar AI app.
+        probe: Serialized Agent Workspace recovery probe payload.
+        headers: Capability headers required by protected local diagnostic routes.
+        identifiers: Concrete route identifiers for templated read-only recovery probes.
+    """
+
+    method = probe.get("method")
+    if method != "GET":
+        raise AssertionError(f"Only GET recovery probes are safe for HTTP-success proof: {probe!r}")
+    _assert_agent_workspace_probe_resolves_to_full_app_get_route(probe, identifiers=identifiers)
+    url = _agent_workspace_probe_url(probe, identifiers=identifiers)
+    response = client.get(url, headers=dict(headers))
+    assert response.status_code == 200, f"{url} returned {response.status_code}: {response.text}"
 
 
 def _assert_agent_workspace_probe_mcp_tool_is_read_only(
@@ -93,6 +155,59 @@ def _assert_agent_workspace_probe_mcp_tool_is_read_only(
     assert annotations.destructiveHint is False
     assert annotations.idempotentHint is True
     assert annotations.openWorldHint is False
+
+
+def test_agent_workspace_core_recovery_probes_return_http_success(monkeypatch) -> None:
+    """Core recovery probes must be live local HTTP links, not only route-shaped metadata."""
+
+    runtime = WritingRuntime(autosave=False)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "agent-workspace-http-proof"},
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.AGENT_REQUEST,
+        input_text="agent workspace recovery probe HTTP proof",
+        metadata={"project_id": "agent-workspace-http-proof"},
+    )
+    monkeypatch.setattr(runtime_router_module, "get_runtime", lambda: runtime)
+    client = TestClient(server.app)
+    headers = {"X-LitAssist-Capability": server.get_local_api_capability_token()}
+    response = client.get("/api/agent-workspace/status", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    goal_state = payload["workspace_state"]["goal_state"]
+    latest_requirement_id = goal_state["latest_requirement_id"]
+    assert isinstance(latest_requirement_id, str) and latest_requirement_id.strip()
+    probes = {
+        probe["label"]: probe
+        for probe in payload["workspace_state"]["recovery_probes"]
+        if isinstance(probe.get("label"), str)
+    }
+    expected_labels = {
+        "Agent Workspace Status",
+        "Goal Lifecycle Completion Gate",
+        "MCP Result Envelope",
+        "Workflow Passport",
+        "Evidence Integrity Gate",
+        "Research Action Lifecycle",
+        "Agent Handoff Card",
+        "Goal Requirement Drilldown",
+    }
+    assert expected_labels <= set(probes)
+    identifiers_by_label = {
+        "Agent Handoff Card": {"{job_id}": job.job_id},
+        "Goal Requirement Drilldown": {"{requirement_id}": latest_requirement_id},
+    }
+
+    for label in sorted(expected_labels):
+        _assert_agent_workspace_probe_returns_http_success(
+            client,
+            probes[label],
+            headers=headers,
+            identifiers=identifiers_by_label.get(label),
+        )
 
 
 def test_load_knowledge_actual_loading_gate_state_projects_owner_gate(tmp_path, monkeypatch) -> None:

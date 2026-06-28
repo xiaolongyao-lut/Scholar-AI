@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-29T06:18:00+08:00",
+  "updated_at": "2026-06-29T06:34:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -97,16 +97,24 @@
   ],
   "rollback": {
     "checkpoint_id": "n33-runtime-crosslink-audit-20260626_020647",
-    "latest_checkpoint_id": "manual-20260629_061351-n335-blocking-action-router-probe-http-success",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_061351-n335-blocking-action-router-probe-http-success",
-    "latest_goal_state_checkpoint_id": "manual-20260629_061351-n335-blocking-action-router-probe-http-success",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_061351-n335-blocking-action-router-probe-http-success",
-    "latest_checkpoint_caveat": "Rollback checkpoint for N335 BlockingAction router probe HTTP-success guard; restore only with explicit user intent after inspecting current dirty worktree ownership.",
+    "latest_checkpoint_id": "manual-20260629_062659-n336-agent-workspace-probe-http-success",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_062659-n336-agent-workspace-probe-http-success",
+    "latest_goal_state_checkpoint_id": "manual-20260629_062659-n336-agent-workspace-probe-http-success",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_062659-n336-agent-workspace-probe-http-success",
+    "latest_checkpoint_caveat": "Rollback checkpoint for N336 Agent Workspace recovery probe HTTP-success guard; restore only with explicit user intent after inspecting current dirty worktree ownership.",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647"
   },
   "mature_references_checked": [
+    {
+      "topic": "N336 Agent Workspace recovery probe HTTP-success guard",
+      "source": "FastAPI TestClient documentation, Starlette TestClient documentation, and Starlette routing documentation",
+      "url": "https://fastapi.tiangolo.com/tutorial/testing/ ; https://www.starlette.io/testclient/ ; https://www.starlette.io/routing/",
+      "status": "All three references returned HEAD 200; used full-app TestClient GET checks to prove core Agent Workspace recovery probes are live local HTTP links.",
+      "checked_at": "2026-06-29T06:27:00+08:00",
+      "use_in_slice": "Used to lift core Agent Workspace recovery probes from route-resolution and MCP-annotation assertions to local HTTP 200 proof without executing provider/model calls, OCR, Source Vault writes, or external actions."
+    },
     {
       "topic": "N335 BlockingAction router probe HTTP-success guard",
       "source": "FastAPI TestClient documentation and Starlette routing documentation",
@@ -9652,22 +9660,32 @@
         "tests/test_runtime_router_contract.py::test_runtime_agent_handoff_card_route_exposes_recovery_drilldowns now follows every Agent Handoff BlockingAction drilldown local_read_only_probe and includes a stale /runtime/evidence_integrity_gate negative self-check."
       ],
       "residual_risk": "This proves deterministic router-local BlockingAction and Handoff drilldown probe HTTP success only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
+    },
+    {
+      "id": "N336-agent-workspace-probe-http-success",
+      "status": "proved",
+      "requirement": "Core Agent Workspace recovery probes must be proved as live local HTTP links through the full FastAPI app, not only route-shaped metadata or MCP annotations, so resumed agents can rely on Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, Agent Handoff Card, and Goal Requirement Drilldown recovery links without silent 404 drift.",
+      "evidence": [
+        "tests/test_agent_workspace_router.py adds _assert_agent_workspace_probe_returns_http_success(), which requires GET method semantics, full-app route resolution, concrete identifier substitution for templated probes, capability headers, TestClient execution, and HTTP 200.",
+        "tests/test_agent_workspace_router.py::test_agent_workspace_core_recovery_probes_return_http_success creates a temporary WritingRuntime job, injects it into the runtime router, reads the real /api/agent-workspace/status probe list, and follows the Agent Workspace Status, Goal Lifecycle Completion Gate, MCP Result Envelope, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, Agent Handoff Card, and Goal Requirement Drilldown probes through the full app.",
+        "The focused test keeps POST/search/context-receipt probes out of the HTTP-success helper so this proof remains local, read-only, deterministic, and does not execute provider/model calls, OCR, Source Vault writes, real exports, or external actions."
+      ],
+      "residual_risk": "This proves deterministic full-app HTTP success for the core GET Agent Workspace recovery probes only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
     }
   ],
   "changed_files_for_this_slice": [
-    "tests/test_runtime_router_contract.py",
+    "tests/test_agent_workspace_router.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N335.",
-    "git status --short --branch -> main...origin/main [ahead 164] clean after N334 commit and before N335 edits.",
-    "Created rollback snapshot .rollback_snapshots/manual-20260629_061351-n335-blocking-action-router-probe-http-success containing tests/test_runtime_router_contract.py and the longrun goal-state JSON before N335 edits.",
-    "Official/mature references checked before implementation: FastAPI TestClient documentation HEAD 200 and Starlette routing documentation HEAD 200.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_runtime_router_contract.py::test_runtime_lifecycle_refs_crosslink_passport_gate_boundary_and_handoff tests\\test_runtime_router_contract.py::test_runtime_agent_handoff_card_route_exposes_recovery_drilldowns -q -> 2 passed; confirms BlockingAction and Handoff drilldown local_read_only_probes return HTTP 200 through the router-local TestClient.",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N335 goal-state update.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N335 goal-state update.",
-    "git diff --check -> passed after N335 edits.",
-    "N335 only hardens deterministic local BlockingAction/Handoff recovery probe HTTP success; it does not execute live provider/model loading, OCR, real project export, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, edit github/ references, push, tag, release, deploy, upload, or clean squad/git objects."
+    "Read implementation-planner SKILL.md, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N336.",
+    "git status --short --branch -> main...origin/main [ahead 165] clean before N336 edits; git diff --cached --name-status -> no staged N294 state.",
+    "Created rollback snapshot .rollback_snapshots/manual-20260629_062659-n336-agent-workspace-probe-http-success containing tests/test_agent_workspace_router.py and the longrun goal-state JSON before N336 edits.",
+    "Official/mature references checked before implementation: FastAPI TestClient documentation HEAD 200, Starlette TestClient documentation HEAD 200, and Starlette routing documentation HEAD 200.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_core_recovery_probes_return_http_success tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit -q -> 2 passed before goal-state update; confirms core Agent Workspace recovery probes return HTTP 200 through the full TestClient app and the existing recovery-probe route/MCP annotation contract remains intact.",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N336 goal-state update.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N336 goal-state update.",
+    "N336 only hardens deterministic local Agent Workspace recovery probe HTTP success for GET probes; it does not execute live provider/model loading, OCR, real project export, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, edit github/ references, push, tag, release, deploy, upload, or clean squad/git objects."
   ],
   "next_authorized_local_actions": [
     "Continue deterministic local recovery/proof hardening after preflight; prefer route/link drift, Agent Workspace handoff, KRT contract, or OCR mock/health slices within no-live/no-write boundaries."
@@ -9777,18 +9795,18 @@
     "updated_at": "2026-06-28T20:55:00+08:00"
   },
   "completion_claim": {
-    "this_slice": "N335-blocking-action-router-probe-http-success proves BlockingAction and Handoff drilldown local_read_only_probes return HTTP 200 through router-local tests.",
+    "this_slice": "N336-agent-workspace-probe-http-success proves core Agent Workspace recovery probes return HTTP 200 through full-app TestClient checks.",
     "full_goal": "not_complete: deterministic local proof is advanced, but live provider/model actual-loading remains authorization gated.",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N335-blocking-action-router-probe-http-success hardens deterministic BlockingAction/Handoff recovery probes only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke for the same endpoint.",
-    "updated_at": "2026-06-29T06:18:00+08:00",
-    "latest_slice_id": "N335-blocking-action-router-probe-http-success",
+    "why_not_complete": "N336-agent-workspace-probe-http-success hardens deterministic Agent Workspace recovery probe HTTP success only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke for the same endpoint.",
+    "updated_at": "2026-06-29T06:34:00+08:00",
+    "latest_slice_id": "N336-agent-workspace-probe-http-success",
     "is_goal_complete": false,
-    "requirements_total": 336,
+    "requirements_total": 337,
     "requirements_status_counts": {
-      "proved": 336
+      "proved": 337
     },
-    "latest_requirement_id": "N335-blocking-action-router-probe-http-success"
+    "latest_requirement_id": "N336-agent-workspace-probe-http-success"
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -13713,7 +13731,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N335-blocking-action-router-probe-http-success",
+  "latest_slice": "N336-agent-workspace-probe-http-success",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -15477,30 +15495,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-29T06:18:00+08:00",
+    "updated_at": "2026-06-29T06:34:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 336,
+    "requirements_total": 337,
     "requirement_status_counts": {
-      "proved": 336
+      "proved": 337
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N335-blocking-action-router-probe-http-success",
-    "latest_slice_id": "N335-blocking-action-router-probe-http-success",
+    "latest_requirement_id": "N336-agent-workspace-probe-http-success",
+    "latest_slice_id": "N336-agent-workspace-probe-http-success",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N335 hardens deterministic BlockingAction/Handoff recovery probe HTTP success only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N335 adds router-local TestClient guards proving BlockingAction and Handoff drilldown local_read_only_probes return HTTP 200 and reject stale underscore aliases, while running no live model loading, OCR, or real project export."
+        "current_boundary": "N336 hardens deterministic Agent Workspace recovery probe HTTP success only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N336 adds full-app TestClient guards proving core Agent Workspace recovery probes return HTTP 200, including Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, Agent Handoff Card, and Goal Requirement Drilldown, while running no live model loading, OCR, Source Vault writes, or real project export."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N335-blocking-action-router-probe-http-success hardens deterministic BlockingAction/Handoff recovery probes only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke for the same endpoint."
+    "why_not_complete": "N336-agent-workspace-probe-http-success hardens deterministic Agent Workspace recovery probe HTTP success only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke for the same endpoint."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -24118,5 +24136,39 @@
     ],
     "residual_risk": "This proves deterministic router-local BlockingAction and Handoff drilldown probe HTTP success only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects.",
     "next_authorized_local_action": "Continue deterministic local recovery/proof hardening after preflight; prefer route/link drift, Agent Workspace handoff, KRT contract, or OCR mock/health slices within no-live/no-write boundaries."
+  },
+  "n336_agent_workspace_probe_http_success_slice": {
+    "id": "N336-agent-workspace-probe-http-success",
+    "status": "proved",
+    "updated_at": "2026-06-29T06:34:00+08:00",
+    "summary": "N336 proves core Agent Workspace recovery probes are live full-app GET links returning HTTP 200, including Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, Agent Handoff Card, and Goal Requirement Drilldown.",
+    "rollback_snapshot_id": "manual-20260629_062659-n336-agent-workspace-probe-http-success",
+    "rollback_snapshot_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_062659-n336-agent-workspace-probe-http-success",
+    "mature_references_checked": [
+      {
+        "topic": "N336 Agent Workspace recovery probe HTTP-success guard",
+        "source": "FastAPI TestClient documentation, Starlette TestClient documentation, and Starlette routing documentation",
+        "url": "https://fastapi.tiangolo.com/tutorial/testing/ ; https://www.starlette.io/testclient/ ; https://www.starlette.io/routing/",
+        "status": "All three references returned HEAD 200; used full-app TestClient GET checks to prove core Agent Workspace recovery probes are live local HTTP links.",
+        "checked_at": "2026-06-29T06:27:00+08:00",
+        "use_in_slice": "Used to lift core Agent Workspace recovery probes from route-resolution and MCP-annotation assertions to local HTTP 200 proof without executing provider/model calls, OCR, Source Vault writes, or external actions."
+      }
+    ],
+    "changed_files": [
+      "tests/test_agent_workspace_router.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read implementation-planner SKILL.md, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N336.",
+      "git status --short --branch -> main...origin/main [ahead 165] clean before N336 edits; git diff --cached --name-status -> no staged N294 state.",
+      "Created rollback snapshot .rollback_snapshots/manual-20260629_062659-n336-agent-workspace-probe-http-success containing tests/test_agent_workspace_router.py and the longrun goal-state JSON before N336 edits.",
+      "Official/mature references checked before implementation: FastAPI TestClient documentation HEAD 200, Starlette TestClient documentation HEAD 200, and Starlette routing documentation HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_core_recovery_probes_return_http_success tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit -q -> 2 passed before goal-state update; confirms core Agent Workspace recovery probes return HTTP 200 through the full TestClient app and the existing recovery-probe route/MCP annotation contract remains intact.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N336 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N336 goal-state update.",
+      "N336 only hardens deterministic local Agent Workspace recovery probe HTTP success for GET probes; it does not execute live provider/model loading, OCR, real project export, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, edit github/ references, push, tag, release, deploy, upload, or clean squad/git objects."
+    ],
+    "residual_risk": "This proves deterministic full-app HTTP success for the core GET Agent Workspace recovery probes only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects.",
+    "next_authorized_local_action": "Continue deterministic local recovery/proof hardening after preflight; prefer remaining Agent Workspace search/resource HTTP proof, KRT contract, or OCR mock/health slices within no-live/no-write boundaries."
   }
 }
