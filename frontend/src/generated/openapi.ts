@@ -8559,6 +8559,7 @@ export interface components {
          *         label: Stable display label for the recovery surface.
          *         route: Local route or route pattern. Placeholder routes require an
          *             identifier supplied from visible runtime state.
+         *         method: HTTP method required by the local diagnostic route.
          *         read_only: Whether this probe is diagnostic only.
          *         requires_identifier: Whether the route pattern needs a job/request id.
          *         identifier_hint: Identifier name expected by the route pattern.
@@ -8572,6 +8573,11 @@ export interface components {
             label: string;
             /** Mcp Tool */
             mcp_tool?: string | null;
+            /**
+             * Method
+             * @default GET
+             */
+            method: string;
             /** Purpose */
             purpose: string;
             /**

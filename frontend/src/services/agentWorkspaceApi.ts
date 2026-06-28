@@ -52,6 +52,7 @@ export interface AgentWorkspaceGitState {
 export interface AgentWorkspaceRecoveryProbe {
   label: string;
   route: string;
+  method: 'GET' | 'POST';
   read_only: boolean;
   requires_identifier: boolean;
   identifier_hint: string | null;

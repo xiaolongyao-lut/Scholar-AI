@@ -618,10 +618,10 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
         "Goal Requirement Drilldown",
     ]
     assert all(probe["read_only"] is True for probe in probes)
-    post_read_probe_labels = {"Wiki Search", "Knowledge Context Receipt"}
     server_tools = {tool.name: tool for tool in create_mcp_server()._tool_manager.list_tools()}
     for probe in probes:
-        method = "POST" if probe["label"] in post_read_probe_labels else "GET"
+        method = probe.get("method")
+        assert method in {"GET", "POST"}
         _assert_agent_workspace_probe_resolves_to_full_app_read_route(probe, method=method)
         _assert_agent_workspace_probe_mcp_tool_is_read_only(probe, server_tools)
     desktop_probe = next(probe for probe in probes if probe["label"] == "Desktop Smoke Evidence")
@@ -650,12 +650,14 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert "runtime consumers" in packages_probe["purpose"]
     wiki_search_probe = next(probe for probe in probes if probe["label"] == "Wiki Search")
     assert wiki_search_probe["route"] == "/api/wiki/search"
+    assert wiki_search_probe["method"] == "POST"
     assert wiki_search_probe["mcp_tool"] == "literature.wiki_search"
     assert wiki_search_probe["requires_identifier"] is True
     assert wiki_search_probe["identifier_hint"] == "query"
     assert "wiki refs" in wiki_search_probe["purpose"]
     academic_search_probe = next(probe for probe in probes if probe["label"] == "Academic English Search")
     assert academic_search_probe["route"] == "/api/knowledge/academic-english/search?q={query}"
+    assert academic_search_probe["method"] == "GET"
     assert academic_search_probe["mcp_tool"] == "literature.academic_english_search"
     assert academic_search_probe["requires_identifier"] is True
     assert academic_search_probe["identifier_hint"] == "query"
@@ -685,6 +687,7 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert "bounded Source Vault resource" in source_read_probe["purpose"]
     context_receipt_probe = next(probe for probe in probes if probe["label"] == "Knowledge Context Receipt")
     assert context_receipt_probe["route"] == "/api/knowledge/context-receipt"
+    assert context_receipt_probe["method"] == "POST"
     assert context_receipt_probe["mcp_tool"] == "literature.knowledge_context_receipt"
     assert context_receipt_probe["requires_identifier"] is True
     assert context_receipt_probe["identifier_hint"] == "ref_id"

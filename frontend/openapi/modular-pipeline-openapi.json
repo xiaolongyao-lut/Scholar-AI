@@ -3234,7 +3234,7 @@
         "type": "object"
       },
       "AgentWorkspaceRecoveryProbe": {
-        "description": "One read-only recovery endpoint a resumed agent can inspect.\n\nArgs:\n    label: Stable display label for the recovery surface.\n    route: Local route or route pattern. Placeholder routes require an\n        identifier supplied from visible runtime state.\n    read_only: Whether this probe is diagnostic only.\n    requires_identifier: Whether the route pattern needs a job/request id.\n    identifier_hint: Identifier name expected by the route pattern.\n    purpose: Why this probe should be read before mutating workflow state.\n    mcp_tool: Optional MCP tool exposing the same read-only projection.",
+        "description": "One read-only recovery endpoint a resumed agent can inspect.\n\nArgs:\n    label: Stable display label for the recovery surface.\n    route: Local route or route pattern. Placeholder routes require an\n        identifier supplied from visible runtime state.\n    method: HTTP method required by the local diagnostic route.\n    read_only: Whether this probe is diagnostic only.\n    requires_identifier: Whether the route pattern needs a job/request id.\n    identifier_hint: Identifier name expected by the route pattern.\n    purpose: Why this probe should be read before mutating workflow state.\n    mcp_tool: Optional MCP tool exposing the same read-only projection.",
         "properties": {
           "identifier_hint": {
             "anyOf": [
@@ -3265,6 +3265,12 @@
               }
             ],
             "title": "Mcp Tool"
+          },
+          "method": {
+            "default": "GET",
+            "pattern": "^(GET|POST)$",
+            "title": "Method",
+            "type": "string"
           },
           "purpose": {
             "maxLength": 240,

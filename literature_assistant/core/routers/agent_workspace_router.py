@@ -128,6 +128,7 @@ class AgentWorkspaceRecoveryProbe(BaseModel):
         label: Stable display label for the recovery surface.
         route: Local route or route pattern. Placeholder routes require an
             identifier supplied from visible runtime state.
+        method: HTTP method required by the local diagnostic route.
         read_only: Whether this probe is diagnostic only.
         requires_identifier: Whether the route pattern needs a job/request id.
         identifier_hint: Identifier name expected by the route pattern.
@@ -137,6 +138,7 @@ class AgentWorkspaceRecoveryProbe(BaseModel):
 
     label: str = Field(min_length=1, max_length=120)
     route: str = Field(min_length=1, max_length=240)
+    method: str = Field(default="GET", pattern="^(GET|POST)$")
     read_only: bool = True
     requires_identifier: bool = False
     identifier_hint: str | None = Field(default=None, max_length=80)
@@ -1738,6 +1740,7 @@ def _workspace_recovery_probe(
     route: str,
     purpose: str,
     *,
+    method: str = "GET",
     mcp_tool: str | None = None,
     requires_identifier: bool = False,
     identifier_hint: str | None = None,
@@ -1748,6 +1751,7 @@ def _workspace_recovery_probe(
         label: Human-readable probe label.
         route: Absolute local route or route pattern.
         purpose: Short recovery reason for resumed agents.
+        method: HTTP method required by the local diagnostic route.
         mcp_tool: Optional MCP tool name for the same projection.
         requires_identifier: Whether route placeholders need runtime context.
         identifier_hint: Identifier expected by the route pattern.
@@ -1765,11 +1769,15 @@ def _workspace_recovery_probe(
         raise ValueError("recovery probe route must be an absolute local route")
     if not isinstance(purpose, str) or not purpose.strip():
         raise ValueError("recovery probe purpose must be non-empty")
+    normalized_method = method.strip().upper() if isinstance(method, str) else ""
+    if normalized_method not in {"GET", "POST"}:
+        raise ValueError("recovery probe method must be GET or POST")
     if requires_identifier and (not isinstance(identifier_hint, str) or not identifier_hint.strip()):
         raise ValueError("identifier_hint is required for identifier-bound recovery probes")
     return AgentWorkspaceRecoveryProbe(
         label=label.strip(),
         route=route.strip(),
+        method=normalized_method,
         read_only=True,
         requires_identifier=requires_identifier,
         identifier_hint=identifier_hint.strip() if isinstance(identifier_hint, str) and identifier_hint.strip() else None,
@@ -1858,6 +1866,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
                 "Wiki Search",
                 "/api/wiki/search",
                 "Recover wiki refs before bounded resource reads or context receipts.",
+                method="POST",
                 mcp_tool="literature.wiki_search",
                 requires_identifier=True,
                 identifier_hint="query",
@@ -1904,6 +1913,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
                 "Knowledge Context Receipt",
                 "/api/knowledge/context-receipt",
                 "Recover bounded context receipt proof for selected refs before claiming prompt/context loading.",
+                method="POST",
                 mcp_tool="literature.knowledge_context_receipt",
                 requires_identifier=True,
                 identifier_hint="ref_id",

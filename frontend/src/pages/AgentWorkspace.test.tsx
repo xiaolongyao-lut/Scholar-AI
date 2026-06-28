@@ -16,6 +16,7 @@ import {
   getWorkflowReplayLineage,
   getZoteroAttachmentHealth,
   listRuntimeJobs,
+  type AgentWorkspaceState,
   type BlockingActionBoundaryProjection,
   type WorkflowActionPreflightProjection,
 } from '@/services/agentWorkspaceApi';
@@ -69,8 +70,8 @@ const emptyWorkflowStageRuntimeFacts = {
   reproducibility: {},
 };
 
-function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
-  return {
+function workspaceStateFixture(overrides: Record<string, unknown> = {}): AgentWorkspaceState {
+  const state = {
     schema_version: 'scholar_ai_agent_workspace_state_v1' as const,
     generated_at: '2026-06-21T01:00:00Z',
     workspace_ready: true,
@@ -345,6 +346,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Desktop Smoke Evidence',
         route: '/api/agent-workspace/status',
+        method: 'GET',
         read_only: true,
         requires_identifier: false,
         identifier_hint: null,
@@ -354,6 +356,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'OCR Runtime Status',
         route: '/api/pdf-backend/ocr-status',
+        method: 'GET',
         read_only: true,
         requires_identifier: false,
         identifier_hint: null,
@@ -363,6 +366,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Wiki Doctor',
         route: '/api/wiki/doctor',
+        method: 'GET',
         read_only: true,
         requires_identifier: false,
         identifier_hint: null,
@@ -372,6 +376,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Knowledge Runtime Conformance',
         route: '/api/knowledge/runtime-conformance',
+        method: 'GET',
         read_only: true,
         requires_identifier: false,
         identifier_hint: null,
@@ -381,6 +386,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Knowledge Packages',
         route: '/api/knowledge/packages',
+        method: 'GET',
         read_only: true,
         requires_identifier: false,
         identifier_hint: null,
@@ -390,6 +396,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Wiki Search',
         route: '/api/wiki/search',
+        method: 'POST',
         read_only: true,
         requires_identifier: true,
         identifier_hint: 'query',
@@ -399,6 +406,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Academic English Search',
         route: '/api/knowledge/academic-english/search?q={query}',
+        method: 'GET',
         read_only: true,
         requires_identifier: true,
         identifier_hint: 'query',
@@ -408,6 +416,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Product Docs Search',
         route: '/api/knowledge/product-docs/search?q={query}',
+        method: 'GET',
         read_only: true,
         requires_identifier: true,
         identifier_hint: 'query',
@@ -417,6 +426,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Source Vault Status',
         route: '/api/knowledge/source-vault',
+        method: 'GET',
         read_only: true,
         requires_identifier: false,
         identifier_hint: null,
@@ -426,6 +436,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Source Vault Search',
         route: '/api/knowledge/source-vault/search?q={query}',
+        method: 'GET',
         read_only: true,
         requires_identifier: true,
         identifier_hint: 'query',
@@ -435,6 +446,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Source Vault Resource Read',
         route: '/api/agent-bridge/resource/{ref_id}',
+        method: 'GET',
         read_only: true,
         requires_identifier: true,
         identifier_hint: 'ref_id',
@@ -444,6 +456,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Knowledge Context Receipt',
         route: '/api/knowledge/context-receipt',
+        method: 'POST',
         read_only: true,
         requires_identifier: true,
         identifier_hint: 'ref_id',
@@ -453,6 +466,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'MCP Result Envelope',
         route: '/api/agent-workspace/status',
+        method: 'GET',
         read_only: true,
         requires_identifier: false,
         identifier_hint: null,
@@ -462,6 +476,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Goal Lifecycle Completion Gate',
         route: '/api/agent-workspace/status',
+        method: 'GET',
         read_only: true,
         requires_identifier: false,
         identifier_hint: null,
@@ -471,6 +486,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Workflow Passport',
         route: '/runtime/workflow-passport',
+        method: 'GET',
         read_only: true,
         requires_identifier: false,
         identifier_hint: null,
@@ -480,6 +496,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Evidence Integrity Gate',
         route: '/runtime/evidence-integrity-gate',
+        method: 'GET',
         read_only: true,
         requires_identifier: false,
         identifier_hint: null,
@@ -489,6 +506,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Research Action Lifecycle',
         route: '/runtime/research-action-lifecycle',
+        method: 'GET',
         read_only: true,
         requires_identifier: false,
         identifier_hint: null,
@@ -498,6 +516,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Agent Handoff Card',
         route: '/runtime/job/{job_id}/agent-handoff-card',
+        method: 'GET',
         read_only: true,
         requires_identifier: true,
         identifier_hint: 'job_id',
@@ -507,6 +526,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Agent Workspace Status',
         route: '/api/agent-workspace/status',
+        method: 'GET',
         read_only: true,
         requires_identifier: false,
         identifier_hint: null,
@@ -516,6 +536,7 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       {
         label: 'Goal Requirement Drilldown',
         route: '/api/agent-workspace/goal-requirements/{requirement_id}',
+        method: 'GET',
         read_only: true,
         requires_identifier: true,
         identifier_hint: 'requirement_id',
@@ -531,8 +552,8 @@ function workspaceStateFixture(overrides: Record<string, unknown> = {}) {
       'Read Wiki Doctor, Knowledge Runtime Conformance, Source Vault Status/Search/Read, Knowledge Context Receipt, MCP Result Envelope, Workflow Passport, Evidence Integrity Gate, Research Action Lifecycle, Agent Handoff Cards, and Goal Requirement Drilldowns before resuming mutating work or claiming closure.',
       'Inspect git dirty paths and preserve unrelated local work before staging or committing.',
     ],
-    ...overrides,
-  };
+  } satisfies AgentWorkspaceState;
+  return { ...state, ...overrides } as AgentWorkspaceState;
 }
 
 function knowledgeRuntimeFixture(): KnowledgeRuntimeConformanceResponse {
@@ -2916,26 +2937,26 @@ describe('AgentWorkspace', () => {
     expect(within(workspaceStateRegion).queryByText(/restore_command/)).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('literature_assistant/core/routers/agent_workspace_router.py')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('docs/plans/local-goal-state.json')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Desktop Smoke Evidence · read-only true · literature.agent_workspace_status')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('OCR Runtime Status · read-only true · literature.ocr_status')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Wiki Doctor · read-only true · literature.wiki_doctor')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Knowledge Runtime Conformance · read-only true · literature.knowledge_runtime_conformance')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Knowledge Packages · read-only true · literature.knowledge_packages')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Wiki Search · read-only true · needs query · literature.wiki_search')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Academic English Search · read-only true · needs query · literature.academic_english_search')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Product Docs Search · read-only true · needs query · literature.product_docs_search')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Source Vault Status · read-only true · literature.source_vault_status')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Source Vault Search · read-only true · needs query · literature.source_vault_search')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Source Vault Resource Read · read-only true · needs ref_id · literature.source_vault_read')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Knowledge Context Receipt · read-only true · needs ref_id · literature.knowledge_context_receipt')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('MCP Result Envelope · read-only true · source.read_file')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Goal Lifecycle Completion Gate · read-only true · literature.agent_workspace_status')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Workflow Passport · read-only true · literature.workflow_passport')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Evidence Integrity Gate · read-only true · literature.evidence_integrity_gate')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Research Action Lifecycle · read-only true · literature.research_action_lifecycle')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Agent Handoff Card · read-only true · needs job_id · literature.agent_handoff_card')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Agent Workspace Status · read-only true · literature.agent_workspace_status')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).getByText('Goal Requirement Drilldown · read-only true · needs requirement_id · literature.agent_workspace_requirement')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Desktop Smoke Evidence · GET · read-only true · literature.agent_workspace_status')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('OCR Runtime Status · GET · read-only true · literature.ocr_status')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Wiki Doctor · GET · read-only true · literature.wiki_doctor')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Knowledge Runtime Conformance · GET · read-only true · literature.knowledge_runtime_conformance')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Knowledge Packages · GET · read-only true · literature.knowledge_packages')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Wiki Search · POST · read-only true · needs query · literature.wiki_search')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Academic English Search · GET · read-only true · needs query · literature.academic_english_search')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Product Docs Search · GET · read-only true · needs query · literature.product_docs_search')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Source Vault Status · GET · read-only true · literature.source_vault_status')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Source Vault Search · GET · read-only true · needs query · literature.source_vault_search')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Source Vault Resource Read · GET · read-only true · needs ref_id · literature.source_vault_read')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Knowledge Context Receipt · POST · read-only true · needs ref_id · literature.knowledge_context_receipt')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('MCP Result Envelope · GET · read-only true · source.read_file')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Goal Lifecycle Completion Gate · GET · read-only true · literature.agent_workspace_status')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Workflow Passport · GET · read-only true · literature.workflow_passport')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Evidence Integrity Gate · GET · read-only true · literature.evidence_integrity_gate')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Research Action Lifecycle · GET · read-only true · literature.research_action_lifecycle')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Agent Handoff Card · GET · read-only true · needs job_id · literature.agent_handoff_card')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Agent Workspace Status · GET · read-only true · literature.agent_workspace_status')).toBeInTheDocument();
+    expect(within(workspaceStateRegion).getByText('Goal Requirement Drilldown · GET · read-only true · needs requirement_id · literature.agent_workspace_requirement')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('Create a rollback checkpoint and re-check official or mature references before nontrivial edits.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('/runtime/workflow-passport')).not.toBeInTheDocument();
     expect(within(workspaceStateRegion).queryByText('/runtime/job/{job_id}/agent-handoff-card')).not.toBeInTheDocument();

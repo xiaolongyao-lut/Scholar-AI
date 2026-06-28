@@ -2853,6 +2853,7 @@ def test_agent_workspace_status_reads_recovery_state(
                     {
                         "label": "Research Action Lifecycle",
                         "route": "/runtime/research-action-lifecycle",
+                        "method": "GET",
                         "read_only": True,
                         "requires_identifier": False,
                         "identifier_hint": None,
@@ -2862,6 +2863,7 @@ def test_agent_workspace_status_reads_recovery_state(
                     {
                         "label": "Agent Handoff Card",
                         "route": "/runtime/job/{job_id}/agent-handoff-card",
+                        "method": "GET",
                         "read_only": True,
                         "requires_identifier": True,
                         "identifier_hint": "job_id",
@@ -2995,9 +2997,11 @@ def test_agent_workspace_status_reads_recovery_state(
         "N289 recovery projection evidence confirms deterministic visibility only."
     )
     assert state["recovery_probes"][0]["route"] == "/runtime/research-action-lifecycle"
+    assert state["recovery_probes"][0]["method"] == "GET"
     assert state["recovery_probes"][0]["read_only"] is True
     handoff_probe = state["recovery_probes"][1]
     assert handoff_probe["route"] == "/runtime/job/{job_id}/agent-handoff-card"
+    assert handoff_probe["method"] == "GET"
     assert handoff_probe["requires_identifier"] is True
     assert handoff_probe["identifier_hint"] == "job_id"
     assert handoff_probe["mcp_tool"] == "literature.agent_handoff_card"

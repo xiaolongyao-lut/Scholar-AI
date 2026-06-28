@@ -1784,10 +1784,11 @@ function workspaceDirectorySummary(
 
 function workspaceProbeLabel(value: AgentWorkspaceRecoveryProbe, index: number): string {
   const label = sanitizeInspectorText(value.label.trim() || `probe ${index + 1}`);
+  const method = sanitizeInspectorText(value.method || 'GET');
   const readOnly = value.read_only ? 'true' : 'unknown';
   const identifier = value.requires_identifier && value.identifier_hint ? ` · needs ${value.identifier_hint}` : '';
   const mcpTool = value.mcp_tool ? ` · ${sanitizeInspectorText(value.mcp_tool)}` : '';
-  return `${label} · read-only ${readOnly}${identifier}${mcpTool}`;
+  return `${label} · ${method} · read-only ${readOnly}${identifier}${mcpTool}`;
 }
 
 function workspaceGoalStateSummary(state: AgentWorkspaceStatus['workspace_state']): string {

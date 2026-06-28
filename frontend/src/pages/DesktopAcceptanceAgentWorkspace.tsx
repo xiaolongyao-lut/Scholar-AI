@@ -286,6 +286,7 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     {
       label: 'Desktop Smoke Evidence',
       route: '/api/agent-workspace/status',
+      method: 'GET',
       read_only: true,
       requires_identifier: false,
       identifier_hint: null,
@@ -295,6 +296,7 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     {
       label: 'Wiki Doctor',
       route: '/api/wiki/doctor',
+      method: 'GET',
       read_only: true,
       requires_identifier: false,
       identifier_hint: null,
@@ -304,6 +306,7 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     {
       label: 'Workflow Passport',
       route: '/runtime/workflow-passport',
+      method: 'GET',
       read_only: true,
       requires_identifier: false,
       identifier_hint: null,
@@ -313,6 +316,7 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     {
       label: 'Evidence Integrity Gate',
       route: '/runtime/evidence-integrity-gate',
+      method: 'GET',
       read_only: true,
       requires_identifier: false,
       identifier_hint: null,
@@ -322,6 +326,7 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     {
       label: 'Research Action Lifecycle',
       route: '/runtime/research-action-lifecycle',
+      method: 'GET',
       read_only: true,
       requires_identifier: false,
       identifier_hint: null,
@@ -331,6 +336,7 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     {
       label: 'Agent Handoff Card',
       route: '/runtime/job/{job_id}/agent-handoff-card',
+      method: 'GET',
       read_only: true,
       requires_identifier: true,
       identifier_hint: 'job_id',
@@ -340,6 +346,7 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     {
       label: 'Agent Workspace Status',
       route: '/api/agent-workspace/status',
+      method: 'GET',
       read_only: true,
       requires_identifier: false,
       identifier_hint: null,
@@ -349,6 +356,7 @@ const ACCEPTANCE_WORKSPACE_STATE = {
     {
       label: 'Goal Requirement Drilldown',
       route: '/api/agent-workspace/goal-requirements/{requirement_id}',
+      method: 'GET',
       read_only: true,
       requires_identifier: true,
       identifier_hint: 'requirement_id',
