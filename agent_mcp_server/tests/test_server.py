@@ -235,6 +235,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
     _assert_destructive_local_write_annotations(tools_by_name["literature.export_docx"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.journal_style_spec_draft"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.journal_style_spec_confirm"])
+    _assert_destructive_local_write_annotations(tools_by_name["literature.project_scan_folder"])
     _assert_destructive_local_write_annotations(tools_by_name["workflow.write_json_workflow"])
     _assert_destructive_local_write_annotations(tools_by_name["artifact.write_markdown"])
 

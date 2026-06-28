@@ -938,7 +938,17 @@ def create_mcp_server(
             top_k=top_k,
         )
 
-    @mcp.tool(name="literature.project_scan_folder", structured_output=True)
+    @mcp.tool(
+        name="literature.project_scan_folder",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Project Scan Folder",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_project_scan_folder(
         project_id: str,
         scan_mode: str = "fast",
