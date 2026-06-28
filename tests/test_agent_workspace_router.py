@@ -37,11 +37,15 @@ def _agent_workspace_probe_path(probe: Mapping[str, object]) -> str:
     return path
 
 
-def _assert_agent_workspace_probe_resolves_to_full_app_get_route(
+def _assert_agent_workspace_probe_resolves_to_full_app_read_route(
     probe: Mapping[str, object],
+    *,
+    method: str,
 ) -> None:
-    """Assert an Agent Workspace recovery probe points at a registered local GET route."""
+    """Assert an Agent Workspace recovery probe points at a registered local read route."""
 
+    if method not in {"GET", "POST"}:
+        raise AssertionError(f"Unsupported Agent Workspace recovery probe method: {method}")
     assert probe.get("read_only") is True
     path = _agent_workspace_probe_path(probe)
     assert "_passport" not in path
@@ -53,14 +57,22 @@ def _assert_agent_workspace_probe_resolves_to_full_app_get_route(
         if route_path == "/{full_path:path}":
             continue
         route_methods = getattr(route, "methods", None)
-        if route_methods is not None and "GET" not in route_methods:
+        if route_methods is not None and method not in route_methods:
             continue
         if not hasattr(route, "matches"):
             continue
-        match, _ = route.matches({"type": "http", "path": path, "method": "GET"})
+        match, _ = route.matches({"type": "http", "path": path, "method": method})
         if match is not Match.NONE:
             matches.append(route_path)
-    assert matches, f"Agent Workspace probe does not resolve to a full-app GET route: {path}"
+    assert matches, f"Agent Workspace probe does not resolve to a full-app {method} route: {path}"
+
+
+def _assert_agent_workspace_probe_resolves_to_full_app_get_route(
+    probe: Mapping[str, object],
+) -> None:
+    """Assert an Agent Workspace recovery probe points at a registered local GET route."""
+
+    _assert_agent_workspace_probe_resolves_to_full_app_read_route(probe, method="GET")
 
 
 def test_load_knowledge_actual_loading_gate_state_projects_owner_gate(tmp_path, monkeypatch) -> None:
@@ -586,6 +598,10 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
         "Goal Requirement Drilldown",
     ]
     assert all(probe["read_only"] is True for probe in probes)
+    post_read_probe_labels = {"Wiki Search", "Knowledge Context Receipt"}
+    for probe in probes:
+        method = "POST" if probe["label"] in post_read_probe_labels else "GET"
+        _assert_agent_workspace_probe_resolves_to_full_app_read_route(probe, method=method)
     desktop_probe = next(probe for probe in probes if probe["label"] == "Desktop Smoke Evidence")
     assert desktop_probe["route"] == "/api/agent-workspace/status"
     assert desktop_probe["mcp_tool"] == "literature.agent_workspace_status"
