@@ -225,6 +225,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
     assert wiki_import_annotations.destructiveHint is True
     assert wiki_import_annotations.idempotentHint is False
     assert wiki_import_annotations.openWorldHint is False
+    _assert_local_write_annotations(tools_by_name["literature.zotero_attachment_health"])
     _assert_local_write_annotations(tools_by_name["literature.behavior_eval_pack"])
     _assert_local_write_annotations(tools_by_name["literature.agent_request_create"])
     _assert_local_write_annotations(tools_by_name["literature.single_paper_task_create"])

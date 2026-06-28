@@ -161,11 +161,11 @@ def test_health_check_forwards_explicit_live_flag(
     assert backend.calls[-1] == ("json", "/api/health/check", {"include_live": True})
 
 
-def test_zotero_attachment_health_calls_read_only_endpoint(
+def test_zotero_attachment_health_forwards_report_write_flag(
     tools: RuntimeTools,
     backend: FakeBackend,
 ) -> None:
-    """zotero_attachment_health should delegate inspection to the backend route."""
+    """zotero_attachment_health should delegate diagnostics and report intent."""
 
     backend.set_json(
         "/api/zotero/attachment-health",

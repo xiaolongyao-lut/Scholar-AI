@@ -352,7 +352,17 @@ def create_mcp_server(
         """Return passive Scholar AI workflow readiness diagnostics."""
         return runtime.health_check(include_live=include_live)
 
-    @mcp.tool(name="literature.zotero_attachment_health", structured_output=True)
+    @mcp.tool(
+        name="literature.zotero_attachment_health",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Zotero Attachment Health",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_zotero_attachment_health(
         zotero_data_dir: str,
         allowed_root: str | None = None,
@@ -360,7 +370,7 @@ def create_mcp_server(
         max_items: int = 500,
         write_reports: bool = True,
     ) -> dict[str, Any]:
-        """Return read-only Zotero attachment health diagnostics."""
+        """Return Zotero attachment health diagnostics with optional local reports."""
         return runtime.zotero_attachment_health(
             zotero_data_dir=zotero_data_dir,
             allowed_root=allowed_root,
