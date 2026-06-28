@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-28T23:20:00+08:00",
+  "updated_at": "2026-06-28T23:55:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -107,6 +107,22 @@
     "latest_checkpoint_caveat": "Rollback checkpoint for N294 latest-slice changed-files and verification evidence consistency; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N301 Starlette route matching for endpoint resolution",
+      "source": "Starlette routing Route.matches / Match semantics",
+      "url": "https://www.starlette.io/routing/",
+      "status": "Reused Route.matches against app.routes to prove a concrete read_endpoint resolves to a registered GET route.",
+      "checked_at": "2026-06-28T23:55:00+08:00",
+      "use_in_slice": "Justifies asserting the search-ref read_endpoint resolves to a real read-only route instead of trusting the endpoint string."
+    },
+    {
+      "topic": "N301 read-only HTTP method binding for a reader route",
+      "source": "FastAPI routing decorators and HTTP method semantics",
+      "url": "https://fastapi.tiangolo.com/tutorial/path-params/",
+      "status": "Reused the agent-bridge @router.get reader to assert the resolved route binds GET only and exposes no write methods.",
+      "checked_at": "2026-06-28T23:55:00+08:00",
+      "use_in_slice": "Used to prove the searchable-ref link is read-only, not a write surface, when followed into bounded context."
+    },
     {
       "topic": "N300 Protocol method consistency across status and health surfaces",
       "source": "Python typing.runtime_checkable Protocol method semantics",
@@ -8780,20 +8796,33 @@
         "N300 only adds a deterministic read-only consistency guard; it does not execute OCR, run live provider/model loading, or claim long-goal completion, and preserves the live actual-loading blocker."
       ],
       "residual_risk": "This proves the OCR status/health readiness consistency contract over registered engines only. It does not execute OCR, run any real engine health_check probe, run provider preflight or live smoke, clear the live provider/model actual-loading blocker, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
+    },
+    {
+      "id": "N301-chunk-search-ref-read-endpoint-route-resolution",
+      "status": "proved",
+      "requirement": "The knowledge-runtime searchable-ref link must be auditable as a non-404 read-only route, not just a matching string: for every ref returned by GET /resources/chunks/search-refs, the advertised read_endpoint must resolve to a registered full-app GET route (the agent-bridge /api/agent-bridge/resource/{ref_id:path} reader) and that route must not expose POST/PUT/PATCH/DELETE, so QA/MCP agents can follow a search ref into bounded context without hitting a dead link or a write surface.",
+      "evidence": [
+        "tests/test_search_refs_contract.py::test_search_ref_read_endpoint_resolves_to_registered_read_only_route writes a chunk fixture, calls the search-refs route, and for each ref strips the query string and asserts read_endpoint resolves to a registered full-app GET route via Starlette route.matches, then asserts that route binds GET and not POST/PUT/PATCH/DELETE.",
+        "tests/test_search_refs_contract.py::test_search_ref_route_resolution_guard_has_teeth asserts a fabricated unregistered read_endpoint yields zero full-app GET matches, proving the positive assertion is not vacuous.",
+        "Focused run: .venv-1 pytest tests/test_search_refs_contract.py -> 7 passed (5 prior + 2 new).",
+        "Regression injection: renaming the registered agent-bridge route /resource/{ref_id:path} -> /resource-MOVED/{ref_id:path} keeps the read_endpoint string valid but makes _full_app_get_route_matches return [] and the route-resolution assertion fails; router restored and git diff is empty.",
+        "Cross-suite run: pytest test_search_refs_contract + test_runtime_lifecycle_app_contract + test_ci_visibility_contract + test_resources_router_contract -> 36 passed.",
+        "N301 only adds a deterministic read-only route-resolution guard over the existing search-ref contract; it executes no OCR, runs no live provider/model loading, and preserves the live actual-loading blocker."
+      ],
+      "residual_risk": "This proves the chunk search-ref read_endpoint resolves to a registered read-only GET route only. It does not load knowledge into a live model context, run provider preflight or live smoke, clear the live provider/model actual-loading blocker, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
     }
   ],
   "changed_files_for_this_slice": [
-    "tests/test_ocr_engine_registry.py",
+    "tests/test_search_refs_contract.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N300.",
-    "git status --short --branch -> main...origin/main [ahead 129] clean before N300 edits; N299 already committed as latest slice.",
-    "Created rollback snapshot .rollback_snapshots/n300-ocr-health-status-consistency-* before N300 edits.",
-    "Official/mature references reused: typing.runtime_checkable Protocol consistency semantics and pytest monkeypatch loader isolation for the status/health readiness consistency guard.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py -q -> 33 passed.",
-    "Regression injection: forcing list_ocr_engine_info readiness_status='ready' for every engine -> the new consistency test fails because mock_missing status readiness no longer matches its health_check dependency_missing; product file restored.",
-    "git diff --stat ocr_engine_registry.py after restore -> empty (no product behavior change)."
+    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N301.",
+    "git status --short --branch -> main...origin/main [ahead 130] clean before N301 edits; N300 already committed as latest slice.",
+    "Created rollback snapshot .rollback_snapshots/n301-chunk-search-ref-route-resolution-* before N301 edits.",
+    "Official/mature references reused: Starlette Route.matches resolution semantics and FastAPI read-only GET method binding for the searchable-ref route-resolution guard.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_search_refs_contract.py -q -> 7 passed (5 prior + 2 new); cross-suite with lifecycle/ci/resources contracts -> 36 passed.",
+    "Regression injection: renaming agent-bridge /resource/{ref_id:path} -> /resource-MOVED/{ref_id:path} keeps the read_endpoint string valid but makes the route-resolution assertion fail; router restored and git diff is empty."
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
@@ -8905,10 +8934,10 @@
     "updated_at": "2026-06-28T20:55:00+08:00"
   },
   "completion_claim": {
-    "this_slice": "N295 adds a deterministic contract test proving every dynamic recovery-ref probe endpoint resolves to a registered full-app GET route, closing a 404 dead-link gap in research-action lifecycle recovery links.",
+    "this_slice": "N301 adds a deterministic contract test proving every chunk search-ref read_endpoint resolves to a registered read-only full-app GET route, closing a dead-link/write-surface gap in the knowledge-runtime searchable-ref chain.",
     "full_goal": "not_complete_pending_authorized_actual_loading_provider_proof",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N295 proves deterministic recovery-ref probe endpoint route existence only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+    "why_not_complete": "N301 proves the chunk search-ref read_endpoint route-resolution contract only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -12833,7 +12862,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N300-ocr-status-health-readiness-consistency",
+  "latest_slice": "N301-chunk-search-ref-read-endpoint-route-resolution",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -14597,30 +14626,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-28T23:20:00+08:00",
+    "updated_at": "2026-06-28T23:55:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 301,
+    "requirements_total": 302,
     "requirement_status_counts": {
-      "proved": 301
+      "proved": 302
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N300-ocr-status-health-readiness-consistency",
-    "latest_slice_id": "N300-ocr-status-health-readiness-consistency",
+    "latest_requirement_id": "N301-chunk-search-ref-read-endpoint-route-resolution",
+    "latest_slice_id": "N301-chunk-search-ref-read-endpoint-route-resolution",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N300 proves the OCR status/health readiness consistency contract only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N300 asserts public_ocr_status per-engine readiness mirrors each engine health_check while preserving the live-proof authorization boundary and running no real engine health probe."
+        "current_boundary": "N301 proves the chunk search-ref read_endpoint resolves to a registered read-only GET route only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N301 asserts every search-ref read_endpoint resolves to the registered read-only agent-bridge reader route and exposes no write methods, while preserving the live-proof authorization boundary and running no live model loading."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N300 proves the OCR status/health readiness consistency contract only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+    "why_not_complete": "N301 proves the chunk search-ref read_endpoint route-resolution contract only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -21817,5 +21846,49 @@
       "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
     ],
     "updated_at": "2026-06-28T23:20:00+08:00"
+  },
+  "n301_chunk_search_ref_read_endpoint_route_resolution_slice": {
+    "id": "N301-chunk-search-ref-read-endpoint-route-resolution",
+    "status": "proved",
+    "summary": "N301 pins that the knowledge-runtime searchable-ref link is a non-404 read-only route, not just a matching string. The search-refs contract previously asserted only the literal read_endpoint value; N301 adds a guard that resolves each ref's read_endpoint against the full FastAPI app via Starlette route.matches, asserts it lands on the registered agent-bridge /api/agent-bridge/resource/{ref_id:path} GET reader, and asserts that route exposes no POST/PUT/PATCH/DELETE. A negative self-check proves a fabricated unregistered endpoint yields zero matches. Previously the registered reader route could be renamed or removed while the emitted read_endpoint string stayed valid, leaving CI green but the searchable ref a dead link.",
+    "rollback_snapshot_id": "n301-chunk-search-ref-route-resolution",
+    "rollback_snapshot_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n301-chunk-search-ref-route-resolution-20260628_222922",
+    "mature_references_checked": [
+      {
+        "topic": "N301 Starlette route matching for endpoint resolution",
+        "source": "Starlette routing Route.matches / Match semantics",
+        "url": "https://www.starlette.io/routing/",
+        "status": "Reused Route.matches against app.routes to prove a concrete read_endpoint resolves to a registered GET route.",
+        "checked_at": "2026-06-28T23:55:00+08:00",
+        "use_in_slice": "Justifies asserting the search-ref read_endpoint resolves to a real read-only route instead of trusting the endpoint string."
+      },
+      {
+        "topic": "N301 read-only HTTP method binding for a reader route",
+        "source": "FastAPI routing decorators and HTTP method semantics",
+        "url": "https://fastapi.tiangolo.com/tutorial/path-params/",
+        "status": "Reused the agent-bridge @router.get reader to assert the resolved route binds GET only and exposes no write methods.",
+        "checked_at": "2026-06-28T23:55:00+08:00",
+        "use_in_slice": "Used to prove the searchable-ref link is read-only, not a write surface, when followed into bounded context."
+      }
+    ],
+    "changed_files": [
+      "tests/test_search_refs_contract.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N301.",
+      "git status --short --branch -> main...origin/main [ahead 130] clean before N301 edits; N300 already committed as latest slice.",
+      "Created rollback snapshot .rollback_snapshots/n301-chunk-search-ref-route-resolution-* before N301 edits.",
+      "Official/mature references reused: Starlette Route.matches resolution semantics and FastAPI read-only GET method binding for the searchable-ref route-resolution guard.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_search_refs_contract.py -q -> 7 passed (5 prior + 2 new); cross-suite with lifecycle/ci/resources contracts -> 36 passed.",
+      "Regression injection: renaming agent-bridge /resource/{ref_id:path} -> /resource-MOVED/{ref_id:path} keeps the read_endpoint string valid but makes the route-resolution assertion fail; router restored and git diff is empty."
+    ],
+    "residual_risk": "This proves the chunk search-ref read_endpoint resolves to a registered read-only GET route only. It does not load knowledge into a live model context, run provider preflight or live smoke, clear the live provider/model actual-loading blocker, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, create rollback snapshot, and search official or mature references before editing.",
+      "Continue only with deterministic local recovery/proof hardening unless provider preflight and explicit live-smoke authorization are present.",
+      "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
+    ],
+    "updated_at": "2026-06-28T23:55:00+08:00"
   }
 }

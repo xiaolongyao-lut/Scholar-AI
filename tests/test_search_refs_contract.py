@@ -6,6 +6,8 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi.testclient import TestClient
+from starlette.routing import Match
+from urllib.parse import urlsplit
 
 import routers.resources_router as resources_router
 from python_adapter_server import app
@@ -15,6 +17,38 @@ def _client() -> TestClient:
     """Return the shared FastAPI test client for search-ref contracts."""
 
     return TestClient(app)
+
+
+def _full_app_get_route_matches(path: str) -> list[str]:
+    """Return registered full-app GET route paths that resolve a concrete path.
+
+    Args:
+        path: Concrete request path (query string already stripped).
+
+    Returns:
+        Registered route path templates whose GET handler matches ``path``,
+        excluding the catch-all SPA fallback. Empty when nothing resolves,
+        which proves a read_endpoint would 404 against the full app.
+    """
+
+    normalized_path = str(path or "").strip()
+    assert normalized_path.startswith("/")
+    matches: list[str] = []
+    for route in app.routes:
+        route_path = str(getattr(route, "path", ""))
+        if route_path == "/{full_path:path}":
+            continue
+        route_methods = getattr(route, "methods", None)
+        if route_methods is not None and "GET" not in route_methods:
+            continue
+        if not hasattr(route, "matches"):
+            continue
+        match, _ = route.matches(
+            {"type": "http", "path": normalized_path, "method": "GET"}
+        )
+        if match is not Match.NONE:
+            matches.append(route_path)
+    return matches
 
 
 def _create_project(client: TestClient, title: str = "Search Refs Project") -> dict[str, Any]:
@@ -341,3 +375,74 @@ def test_search_refs_empty_store_is_stable_and_read_only(monkeypatch: Any) -> No
         },
         "refs": [],
     }
+
+
+def test_search_ref_read_endpoint_resolves_to_registered_read_only_route(
+    monkeypatch: Any,
+) -> None:
+    """Each search-ref read_endpoint must resolve to a real read-only GET route.
+
+    The searchable-ref link in the knowledge runtime chain is only auditable if
+    its advertised read_endpoint resolves to a registered full-app GET route
+    (not a 404 dead link) and is read-only. A matching endpoint string alone is
+    not proof, so this asserts route resolution and GET-method binding against
+    the full FastAPI app for every ref returned by the contract.
+    """
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    _write_chunk_fixture(project_id)
+    monkeypatch.setattr(
+        resources_router,
+        "_collect_pending_scan_candidates",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("ingest helper called")
+        ),
+    )
+    monkeypatch.setattr(
+        resources_router,
+        "_ingest_pending_candidates",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("ingest helper called")
+        ),
+    )
+
+    response = client.get(
+        "/resources/chunks/search-refs",
+        params={"project_id": project_id, "query": "transformer attention", "top_k": 5},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_refs"] >= 1
+    for ref in payload["refs"]:
+        read_endpoint = ref["read_endpoint"]
+        assert read_endpoint.startswith("/api/agent-bridge/resource/chunk:")
+        # Strip the query string before route resolution; the path carries identity.
+        read_path = urlsplit(read_endpoint).path
+        matches = _full_app_get_route_matches(read_path)
+        assert matches, f"read_endpoint not registered as GET route: {read_endpoint}"
+        # The resolved route must be read-only: no POST/PUT/PATCH/DELETE binding.
+        for route in app.routes:
+            if str(getattr(route, "path", "")) not in matches:
+                continue
+            route_methods = getattr(route, "methods", None)
+            if route_methods is None:
+                continue
+            assert "GET" in route_methods
+            assert not (route_methods & {"POST", "PUT", "PATCH", "DELETE"}), (
+                f"search-ref read route exposes write methods: {route_methods}"
+            )
+
+
+def test_search_ref_route_resolution_guard_has_teeth() -> None:
+    """The route-resolution guard must reject a read_endpoint that 404s.
+
+    Negative self-check: a fabricated read_endpoint that does not correspond to
+    any registered route must produce no full-app GET match, proving the
+    positive assertion above is not vacuously true.
+    """
+
+    fabricated = "/api/agent-bridge/does-not-exist/chunk:ghost"
+    assert _full_app_get_route_matches(fabricated) == []
