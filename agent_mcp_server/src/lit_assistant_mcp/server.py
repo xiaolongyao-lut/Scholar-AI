@@ -666,7 +666,17 @@ def create_mcp_server(
             cursor=cursor,
         )
 
-    @mcp.tool(name="literature.academic_english_status", structured_output=True)
+    @mcp.tool(
+        name="literature.academic_english_status",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Academic English Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_academic_english_status() -> dict[str, Any]:
         """Return academic-English knowledge manifest and artifact status."""
         return runtime.academic_english_status()
@@ -737,17 +747,47 @@ def create_mcp_server(
         """Search bridge-lexicon entries and return bounded refs."""
         return runtime.bridge_lexicon_search(query=query, top_k=top_k)
 
-    @mcp.tool(name="literature.scoring_rules_status", structured_output=True)
+    @mcp.tool(
+        name="literature.scoring_rules_status",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Scoring Rules Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_scoring_rules_status() -> dict[str, Any]:
         """Return scoring-rules JSON config provenance and runtime consumer status."""
         return runtime.scoring_rules_status()
 
-    @mcp.tool(name="literature.scoring_rules_read", structured_output=True)
+    @mcp.tool(
+        name="literature.scoring_rules_read",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Scoring Rules Read",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_scoring_rules_read() -> dict[str, Any]:
         """Read the bounded scoring-rules JSON config runtime artifact."""
         return runtime.scoring_rules_read()
 
-    @mcp.tool(name="literature.scoring_rules_search", structured_output=True)
+    @mcp.tool(
+        name="literature.scoring_rules_search",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Scoring Rules Search",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_scoring_rules_search(
         query: str,
         top_k: int = 8,
@@ -755,12 +795,32 @@ def create_mcp_server(
         """Search scoring-rules JSON config knowledge and return bounded refs."""
         return runtime.scoring_rules_search(query=query, top_k=top_k)
 
-    @mcp.tool(name="literature.product_docs_status", structured_output=True)
+    @mcp.tool(
+        name="literature.product_docs_status",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Product Docs Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_product_docs_status() -> dict[str, Any]:
         """Return product-docs Markdown provenance and runtime consumer status."""
         return runtime.product_docs_status()
 
-    @mcp.tool(name="literature.product_docs_read", structured_output=True)
+    @mcp.tool(
+        name="literature.product_docs_read",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Product Docs Read",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_product_docs_read() -> dict[str, Any]:
         """Read the bounded product-docs runtime artifact."""
         return runtime.product_docs_read()
