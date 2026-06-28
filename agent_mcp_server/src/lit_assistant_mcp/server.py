@@ -1347,7 +1347,17 @@ def create_mcp_server(
         """Read a resumable handoff card for one runtime-visible agent request."""
         return runtime.agent_handoff_card(request_id=request_id)
 
-    @mcp.tool(name="literature.behavior_eval_pack", structured_output=True)
+    @mcp.tool(
+        name="literature.behavior_eval_pack",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Behavior Eval Pack",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_behavior_eval_pack(
         observations: list[dict[str, Any]] | None = None,
         include_cases: bool = True,

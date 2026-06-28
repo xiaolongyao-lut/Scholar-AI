@@ -33,6 +33,17 @@ def _assert_execution_probe_annotations(tool: object) -> None:
     assert annotations.openWorldHint is True
 
 
+def _assert_local_write_annotations(tool: object) -> None:
+    """Assert a tool declares bounded local writes without external mutation."""
+
+    annotations = getattr(tool, "annotations", None)
+    assert annotations is not None
+    assert annotations.readOnlyHint is False
+    assert annotations.destructiveHint is False
+    assert annotations.idempotentHint is False
+    assert annotations.openWorldHint is False
+
+
 def test_server_registers_source_and_runtime_tools() -> None:
     """FastMCP server exposes source, runtime, and workflow-spine tool names."""
     server = create_mcp_server()
@@ -201,6 +212,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
     assert wiki_import_annotations.destructiveHint is True
     assert wiki_import_annotations.idempotentHint is False
     assert wiki_import_annotations.openWorldHint is False
+    _assert_local_write_annotations(tools_by_name["literature.behavior_eval_pack"])
 
 
 def test_server_instructions_point_to_capability_map_without_stale_count() -> None:
