@@ -17,6 +17,7 @@ import routers.runtime_router as runtime_router_module
 from python_adapter_server import app, get_local_api_capability_token
 from source_vault import SourceChunkInput, SourceVault
 from writing_runtime import WritingRuntime
+from writing_runtime import _boundary_recovery_probe_rows
 from writing_runtime import _recovery_ref_from_evidence_ref
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -368,6 +369,85 @@ def test_recovery_ref_probe_endpoints_resolve_to_registered_routes() -> None:
     with pytest.raises(AssertionError):
         _assert_full_app_get_route_exists(
             _concrete_runtime_fixture_path("/runtime/evidence_integrity_gate")
+        )
+
+
+def test_boundary_recovery_probe_rows_resolve_to_registered_routes() -> None:
+    """Every read-only probe `_boundary_recovery_probe_rows` emits must be a real GET route.
+
+    Guards `_boundary_recovery_probe_rows`, which builds resume probes directly from
+    `_handoff_resume_probe(...)` path literals (static passport/gate probes, the
+    behavior-eval branch, the runtime-job lineage f-strings, the replay-index branch,
+    and the signal-refresh drilldown). Those probe URLs are a separate source from
+    `_recovery_ref_from_evidence_ref`, and none are visible to the static endpoint
+    harvester, so a renamed runtime route would silently turn blocked-action recovery
+    probes into 404s with no failing test. This drives every endpoint branch with one
+    controlled signal and asserts each probe stays read-only and resolves on the full app.
+    """
+
+    gate_scope = {
+        "session_id": "boundary-probe-audit-session",
+        "job_id": "boundary-probe-audit-job",
+        "project_id": "boundary-probe-audit-project",
+    }
+    # A single signal crafted to exercise every probe-emitting branch at once:
+    # category=behavior_eval (behavior-eval pack), a runtime_job evidence ref (job +
+    # workflow-replay-lineage), a preflight_refresh_receipt replay ref (replay index),
+    # and a non-empty signal_id (refresh drilldown probe).
+    signal = {
+        "signal_id": "behavior_eval:boundary-probe-audit",
+        "category": "behavior_eval",
+        "status": "blocked",
+    }
+    drilldown = {
+        "evidence_refs": [
+            {"ref_type": "runtime_job", "ref_id": "boundary-probe-audit-job"},
+        ],
+        "replay_refs": [
+            {
+                "ref_type": "preflight_refresh_receipt",
+                "ref_id": "boundary-probe-audit-receipt",
+            },
+        ],
+    }
+
+    probes = _boundary_recovery_probe_rows(
+        signal=signal,
+        drilldown=drilldown,
+        gate_scope=gate_scope,
+        linked_stage_id="agent_handoff",
+        max_items=16,
+    )
+    assert probes, "boundary recovery probes must not be empty for a blocking signal"
+
+    # Every advertised probe must stay read-only and resolve to a real full-app GET
+    # route; _assert_registered_read_only_probe also rejects underscore aliases.
+    for probe in probes:
+        _assert_registered_read_only_probe(probe)
+
+    # The crafted signal must actually exercise each distinct endpoint branch, so a
+    # future refactor that drops a branch cannot pass this guard by emitting fewer probes.
+    probe_paths = {_probe_path(probe) for probe in probes}
+    expected_probe_paths = {
+        "/runtime/workflow-passport",
+        "/runtime/evidence-integrity-gate",
+        "/runtime/behavior-eval-pack",
+        "/runtime/job/boundary-probe-audit-job",
+        "/runtime/job/boundary-probe-audit-job/workflow-replay-lineage",
+        "/runtime/workflow-replay-index",
+    }
+    missing = expected_probe_paths - probe_paths
+    assert not missing, f"boundary recovery probe branches missing: {sorted(missing)}"
+
+    # Self-check: the read-only probe assertion must reject a stale underscore alias,
+    # so this guard cannot silently pass against a dead probe link.
+    with pytest.raises(AssertionError):
+        _assert_registered_read_only_probe(
+            {
+                "method": "GET",
+                "read_only": True,
+                "url": "/runtime/evidence_integrity_gate",
+            }
         )
 
 
