@@ -1079,7 +1079,17 @@ def create_mcp_server(
             confirmed_by=confirmed_by,
         )
 
-    @mcp.tool(name="literature.agent_bridge_status", structured_output=True)
+    @mcp.tool(
+        name="literature.agent_bridge_status",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Agent Bridge Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_agent_bridge_status(limit: int = 20) -> dict[str, Any]:
         """Read the runtime-backed agent bridge status."""
         return runtime.agent_bridge_status(limit=limit)
@@ -1214,7 +1224,17 @@ def create_mcp_server(
             max_chunks=max_chunks,
         )
 
-    @mcp.tool(name="literature.single_paper_completion_check", structured_output=True)
+    @mcp.tool(
+        name="literature.single_paper_completion_check",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Single Paper Completion Check",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_single_paper_completion_check(
         output_text: str,
         task_manifest: dict[str, Any],
@@ -1237,7 +1257,17 @@ def create_mcp_server(
             sentinel=sentinel,
         )
 
-    @mcp.tool(name="literature.agent_request_list", structured_output=True)
+    @mcp.tool(
+        name="literature.agent_request_list",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Agent Request List",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_agent_request_list(
         status: str | None = None,
         project_id: str | None = None,
@@ -1247,7 +1277,17 @@ def create_mcp_server(
         """List runtime-visible agent requests."""
         return runtime.agent_request_list(status=status, project_id=project_id, source=source, limit=limit)
 
-    @mcp.tool(name="literature.agent_request_read", structured_output=True)
+    @mcp.tool(
+        name="literature.agent_request_read",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Agent Request Read",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_agent_request_read(request_id: str) -> dict[str, Any]:
         """Read one runtime-visible agent request."""
         return runtime.agent_request_read(request_id=request_id)
