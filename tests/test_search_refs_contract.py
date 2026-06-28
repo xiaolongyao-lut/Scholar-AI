@@ -446,3 +446,95 @@ def test_search_ref_route_resolution_guard_has_teeth() -> None:
 
     fabricated = "/api/agent-bridge/does-not-exist/chunk:ghost"
     assert _full_app_get_route_matches(fabricated) == []
+
+
+def test_search_ref_read_endpoint_loads_bounded_chunk_context(monkeypatch: Any) -> None:
+    """Following a search-ref read_endpoint must load that ref's bounded chunk.
+
+    Route resolution alone does not prove the searchable-ref -> bounded-context
+    link works end to end: the producer (search-refs) and the reader could drift
+    on ref-id format, query params, or chunk lookup while each half stays green.
+    This issues a real GET against the exact read_endpoint string emitted by
+    search-refs and asserts the reader returns 200, the same ref identity, the
+    chunk's actual content, bound locator metadata, and no leaked private fields.
+    """
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    _write_chunk_fixture(project_id)
+    monkeypatch.setattr(
+        resources_router,
+        "_collect_pending_scan_candidates",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("ingest helper called")
+        ),
+    )
+    monkeypatch.setattr(
+        resources_router,
+        "_ingest_pending_candidates",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("ingest helper called")
+        ),
+    )
+
+    search_response = client.get(
+        "/resources/chunks/search-refs",
+        params={"project_id": project_id, "query": "transformer attention", "top_k": 5},
+    )
+    assert search_response.status_code == 200
+    refs = search_response.json()["refs"]
+    assert refs, "search-refs returned no refs to follow"
+    ref = refs[0]
+    assert ref["chunk_id"] == "chunk_alpha_1"
+    read_endpoint = ref["read_endpoint"]
+
+    # Follow the exact emitted read_endpoint string, not a hand-built URL.
+    read_response = client.get(read_endpoint)
+    assert read_response.status_code == 200, (
+        f"read_endpoint {read_endpoint} returned {read_response.status_code}: "
+        f"{read_response.text}"
+    )
+    payload = read_response.json()
+    # The reader must resolve to the same ref identity and kind.
+    assert payload["ref_id"] == ref["ref_id"] == "chunk:chunk_alpha_1"
+    assert payload["kind"] == "chunk"
+    # Bounded context must carry the chunk's actual content, not a placeholder.
+    assert "Transformer attention improves sequence modeling" in payload["content"]
+    # Locator/source metadata must bind back to the same chunk.
+    assert payload["metadata"]["chunk_id"] == "chunk_alpha_1"
+    assert payload["metadata"]["material_id"] == "mat_alpha"
+    assert payload["metadata"]["page"] == 7
+    assert payload["metadata"]["source_relative_path"] == "papers/attention.pdf"
+    # The bounded reader must not leak the private chunk fields.
+    serialized = read_response.text
+    assert "SHOULD_NOT_LEAK" not in serialized
+    assert "abstract" not in serialized.lower()
+    assert "ocr" not in serialized.lower()
+    assert "private_note" not in serialized
+
+
+def test_search_ref_reader_rejects_unknown_chunk_ref(monkeypatch: Any) -> None:
+    """A read_endpoint for a non-existent chunk must 404, proving the guard bites.
+
+    Negative self-check for the end-to-end load: a read_endpoint shaped exactly
+    like the emitted one but pointing at a chunk id that is not in the store must
+    return 404, so the positive content assertions cannot pass vacuously.
+    """
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    _write_chunk_fixture(project_id)
+    monkeypatch.setattr(
+        resources_router,
+        "_ensure_project_chunks",
+        lambda *_args, **_kwargs: {},
+    )
+
+    missing_endpoint = (
+        f"/api/agent-bridge/resource/chunk:chunk_absent_404?project_id={project_id}"
+    )
+    response = client.get(missing_endpoint)
+    assert response.status_code == 404
+    assert "chunk_absent_404" in response.text
