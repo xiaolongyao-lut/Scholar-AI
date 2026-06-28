@@ -22,6 +22,7 @@ if str(core_path) not in sys.path:
 import routers.agent_workspace_router as agent_workspace_router
 import routers.agent_bridge_router as agent_bridge_router_module
 import routers.knowledge_router as knowledge_router_module
+import routers.pdf_backend_router as pdf_backend_router_module
 import routers.runtime_router as runtime_router_module
 import python_adapter_server as server
 from literature_assistant.core import academic_english_resources, product_docs_knowledge
@@ -383,6 +384,101 @@ def test_agent_workspace_core_recovery_probes_return_http_success(monkeypatch) -
             headers=headers,
             identifiers=identifiers_by_label.get(label),
         )
+
+
+def test_agent_workspace_ocr_status_probe_returns_http_success_and_matches_status_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OCR runtime recovery must stay read-only and match the advertised status probe."""
+
+    ocr_status_payload = {
+        "policy": "engine",
+        "configured_engine": "mock_local",
+        "selected_engine": "mock_local",
+        "language": "en",
+        "source": "test_config",
+        "engine_config": {
+            "api_key": "sk-test-redacted",
+            "base_url": "https://ocr.example.test",
+            "nested": {"value": "shape-only"},
+        },
+        "available_engines": [
+            {
+                "name": "mock_local",
+                "display_name": "Mock Local OCR",
+                "engine_type": "local",
+                "available": True,
+                "requires_network": False,
+                "readiness_status": "ready",
+                "readiness_blockers": [],
+                "next_safe_local_actions": ["Run OCR only through an explicit execution probe."],
+            },
+            {
+                "name": "remote_api",
+                "display_name": "Remote OCR API",
+                "engine_type": "remote",
+                "available": False,
+                "requires_network": True,
+                "unavailable_reason": "remote OCR requires explicit upload consent",
+                "readiness_status": "configuration_required",
+                "readiness_blockers": ["allow_remote_upload must be true"],
+                "next_safe_local_actions": ["Keep remote OCR disabled until upload consent is explicit."],
+            },
+        ],
+        "warning": "OCR policy is engine and mock_local is ready for explicit local probes only",
+        "next_safe_local_actions": ["Inspect literature.ocr_engines before running OCR."],
+    }
+    monkeypatch.setattr(agent_workspace_router, "public_ocr_status", lambda: ocr_status_payload)
+    monkeypatch.setattr(pdf_backend_router_module, "public_ocr_status", lambda: ocr_status_payload)
+
+    client = TestClient(server.app)
+    headers = {"X-LitAssist-Capability": server.get_local_api_capability_token()}
+    response = client.get("/api/agent-workspace/status", headers=headers)
+    assert response.status_code == 200
+    workspace_state = response.json()["workspace_state"]
+    ocr_runtime = workspace_state["ocr_runtime"]
+    probes = {
+        probe["label"]: probe
+        for probe in workspace_state["recovery_probes"]
+        if isinstance(probe.get("label"), str)
+    }
+    assert "OCR Runtime Status" in probes
+
+    status_payload = _assert_agent_workspace_probe_returns_http_success(
+        client,
+        probes["OCR Runtime Status"],
+        headers=headers,
+    )
+    engines_by_name = {engine["name"]: engine for engine in status_payload["available_engines"]}
+
+    assert ocr_runtime["available"] is True
+    assert ocr_runtime["read_only"] is True
+    assert ocr_runtime["policy"] == status_payload["policy"]
+    assert ocr_runtime["configured_engine"] == status_payload["configured_engine"]
+    assert ocr_runtime["selected_engine"] == status_payload["selected_engine"]
+    assert ocr_runtime["language"] == status_payload["language"]
+    assert ocr_runtime["source"] == status_payload["source"]
+    assert ocr_runtime["engine_config"] == {
+        "api_key": "***",
+        "base_url": "https://ocr.example.test",
+        "nested": "dict",
+    }
+    assert ocr_runtime["engine_count"] == len(status_payload["available_engines"])
+    assert ocr_runtime["ready_engine_count"] == sum(
+        1 for engine in status_payload["available_engines"] if engine["available"] is True
+    )
+    assert ocr_runtime["warning"] == status_payload["warning"]
+    assert ocr_runtime["next_safe_local_actions"] == status_payload["next_safe_local_actions"]
+    assert ocr_runtime["engines"][0]["name"] == "mock_local"
+    assert ocr_runtime["engines"][0]["readiness_status"] == engines_by_name["mock_local"]["readiness_status"]
+    assert ocr_runtime["engines"][1]["name"] == "remote_api"
+    assert ocr_runtime["engines"][1]["readiness_blockers"] == engines_by_name["remote_api"][
+        "readiness_blockers"
+    ]
+    assert ocr_runtime["readiness_blockers"] == [
+        "OCR policy is engine and mock_local is ready for explicit local probes only",
+        "remote_api: allow_remote_upload must be true",
+    ]
 
 
 def test_agent_workspace_krt_actual_loading_gate_probe_returns_http_success_and_matches_status_projection() -> None:
