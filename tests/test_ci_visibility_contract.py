@@ -432,6 +432,15 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
         assert isinstance(top_verification_commands, list) and top_verification_commands
         assert isinstance(latest_verification_commands, list) and latest_verification_commands
         assert top_verification_commands == latest_verification_commands
+        if any("0 tools remain without annotations" in command for command in top_verification_commands):
+            next_actions = payload.get("next_authorized_local_actions")
+            assert isinstance(next_actions, list) and next_actions
+            stale_annotation_actions = [
+                action
+                for action in next_actions
+                if isinstance(action, str) and "unannotated" in action.lower()
+            ]
+            assert not stale_annotation_actions
     assert rollup.get("requirements_all_proved") is all(
         row["status"] == "proved" for row in rows
     )
