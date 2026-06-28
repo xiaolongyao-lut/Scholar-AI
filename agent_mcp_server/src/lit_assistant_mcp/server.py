@@ -1090,7 +1090,17 @@ def create_mcp_server(
             audit_context=audit_context,
         )
 
-    @mcp.tool(name="literature.outline_generate", structured_output=True)
+    @mcp.tool(
+        name="literature.outline_generate",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Outline Generate",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
     def literature_outline_generate(
         project_id: str,
         topic: str,

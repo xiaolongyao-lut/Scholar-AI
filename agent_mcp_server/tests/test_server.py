@@ -33,6 +33,17 @@ def _assert_execution_probe_annotations(tool: object) -> None:
     assert annotations.openWorldHint is True
 
 
+def _assert_open_world_local_write_annotations(tool: object) -> None:
+    """Assert a tool declares local writes that may call configured providers."""
+
+    annotations = getattr(tool, "annotations", None)
+    assert annotations is not None
+    assert annotations.readOnlyHint is False
+    assert annotations.destructiveHint is False
+    assert annotations.idempotentHint is False
+    assert annotations.openWorldHint is True
+
+
 def _assert_local_write_annotations(tool: object) -> None:
     """Assert a tool declares bounded local writes without external mutation."""
 
@@ -228,6 +239,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
     assert wiki_import_annotations.openWorldHint is False
     _assert_local_write_annotations(tools_by_name["literature.zotero_attachment_health"])
     _assert_local_write_annotations(tools_by_name["literature.behavior_eval_pack"])
+    _assert_open_world_local_write_annotations(tools_by_name["literature.outline_generate"])
     _assert_local_write_annotations(tools_by_name["literature.agent_request_create"])
     _assert_local_write_annotations(tools_by_name["literature.single_paper_task_create"])
     _assert_local_write_annotations(tools_by_name["literature.agent_progress"])
