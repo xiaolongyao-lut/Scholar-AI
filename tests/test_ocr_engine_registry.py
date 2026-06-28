@@ -955,6 +955,104 @@ def test_rapidocr_engine_rejects_empty_image_before_runtime_import(
         engine.ocr_image(empty_path, language="en")
 
 
+class _HealthAlignedMockOcrEngine(_MockOcrEngine):
+    """Mock whose status-surface readiness mirrors its health_check result.
+
+    Real built-in engines derive ``public_ocr_status`` readiness from
+    ``readiness_status()`` while ``health_check()`` is a second, independent code
+    path (see ``_health_from_availability``). This mock keeps the two paths
+    aligned so the consistency contract below has a valid positive case without
+    touching any real engine ``health_check`` that may run a local OCR probe.
+    """
+
+    def __init__(self, name: str, *, available: bool, blocker: str) -> None:
+        super().__init__({"available": available})
+        self.name = name
+        self._blocker = blocker
+
+    def readiness_status(self) -> str:
+        return "ready" if self.is_available() else "dependency_missing"
+
+    def readiness_blockers(self) -> tuple[str, ...]:
+        return () if self.is_available() else (self._blocker,)
+
+    def unavailable_reason(self) -> str | None:
+        return None if self.is_available() else self._blocker
+
+    def health_check(self) -> OcrEngineHealth:
+        ok = self.is_available()
+        return OcrEngineHealth(
+            ok=ok,
+            detail="available" if ok else self._blocker,
+            engine=self.name,
+            readiness_status="ready" if ok else self.readiness_status(),
+            readiness_blockers=() if ok else self.readiness_blockers(),
+        )
+
+
+def test_public_ocr_status_readiness_matches_engine_health_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """public_ocr_status readiness must mirror each engine's health_check result.
+
+    ``public_ocr_status`` advertises per-engine ``readiness_status``/``available``
+    derived from ``readiness_status()``, while ``health_check()`` is a separate
+    Protocol method that QA, MCP, and status surfaces also trust. Nothing pinned
+    the two paths together, so an engine could report ``dependency_missing`` in
+    status while ``health_check`` claimed ``ready`` (or vice versa) and CI would
+    stay green. This forces an available and an unavailable engine and asserts
+    the status-surface readiness equals the engine's own health_check, without
+    invoking any real built-in health_check that could run a local OCR probe.
+    """
+
+    monkeypatch.setattr(
+        "pdf_backends.ocr_engine_registry.load_builtin_ocr_engines", lambda: None
+    )
+    available_engine = _HealthAlignedMockOcrEngine(
+        "mock_ready", available=True, blocker="unused"
+    )
+    unavailable_engine = _HealthAlignedMockOcrEngine(
+        "mock_missing", available=False, blocker="mock runtime dependency missing"
+    )
+    register_ocr_engine("mock_ready", lambda config: available_engine)
+    register_ocr_engine("mock_missing", lambda config: unavailable_engine)
+
+    status = public_ocr_status(OcrRuntimeConfig(policy="auto"))
+    status_by_name = {item["name"]: item for item in status["available_engines"]}
+    assert {"mock_ready", "mock_missing"} <= set(status_by_name)
+
+    for engine in (available_engine, unavailable_engine):
+        health = engine.health_check()
+        item = status_by_name[engine.name]
+        assert health.engine == engine.name
+        assert item["available"] is health.ok
+        assert item["readiness_status"] == health.readiness_status
+        assert item["readiness_blockers"] == list(health.readiness_blockers)
+
+    # Negative self-check: an engine whose status-surface readiness drifts from
+    # its health_check must be caught, proving the contract has teeth.
+    drifted = _HealthAlignedMockOcrEngine(
+        "mock_drift", available=False, blocker="drift blocker"
+    )
+    monkeypatch.setattr(
+        drifted,
+        "health_check",
+        lambda: OcrEngineHealth(
+            ok=True,
+            detail="claims ready",
+            engine="mock_drift",
+            readiness_status="ready",
+        ),
+    )
+    register_ocr_engine("mock_drift", lambda config: drifted)
+    drift_status = public_ocr_status(OcrRuntimeConfig(policy="auto"))
+    drift_item = {
+        item["name"]: item for item in drift_status["available_engines"]
+    }["mock_drift"]
+    drift_health = drifted.health_check()
+    assert drift_item["readiness_status"] != drift_health.readiness_status
+
+
 def test_env_policy_overrides_config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config_path = write_ocr_runtime_config(
         OcrRuntimeConfig(policy="none", language="zh"),
