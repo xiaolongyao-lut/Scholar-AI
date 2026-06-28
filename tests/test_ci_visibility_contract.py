@@ -432,6 +432,14 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
         assert isinstance(top_verification_commands, list) and top_verification_commands
         assert isinstance(latest_verification_commands, list) and latest_verification_commands
         assert top_verification_commands == latest_verification_commands
+        completion_claim = payload.get("completion_claim")
+        assert isinstance(completion_claim, dict)
+        assert completion_claim.get("latest_slice_id") == top_latest_slice
+        completion_why_not_complete = completion_claim.get("why_not_complete")
+        rollup_why_not_complete = rollup.get("why_not_complete")
+        assert isinstance(completion_why_not_complete, str) and completion_why_not_complete.strip()
+        assert rollup_why_not_complete == completion_why_not_complete
+        assert top_latest_slice in rollup_why_not_complete
         if any("0 tools remain without annotations" in command for command in top_verification_commands):
             next_actions = payload.get("next_authorized_local_actions")
             assert isinstance(next_actions, list) and next_actions

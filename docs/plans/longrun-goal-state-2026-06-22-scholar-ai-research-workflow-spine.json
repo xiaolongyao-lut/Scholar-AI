@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-29T05:49:00+08:00",
+  "updated_at": "2026-06-29T05:57:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -97,16 +97,24 @@
   ],
   "rollback": {
     "checkpoint_id": "n33-runtime-crosslink-audit-20260626_020647",
-    "latest_checkpoint_id": "manual-20260629_054313-n332-recovery-probe-method-finish",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_054313-n332-recovery-probe-method-finish",
-    "latest_goal_state_checkpoint_id": "manual-20260629_054313-n332-recovery-probe-method-finish",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_054313-n332-recovery-probe-method-finish",
-    "latest_checkpoint_caveat": "Rollback checkpoint for N332 recovery probe method contract; restore only with explicit user intent after inspecting current dirty worktree ownership.",
+    "latest_checkpoint_id": "manual-20260629_055657-n333-lifecycle-why-not-complete",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_055657-n333-lifecycle-why-not-complete",
+    "latest_goal_state_checkpoint_id": "manual-20260629_055657-n333-lifecycle-why-not-complete",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_055657-n333-lifecycle-why-not-complete",
+    "latest_checkpoint_caveat": "Rollback checkpoint for N333 lifecycle why-not-complete consistency; restore only with explicit user intent after inspecting current dirty worktree ownership.",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647"
   },
   "mature_references_checked": [
+    {
+      "topic": "N333 lifecycle why-not-complete consistency",
+      "source": "W3C PROV overview and local CI visibility contract for machine-readable longrun recovery state",
+      "url": "https://www.w3.org/TR/prov-overview/ ; tests/test_ci_visibility_contract.py ; docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
+      "status": "W3C PROV overview returned 200; used provenance consistency to tie completion_claim and rollup why_not_complete to latest recovery.",
+      "checked_at": "2026-06-29T05:57:00+08:00",
+      "use_in_slice": "Used to add a CI guard that rejects stale rollup why_not_complete text when the latest completion claim has moved to a newer slice."
+    },
     {
       "topic": "N332 recovery probe HTTP method contract",
       "source": "FastAPI body/testing docs, OpenAPI spec, and local Agent Workspace route resolver tests",
@@ -9597,33 +9605,31 @@
         "frontend/src/pages/AgentWorkspace.tsx renders method in recovery probe labels, and frontend/src/pages/AgentWorkspace.test.tsx proves GET/POST labels appear for Agent Workspace recovery probes."
       ],
       "residual_risk": "This proves deterministic recovery probe method metadata and route resolution only. It does not execute live provider/model calls, remote or local OCR, real project export, WikiRegistry/Source Vault writes, Zotero DB mutation, github/ reference edits, upload, push, tag, release, deploy, or squad/git cleanup."
+    },
+    {
+      "id": "N333-lifecycle-why-not-complete-consistency",
+      "status": "proved",
+      "requirement": "The machine-readable longrun goal-state completion_claim and goal_lifecycle_rollup must carry the same latest-slice why_not_complete boundary so resumed agents cannot recover a stale blocker explanation from an older slice.",
+      "evidence": [
+        "tests/test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements now asserts completion_claim.latest_slice_id equals latest_slice, completion_claim.why_not_complete is non-empty, goal_lifecycle_rollup.why_not_complete equals that same value, and the text names the latest slice id.",
+        "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json synchronizes completion_claim, goal_lifecycle_rollup, blocker boundary text, top-level latest_slice, changed_files_for_this_slice, verification_commands, and the N333 slice record."
+      ],
+      "residual_risk": "This proves deterministic recovery-state lifecycle text consistency only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
     }
   ],
   "changed_files_for_this_slice": [
-    "literature_assistant/core/routers/agent_workspace_router.py",
-    "tests/test_agent_workspace_router.py",
-    "agent_mcp_server/tests/test_runtime_tools.py",
-    "frontend/src/services/agentWorkspaceApi.ts",
-    "frontend/src/pages/AgentWorkspace.tsx",
-    "frontend/src/pages/AgentWorkspace.test.tsx",
-    "frontend/src/pages/DesktopAcceptanceAgentWorkspace.tsx",
-    "frontend/openapi/modular-pipeline-openapi.json",
-    "frontend/src/generated/openapi.ts",
+    "tests/test_ci_visibility_contract.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N332.",
-    "git status --short --branch -> main...origin/main [ahead 161] with N332 dirty files before finishing this slice.",
-    "Created rollback snapshot .rollback_snapshots/manual-20260629_054313-n332-recovery-probe-method-finish containing N332 backend, tests, frontend, OpenAPI, and goal-state target files before completing N332 edits.",
-    "Official/mature references checked before implementation: FastAPI request body docs -> 200; FastAPI testing docs -> 200; OpenAPI latest specification -> 200.",
-    "npm run generate:openapi -> passed after adding AgentWorkspaceRecoveryProbe.method to the backend Pydantic model.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> 8 passed; proves every recovery probe declares GET/POST and resolves to the full app route with that method.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_runtime_tools.py -q -> 106 passed; proves MCP Agent Workspace status preserves recovery probe method metadata.",
-    "npm run test -- --run src/pages/AgentWorkspace.test.tsx -> 7 passed; proves Agent Workspace UI renders recovery probe method labels including POST diagnostics.",
-    "npm run build -> passed after updating AgentWorkspace and DesktopAcceptance fixtures; proves TypeScript and production bundle accept the method contract.",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N332 goal-state update.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after shortening bounded recovery text; confirms top-level latest_slice, changed_files_for_this_slice, verification_commands, mature_references_checked, and rollup match N332.",
-    "N332 only exposes deterministic local recovery probe HTTP methods and verifies route resolution; it does not execute live provider/model loading, OCR, real project export, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, edit github/ references, or push, tag, release, deploy, upload, clean squad/git objects."
+    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N333.",
+    "git status --short --branch -> main...origin/main [ahead 162] clean after N332 commit and before N333 edits.",
+    "Created rollback snapshot .rollback_snapshots/manual-20260629_055657-n333-lifecycle-why-not-complete containing tests/test_ci_visibility_contract.py and the longrun goal-state JSON before N333 edits.",
+    "Official/mature reference checked before implementation: W3C PROV overview returned 200; used provenance consistency so completion_claim and goal_lifecycle_rollup cannot describe different latest recovery activities.",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N333 goal-state update.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 2 passed after N333 update; confirms completion_claim and goal_lifecycle_rollup why_not_complete match the latest slice.",
+    "git diff --check -> passed after N333 edits.",
+    "N333 only hardens deterministic lifecycle recovery-state consistency; it does not execute live provider/model loading, OCR, real project export, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, edit github/ references, push, tag, release, deploy, upload, or clean squad/git objects."
   ],
   "next_authorized_local_actions": [
     "Continue deterministic local recovery/proof hardening after preflight; prefer route/link drift, Agent Workspace handoff, KRT contract, or OCR mock/health slices within no-live/no-write boundaries."
@@ -9733,18 +9739,18 @@
     "updated_at": "2026-06-28T20:55:00+08:00"
   },
   "completion_claim": {
-    "this_slice": "N331 proves top-level recovery next actions no longer contradict the latest zero-unannotated MCP ToolAnnotations verification evidence.",
+    "this_slice": "N333 proves completion_claim and goal_lifecycle_rollup share the same latest-slice why_not_complete boundary.",
     "full_goal": "not_complete: deterministic local proof is advanced, but live provider/model actual-loading remains authorization gated.",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N332 hardens deterministic recovery probe method metadata only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke under the same provider/baseHost/model endpoint.",
-    "updated_at": "2026-06-29T05:49:00+08:00",
-    "latest_slice_id": "N332-recovery-probe-method",
+    "why_not_complete": "N333-lifecycle-why-not-complete-consistency hardens recovery-state consistency only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke for the same endpoint.",
+    "updated_at": "2026-06-29T05:57:00+08:00",
+    "latest_slice_id": "N333-lifecycle-why-not-complete-consistency",
     "is_goal_complete": false,
-    "requirements_total": 333,
+    "requirements_total": 334,
     "requirements_status_counts": {
-      "proved": 333
+      "proved": 334
     },
-    "latest_requirement_id": "N332-recovery-probe-method"
+    "latest_requirement_id": "N333-lifecycle-why-not-complete-consistency"
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -13669,7 +13675,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N332-recovery-probe-method",
+  "latest_slice": "N333-lifecycle-why-not-complete-consistency",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -15433,30 +15439,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-29T05:49:00+08:00",
+    "updated_at": "2026-06-29T05:57:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 333,
+    "requirements_total": 334,
     "requirement_status_counts": {
-      "proved": 333
+      "proved": 334
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N332-recovery-probe-method",
-    "latest_slice_id": "N332-recovery-probe-method",
+    "latest_requirement_id": "N333-lifecycle-why-not-complete-consistency",
+    "latest_slice_id": "N333-lifecycle-why-not-complete-consistency",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N331 hardens deterministic recovery-state next-action consistency only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N331 adds a CI visibility guard and goal-state update proving next_authorized_local_actions no longer contradict latest zero-unannotated MCP ToolAnnotations evidence, while running no live model loading, OCR, or real project export."
+        "current_boundary": "N333 hardens deterministic lifecycle recovery-state consistency only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N333 adds a CI visibility guard and goal-state update proving completion_claim and goal_lifecycle_rollup share the same latest-slice why_not_complete boundary, while running no live model loading, OCR, or real project export."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N331 hardens recovery-state next-action consistency only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; actual provider-capable workflow execution, OCR execution over PDF/image inputs, real project export, PDF rendering over real user files, real outline generation through a live provider, real figure materialization, WikiRegistry replay/write repair, and Zotero DB mutation remain separately explicit-authority gated."
+    "why_not_complete": "N333-lifecycle-why-not-complete-consistency hardens recovery-state consistency only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke for the same endpoint."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -23970,6 +23976,40 @@
       "N332 only exposes deterministic local recovery probe HTTP methods and verifies route resolution; it does not execute live provider/model loading, OCR, real project export, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, edit github/ references, or push, tag, release, deploy, upload, clean squad/git objects."
     ],
     "residual_risk": "This proves deterministic recovery probe method metadata and route resolution only. It does not execute live provider/model calls, remote or local OCR, real project export, WikiRegistry/Source Vault writes, Zotero DB mutation, github/ reference edits, upload, push, tag, release, deploy, or squad/git cleanup.",
+    "next_authorized_local_action": "Continue deterministic local recovery/proof hardening after preflight; prefer route/link drift, Agent Workspace handoff, KRT contract, or OCR mock/health slices within no-live/no-write boundaries."
+  },
+  "n333_lifecycle_why_not_complete_consistency_slice": {
+    "id": "N333-lifecycle-why-not-complete-consistency",
+    "status": "proved",
+    "updated_at": "2026-06-29T05:57:00+08:00",
+    "summary": "N333 synchronizes completion_claim and goal_lifecycle_rollup why_not_complete text with the latest slice so resumed agents cannot recover stale N331 completion-boundary prose after N332/N333.",
+    "rollback_snapshot_id": "manual-20260629_055657-n333-lifecycle-why-not-complete",
+    "rollback_snapshot_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_055657-n333-lifecycle-why-not-complete",
+    "mature_references_checked": [
+      {
+        "topic": "N333 lifecycle why-not-complete consistency",
+        "source": "W3C PROV overview and local CI visibility contract for machine-readable longrun recovery state",
+        "url": "https://www.w3.org/TR/prov-overview/ ; tests/test_ci_visibility_contract.py ; docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
+        "status": "W3C PROV overview returned 200; used provenance consistency to tie completion_claim and rollup why_not_complete to latest recovery.",
+        "checked_at": "2026-06-29T05:57:00+08:00",
+        "use_in_slice": "Used to add a CI guard that rejects stale rollup why_not_complete text when the latest completion claim has moved to a newer slice."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ci_visibility_contract.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N333.",
+      "git status --short --branch -> main...origin/main [ahead 162] clean after N332 commit and before N333 edits.",
+      "Created rollback snapshot .rollback_snapshots/manual-20260629_055657-n333-lifecycle-why-not-complete containing tests/test_ci_visibility_contract.py and the longrun goal-state JSON before N333 edits.",
+      "Official/mature reference checked before implementation: W3C PROV overview returned 200; used provenance consistency so completion_claim and goal_lifecycle_rollup cannot describe different latest recovery activities.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N333 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 2 passed after N333 update; confirms completion_claim and goal_lifecycle_rollup why_not_complete match the latest slice.",
+      "git diff --check -> passed after N333 edits.",
+      "N333 only hardens deterministic lifecycle recovery-state consistency; it does not execute live provider/model loading, OCR, real project export, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, edit github/ references, push, tag, release, deploy, upload, or clean squad/git objects."
+    ],
+    "residual_risk": "This proves deterministic recovery-state lifecycle text consistency only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects.",
     "next_authorized_local_action": "Continue deterministic local recovery/proof hardening after preflight; prefer route/link drift, Agent Workspace handoff, KRT contract, or OCR mock/health slices within no-live/no-write boundaries."
   }
 }
