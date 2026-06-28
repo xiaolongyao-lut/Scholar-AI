@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-28T21:25:00+08:00",
+  "updated_at": "2026-06-28T22:05:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -107,6 +107,22 @@
     "latest_checkpoint_caveat": "Rollback checkpoint for N294 latest-slice changed-files and verification evidence consistency; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N298 deterministic priority-ordered selection contract",
+      "source": "Python typing.Protocol / runtime_checkable and fixed lookup-order selection semantics",
+      "url": "https://docs.python.org/3/library/typing.html#typing.runtime_checkable",
+      "status": "Reused the fixed-order _AUTO_PRIORITY auto-selection in select_ocr_engine; added a pinned expected-order guard so a reordered or truncated tuple fails.",
+      "checked_at": "2026-06-28T22:05:00+08:00",
+      "use_in_slice": "Justifies asserting that policy=auto selects engines strictly in the fixed _AUTO_PRIORITY order across the walk-down sequence, independent of which optional engines are installed on the host."
+    },
+    {
+      "topic": "N298 pytest monkeypatch loader isolation",
+      "source": "pytest monkeypatch documentation",
+      "url": "https://docs.pytest.org/en/stable/how-to/monkeypatch.html",
+      "status": "Reused pytest monkeypatch to neutralize load_builtin_ocr_engines so staged mock engines under built-in ids survive the ordering assertions.",
+      "checked_at": "2026-06-28T22:05:00+08:00",
+      "use_in_slice": "Used to make the auto-priority ordering test environment-independent by isolating the selection logic from real optional OCR runtime availability."
+    },
     {
       "topic": "N297 runtime_checkable Protocol structural conformance",
       "source": "Python typing.Protocol / runtime_checkable documentation",
@@ -8690,6 +8706,20 @@
         "N297 only adds/repairs deterministic test guards; it does not modify OCR runtime behavior, execute OCR, or claim long-goal completion, and preserves the live provider/model actual-loading blocker."
       ],
       "residual_risk": "This proves deterministic OcrEngine Protocol positive conformance for the real built-in engines and the test mock only. It does not execute OCR, download or import heavy OCR runtimes, upload documents, clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
+    },
+    {
+      "id": "N298-ocr-auto-policy-priority-and-builtin-coverage",
+      "status": "proved",
+      "requirement": "The OCR auto policy must be deterministically pinned so policy=auto selects engines strictly in the fixed _AUTO_PRIORITY order (paddleocr_gpu > rapidocr > windows > remote_api) and so every registered built-in OCR engine id is covered by _AUTO_PRIORITY, preventing a reordered/truncated priority tuple from silently changing which engine real ingestion runs and preventing a newly registered built-in engine from becoming unreachable under auto while no test catches the regression.",
+      "evidence": [
+        "tests/test_ocr_engine_registry.py::test_auto_policy_follows_deterministic_priority_order pins _AUTO_PRIORITY == the expected order tuple, neutralizes the built-in loader via monkeypatch, forces every priority id available, and walks the order down asserting the selected engine.name follows the fixed order.",
+        "tests/test_ocr_engine_registry.py::test_auto_priority_covers_every_registered_builtin_engine asserts every registered built-in id is in _AUTO_PRIORITY (no unreachable built-in), _AUTO_PRIORITY has no stale ids, and lists each id once.",
+        "tests/test_ocr_engine_registry.py::test_builtin_load_overwrites_same_id_registration pins that load_builtin_ocr_engines re-registers the real engine over a same-id mock, documenting why the ordering test isolates the loader.",
+        "Focused run: .venv-1 pytest tests/test_ocr_engine_registry.py -> 32 passed (29 prior + 3 new).",
+        "Regression injection confirmed both guards have teeth: reordering _AUTO_PRIORITY fails the priority-order test; dropping a built-in id fails both new guards; product file restored after injection.",
+        "N298 only adds deterministic test guards; it does not modify OCR runtime behavior, execute OCR, or claim long-goal completion, and preserves the live provider/model actual-loading blocker."
+      ],
+      "residual_risk": "This proves the deterministic OCR auto-policy priority ordering and built-in coverage contract only. It does not execute OCR, download or import heavy OCR runtimes, upload documents, clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
     }
   ],
   "changed_files_for_this_slice": [
@@ -8697,11 +8727,12 @@
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N297 continuation.",
-    "git status --short --branch -> main...origin/main [ahead 126] clean before N297 edits.",
-    "Created rollback snapshot .rollback_snapshots/n297-ocr-engine-protocol-positive-conformance-20260628-211759 before N297 edits.",
-    "Official/mature references reused: typing.Protocol/runtime_checkable structural conformance semantics and pytest assertion docs for the positive OcrEngine conformance guard.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py -q -> 29 passed.",
+    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N298 continuation.",
+    "git status --short --branch -> main...origin/main [ahead 127] clean before N298 edits; N297 already committed as latest slice.",
+    "Created rollback snapshots .rollback_snapshots/n298-ocr-auto-priority-* before N298 edits.",
+    "Official/mature references reused: fixed-order auto-selection semantics and pytest monkeypatch loader isolation for the deterministic OCR auto-policy priority and built-in coverage guards.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py -q -> 32 passed.",
+    "Regression injection: reordering _AUTO_PRIORITY -> priority-order test fails; dropping a registered built-in id from _AUTO_PRIORITY -> both priority-order and built-in-coverage tests fail; product file restored after each injection.",
     ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_runtime_lifecycle_app_contract.py tests\\test_ci_visibility_contract.py -q -> 22 passed."
   ],
   "next_authorized_local_actions": [
@@ -12742,7 +12773,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N297-ocr-engine-protocol-positive-conformance",
+  "latest_slice": "N298-ocr-auto-policy-priority-and-builtin-coverage",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -14506,30 +14537,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-28T21:25:00+08:00",
+    "updated_at": "2026-06-28T22:05:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 298,
+    "requirements_total": 299,
     "requirement_status_counts": {
-      "proved": 298
+      "proved": 299
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N297-ocr-engine-protocol-positive-conformance",
-    "latest_slice_id": "N297-ocr-engine-protocol-positive-conformance",
+    "latest_requirement_id": "N298-ocr-auto-policy-priority-and-builtin-coverage",
+    "latest_slice_id": "N298-ocr-auto-policy-priority-and-builtin-coverage",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N297 proves deterministic OcrEngine Protocol positive conformance for real built-in engines and the test mock only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N297 contract test proves the real built-in OCR engines and conforming mock satisfy the OcrEngine Protocol while preserving the live-proof authorization boundary."
+        "current_boundary": "N298 proves the deterministic OCR auto-policy priority ordering and built-in coverage contract only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N298 contract tests prove policy=auto follows the fixed _AUTO_PRIORITY order and every registered built-in id is reachable, while preserving the live-proof authorization boundary."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N297 proves deterministic OcrEngine Protocol positive conformance only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+    "why_not_complete": "N298 proves the deterministic OCR auto-policy priority ordering and built-in coverage contract only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -21591,5 +21622,50 @@
       "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
     ],
     "updated_at": "2026-06-28T21:25:00+08:00"
+  },
+  "n298_ocr_auto_policy_priority_and_builtin_coverage_slice": {
+    "id": "N298-ocr-auto-policy-priority-and-builtin-coverage",
+    "status": "proved",
+    "summary": "N298 adds deterministic guards over the OCR auto policy: a priority-order test that pins _AUTO_PRIORITY to the expected order and asserts policy=auto walks that order down to select the highest-priority available engine, a coverage test that proves every registered built-in id is reachable under auto and _AUTO_PRIORITY has no stale or duplicate ids, and a precedence test documenting that built-in loading re-registers real engines over same-id mocks. The prior suite only checked the single-engine happy path, so a reordered priority tuple or a built-in dropped from _AUTO_PRIORITY would have passed CI while silently changing or disabling the selected OCR engine.",
+    "rollback_snapshot_id": "n298-ocr-auto-priority-20260628_213141",
+    "rollback_snapshot_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n298-ocr-auto-priority-20260628_213141",
+    "mature_references_checked": [
+      {
+        "topic": "N298 deterministic priority-ordered selection contract",
+        "source": "Python typing.Protocol / runtime_checkable and fixed lookup-order selection semantics",
+        "url": "https://docs.python.org/3/library/typing.html#typing.runtime_checkable",
+        "status": "Reused the fixed-order _AUTO_PRIORITY auto-selection in select_ocr_engine; added a pinned expected-order guard so a reordered or truncated tuple fails.",
+        "checked_at": "2026-06-28T22:05:00+08:00",
+        "use_in_slice": "Justifies asserting that policy=auto selects engines strictly in the fixed _AUTO_PRIORITY order across the walk-down sequence, independent of which optional engines are installed on the host."
+      },
+      {
+        "topic": "N298 pytest monkeypatch loader isolation",
+        "source": "pytest monkeypatch documentation",
+        "url": "https://docs.pytest.org/en/stable/how-to/monkeypatch.html",
+        "status": "Reused pytest monkeypatch to neutralize load_builtin_ocr_engines so staged mock engines under built-in ids survive the ordering assertions.",
+        "checked_at": "2026-06-28T22:05:00+08:00",
+        "use_in_slice": "Used to make the auto-priority ordering test environment-independent by isolating the selection logic from real optional OCR runtime availability."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ocr_engine_registry.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N298 continuation.",
+      "git status --short --branch -> main...origin/main [ahead 127] clean before N298 edits; N297 already committed as latest slice.",
+      "Created rollback snapshots .rollback_snapshots/n298-ocr-auto-priority-* before N298 edits.",
+      "Official/mature references reused: fixed-order auto-selection semantics and pytest monkeypatch loader isolation for the deterministic OCR auto-policy priority and built-in coverage guards.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py -q -> 32 passed.",
+      "Regression injection: reordering _AUTO_PRIORITY -> priority-order test fails; dropping a registered built-in id from _AUTO_PRIORITY -> both priority-order and built-in-coverage tests fail; product file restored after each injection.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_runtime_lifecycle_app_contract.py tests\\test_ci_visibility_contract.py -q -> 22 passed."
+    ],
+    "residual_risk": "This proves the deterministic OCR auto-policy priority ordering and built-in coverage contract only. It does not execute OCR, download or import heavy OCR runtimes, upload documents, clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, create rollback snapshot, and search official or mature references before editing.",
+      "Continue only with deterministic local recovery/proof hardening unless provider preflight and explicit live-smoke authorization are present.",
+      "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
+    ],
+    "updated_at": "2026-06-28T22:05:00+08:00"
   }
 }

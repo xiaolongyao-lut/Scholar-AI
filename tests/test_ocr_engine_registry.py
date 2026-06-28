@@ -34,6 +34,11 @@ from pdf_backends.ocr_builtin_engines import (  # noqa: E402
     RemoteApiOcrEngine,
     WindowsOcrEngine,
 )
+from pdf_backends.ocr_engine_registry import (  # noqa: E402
+    _AUTO_PRIORITY,
+    build_ocr_engine,
+    load_builtin_ocr_engines,
+)
 
 
 class _MockOcrEngine:
@@ -977,6 +982,128 @@ def test_auto_policy_selects_registered_available_engine() -> None:
     assert warning is None
     assert engine is not None
     assert engine.ocr_image(b"image", language="en") == "mock text en"
+
+
+class _NamedMockOcrEngine(_MockOcrEngine):
+    """Configurable mock whose engine id matches its registry name.
+
+    Used to stage several simultaneously-available engines under the real
+    ``_AUTO_PRIORITY`` ids so the deterministic auto-selection order can be
+    asserted by name without importing heavy optional OCR runtimes.
+    """
+
+    def __init__(self, name: str, config: Mapping[str, Any] | None = None) -> None:
+        super().__init__(config)
+        self.name = name
+
+
+def _register_named_available(name: str) -> None:
+    register_ocr_engine(
+        name, lambda config, _n=name: _NamedMockOcrEngine(_n, {"available": True})
+    )
+
+
+# Pinned expected auto-selection order. Kept independent of the product tuple so
+# a reordered or truncated _AUTO_PRIORITY fails the equality assertion below
+# instead of silently re-deriving the "expected" order from the changed value.
+_EXPECTED_AUTO_PRIORITY = ("paddleocr_gpu", "rapidocr", "windows", "remote_api")
+
+
+def test_auto_policy_follows_deterministic_priority_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto policy must pick engines in the fixed ``_AUTO_PRIORITY`` order.
+
+    select_ocr_engine(policy="auto") iterates _AUTO_PRIORITY and returns the
+    first *available* engine. With only the single-engine happy-path test, a
+    scrambled priority tuple or a wrong tie-break would still pass CI while
+    silently changing which OCR engine real ingestion runs. This stages every
+    priority id as simultaneously available and then removes the front of the
+    order one id at a time, asserting the selected engine walks the tuple
+    deterministically.
+
+    The built-in loader re-registers the real optional engines over any same-id
+    factory (see test_builtin_load_overwrites_same_id_registration), and their
+    real availability depends on the host. To keep this an environment-independent
+    contract over the ordering logic itself, the loader is neutralized so the
+    staged mocks survive and every priority id is forced available.
+    """
+
+    # Pin the concrete order first so a reordered/truncated product tuple fails
+    # here rather than being treated as the new "expected" order.
+    assert _AUTO_PRIORITY == _EXPECTED_AUTO_PRIORITY
+
+    monkeypatch.setattr(
+        "pdf_backends.ocr_engine_registry.load_builtin_ocr_engines", lambda: None
+    )
+
+    # All priority ids available -> the highest-priority id must win.
+    for name in _EXPECTED_AUTO_PRIORITY:
+        _register_named_available(name)
+    engine, warning = select_ocr_engine(OcrRuntimeConfig(policy="auto"))
+    assert warning is None
+    assert engine is not None
+    assert engine.name == _EXPECTED_AUTO_PRIORITY[0]
+
+    # Dropping the current front each time must fall through to the next id in
+    # priority order, never to a lower-priority id while a higher one remains.
+    for index in range(1, len(_EXPECTED_AUTO_PRIORITY)):
+        clear_ocr_engines_for_tests()
+        monkeypatch.setattr(
+            "pdf_backends.ocr_engine_registry.load_builtin_ocr_engines", lambda: None
+        )
+        remaining = _EXPECTED_AUTO_PRIORITY[index:]
+        for name in remaining:
+            _register_named_available(name)
+        engine, warning = select_ocr_engine(OcrRuntimeConfig(policy="auto"))
+        assert warning is None
+        assert engine is not None
+        assert engine.name == remaining[0], (index, remaining)
+
+
+def test_builtin_load_overwrites_same_id_registration() -> None:
+    """Built-in loading must own the canonical built-in engine ids.
+
+    load_builtin_ocr_engines() unconditionally re-registers the real optional
+    engines, so any earlier same-id factory is replaced once built-ins load.
+    This pins that documented precedence: a caller cannot shadow a built-in id
+    such as ``paddleocr_gpu`` with a different implementation by registering it
+    first, which is why the priority-order test neutralizes the loader instead
+    of registering mocks under built-in ids.
+    """
+
+    register_ocr_engine(
+        "paddleocr_gpu", lambda config: _NamedMockOcrEngine("paddleocr_gpu", config)
+    )
+    load_builtin_ocr_engines()
+    rebuilt = build_ocr_engine("paddleocr_gpu", {}, include_builtins=False)
+    assert isinstance(rebuilt, PaddleOcrGpuEngine)
+    assert not isinstance(rebuilt, _NamedMockOcrEngine)
+
+
+def test_auto_priority_covers_every_registered_builtin_engine() -> None:
+    """Every built-in OCR engine id must appear in ``_AUTO_PRIORITY``.
+
+    The auto policy can only select ids listed in _AUTO_PRIORITY. If a new
+    built-in engine is registered in load_builtin_ocr_engines() but is not added
+    to _AUTO_PRIORITY, it becomes permanently unreachable under policy="auto"
+    even when available, with no other test catching the regression. This guard
+    pins the two-way relationship: every registered built-in is reachable, and
+    _AUTO_PRIORITY does not reference ids that no longer exist.
+    """
+
+    load_builtin_ocr_engines()
+    builtin_names = set(list_ocr_engine_names(include_builtins=True))
+    priority_names = set(_AUTO_PRIORITY)
+
+    unreachable = sorted(builtin_names - priority_names)
+    assert not unreachable, unreachable
+
+    stale = sorted(priority_names - builtin_names)
+    assert not stale, stale
+
+    # The priority tuple must list each id once so ordering is unambiguous.
+    assert len(_AUTO_PRIORITY) == len(set(_AUTO_PRIORITY))
 
 
 def test_public_status_redacts_engine_config_secrets() -> None:
