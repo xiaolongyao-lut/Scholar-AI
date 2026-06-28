@@ -903,7 +903,17 @@ def create_mcp_server(
         """Search product-docs Markdown knowledge and return bounded refs."""
         return runtime.product_docs_search(query=query, top_k=top_k)
 
-    @mcp.tool(name="literature.evidence_pack_build", structured_output=True)
+    @mcp.tool(
+        name="literature.evidence_pack_build",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Evidence Pack Build",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_evidence_pack_build(
         project_id: str,
         query: str,

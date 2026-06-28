@@ -169,6 +169,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.scoring_rules_search",
         "literature.product_docs_status",
         "literature.product_docs_read",
+        "literature.evidence_pack_build",
         "literature.citations_sources",
         "literature.citations_detect_overlap",
         "literature.academic_writing_lint",
