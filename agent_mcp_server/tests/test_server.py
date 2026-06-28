@@ -157,6 +157,8 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.workflow_replay_lineage",
         "literature.workflow_replay_index",
         "literature.agent_resource_read",
+        "literature.agent_workspace_status",
+        "literature.agent_workspace_requirement",
     ]
     for tool_name in read_only_tool_names:
         _assert_read_only_annotations(tools_by_name[tool_name])

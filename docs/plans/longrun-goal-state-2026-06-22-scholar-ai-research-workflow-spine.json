@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-29T02:10:00+08:00",
+  "updated_at": "2026-06-29T02:20:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -100,13 +100,21 @@
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "latest_checkpoint_id": "manual-20260629_020000-n305-agent-workspace-mcp-goal-summary-blocker-parity",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_020000-n305-agent-workspace-mcp-goal-summary-blocker-parity",
-    "latest_goal_state_checkpoint_id": "manual-20260629_020000-n305-agent-workspace-mcp-goal-summary-blocker-parity",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_020000-n305-agent-workspace-mcp-goal-summary-blocker-parity",
-    "latest_checkpoint_caveat": "Rollback checkpoint for N305 Agent Workspace MCP goal-summary blocker parity; restore only with explicit user intent after inspecting current dirty worktree ownership."
+    "latest_checkpoint_id": "manual-20260629_021518-n306-agent-workspace-readonly-annotations-resume",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_021518-n306-agent-workspace-readonly-annotations-resume",
+    "latest_goal_state_checkpoint_id": "manual-20260629_021518-n306-agent-workspace-readonly-annotations-resume",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_021518-n306-agent-workspace-readonly-annotations-resume",
+    "latest_checkpoint_caveat": "Rollback checkpoint for N306 Agent Workspace MCP read-only annotations; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N306 MCP tool annotations for Agent Workspace recovery tools",
+      "source": "Model Context Protocol server tools specification",
+      "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+      "status": "HEAD checked 200 on 2026-06-29; used ToolAnnotations hints to advertise status and requirement drilldown as non-mutating read tools.",
+      "checked_at": "2026-06-29T02:20:00+08:00",
+      "use_in_slice": "Used to make MCP clients see literature.agent_workspace_status and literature.agent_workspace_requirement as local read-only deterministic recovery tools rather than write-capable or open-world actions."
+    },
     {
       "topic": "N305 FastAPI response-model parity for Agent Workspace status",
       "source": "FastAPI response-model documentation",
@@ -8940,24 +8948,39 @@
         "Goal-state visibility/lifecycle/projection run: .\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed."
       ],
       "residual_risk": "This proves deterministic REST-to-MCP Agent Workspace goal-state summary parity and redaction for completion blockers only. It does not run provider preflight or live model-context loading, clear the actual-loading blocker, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
+    },
+    {
+      "id": "N306-agent-workspace-readonly-annotations",
+      "status": "proved",
+      "requirement": "The MCP-facing Agent Workspace recovery tools must advertise their non-mutating registration contract: literature.agent_workspace_status and literature.agent_workspace_requirement must declare readOnlyHint=true, destructiveHint=false, idempotentHint=true, and openWorldHint=false so external agents can distinguish deterministic local recovery/status drilldowns from write-capable, external, or open-world operations.",
+      "evidence": [
+        "agent_mcp_server/src/lit_assistant_mcp/server.py registers literature.agent_workspace_status with ToolAnnotations(title='Agent Workspace Status', readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False).",
+        "agent_mcp_server/src/lit_assistant_mcp/server.py registers literature.agent_workspace_requirement with ToolAnnotations(title='Agent Workspace Requirement', readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False).",
+        "agent_mcp_server/tests/test_server.py::test_server_registers_source_and_runtime_tools includes both tools in read_only_tool_names and asserts the four MCP annotation fields through _assert_read_only_annotations.",
+        "Focused run: .\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py::test_server_registers_source_and_runtime_tools -q -> 1 passed.",
+        "Compile smoke: .\\.venv-1\\Scripts\\python.exe -m compileall -q agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_server.py -> passed.",
+        "Official/mature reference checked before implementation: Model Context Protocol server tools specification HEAD 200.",
+        "N306 only changes MCP registration metadata, test coverage, and goal-state records; it executes no OCR, runs no live provider/model loading, writes no runtime store, and preserves the live actual-loading blocker."
+      ],
+      "residual_risk": "This proves MCP client-visible read-only/idempotent annotations for Agent Workspace status and requirement drilldown only. It does not run provider preflight or live model-context loading, clear the actual-loading blocker, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, clean squad/git objects, or prune Git loose objects."
     }
   ],
   "changed_files_for_this_slice": [
-    "tests/test_agent_workspace_mcp_contract.py",
+    "agent_mcp_server/src/lit_assistant_mcp/server.py",
+    "agent_mcp_server/tests/test_server.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, docs/plans/autonomous-execution-planning-playbook.md, and repo-onboarding SKILL.md before N305.",
-    "git status --short --branch -> main...origin/main [ahead 134] clean before N305 edits.",
-    "Created rollback snapshot .rollback_snapshots/manual-20260629_020000-n305-agent-workspace-mcp-goal-summary-blocker-parity containing tests/test_agent_workspace_mcp_contract.py and the longrun goal-state JSON before N305 edits.",
-    "Official/mature references checked before implementation: FastAPI response-model documentation HEAD 200, Model Context Protocol server tools specification HEAD 200, pytest assertion documentation HEAD 200.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_mcp_contract.py::test_agent_workspace_status_rest_and_mcp_goal_summary_stay_in_parity -q -> 1 passed after aligning the test to the real AgentWorkspaceGoalState schema.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_mcp_contract.py -q -> 2 passed after syncing the existing stop-boundary parity assertion to the current four-boundary contract.",
-    ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_agent_workspace_mcp_contract.py -> passed.",
-    "N305 executes no live provider/model loading, runs no OCR, writes no WikiRegistry/Source Vault runtime store, mutates no Zotero DB, and does not push, tag, release, deploy, upload, or edit github/ references.",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N305 goal-state update.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N305 goal-state update.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_mcp_contract.py tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 5 passed."
+    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, docs/plans/autonomous-execution-planning-playbook.md, and repo-onboarding SKILL.md before N306.",
+    "git status --short --branch -> main...origin/main [ahead 135] with agent_mcp_server/src/lit_assistant_mcp/server.py modified from a resumed N306 annotation edit; no staged files.",
+    "Created rollback snapshot .rollback_snapshots/manual-20260629_021518-n306-agent-workspace-readonly-annotations-resume containing server.py, test_server.py, and the longrun goal-state JSON before completing N306 edits.",
+    "Official/mature reference checked before implementation: Model Context Protocol server tools specification HEAD 200.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py::test_server_registers_source_and_runtime_tools -q -> 1 passed.",
+    ".\\.venv-1\\Scripts\\python.exe -m compileall -q agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_server.py -> passed.",
+    "N306 executes no live provider/model loading, runs no OCR, writes no WikiRegistry/Source Vault runtime store, mutates no Zotero DB, and does not push, tag, release, deploy, upload, clean squad/git objects, or edit github/ references.",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N306 goal-state update.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py -q -> 3 passed after N306 annotation coverage update.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after shortening the N306 mature-reference status to the Agent Workspace projection boundary."
   ],
   "next_authorized_local_actions": [
     "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
@@ -9069,10 +9092,10 @@
     "updated_at": "2026-06-28T20:55:00+08:00"
   },
   "completion_claim": {
-    "this_slice": "N305 proves MCP Agent Workspace status preserves REST goal-state completion blockers and redaction.",
+    "this_slice": "N306 proves MCP Agent Workspace status and requirement drilldown advertise read-only/idempotent registration annotations.",
     "full_goal": "not_complete: deterministic local proof is advanced, but live provider/model actual-loading remains authorization gated.",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N305 proves REST/MCP Agent Workspace goal-state blocker parity only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+    "why_not_complete": "N306 proves Agent Workspace MCP read-only annotations only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -12997,7 +13020,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N305-agent-workspace-mcp-goal-summary-blocker-parity",
+  "latest_slice": "N306-agent-workspace-readonly-annotations",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -14761,30 +14784,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-29T02:10:00+08:00",
+    "updated_at": "2026-06-29T02:20:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 306,
+    "requirements_total": 307,
     "requirement_status_counts": {
-      "proved": 306
+      "proved": 307
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N305-agent-workspace-mcp-goal-summary-blocker-parity",
-    "latest_slice_id": "N305-agent-workspace-mcp-goal-summary-blocker-parity",
+    "latest_requirement_id": "N306-agent-workspace-readonly-annotations",
+    "latest_slice_id": "N306-agent-workspace-readonly-annotations",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N305 proves Agent Workspace REST/MCP goal-state completion-blocker parity and redaction only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N305 adds and passes a deterministic RuntimeTools.agent_workspace_status parity test showing MCP returns the same redacted completion blocker and can_mark_goal_complete=false gate as /api/agent-workspace/status, while running no live model loading."
+        "current_boundary": "N306 proves Agent Workspace MCP status and requirement drilldown read-only/idempotent tool annotations only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N306 adds registration metadata and a deterministic FastMCP registration test proving literature.agent_workspace_status and literature.agent_workspace_requirement expose readOnlyHint=true, destructiveHint=false, idempotentHint=true, and openWorldHint=false, while running no live model loading."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N305 proves REST/MCP Agent Workspace goal-state blocker parity only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+    "why_not_complete": "N306 proves Agent Workspace MCP read-only annotations only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -22212,5 +22235,46 @@
       "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
     ],
     "updated_at": "2026-06-29T02:10:00+08:00"
+  },
+  "n306_agent_workspace_readonly_annotations_slice": {
+    "id": "N306-agent-workspace-readonly-annotations",
+    "status": "proved",
+    "summary": "N306 pins MCP registration metadata for the Agent Workspace recovery pair. The runtime paths already read status and requirement evidence without mutation, but external MCP clients could not rely on explicit tool annotations for literature.agent_workspace_status and literature.agent_workspace_requirement. N306 adds readOnlyHint=true, destructiveHint=false, idempotentHint=true, and openWorldHint=false to both tool registrations and extends the server registration test to assert those fields.",
+    "rollback_snapshot_id": "manual-20260629_021518-n306-agent-workspace-readonly-annotations-resume",
+    "rollback_snapshot_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_021518-n306-agent-workspace-readonly-annotations-resume",
+    "mature_references_checked": [
+      {
+        "topic": "N306 MCP tool annotations for Agent Workspace recovery tools",
+        "source": "Model Context Protocol server tools specification",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+        "status": "HEAD checked 200 on 2026-06-29; used ToolAnnotations hints to advertise status and requirement drilldown as non-mutating read tools.",
+        "checked_at": "2026-06-29T02:20:00+08:00",
+        "use_in_slice": "Used to make MCP clients see literature.agent_workspace_status and literature.agent_workspace_requirement as local read-only deterministic recovery tools rather than write-capable or open-world actions."
+      }
+    ],
+    "changed_files": [
+      "agent_mcp_server/src/lit_assistant_mcp/server.py",
+      "agent_mcp_server/tests/test_server.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, docs/plans/autonomous-execution-planning-playbook.md, and repo-onboarding SKILL.md before N306.",
+      "git status --short --branch -> main...origin/main [ahead 135] with agent_mcp_server/src/lit_assistant_mcp/server.py modified from a resumed N306 annotation edit; no staged files.",
+      "Created rollback snapshot .rollback_snapshots/manual-20260629_021518-n306-agent-workspace-readonly-annotations-resume containing server.py, test_server.py, and the longrun goal-state JSON before completing N306 edits.",
+      "Official/mature reference checked before implementation: Model Context Protocol server tools specification HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py::test_server_registers_source_and_runtime_tools -q -> 1 passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q agent_mcp_server\\src\\lit_assistant_mcp\\server.py agent_mcp_server\\tests\\test_server.py -> passed.",
+      "N306 executes no live provider/model loading, runs no OCR, writes no WikiRegistry/Source Vault runtime store, mutates no Zotero DB, and does not push, tag, release, deploy, upload, clean squad/git objects, or edit github/ references.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N306 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest agent_mcp_server\\tests\\test_server.py -q -> 3 passed after N306 annotation coverage update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after shortening the N306 mature-reference status to the Agent Workspace projection boundary."
+    ],
+    "residual_risk": "This proves MCP client-visible read-only/idempotent annotations for Agent Workspace status and requirement drilldown only. It does not run provider preflight or live model-context loading, clear the actual-loading blocker, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, clean squad/git objects, or prune Git loose objects.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, create rollback checkpoint, and search official or mature references before editing.",
+      "Continue only with deterministic local recovery/proof hardening unless provider preflight and explicit live-smoke authorization are present.",
+      "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
+    ],
+    "updated_at": "2026-06-29T02:20:00+08:00"
   }
 }

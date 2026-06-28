@@ -874,7 +874,17 @@ def create_mcp_server(
         """Read the runtime-backed agent bridge status."""
         return runtime.agent_bridge_status(limit=limit)
 
-    @mcp.tool(name="literature.agent_workspace_status", structured_output=True)
+    @mcp.tool(
+        name="literature.agent_workspace_status",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Agent Workspace Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_agent_workspace_status(
         artifact_limit: int = 200,
         audit_limit: int = 200,
@@ -882,7 +892,17 @@ def create_mcp_server(
         """Read the Agent Workspace status and workspace recovery state."""
         return runtime.agent_workspace_status(artifact_limit=artifact_limit, audit_limit=audit_limit)
 
-    @mcp.tool(name="literature.agent_workspace_requirement", structured_output=True)
+    @mcp.tool(
+        name="literature.agent_workspace_requirement",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Agent Workspace Requirement",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_agent_workspace_requirement(
         requirement_id: str,
     ) -> dict[str, Any]:
