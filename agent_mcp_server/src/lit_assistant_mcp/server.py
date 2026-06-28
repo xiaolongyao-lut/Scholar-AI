@@ -216,7 +216,17 @@ def create_mcp_server(
             case_sensitive=case_sensitive,
         )
 
-    @mcp.tool(name="source.read_file", structured_output=True)
+    @mcp.tool(
+        name="source.read_file",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Source Read File",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def source_read_file(path: str, max_chars: int = 80000) -> dict[str, Any]:
         """Read an allowed source text file."""
         return source.read_file(path=path, max_chars=max_chars)
@@ -601,7 +611,17 @@ def create_mcp_server(
         """Return academic-English knowledge manifest and artifact status."""
         return runtime.academic_english_status()
 
-    @mcp.tool(name="literature.academic_english_search", structured_output=True)
+    @mcp.tool(
+        name="literature.academic_english_search",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Academic English Search",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_academic_english_search(
         query: str,
         top_k: int = 8,
@@ -685,7 +705,17 @@ def create_mcp_server(
         """Read the bounded product-docs runtime artifact."""
         return runtime.product_docs_read()
 
-    @mcp.tool(name="literature.product_docs_search", structured_output=True)
+    @mcp.tool(
+        name="literature.product_docs_search",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Product Docs Search",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_product_docs_search(
         query: str,
         top_k: int = 8,

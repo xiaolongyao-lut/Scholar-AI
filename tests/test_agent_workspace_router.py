@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 from fastapi.testclient import TestClient
+from lit_assistant_mcp.server import create_mcp_server
 from starlette.routing import Match
 
 
@@ -73,6 +74,25 @@ def _assert_agent_workspace_probe_resolves_to_full_app_get_route(
     """Assert an Agent Workspace recovery probe points at a registered local GET route."""
 
     _assert_agent_workspace_probe_resolves_to_full_app_read_route(probe, method="GET")
+
+
+def _assert_agent_workspace_probe_mcp_tool_is_read_only(
+    probe: Mapping[str, object],
+    server_tools: Mapping[str, object],
+) -> None:
+    """Assert a recovery probe's advertised MCP tool declares the local read contract."""
+
+    mcp_tool = probe.get("mcp_tool")
+    if not isinstance(mcp_tool, str) or not mcp_tool.strip():
+        raise AssertionError(f"Agent Workspace recovery probe lacks an MCP tool: {probe!r}")
+    tool = server_tools.get(mcp_tool)
+    assert tool is not None, f"Agent Workspace probe advertises an unregistered MCP tool: {mcp_tool}"
+    annotations = getattr(tool, "annotations", None)
+    assert annotations is not None, f"Agent Workspace probe MCP tool lacks annotations: {mcp_tool}"
+    assert annotations.readOnlyHint is True
+    assert annotations.destructiveHint is False
+    assert annotations.idempotentHint is True
+    assert annotations.openWorldHint is False
 
 
 def test_load_knowledge_actual_loading_gate_state_projects_owner_gate(tmp_path, monkeypatch) -> None:
@@ -599,9 +619,11 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     ]
     assert all(probe["read_only"] is True for probe in probes)
     post_read_probe_labels = {"Wiki Search", "Knowledge Context Receipt"}
+    server_tools = {tool.name: tool for tool in create_mcp_server()._tool_manager.list_tools()}
     for probe in probes:
         method = "POST" if probe["label"] in post_read_probe_labels else "GET"
         _assert_agent_workspace_probe_resolves_to_full_app_read_route(probe, method=method)
+        _assert_agent_workspace_probe_mcp_tool_is_read_only(probe, server_tools)
     desktop_probe = next(probe for probe in probes if probe["label"] == "Desktop Smoke Evidence")
     assert desktop_probe["route"] == "/api/agent-workspace/status"
     assert desktop_probe["mcp_tool"] == "literature.agent_workspace_status"

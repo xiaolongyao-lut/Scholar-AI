@@ -131,6 +131,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
 
     tools_by_name = {tool.name: tool for tool in server._tool_manager.list_tools()}
     read_only_tool_names = [
+        "source.read_file",
         "literature.search_refs",
         "literature.knowledge_packages",
         "literature.knowledge_runtime_conformance",
@@ -141,6 +142,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.wiki_status",
         "literature.wiki_doctor",
         "literature.wiki_search",
+        "literature.academic_english_search",
         "literature.skill_package_status",
         "literature.skill_package_search",
         "literature.source_vault_status",
@@ -156,6 +158,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.workflow_refresh_receipt",
         "literature.workflow_replay_lineage",
         "literature.workflow_replay_index",
+        "literature.product_docs_search",
         "literature.agent_resource_read",
         "literature.agent_workspace_status",
         "literature.agent_workspace_requirement",
