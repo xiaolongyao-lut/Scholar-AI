@@ -963,7 +963,17 @@ def create_mcp_server(
             max_workers=max_workers,
         )
 
-    @mcp.tool(name="literature.figures_candidates", structured_output=True)
+    @mcp.tool(
+        name="literature.figures_candidates",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Figure Candidates",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_figures_candidates(
         project_id: str,
         limit: int = 20,
@@ -978,7 +988,17 @@ def create_mcp_server(
             render_pdf_fallback=render_pdf_fallback,
         )
 
-    @mcp.tool(name="literature.figures_generate", structured_output=True)
+    @mcp.tool(
+        name="literature.figures_generate",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Generate Figures",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_figures_generate(
         project_id: str,
         candidate_ids: list[str] | None = None,

@@ -192,6 +192,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.product_docs_status",
         "literature.product_docs_read",
         "literature.evidence_pack_build",
+        "literature.figures_candidates",
         "literature.citations_sources",
         "literature.citations_detect_overlap",
         "literature.academic_writing_lint",
@@ -236,6 +237,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
     _assert_destructive_local_write_annotations(tools_by_name["literature.journal_style_spec_draft"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.journal_style_spec_confirm"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.project_scan_folder"])
+    _assert_destructive_local_write_annotations(tools_by_name["literature.figures_generate"])
     _assert_destructive_local_write_annotations(tools_by_name["workflow.write_json_workflow"])
     _assert_destructive_local_write_annotations(tools_by_name["artifact.write_markdown"])
 
