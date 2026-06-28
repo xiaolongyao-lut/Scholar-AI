@@ -299,7 +299,17 @@ def create_mcp_server(
         """Read chunks for a material."""
         return runtime.get_material_chunks(project_id=project_id, material_id=material_id)
 
-    @mcp.tool(name="literature.search_refs", structured_output=True)
+    @mcp.tool(
+        name="literature.search_refs",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Search Refs",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_search_refs(
         project_id: str,
         query: str,
@@ -1178,7 +1188,17 @@ def create_mcp_server(
             limit=limit,
         )
 
-    @mcp.tool(name="literature.agent_resource_read", structured_output=True)
+    @mcp.tool(
+        name="literature.agent_resource_read",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Agent Resource Read",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_agent_resource_read(
         ref_id: str,
         project_id: str | None = None,

@@ -131,6 +131,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
 
     tools_by_name = {tool.name: tool for tool in server._tool_manager.list_tools()}
     read_only_tool_names = [
+        "literature.search_refs",
         "literature.knowledge_packages",
         "literature.knowledge_runtime_conformance",
         "literature.ocr_status",
@@ -155,6 +156,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.workflow_refresh_receipt",
         "literature.workflow_replay_lineage",
         "literature.workflow_replay_index",
+        "literature.agent_resource_read",
     ]
     for tool_name in read_only_tool_names:
         _assert_read_only_annotations(tools_by_name[tool_name])
