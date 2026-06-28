@@ -385,6 +385,72 @@ def test_agent_workspace_core_recovery_probes_return_http_success(monkeypatch) -
         )
 
 
+def test_agent_workspace_krt_actual_loading_gate_probe_returns_http_success_and_matches_status_projection() -> None:
+    """KRT actual-loading recovery must be inspectable without live provider execution."""
+
+    client = TestClient(server.app)
+    headers = {"X-LitAssist-Capability": server.get_local_api_capability_token()}
+    response = client.get("/api/agent-workspace/status", headers=headers)
+    assert response.status_code == 200
+    workspace_state = response.json()["workspace_state"]
+    status_gate = workspace_state["knowledge_actual_loading_gate"]
+    probes = {
+        probe["label"]: probe
+        for probe in workspace_state["recovery_probes"]
+        if isinstance(probe.get("label"), str)
+    }
+    assert "Knowledge Runtime Conformance" in probes
+
+    conformance = _assert_agent_workspace_probe_returns_http_success(
+        client,
+        probes["Knowledge Runtime Conformance"],
+        headers=headers,
+    )
+    gate = conformance["actual_loading_gate"]
+    recovery = gate["recovery"]
+    recovery_refs = recovery["recovery_refs"]
+
+    assert status_gate["available"] is True
+    assert status_gate["read_only"] is True
+    assert status_gate["status"] == gate["status"]
+    assert status_gate["verdict"] == gate["verdict"]
+    assert status_gate["artifact_ref"] == gate["artifact_ref"]
+    assert status_gate["artifact_exists"] is gate["artifact_exists"]
+    assert status_gate["artifact_schema_valid"] is gate["artifact_schema_valid"]
+    assert status_gate["artifact_contract_valid"] is gate["artifact_contract_valid"]
+    assert status_gate["provider_preflight_status"] == gate["provider_preflight"]["status"]
+    assert status_gate["provider_latest_status"] == gate["provider_preflight"]["latest_status"]
+    assert status_gate["provider_record_count"] == gate["provider_preflight"]["record_count"]
+    assert status_gate["auth_required_count"] == gate["provider_preflight"]["auth_required_count"]
+    assert status_gate["tool_call_ok_count"] == gate["provider_preflight"]["tool_call_ok_count"]
+    assert (
+        status_gate["provider_ready_for_authorized_live_smoke"]
+        is gate["provider_preflight"]["provider_ready_for_authorized_live_smoke"]
+    )
+    assert status_gate["recovery_state"] == recovery["state"]
+    assert status_gate["recovery_blocked_by"] == recovery["blocked_by"][
+        : agent_workspace_router.MAX_KRT_ACTUAL_LOADING_BLOCKERS
+    ]
+    assert status_gate["recovery_ref_count"] == len(recovery_refs)
+    assert status_gate["authorization_required_ref_count"] == sum(
+        1 for item in recovery_refs if item["requires_authorization"]
+    )
+    assert (
+        status_gate["completion_requires_authorized_live_smoke"]
+        is recovery["completion_requires_authorized_live_smoke"]
+    )
+    assert status_gate["missing"] == gate["missing"][: agent_workspace_router.MAX_KRT_ACTUAL_LOADING_MISSING]
+    assert status_gate["next_safe_local_actions"] == gate["next_safe_local_actions"][
+        : agent_workspace_router.MAX_KRT_ACTUAL_LOADING_ACTIONS
+    ]
+    assert status_gate["claim_boundary"] == gate["claim_boundary"][:240]
+    assert any(ref["ref"] == "/api/knowledge/runtime-conformance" for ref in recovery_refs)
+    assert any(
+        ref["ref"] == "/api/chat/tool-capability/test" and ref["requires_authorization"] is True
+        for ref in recovery_refs
+    ) or gate["status"] == "proved"
+
+
 def test_agent_workspace_search_and_resource_recovery_probes_return_http_success(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

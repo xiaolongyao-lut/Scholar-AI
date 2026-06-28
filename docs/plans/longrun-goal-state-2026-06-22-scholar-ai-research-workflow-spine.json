@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-29T06:50:00+08:00",
+  "updated_at": "2026-06-29T07:10:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -97,16 +97,24 @@
   ],
   "rollback": {
     "checkpoint_id": "n33-runtime-crosslink-audit-20260626_020647",
-    "latest_checkpoint_id": "manual-20260629_064531-n337-agent-workspace-search-resource-http-proof",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_064531-n337-agent-workspace-search-resource-http-proof",
-    "latest_goal_state_checkpoint_id": "manual-20260629_064531-n337-agent-workspace-search-resource-http-proof",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_064531-n337-agent-workspace-search-resource-http-proof",
-    "latest_checkpoint_caveat": "Rollback checkpoint for N337 Agent Workspace search/resource recovery probe HTTP-success guard; restore only with explicit user intent after inspecting current dirty worktree ownership.",
+    "latest_checkpoint_id": "manual-20260629_070250-n338-agent-workspace-krt-gate-http-proof",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_070250-n338-agent-workspace-krt-gate-http-proof",
+    "latest_goal_state_checkpoint_id": "manual-20260629_070250-n338-agent-workspace-krt-gate-http-proof",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_070250-n338-agent-workspace-krt-gate-http-proof",
+    "latest_checkpoint_caveat": "Rollback checkpoint for N338 Agent Workspace KRT actual-loading gate HTTP proof; restore only with explicit user intent after inspecting current dirty worktree ownership.",
     "restore_command": "Restore this targeted .rollback_snapshots checkpoint only with explicit user intent; copy files back from the recorded checkpoint path after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
     "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647"
   },
   "mature_references_checked": [
+    {
+      "topic": "N338 Agent Workspace KRT actual-loading gate HTTP probe proof",
+      "source": "FastAPI TestClient documentation, Starlette TestClient documentation, and Starlette routing documentation",
+      "url": "https://fastapi.tiangolo.com/tutorial/testing/ ; https://www.starlette.io/testclient/ ; https://www.starlette.io/routing/",
+      "status": "All three references returned HEAD 200; TestClient GET proves the Agent Workspace KRT probe returns HTTP 200 and matches status projection.",
+      "checked_at": "2026-06-29T07:10:00+08:00",
+      "use_in_slice": "Used to lift KRT actual-loading gate Agent Workspace visibility from monkeypatched field projection to deterministic local HTTP 200 proof without running provider/model calls, OCR, Source Vault writes, or external actions."
+    },
     {
       "topic": "N337 Agent Workspace search/resource recovery probe HTTP-success guard",
       "source": "FastAPI TestClient documentation, Starlette TestClient documentation, and Starlette routing documentation",
@@ -9692,6 +9700,20 @@
         "N337 uses FastAPI app.dependency_overrides plus monkeypatched local module roots only inside the pytest fixture, so it does not seed or mutate the default Source Vault runtime store, WikiRegistry, Zotero DB, OCR engines, live providers, or github/ references."
       ],
       "residual_risk": "This proves deterministic local HTTP 200 and fixture-backed payloads for Agent Workspace GET search/status/resource recovery probes only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault runtime stores, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
+    },
+    {
+      "id": "N338-agent-workspace-krt-actual-loading-gate-http-proof",
+      "status": "proved",
+      "requirement": "Agent Workspace Knowledge Runtime Conformance recovery probe must return HTTP 200 through the full Scholar AI app and the Agent Workspace status projection must match the owner actual-loading gate payload, proving resumed agents can inspect the KRT live-loading blocker without reading private plans or running live providers.",
+      "evidence": [
+        "tests/test_agent_workspace_router.py::test_agent_workspace_krt_actual_loading_gate_probe_returns_http_success_and_matches_status_projection reads /api/agent-workspace/status, follows the advertised Knowledge Runtime Conformance probe, and proves it returns HTTP 200 through server.app TestClient.",
+        "The N338 test compares workspace_state.knowledge_actual_loading_gate against /api/knowledge/runtime-conformance actual_loading_gate for status, verdict, artifact flags, provider preflight status/counts, recovery state, blocked_by values, recovery_ref_count, authorization_required_ref_count, completion_requires_authorized_live_smoke, missing evidence, next_safe_local_actions, and claim_boundary.",
+        "The N338 test also asserts recovery_refs include /api/knowledge/runtime-conformance and preserve /api/chat/tool-capability/test as an authorization-required provider preflight ref unless the gate is already proved.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_krt_actual_loading_gate_probe_returns_http_success_and_matches_status_projection tests\\test_agent_workspace_router.py::test_agent_workspace_core_recovery_probes_return_http_success tests\\test_agent_workspace_router.py::test_agent_workspace_search_and_resource_recovery_probes_return_http_success -q -> 3 passed after N338 edits.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N338 goal-state update.",
+        "N338 uses full-app TestClient GET checks only and does not run live provider/model loading, provider preflight POST, OCR execution, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, upload, push, tag, release, deploy, or squad/git cleanup."
+      ],
+      "residual_risk": "This proves deterministic local HTTP 200 and Agent Workspace projection parity for the KRT actual-loading gate only. It does not clear the live provider/model actual-loading blocker because provider_preflight.status=proved and a fresh OK live context-loading smoke for the same provider/baseHost/model still require explicit authorization."
     }
   ],
   "changed_files_for_this_slice": [
@@ -9699,18 +9721,19 @@
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read implementation-planner SKILL.md, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N337.",
-    "git status --short --branch -> main...origin/main [ahead 166] clean before N337 edits; current worktree evidence supersedes stale N294 staged-submit text.",
-    "Created rollback snapshot .rollback_snapshots/manual-20260629_064531-n337-agent-workspace-search-resource-http-proof containing tests/test_agent_workspace_router.py and the longrun goal-state JSON before N337 edits.",
+    "Read implementation-planner SKILL.md, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N338.",
+    "git status --short --branch -> main...origin/main [ahead 167] clean before N338 edits; current worktree evidence supersedes stale N294 staged-submit text.",
+    "Created rollback snapshot .rollback_snapshots/manual-20260629_070250-n338-agent-workspace-krt-gate-http-proof containing tests/test_agent_workspace_router.py and the longrun goal-state JSON before N338 edits.",
     "Official/mature references checked before implementation: FastAPI TestClient documentation HEAD 200, Starlette TestClient documentation HEAD 200, and Starlette routing documentation HEAD 200.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_search_and_resource_recovery_probes_return_http_success tests\\test_agent_workspace_router.py::test_agent_workspace_core_recovery_probes_return_http_success -q -> 2 passed before goal-state update; confirms Agent Workspace search/status/resource GET probes and core probes return HTTP 200 through the full TestClient app with isolated fixtures.",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N337 goal-state update.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N337 goal-state update.",
-    ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_agent_workspace_router.py tests\\test_ci_visibility_contract.py -> passed after N337 edits.",
-    "N337 only hardens deterministic local Agent Workspace search/status/resource recovery probe HTTP success for GET probes; it does not execute live provider/model loading, OCR, real project export, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, edit github/ references, push, tag, release, deploy, upload, or clean squad/git objects."
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_krt_actual_loading_gate_probe_returns_http_success_and_matches_status_projection -q -> 1 passed before goal-state update; confirms Agent Workspace Knowledge Runtime Conformance probe returns HTTP 200 and status projection matches the actual-loading gate payload.",
+    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N338 goal-state update.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_krt_actual_loading_gate_probe_returns_http_success_and_matches_status_projection tests\\test_agent_workspace_router.py::test_agent_workspace_core_recovery_probes_return_http_success tests\\test_agent_workspace_router.py::test_agent_workspace_search_and_resource_recovery_probes_return_http_success -q -> 3 passed after N338 edits.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after shortening the N338 mature-reference status to fit Agent Workspace projection bounds.",
+    ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_agent_workspace_router.py tests\\test_ci_visibility_contract.py -> passed after N338 edits.",
+    "N338 only hardens deterministic local Agent Workspace KRT actual-loading gate recovery probe HTTP success and status projection parity; it does not execute live provider/model loading, provider preflight POST, OCR, real project export, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, edit github/ references, push, tag, release, deploy, upload, or clean squad/git objects."
   ],
   "next_authorized_local_actions": [
-    "Continue deterministic local recovery/proof hardening after preflight; prefer KRT actual-loading gate evidence, OCR mock/health visibility, or remaining read-only recovery drift guards within no-live/no-write boundaries."
+    "Continue deterministic local recovery/proof hardening after preflight; prefer OCR mock/health visibility or remaining read-only recovery drift guards within no-live/no-write boundaries."
   ],
   "stop_boundary": [
     "Do not call the long-run goal complete while goal_lifecycle_rollup.can_mark_goal_complete is false.",
@@ -9817,18 +9840,18 @@
     "updated_at": "2026-06-28T20:55:00+08:00"
   },
   "completion_claim": {
-    "this_slice": "N337-agent-workspace-search-resource-http-proof proves Agent Workspace search/status/resource recovery probes return HTTP 200 through full-app TestClient checks with deterministic isolated fixtures.",
+    "this_slice": "N338-agent-workspace-krt-actual-loading-gate-http-proof proves the Agent Workspace KRT conformance probe returns HTTP 200 and matches the bounded actual-loading gate projection.",
     "full_goal": "not_complete: deterministic local proof is advanced, but live provider/model actual-loading remains authorization gated.",
     "can_mark_goal_complete": false,
-    "why_not_complete": "N337-agent-workspace-search-resource-http-proof hardens deterministic Agent Workspace search/status/resource recovery probe HTTP success only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke for the same endpoint.",
-    "updated_at": "2026-06-29T06:50:00+08:00",
-    "latest_slice_id": "N337-agent-workspace-search-resource-http-proof",
+    "why_not_complete": "N338-agent-workspace-krt-actual-loading-gate-http-proof hardens deterministic Agent Workspace KRT actual-loading gate HTTP probe visibility only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke for the same endpoint.",
+    "updated_at": "2026-06-29T07:10:00+08:00",
+    "latest_slice_id": "N338-agent-workspace-krt-actual-loading-gate-http-proof",
     "is_goal_complete": false,
-    "requirements_total": 338,
+    "requirements_total": 339,
     "requirements_status_counts": {
-      "proved": 338
+      "proved": 339
     },
-    "latest_requirement_id": "N337-agent-workspace-search-resource-http-proof"
+    "latest_requirement_id": "N338-agent-workspace-krt-actual-loading-gate-http-proof"
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -13753,7 +13776,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N337-agent-workspace-search-resource-http-proof",
+  "latest_slice": "N338-agent-workspace-krt-actual-loading-gate-http-proof",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -15517,30 +15540,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-29T06:50:00+08:00",
+    "updated_at": "2026-06-29T07:10:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 338,
+    "requirements_total": 339,
     "requirement_status_counts": {
-      "proved": 338
+      "proved": 339
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N337-agent-workspace-search-resource-http-proof",
-    "latest_slice_id": "N337-agent-workspace-search-resource-http-proof",
+    "latest_requirement_id": "N338-agent-workspace-krt-actual-loading-gate-http-proof",
+    "latest_slice_id": "N338-agent-workspace-krt-actual-loading-gate-http-proof",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N337 hardens deterministic Agent Workspace search/status/resource recovery probe HTTP success only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N337 adds full-app TestClient guards proving Academic English Search, Product Docs Search, Source Vault Status, Source Vault Search, and Source Vault Resource Read return HTTP 200 with isolated local fixtures, while running no live model loading, OCR, Source Vault writes, or real project export."
+        "current_boundary": "N338 hardens deterministic Agent Workspace KRT actual-loading gate HTTP probe visibility only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N338 adds a full-app TestClient guard proving the Knowledge Runtime Conformance recovery probe returns HTTP 200 and that Agent Workspace status mirrors actual-loading gate recovery state, while running no live model loading, provider preflight POST, OCR, Source Vault writes, or real project export."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N337-agent-workspace-search-resource-http-proof hardens deterministic Agent Workspace search/status/resource recovery probe HTTP success only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke for the same endpoint."
+    "why_not_complete": "N338-agent-workspace-krt-actual-loading-gate-http-proof hardens deterministic Agent Workspace KRT actual-loading gate HTTP probe visibility only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke for the same endpoint."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -24227,5 +24250,41 @@
     ],
     "residual_risk": "This proves deterministic local HTTP 200 and fixture-backed payloads for Agent Workspace GET search/status/resource recovery probes only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault runtime stores, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects.",
     "next_authorized_local_action": "Continue deterministic local recovery/proof hardening after preflight; prefer KRT actual-loading gate evidence, OCR mock/health visibility, or remaining read-only recovery drift guards within no-live/no-write boundaries."
+  },
+  "n338_agent_workspace_krt_actual_loading_gate_http_proof_slice": {
+    "id": "N338-agent-workspace-krt-actual-loading-gate-http-proof",
+    "status": "proved",
+    "updated_at": "2026-06-29T07:10:00+08:00",
+    "summary": "N338 proves the Agent Workspace Knowledge Runtime Conformance recovery probe is a live full-app GET link returning HTTP 200 and that its actual-loading gate payload matches the bounded Agent Workspace status projection.",
+    "rollback_snapshot_id": "manual-20260629_070250-n338-agent-workspace-krt-gate-http-proof",
+    "rollback_snapshot_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\manual-20260629_070250-n338-agent-workspace-krt-gate-http-proof",
+    "mature_references_checked": [
+      {
+        "topic": "N338 Agent Workspace KRT actual-loading gate HTTP probe proof",
+        "source": "FastAPI TestClient documentation, Starlette TestClient documentation, and Starlette routing documentation",
+        "url": "https://fastapi.tiangolo.com/tutorial/testing/ ; https://www.starlette.io/testclient/ ; https://www.starlette.io/routing/",
+        "status": "All three references returned HEAD 200; TestClient GET proves the Agent Workspace KRT probe returns HTTP 200 and matches status projection.",
+        "checked_at": "2026-06-29T07:10:00+08:00",
+        "use_in_slice": "Used to lift KRT actual-loading gate Agent Workspace visibility from monkeypatched field projection to deterministic local HTTP 200 proof without running provider/model calls, OCR, Source Vault writes, or external actions."
+      }
+    ],
+    "changed_files": [
+      "tests/test_agent_workspace_router.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read implementation-planner SKILL.md, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N338.",
+      "git status --short --branch -> main...origin/main [ahead 167] clean before N338 edits; current worktree evidence supersedes stale N294 staged-submit text.",
+      "Created rollback snapshot .rollback_snapshots/manual-20260629_070250-n338-agent-workspace-krt-gate-http-proof containing tests/test_agent_workspace_router.py and the longrun goal-state JSON before N338 edits.",
+      "Official/mature references checked before implementation: FastAPI TestClient documentation HEAD 200, Starlette TestClient documentation HEAD 200, and Starlette routing documentation HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_krt_actual_loading_gate_probe_returns_http_success_and_matches_status_projection -q -> 1 passed before goal-state update; confirms Agent Workspace Knowledge Runtime Conformance probe returns HTTP 200 and status projection matches the actual-loading gate payload.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N338 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_krt_actual_loading_gate_probe_returns_http_success_and_matches_status_projection tests\\test_agent_workspace_router.py::test_agent_workspace_core_recovery_probes_return_http_success tests\\test_agent_workspace_router.py::test_agent_workspace_search_and_resource_recovery_probes_return_http_success -q -> 3 passed after N338 edits.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after shortening the N338 mature-reference status to fit Agent Workspace projection bounds.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_agent_workspace_router.py tests\\test_ci_visibility_contract.py -> passed after N338 edits.",
+      "N338 only hardens deterministic local Agent Workspace KRT actual-loading gate recovery probe HTTP success and status projection parity; it does not execute live provider/model loading, provider preflight POST, OCR, real project export, write WikiRegistry/Source Vault runtime store, mutate Zotero DB, edit github/ references, push, tag, release, deploy, upload, or clean squad/git objects."
+    ],
+    "residual_risk": "This proves deterministic local HTTP 200 and Agent Workspace projection parity for the KRT actual-loading gate only. It does not clear the live provider/model actual-loading blocker because provider_preflight.status=proved and a fresh OK live context-loading smoke for the same provider/baseHost/model still require explicit authorization.",
+    "next_authorized_local_action": "Continue deterministic local recovery/proof hardening after preflight; prefer OCR mock/health visibility or remaining read-only recovery drift guards within no-live/no-write boundaries."
   }
 }
