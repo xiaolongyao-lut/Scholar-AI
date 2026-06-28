@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import hashlib
 import json
 import os
 import sys
@@ -10,6 +11,7 @@ from urllib.parse import urlsplit
 
 from fastapi.testclient import TestClient
 from lit_assistant_mcp.server import create_mcp_server
+import pytest
 from starlette.routing import Match
 
 
@@ -18,9 +20,13 @@ if str(core_path) not in sys.path:
     sys.path.insert(0, str(core_path))
 
 import routers.agent_workspace_router as agent_workspace_router
+import routers.agent_bridge_router as agent_bridge_router_module
+import routers.knowledge_router as knowledge_router_module
 import routers.runtime_router as runtime_router_module
 import python_adapter_server as server
+from literature_assistant.core import academic_english_resources, product_docs_knowledge
 from harness_protocols import JobKind, SessionMode
+from source_vault import SourceChunkInput, SourceVault, build_source_vault_chunk_ref_id
 from wiki.source_registry import ChunkInput, SourceRecord, WikiRegistry
 from writing_runtime import WritingRuntime
 
@@ -119,7 +125,7 @@ def _assert_agent_workspace_probe_returns_http_success(
     *,
     headers: Mapping[str, str],
     identifiers: Mapping[str, str] | None = None,
-) -> None:
+) -> dict[str, object]:
     """Assert a read-only Agent Workspace recovery probe returns local HTTP 200.
 
     Args:
@@ -136,6 +142,10 @@ def _assert_agent_workspace_probe_returns_http_success(
     url = _agent_workspace_probe_url(probe, identifiers=identifiers)
     response = client.get(url, headers=dict(headers))
     assert response.status_code == 200, f"{url} returned {response.status_code}: {response.text}"
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise AssertionError(f"{url} must return a JSON object payload.")
+    return payload
 
 
 def _assert_agent_workspace_probe_mcp_tool_is_read_only(
@@ -155,6 +165,171 @@ def _assert_agent_workspace_probe_mcp_tool_is_read_only(
     assert annotations.destructiveHint is False
     assert annotations.idempotentHint is True
     assert annotations.openWorldHint is False
+
+
+def _seed_agent_workspace_source_vault(vault: SourceVault) -> str:
+    """Seed a disposable Source Vault chunk for read-only recovery probes."""
+
+    source = vault.upsert_source_bytes(
+        b"paper bytes for agent workspace source vault proof",
+        filename="agent-workspace-source.pdf",
+        source_type="pdf",
+        title="Agent Workspace Source Vault Proof",
+        parser_version="parser-v1",
+        chunker_version="chunker-v1",
+        project_id="agent-workspace-project",
+        now_iso="2026-06-29T06:45:00Z",
+    ).source
+    vault.register_chunks(
+        source.source_id,
+        [
+            SourceChunkInput(
+                text=(
+                    "AgentWorkspaceSourceVaultAnchor proves the advertised Source Vault "
+                    "search ref is readable as a bounded Agent Bridge resource."
+                ),
+                chunk_index=0,
+                page=1,
+            )
+        ],
+        now_iso="2026-06-29T06:46:00Z",
+    )
+    results = vault.search_chunks("AgentWorkspaceSourceVaultAnchor", limit=1)
+    if not results:
+        raise AssertionError("Seeded Source Vault chunk must be searchable.")
+    return build_source_vault_chunk_ref_id(results[0].chunk_id)
+
+
+def _seed_agent_workspace_academic_english(root: Path) -> None:
+    """Seed generated academic-English artifacts for full-app search probes."""
+
+    root.mkdir(parents=True, exist_ok=True)
+    chunk_text = (
+        "AgentWorkspaceAcademicAnchor calibrates claims so resumed agents can "
+        "recover academic-English refs through a read-only search endpoint."
+    )
+    phrase_text = "These findings should be interpreted within the local proof boundary."
+    source_hash = hashlib.sha256(b"agent workspace academic source").hexdigest()
+    chunk_record = {
+        "chunk_id": "chunk-agent-workspace-academic",
+        "source_id": "source-agent-workspace",
+        "source_type": "text",
+        "source_path": "workspace_references/agent-workspace-academic.txt",
+        "source_hash": source_hash,
+        "title": "Agent Workspace Academic Proof",
+        "locator": "agent-workspace-academic.txt",
+        "section": "discussion",
+        "text": chunk_text,
+        "summary": "AgentWorkspaceAcademicAnchor calibrates claims.",
+        "content_hash": hashlib.sha256(chunk_text.encode("utf-8")).hexdigest(),
+        "span_start": 0,
+        "span_end": len(chunk_text),
+        "rhetorical_moves": ["limitation"],
+        "features": ["hedging"],
+        "keywords": ["AgentWorkspaceAcademicAnchor", "claims"],
+        "char_count": len(chunk_text),
+        "word_count": len(chunk_text.split()),
+    }
+    phrase_record = {
+        "phrase_id": "phrase-agent-workspace-academic",
+        "source_id": "source-agent-workspace",
+        "source_type": "text",
+        "source_path": "workspace_references/agent-workspace-academic.txt",
+        "source_hash": source_hash,
+        "text": phrase_text,
+        "normalized": "these findings should be interpreted",
+        "content_hash": hashlib.sha256(phrase_text.encode("utf-8")).hexdigest(),
+        "span_start": 0,
+        "span_end": len(phrase_text),
+        "move": "limitation",
+        "features": ["hedging"],
+        "section": "discussion",
+        "locator": "agent-workspace-academic.txt",
+        "adaptation_note": "Use when limiting a claim.",
+    }
+    habits = {
+        "schema_version": "0.2",
+        "knowledge_type": "academic_english_habits",
+        "policy_markdown": "# Academic English Discourse Habits\n\nHedging protects evidential scope.",
+        "policy_source": "references/english_discourse_habits.md",
+        "policy_source_path": "references/english_discourse_habits.md",
+        "policy_loaded": True,
+        "policy_load_status": "loaded",
+        "policy_content_hash": hashlib.sha256(
+            "# Academic English Discourse Habits\n\nHedging protects evidential scope.".encode("utf-8")
+        ).hexdigest(),
+        "policy_char_count": 71,
+        "purpose": "Help Scholar AI plan academic prose.",
+    }
+    chunks_path = root / "chunks.jsonl"
+    phrases_path = root / "phrases.jsonl"
+    habits_path = root / "academic_english_habits.json"
+    frames_path = root / "discourse_frames.json"
+    report_path = root / "build_report.md"
+    chunks_path.write_text(json.dumps(chunk_record, ensure_ascii=False) + "\n", encoding="utf-8")
+    phrases_path.write_text(json.dumps(phrase_record, ensure_ascii=False) + "\n", encoding="utf-8")
+    habits_path.write_text(json.dumps(habits, ensure_ascii=False), encoding="utf-8")
+    frames_path.write_text("[]", encoding="utf-8")
+    report_path.write_text("# report\n", encoding="utf-8")
+    manifest = {
+        "schema_version": "0.2",
+        "builder_version": "0.2.0",
+        "built_at": "2026-06-29T06:45:00+08:00",
+        "counts": {"chunks": 1, "phrases": 1},
+        "warnings": [],
+        "errors": [],
+        "knowledge_sources": {
+            "academic_english_habits": {
+                "source_path": "references/english_discourse_habits.md",
+                "source_label": "references/english_discourse_habits.md",
+                "loaded": True,
+                "load_status": "loaded",
+                "content_hash": habits["policy_content_hash"],
+                "char_count": habits["policy_char_count"],
+            }
+        },
+        "output_artifacts": {
+            "chunks_jsonl": {
+                "path": "chunks.jsonl",
+                "exists": True,
+                "bytes": chunks_path.stat().st_size,
+                "sha256": hashlib.sha256(chunks_path.read_bytes()).hexdigest(),
+                "status": "written",
+                "rows": 1,
+            },
+            "phrases_jsonl": {
+                "path": "phrases.jsonl",
+                "exists": True,
+                "bytes": phrases_path.stat().st_size,
+                "sha256": hashlib.sha256(phrases_path.read_bytes()).hexdigest(),
+                "status": "written",
+                "rows": 1,
+            },
+            "academic_english_habits_json": {
+                "path": "academic_english_habits.json",
+                "exists": True,
+                "bytes": habits_path.stat().st_size,
+                "sha256": hashlib.sha256(habits_path.read_bytes()).hexdigest(),
+                "status": "written",
+            },
+        },
+    }
+    (root / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+
+def _seed_agent_workspace_product_docs(repo_root: Path) -> None:
+    """Seed isolated product docs for read-only recovery search probes."""
+
+    docs_root = repo_root / "docs"
+    docs_root.mkdir(parents=True)
+    (repo_root / "README.md").write_text(
+        "# Scholar AI\n\nAgentWorkspaceProductDocsAnchor documents local MCP-first recovery.",
+        encoding="utf-8",
+    )
+    (docs_root / "MCP_SECURITY_ISOLATION.md").write_text(
+        "# MCP Security Isolation\n\nExternal agents inspect bounded refs before mutating local workflow state.",
+        encoding="utf-8",
+    )
 
 
 def test_agent_workspace_core_recovery_probes_return_http_success(monkeypatch) -> None:
@@ -208,6 +383,88 @@ def test_agent_workspace_core_recovery_probes_return_http_success(monkeypatch) -
             headers=headers,
             identifiers=identifiers_by_label.get(label),
         )
+
+
+def test_agent_workspace_search_and_resource_recovery_probes_return_http_success(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Search/resource recovery probes must be live read-only full-app GET links."""
+
+    vault = SourceVault(
+        db_path=tmp_path / "source_vault" / "source_vault.sqlite3",
+        storage_root=tmp_path / "source_vault",
+    )
+    source_vault_ref_id = _seed_agent_workspace_source_vault(vault)
+    academic_root = tmp_path / "english_discourse"
+    product_docs_root = tmp_path / "product_docs_repo"
+    _seed_agent_workspace_academic_english(academic_root)
+    _seed_agent_workspace_product_docs(product_docs_root)
+    monkeypatch.setitem(server.app.dependency_overrides, knowledge_router_module.get_source_vault, lambda: vault)
+    monkeypatch.setattr(agent_bridge_router_module, "SourceVault", lambda: vault)
+    monkeypatch.setattr(academic_english_resources, "output_path", lambda *parts: tmp_path.joinpath(*parts))
+    monkeypatch.setattr(product_docs_knowledge, "REPO_ROOT", product_docs_root)
+
+    client = TestClient(server.app)
+    headers = {"X-LitAssist-Capability": server.get_local_api_capability_token()}
+    response = client.get("/api/agent-workspace/status", headers=headers)
+    assert response.status_code == 200
+    probes = {
+        probe["label"]: probe
+        for probe in response.json()["workspace_state"]["recovery_probes"]
+        if isinstance(probe.get("label"), str)
+    }
+    expected_labels = {
+        "Academic English Search",
+        "Product Docs Search",
+        "Source Vault Status",
+        "Source Vault Search",
+        "Source Vault Resource Read",
+    }
+    assert expected_labels <= set(probes)
+
+    source_status = _assert_agent_workspace_probe_returns_http_success(
+        client,
+        probes["Source Vault Status"],
+        headers=headers,
+    )
+    assert source_status["total_sources"] == 1
+
+    academic_search = _assert_agent_workspace_probe_returns_http_success(
+        client,
+        probes["Academic English Search"],
+        headers=headers,
+        identifiers={"{query}": "AgentWorkspaceAcademicAnchor"},
+    )
+    assert academic_search["results"]
+    assert academic_search["results"][0]["ref_id"] == "academic_english:chunk:chunk-agent-workspace-academic"
+
+    product_docs_search = _assert_agent_workspace_probe_returns_http_success(
+        client,
+        probes["Product Docs Search"],
+        headers=headers,
+        identifiers={"{query}": "AgentWorkspaceProductDocsAnchor"},
+    )
+    assert product_docs_search["results"]
+    assert product_docs_search["results"][0]["ref_id"].startswith("product_docs:chunk:")
+
+    source_vault_search = _assert_agent_workspace_probe_returns_http_success(
+        client,
+        probes["Source Vault Search"],
+        headers=headers,
+        identifiers={"{query}": "AgentWorkspaceSourceVaultAnchor"},
+    )
+    assert source_vault_search["results"]
+    assert source_vault_search["results"][0]["ref_id"] == source_vault_ref_id
+
+    source_vault_resource = _assert_agent_workspace_probe_returns_http_success(
+        client,
+        probes["Source Vault Resource Read"],
+        headers=headers,
+        identifiers={"{ref_id}": source_vault_ref_id},
+    )
+    assert source_vault_resource["kind"] == "source_vault"
+    assert "AgentWorkspaceSourceVaultAnchor" in source_vault_resource["content"]
 
 
 def test_load_knowledge_actual_loading_gate_state_projects_owner_gate(tmp_path, monkeypatch) -> None:
