@@ -131,7 +131,13 @@ def test_server_registers_source_and_runtime_tools() -> None:
 
     tools_by_name = {tool.name: tool for tool in server._tool_manager.list_tools()}
     read_only_tool_names = [
+        "source.list_tree",
+        "source.search",
         "source.read_file",
+        "source.read_symbols",
+        "source.inspect_routes",
+        "source.find_references",
+        "source.explain_entrypoints",
         "literature.search_refs",
         "literature.knowledge_packages",
         "literature.knowledge_runtime_conformance",

@@ -192,7 +192,17 @@ def create_mcp_server(
         ),
     )
 
-    @mcp.tool(name="source.list_tree", structured_output=True)
+    @mcp.tool(
+        name="source.list_tree",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Source List Tree",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def source_list_tree(
         root: str = ".",
         max_depth: int = 3,
@@ -201,7 +211,17 @@ def create_mcp_server(
         """List allowed source files and directories."""
         return source.list_tree(root=root, max_depth=max_depth, max_entries=max_entries)
 
-    @mcp.tool(name="source.search", structured_output=True)
+    @mcp.tool(
+        name="source.search",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Source Search",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def source_search(
         query: str,
         root: str = ".",
@@ -231,12 +251,32 @@ def create_mcp_server(
         """Read an allowed source text file."""
         return source.read_file(path=path, max_chars=max_chars)
 
-    @mcp.tool(name="source.read_symbols", structured_output=True)
+    @mcp.tool(
+        name="source.read_symbols",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Source Read Symbols",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def source_read_symbols(path: str) -> dict[str, Any]:
         """Read top-level Python symbols from an allowed source file."""
         return source.read_symbols(path=path)
 
-    @mcp.tool(name="source.inspect_routes", structured_output=True)
+    @mcp.tool(
+        name="source.inspect_routes",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Source Inspect Routes",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def source_inspect_routes(
         root: str = "literature_assistant/core",
         max_routes: int = 200,
@@ -244,7 +284,17 @@ def create_mcp_server(
         """Inspect FastAPI route decorators without importing modules."""
         return source.inspect_routes(root=root, max_routes=max_routes)
 
-    @mcp.tool(name="source.find_references", structured_output=True)
+    @mcp.tool(
+        name="source.find_references",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Source Find References",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def source_find_references(
         symbol: str,
         root: str = ".",
@@ -253,7 +303,17 @@ def create_mcp_server(
         """Find bounded static references to an identifier or literal text."""
         return source.find_references(symbol=symbol, root=root, max_results=max_results)
 
-    @mcp.tool(name="source.explain_entrypoints", structured_output=True)
+    @mcp.tool(
+        name="source.explain_entrypoints",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Source Explain Entrypoints",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def source_explain_entrypoints(
         path: str,
         max_depth: int = 2,
