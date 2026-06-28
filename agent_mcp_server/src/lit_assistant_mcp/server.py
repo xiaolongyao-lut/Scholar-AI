@@ -965,12 +965,32 @@ def create_mcp_server(
             overwrite_existing=overwrite_existing,
         )
 
-    @mcp.tool(name="literature.citations_sources", structured_output=True)
+    @mcp.tool(
+        name="literature.citations_sources",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Citation Sources",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_citations_sources(project_id: str) -> dict[str, Any]:
         """List backend-managed citation source metadata."""
         return runtime.citations_sources(project_id=project_id)
 
-    @mcp.tool(name="literature.citations_detect_overlap", structured_output=True)
+    @mcp.tool(
+        name="literature.citations_detect_overlap",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Citation Overlap Diagnostic",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_citations_detect_overlap(
         project_id: str,
         anchors: list[dict[str, Any]],
@@ -985,7 +1005,17 @@ def create_mcp_server(
             draft_id=draft_id,
         )
 
-    @mcp.tool(name="literature.academic_writing_lint", structured_output=True)
+    @mcp.tool(
+        name="literature.academic_writing_lint",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Academic Writing Lint",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_academic_writing_lint(
         text: str | None = None,
         html: str | None = None,
