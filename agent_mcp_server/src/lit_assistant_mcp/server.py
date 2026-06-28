@@ -1618,12 +1618,32 @@ def create_mcp_server(
         """Write a Markdown artifact under the workflow workspace."""
         return workflow_impl.write_markdown(path=path, content=content, overwrite=overwrite)
 
-    @mcp.tool(name="artifact.read_artifact", structured_output=True)
+    @mcp.tool(
+        name="artifact.read_artifact",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Artifact Read",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def artifact_read_artifact(path: str, max_chars: int = 120000) -> dict[str, Any]:
         """Read a text artifact from the workflow workspace."""
         return workflow_impl.read_artifact(path=path, max_chars=max_chars)
 
-    @mcp.tool(name="artifact.list_artifacts", structured_output=True)
+    @mcp.tool(
+        name="artifact.list_artifacts",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Artifact List",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def artifact_list_artifacts(max_entries: int = 200) -> dict[str, Any]:
         """List workflow artifacts."""
         return workflow_impl.list_artifacts(max_entries=max_entries)

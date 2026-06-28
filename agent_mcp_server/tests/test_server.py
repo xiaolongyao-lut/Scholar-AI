@@ -184,6 +184,8 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.agent_resource_read",
         "literature.agent_workspace_status",
         "literature.agent_workspace_requirement",
+        "artifact.read_artifact",
+        "artifact.list_artifacts",
     ]
     for tool_name in read_only_tool_names:
         _assert_read_only_annotations(tools_by_name[tool_name])
