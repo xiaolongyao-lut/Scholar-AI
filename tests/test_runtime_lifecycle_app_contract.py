@@ -17,6 +17,7 @@ import routers.runtime_router as runtime_router_module
 from python_adapter_server import app, get_local_api_capability_token
 from source_vault import SourceChunkInput, SourceVault
 from writing_runtime import WritingRuntime
+from writing_runtime import _recovery_ref_from_evidence_ref
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _RUNTIME_ENDPOINT_LITERAL = re.compile(r"""['"`](?P<endpoint>/runtime/[^'"`]+)['"`]""")
@@ -317,6 +318,57 @@ def test_runtime_endpoint_literals_in_runtime_source_match_full_app_get_routes()
             _assert_full_app_get_route_exists(_concrete_runtime_fixture_path(endpoint))
         except AssertionError as exc:
             raise AssertionError(f"{source_path} cites unregistered runtime endpoint {endpoint}") from exc
+
+
+def test_recovery_ref_probe_endpoints_resolve_to_registered_routes() -> None:
+    """Every dynamic recovery-ref probe endpoint must be a registered full-app GET route.
+
+    Guards `_recovery_ref_from_evidence_ref`, whose `probe_endpoint` values are
+    computed (including a hyphenated f-string) and therefore are not visible to the
+    static endpoint-literal harvester. Without this, a renamed runtime route would
+    silently turn recovery handoff links into 404s with no failing test.
+    """
+
+    # ref_type -> expected literal probe_endpoint for every branch that emits one.
+    expected_probe_endpoints = {
+        "runtime_job": "/runtime/job/recovery-ref-audit-job",
+        "preflight_refresh_receipt": "/runtime/workflow-replay-index",
+        "workflow_passport": "/runtime/workflow-passport",
+        "evidence_integrity_gate": "/runtime/evidence-integrity-gate",
+        "evidence_integrity_signal": "/runtime/evidence-integrity-gate",
+    }
+
+    for ref_type, expected_endpoint in sorted(expected_probe_endpoints.items()):
+        recovery_ref = _recovery_ref_from_evidence_ref(
+            {"ref_type": ref_type, "ref_id": "recovery-ref-audit-job"}
+        )
+        assert recovery_ref is not None, ref_type
+        probe_endpoint = recovery_ref.get("probe_endpoint")
+        assert probe_endpoint == expected_endpoint, (ref_type, probe_endpoint)
+        _assert_full_app_get_route_exists(_concrete_runtime_fixture_path(probe_endpoint))
+
+    # The hyphenated-passport branch must still resolve without a ref_id present.
+    passport_ref = _recovery_ref_from_evidence_ref({"ref_type": "workflow_passport"})
+    assert passport_ref is not None
+    assert passport_ref.get("probe_endpoint") == "/runtime/workflow-passport"
+    _assert_full_app_get_route_exists(
+        _concrete_runtime_fixture_path(passport_ref["probe_endpoint"])
+    )
+
+    # Unrecognized or empty refs must not advertise a probe endpoint at all, so a
+    # new branch added later without a real route cannot ship a silent dead link.
+    assert "probe_endpoint" not in (
+        _recovery_ref_from_evidence_ref({"ref_type": "unknown_recovery_type", "ref_id": "x"})
+        or {}
+    )
+    assert _recovery_ref_from_evidence_ref({}) is None
+
+    # Self-check: the route-existence assertion must actually reject a stale
+    # underscore alias, so this guard cannot silently pass against dead links.
+    with pytest.raises(AssertionError):
+        _assert_full_app_get_route_exists(
+            _concrete_runtime_fixture_path("/runtime/evidence_integrity_gate")
+        )
 
 
 def test_runtime_lifecycle_routes_return_http_success_on_full_app(monkeypatch) -> None:
