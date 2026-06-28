@@ -1169,7 +1169,17 @@ def create_mcp_server(
         """Read one Agent Workspace requirement-to-evidence drilldown."""
         return runtime.agent_workspace_requirement(requirement_id=requirement_id)
 
-    @mcp.tool(name="literature.agent_request_create", structured_output=True)
+    @mcp.tool(
+        name="literature.agent_request_create",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Agent Request Create",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_agent_request_create(
         intent: str,
         user_text: str = "",
@@ -1237,7 +1247,17 @@ def create_mcp_server(
             user_id=user_id,
         )
 
-    @mcp.tool(name="literature.single_paper_task_create", structured_output=True)
+    @mcp.tool(
+        name="literature.single_paper_task_create",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Single Paper Task Create",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_single_paper_task_create(
         project_id: str,
         material_id: str,
@@ -1533,7 +1553,17 @@ def create_mcp_server(
             cursor=cursor,
         )
 
-    @mcp.tool(name="literature.agent_progress", structured_output=True)
+    @mcp.tool(
+        name="literature.agent_progress",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Agent Progress",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_agent_progress(
         request_id: str,
         stage: str,
@@ -1550,7 +1580,17 @@ def create_mcp_server(
             data=data,
         )
 
-    @mcp.tool(name="literature.agent_result", structured_output=True)
+    @mcp.tool(
+        name="literature.agent_result",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Agent Result",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_agent_result(
         request_id: str,
         text: str = "",
@@ -1571,7 +1611,17 @@ def create_mcp_server(
             metadata=metadata,
         )
 
-    @mcp.tool(name="literature.agent_fail", structured_output=True)
+    @mcp.tool(
+        name="literature.agent_fail",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Agent Fail",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_agent_fail(request_id: str, error: str) -> dict[str, Any]:
         """Fail a runtime-visible agent request job."""
         return runtime.agent_fail(request_id=request_id, error=error)

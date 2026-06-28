@@ -45,7 +45,7 @@ def _assert_local_write_annotations(tool: object) -> None:
 
 
 def _assert_destructive_local_write_annotations(tool: object) -> None:
-    """Assert a tool declares local write operations that may replace artifacts."""
+    """Assert a tool declares local writes that may replace artifacts or terminal state."""
 
     annotations = getattr(tool, "annotations", None)
     assert annotations is not None
@@ -225,6 +225,11 @@ def test_server_registers_source_and_runtime_tools() -> None:
     assert wiki_import_annotations.idempotentHint is False
     assert wiki_import_annotations.openWorldHint is False
     _assert_local_write_annotations(tools_by_name["literature.behavior_eval_pack"])
+    _assert_local_write_annotations(tools_by_name["literature.agent_request_create"])
+    _assert_local_write_annotations(tools_by_name["literature.single_paper_task_create"])
+    _assert_local_write_annotations(tools_by_name["literature.agent_progress"])
+    _assert_destructive_local_write_annotations(tools_by_name["literature.agent_result"])
+    _assert_destructive_local_write_annotations(tools_by_name["literature.agent_fail"])
     _assert_destructive_local_write_annotations(tools_by_name["workflow.write_json_workflow"])
     _assert_destructive_local_write_annotations(tools_by_name["artifact.write_markdown"])
 
