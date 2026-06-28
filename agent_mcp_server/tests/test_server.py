@@ -266,6 +266,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
     _assert_destructive_local_write_annotations(tools_by_name["literature.figures_generate"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.export_project_pack"])
     _assert_destructive_local_write_annotations(tools_by_name["workflow.write_json_workflow"])
+    _assert_open_world_destructive_write_annotations(tools_by_name["workflow.run_json_workflow"])
     _assert_destructive_local_write_annotations(tools_by_name["artifact.write_markdown"])
 
 

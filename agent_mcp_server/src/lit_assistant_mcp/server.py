@@ -1845,7 +1845,17 @@ def create_mcp_server(
         """Write a JSON workflow artifact."""
         return workflow_impl.write_json_workflow(path=path, workflow=workflow, overwrite=overwrite)
 
-    @mcp.tool(name="workflow.run_json_workflow", structured_output=True)
+    @mcp.tool(
+        name="workflow.run_json_workflow",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Workflow Run JSON",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
     def workflow_run_json_workflow(
         workflow: dict[str, Any] | None = None,
         path: str | None = None,
