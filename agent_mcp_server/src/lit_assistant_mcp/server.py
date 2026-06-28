@@ -1864,7 +1864,17 @@ def create_mcp_server(
         """Run an inline or artifact-backed JSON workflow."""
         return workflow_impl.run_json_workflow(workflow=workflow, path=path, input_data=input_data)
 
-    @mcp.tool(name="workflow.run_python_sandbox", structured_output=True)
+    @mcp.tool(
+        name="workflow.run_python_sandbox",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Workflow Run Python Sandbox",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def workflow_run_python_sandbox(script: dict[str, Any]) -> dict[str, Any]:
         """Experimental Python sandbox entrypoint; disabled by default."""
         return experimental.run_python_sandbox(script=script)
