@@ -1755,7 +1755,17 @@ def create_mcp_server(
             use_model=use_model,
         )
 
-    @mcp.tool(name="literature.export_project_pack", structured_output=True)
+    @mcp.tool(
+        name="literature.export_project_pack",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Export Project Pack",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_export_project_pack(
         project_id: str,
         include_search_preview: bool = False,
