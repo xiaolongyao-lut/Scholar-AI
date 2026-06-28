@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -97,6 +98,31 @@ async def _start_runtime_job_and_wait(
     task = runtime._job_tasks.get(job_id)
     if task is not None:
         await task
+
+
+def _probe_path(probe: Mapping[str, object]) -> str:
+    """Return the concrete local path from a runtime recovery probe."""
+
+    url = str(probe.get("url") or probe.get("endpoint") or "").strip()
+    path = urlsplit(url).path
+    assert path.startswith("/")
+    return path
+
+
+def _assert_router_read_only_probe_returns_http_success(
+    client: TestClient,
+    probe: Mapping[str, object],
+) -> None:
+    """Assert a router-local recovery probe is read-only and not a dead link."""
+
+    assert probe.get("read_only") is True
+    assert str(probe.get("method") or "GET").upper() == "GET"
+    path = _probe_path(probe)
+    assert "_passport" not in path
+    assert "_gate" not in path
+    assert "_card" not in path
+    response = client.get(path)
+    assert response.status_code == 200, path
 
 
 @pytest.mark.persistence_smoke
@@ -1769,10 +1795,13 @@ def test_runtime_lifecycle_refs_crosslink_passport_gate_boundary_and_handoff(mon
     )
 
     boundary = gate["blocking_action_boundary"]
+    boundary_probes = boundary["local_read_only_probes"]
     assert any(
         probe["endpoint"] == "/runtime/research-action-lifecycle" and probe["read_only"] is True
-        for probe in boundary["local_read_only_probes"]
+        for probe in boundary_probes
     )
+    for probe in boundary_probes:
+        _assert_router_read_only_probe_returns_http_success(client, probe)
 
     recovery = handoff["action_lifecycle_recovery"]
     assert recovery["schema_version"] == "scholar_ai_handoff_action_lifecycle_recovery_v1"
@@ -1842,6 +1871,17 @@ def test_runtime_agent_handoff_card_route_exposes_recovery_drilldowns(monkeypatc
         probe.get("endpoint") == "/runtime/evidence-integrity-gate" and probe.get("read_only") is True
         for probe in handoff_drilldown["local_read_only_probes"]
     )
+    for probe in handoff_drilldown["local_read_only_probes"]:
+        _assert_router_read_only_probe_returns_http_success(client, probe)
+    with pytest.raises(AssertionError):
+        _assert_router_read_only_probe_returns_http_success(
+            client,
+            {
+                "method": "GET",
+                "read_only": True,
+                "endpoint": "/runtime/evidence_integrity_gate",
+            },
+        )
     assert handoff_drilldown["raw_path_exposed"] is False
     assert card["replay_recovery"]["read_only"] is True
 
