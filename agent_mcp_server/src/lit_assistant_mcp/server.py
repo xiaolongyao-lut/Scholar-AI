@@ -1069,12 +1069,32 @@ def create_mcp_server(
             existing_materials=existing_materials,
         )
 
-    @mcp.tool(name="literature.export_annotations_markdown", structured_output=True)
+    @mcp.tool(
+        name="literature.export_annotations_markdown",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Export Annotations Markdown",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
     def literature_export_annotations_markdown(material_id: str) -> dict[str, Any]:
         """Export material annotations as Markdown."""
         return runtime.export_annotations_markdown(material_id=material_id)
 
-    @mcp.tool(name="literature.export_docx", structured_output=True)
+    @mcp.tool(
+        name="literature.export_docx",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Export DOCX",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_export_docx(
         html: str,
         title: str,
@@ -1093,7 +1113,17 @@ def create_mcp_server(
             require_action_preflight=require_action_preflight,
         )
 
-    @mcp.tool(name="literature.journal_style_spec_draft", structured_output=True)
+    @mcp.tool(
+        name="literature.journal_style_spec_draft",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Journal Style Draft",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_journal_style_spec_draft(
         project_id: str,
         journal_name: str,
@@ -1106,7 +1136,17 @@ def create_mcp_server(
             spec_text=spec_text,
         )
 
-    @mcp.tool(name="literature.journal_style_spec_confirm", structured_output=True)
+    @mcp.tool(
+        name="literature.journal_style_spec_confirm",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Journal Style Confirm",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
     def literature_journal_style_spec_confirm(
         project_id: str,
         draft_id: str,

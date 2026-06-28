@@ -195,6 +195,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.citations_sources",
         "literature.citations_detect_overlap",
         "literature.academic_writing_lint",
+        "literature.export_annotations_markdown",
         "literature.agent_bridge_status",
         "literature.single_paper_completion_check",
         "literature.agent_request_list",
@@ -230,6 +231,9 @@ def test_server_registers_source_and_runtime_tools() -> None:
     _assert_local_write_annotations(tools_by_name["literature.agent_progress"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.agent_result"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.agent_fail"])
+    _assert_destructive_local_write_annotations(tools_by_name["literature.export_docx"])
+    _assert_destructive_local_write_annotations(tools_by_name["literature.journal_style_spec_draft"])
+    _assert_destructive_local_write_annotations(tools_by_name["literature.journal_style_spec_confirm"])
     _assert_destructive_local_write_annotations(tools_by_name["workflow.write_json_workflow"])
     _assert_destructive_local_write_annotations(tools_by_name["artifact.write_markdown"])
 
