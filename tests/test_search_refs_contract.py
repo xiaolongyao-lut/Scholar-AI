@@ -61,9 +61,14 @@ def _create_project(client: TestClient, title: str = "Search Refs Project") -> d
     return payload
 
 
-def _write_chunk_fixture(project_id: str) -> None:
+def _write_chunk_fixture(project_id: str, *, content: str | None = None) -> None:
     """Persist a chunk store containing large fields that must not leak."""
 
+    chunk_content = (
+        content
+        if content is not None
+        else "Transformer attention improves sequence modeling and retrieval quality."
+    )
     resources_router._save_chunk_store(  # type: ignore[attr-defined]
         project_id,
         {
@@ -72,7 +77,7 @@ def _write_chunk_fixture(project_id: str) -> None:
                     "chunk_id": "chunk_alpha_1",
                     "material_id": "mat_alpha",
                     "title": "Transformer Attention Review",
-                    "content": "Transformer attention improves sequence modeling and retrieval quality.",
+                    "content": chunk_content,
                     "abstract": "SHOULD_NOT_LEAK_ABSTRACT",
                     "ocr_text": "SHOULD_NOT_LEAK_OCR",
                     "raw_ocr_blocks": [{"text": "SHOULD_NOT_LEAK_BLOCK"}],
@@ -512,6 +517,72 @@ def test_search_ref_read_endpoint_loads_bounded_chunk_context(monkeypatch: Any) 
     assert "abstract" not in serialized.lower()
     assert "ocr" not in serialized.lower()
     assert "private_note" not in serialized
+
+
+def test_search_ref_read_endpoint_enforces_bounded_cursor_context(
+    monkeypatch: Any,
+) -> None:
+    """The emitted read_endpoint must remain server-bounded when followed.
+
+    Search refs are model-context entry points, so the linked reader must honor
+    cursor and max_chars limits instead of returning an unbounded chunk body.
+    The test follows the exact emitted URL with extra query parameters and pins
+    the response envelope fields that make partial context recovery resumable.
+    """
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    long_content = (
+        "Transformer attention bounded context proof. "
+        "Cursor pagination must return only the requested slice. "
+        "Private source fields stay out of the model context. "
+    ) * 4
+    _write_chunk_fixture(project_id, content=long_content)
+    monkeypatch.setattr(
+        resources_router,
+        "_collect_pending_scan_candidates",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("ingest helper called")
+        ),
+    )
+    monkeypatch.setattr(
+        resources_router,
+        "_ingest_pending_candidates",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("ingest helper called")
+        ),
+    )
+
+    search_response = client.get(
+        "/resources/chunks/search-refs",
+        params={"project_id": project_id, "query": "bounded context cursor", "top_k": 5},
+    )
+    assert search_response.status_code == 200
+    ref = search_response.json()["refs"][0]
+    read_endpoint = ref["read_endpoint"]
+    separator = "&" if "?" in read_endpoint else "?"
+    bounded_endpoint = f"{read_endpoint}{separator}max_chars=120&cursor=17"
+
+    read_response = client.get(bounded_endpoint)
+
+    assert read_response.status_code == 200
+    payload = read_response.json()
+    expected_slice = long_content[17:137]
+    assert payload["ref_id"] == ref["ref_id"] == "chunk:chunk_alpha_1"
+    assert payload["content"] == expected_slice
+    assert len(payload["content"]) == 120
+    assert payload["truncated"] is True
+    assert payload["cursor"] == "17"
+    assert payload["next_cursor"] == "137"
+    assert payload["max_chars"] == 120
+    assert payload["total_chars"] == len(long_content)
+    assert payload["metadata"]["offset"] == 17
+    assert payload["metadata"]["returned_chars"] == 120
+    assert "SHOULD_NOT_LEAK" not in read_response.text
+
+    too_small_response = client.get(f"{read_endpoint}{separator}max_chars=99")
+    assert too_small_response.status_code == 422
 
 
 def test_search_ref_reader_rejects_unknown_chunk_ref(monkeypatch: Any) -> None:
