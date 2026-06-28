@@ -1758,7 +1758,17 @@ def create_mcp_server(
         """Experimental visual review pack preparation; disabled by default."""
         return experimental.prepare_visual_review(project_id=project_id, query=query, top_k=top_k)
 
-    @mcp.tool(name="literature.translate_pack", structured_output=True)
+    @mcp.tool(
+        name="literature.translate_pack",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Translate Pack",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
     def literature_translate_pack(
         project_id: str,
         target_language: str,

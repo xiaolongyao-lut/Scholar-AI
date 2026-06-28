@@ -66,6 +66,17 @@ def _assert_destructive_local_write_annotations(tool: object) -> None:
     assert annotations.openWorldHint is False
 
 
+def _assert_open_world_destructive_write_annotations(tool: object) -> None:
+    """Assert a tool declares replace-capable writes that may call configured providers."""
+
+    annotations = getattr(tool, "annotations", None)
+    assert annotations is not None
+    assert annotations.readOnlyHint is False
+    assert annotations.destructiveHint is True
+    assert annotations.idempotentHint is False
+    assert annotations.openWorldHint is True
+
+
 def test_server_registers_source_and_runtime_tools() -> None:
     """FastMCP server exposes source, runtime, and workflow-spine tool names."""
     server = create_mcp_server()
@@ -247,6 +258,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
     _assert_destructive_local_write_annotations(tools_by_name["literature.agent_fail"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.ocr_material"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.prepare_visual_review"])
+    _assert_open_world_destructive_write_annotations(tools_by_name["literature.translate_pack"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.export_docx"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.journal_style_spec_draft"])
     _assert_destructive_local_write_annotations(tools_by_name["literature.journal_style_spec_confirm"])
