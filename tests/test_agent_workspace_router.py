@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 import json
 import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 
 from fastapi.testclient import TestClient
+from starlette.routing import Match
 
 
 core_path = Path(__file__).parent.parent / "literature_assistant" / "core"
@@ -16,6 +19,48 @@ if str(core_path) not in sys.path:
 import routers.agent_workspace_router as agent_workspace_router
 import python_adapter_server as server
 from wiki.source_registry import ChunkInput, SourceRecord, WikiRegistry
+
+
+def _agent_workspace_probe_path(probe: Mapping[str, object]) -> str:
+    """Return the local path advertised by an Agent Workspace recovery probe."""
+
+    raw_route = probe.get("route")
+    if not isinstance(raw_route, str) or not raw_route.strip():
+        raise AssertionError("Agent Workspace recovery probe route must be a non-empty string.")
+    concrete_route = raw_route.strip().replace("{job_id}", "job-route-proof")
+    concrete_route = concrete_route.replace("{requirement_id}", "N306-agent-workspace-readonly-annotations")
+    concrete_route = concrete_route.replace("{ref_id}", "source-vault:route-proof")
+    concrete_route = concrete_route.replace("{query}", "route-proof")
+    path = urlsplit(concrete_route).path
+    if not path.startswith("/"):
+        raise AssertionError(f"Agent Workspace recovery probe route must be absolute: {raw_route}")
+    return path
+
+
+def _assert_agent_workspace_probe_resolves_to_full_app_get_route(
+    probe: Mapping[str, object],
+) -> None:
+    """Assert an Agent Workspace recovery probe points at a registered local GET route."""
+
+    assert probe.get("read_only") is True
+    path = _agent_workspace_probe_path(probe)
+    assert "_passport" not in path
+    assert "_gate" not in path
+    assert "_card" not in path
+    matches: list[str] = []
+    for route in server.app.routes:
+        route_path = str(getattr(route, "path", ""))
+        if route_path == "/{full_path:path}":
+            continue
+        route_methods = getattr(route, "methods", None)
+        if route_methods is not None and "GET" not in route_methods:
+            continue
+        if not hasattr(route, "matches"):
+            continue
+        match, _ = route.matches({"type": "http", "path": path, "method": "GET"})
+        if match is not Match.NONE:
+            matches.append(route_path)
+    assert matches, f"Agent Workspace probe does not resolve to a full-app GET route: {path}"
 
 
 def test_load_knowledge_actual_loading_gate_state_projects_owner_gate(tmp_path, monkeypatch) -> None:
@@ -620,12 +665,36 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert "can_mark_goal_complete" in lifecycle_gate_probe["purpose"]
     assert "completion_blockers" in lifecycle_gate_probe["purpose"]
     assert "all-proved requirements" in lifecycle_gate_probe["purpose"]
+    workflow_passport_probe = next(probe for probe in probes if probe["label"] == "Workflow Passport")
+    assert workflow_passport_probe["route"] == "/runtime/workflow-passport"
+    assert workflow_passport_probe["mcp_tool"] == "literature.workflow_passport"
+    assert workflow_passport_probe["requires_identifier"] is False
+    assert "stage" in workflow_passport_probe["purpose"]
+    assert "provenance" in workflow_passport_probe["purpose"]
+    _assert_agent_workspace_probe_resolves_to_full_app_get_route(workflow_passport_probe)
+    evidence_gate_probe = next(probe for probe in probes if probe["label"] == "Evidence Integrity Gate")
+    assert evidence_gate_probe["route"] == "/runtime/evidence-integrity-gate"
+    assert evidence_gate_probe["mcp_tool"] == "literature.evidence_integrity_gate"
+    assert evidence_gate_probe["requires_identifier"] is False
+    assert "blockers" in evidence_gate_probe["purpose"]
+    assert "integrity signals" in evidence_gate_probe["purpose"]
+    _assert_agent_workspace_probe_resolves_to_full_app_get_route(evidence_gate_probe)
+    research_lifecycle_probe = next(
+        probe for probe in probes if probe["label"] == "Research Action Lifecycle"
+    )
+    assert research_lifecycle_probe["route"] == "/runtime/research-action-lifecycle"
+    assert research_lifecycle_probe["mcp_tool"] == "literature.research_action_lifecycle"
+    assert research_lifecycle_probe["requires_identifier"] is False
+    assert "preflight" in research_lifecycle_probe["purpose"]
+    assert "forbidden-action" in research_lifecycle_probe["purpose"]
+    _assert_agent_workspace_probe_resolves_to_full_app_get_route(research_lifecycle_probe)
     handoff_probe = next(probe for probe in probes if probe["label"] == "Agent Handoff Card")
     assert handoff_probe["route"] == "/runtime/job/{job_id}/agent-handoff-card"
     assert handoff_probe["requires_identifier"] is True
     assert handoff_probe["identifier_hint"] == "job_id"
     assert handoff_probe["mcp_tool"] == "literature.agent_handoff_card"
     assert "replay recovery" in handoff_probe["purpose"]
+    _assert_agent_workspace_probe_resolves_to_full_app_get_route(handoff_probe)
     requirement_probe = next(probe for probe in probes if probe["label"] == "Goal Requirement Drilldown")
     assert requirement_probe["route"] == "/api/agent-workspace/goal-requirements/{requirement_id}"
     assert requirement_probe["requires_identifier"] is True
