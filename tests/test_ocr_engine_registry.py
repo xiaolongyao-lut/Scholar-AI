@@ -51,6 +51,14 @@ class _MockOcrEngine:
     def unavailable_reason(self) -> str | None:
         return None if self.is_available() else "mock unavailable"
 
+    def readiness_status(self) -> str:
+        # Mock must satisfy the current OcrEngine readiness contract so the
+        # registered stand-in stays structurally valid; "ready" when available.
+        return "ready" if self.is_available() else "unavailable"
+
+    def readiness_blockers(self) -> tuple[str, ...]:
+        return () if self.is_available() else ("mock unavailable",)
+
     def ocr_image(self, image: bytes | Path, *, language: str = "en") -> str:
         if not isinstance(image, (bytes, Path)):
             raise TypeError("image must be bytes or pathlib.Path")
@@ -154,6 +162,51 @@ def test_ocr_engine_protocol_requires_readiness_contract() -> None:
     engine = _LegacyOcrEngine()
 
     assert not isinstance(engine, OcrEngine)
+
+
+def test_ocr_engine_protocol_accepts_conforming_engines() -> None:
+    """Real built-in engines and the test mock must satisfy the OcrEngine Protocol.
+
+    The negative legacy check alone cannot catch a regression where a *real*
+    engine drops a required Protocol method (for example readiness_status), because
+    runtime_checkable isinstance only inspects method presence. Without a positive
+    conformance assertion over the registered built-in engines, such a break would
+    pass CI while silently degrading the OcrEngine contract that ingestion, health,
+    and status surfaces depend on. The mock is included so the registered stand-in
+    used elsewhere in this suite stays a structurally valid engine.
+    """
+
+    conforming_engines = [
+        _MockOcrEngine(),
+        WindowsOcrEngine({}),
+        RapidOcrEngine({}),
+        RemoteApiOcrEngine({}),
+        PaddleOcrGpuEngine({}),
+    ]
+    for engine in conforming_engines:
+        assert isinstance(engine, OcrEngine), type(engine).__name__
+
+    # Every required Protocol member must be present on each conforming engine so a
+    # dropped method is caught by name, not only by the structural isinstance check.
+    required_members = (
+        "name",
+        "display_name",
+        "engine_type",
+        "requires_network",
+        "is_available",
+        "unavailable_reason",
+        "readiness_status",
+        "readiness_blockers",
+        "ocr_image",
+        "health_check",
+    )
+    for engine in conforming_engines:
+        missing = [member for member in required_members if not hasattr(engine, member)]
+        assert not missing, (type(engine).__name__, missing)
+
+    # Self-check: the Protocol must still reject a shape missing readiness methods,
+    # so this positive guard cannot pass against a degraded contract.
+    assert not isinstance(_LegacyOcrEngine(), OcrEngine)
 
 
 def test_unavailable_configured_engine_returns_warning() -> None:

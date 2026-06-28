@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-28T21:10:00+08:00",
+  "updated_at": "2026-06-28T21:25:00+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -107,6 +107,22 @@
     "latest_checkpoint_caveat": "Rollback checkpoint for N294 latest-slice changed-files and verification evidence consistency; restore only with explicit user intent after inspecting current dirty worktree ownership."
   },
   "mature_references_checked": [
+    {
+      "topic": "N297 runtime_checkable Protocol structural conformance",
+      "source": "Python typing.Protocol / runtime_checkable documentation",
+      "url": "https://docs.python.org/3/library/typing.html#typing.runtime_checkable",
+      "status": "Reused existing OcrEngine runtime_checkable Protocol; isinstance checks method presence only, motivating an explicit positive conformance guard",
+      "checked_at": "2026-06-28T21:25:00+08:00",
+      "use_in_slice": "Used to justify asserting positive isinstance conformance over the real built-in OCR engines so a dropped Protocol method is caught instead of silently passing the negative-only legacy check."
+    },
+    {
+      "topic": "N297 conformance and self-check assertions",
+      "source": "pytest assertion documentation",
+      "url": "https://docs.pytest.org/en/stable/how-to/assert.html",
+      "status": "Reused existing pytest import in the OCR registry test module",
+      "checked_at": "2026-06-28T21:25:00+08:00",
+      "use_in_slice": "Used to assert each real engine and the conforming mock satisfy the OcrEngine Protocol while keeping the legacy negative self-check so the guard cannot pass against a degraded contract."
+    },
     {
       "topic": "N296 read-only probe route existence matching",
       "source": "Starlette routing (app.routes / Match)",
@@ -8662,18 +8678,30 @@
         "N296 only adds a deterministic test guard; it does not modify runtime behavior and preserves the live provider/model actual-loading blocker without claiming long-goal completion."
       ],
       "residual_risk": "This proves deterministic boundary-recovery read-only probe route existence only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, execute OCR, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
+    },
+    {
+      "id": "N297-ocr-engine-protocol-positive-conformance",
+      "status": "proved",
+      "requirement": "The OcrEngine Protocol contract must be deterministically pinned by a positive runtime_checkable conformance test so the real registered built-in OCR engines (and the test mock standing in for a valid engine) are proved to satisfy the Protocol, preventing a real engine from silently dropping a required method (for example readiness_status) while only the negative legacy check still passes.",
+      "evidence": [
+        "tests/test_ocr_engine_registry.py::test_ocr_engine_protocol_accepts_conforming_engines asserts isinstance(engine, OcrEngine) for WindowsOcrEngine, RapidOcrEngine, RemoteApiOcrEngine, PaddleOcrGpuEngine, and the conforming _MockOcrEngine, asserts every required Protocol member is present by name, and retains a negative self-check that a readiness-less legacy shape is rejected.",
+        "tests/test_ocr_engine_registry.py::_MockOcrEngine now implements readiness_status and readiness_blockers so the registered stand-in conforms to the current OcrEngine Protocol instead of silently diverging.",
+        "Focused run: .venv-1 pytest tests/test_ocr_engine_registry.py -> 29 passed; the prior suite only contained the negative legacy conformance assertion.",
+        "N297 only adds/repairs deterministic test guards; it does not modify OCR runtime behavior, execute OCR, or claim long-goal completion, and preserves the live provider/model actual-loading blocker."
+      ],
+      "residual_risk": "This proves deterministic OcrEngine Protocol positive conformance for the real built-in engines and the test mock only. It does not execute OCR, download or import heavy OCR runtimes, upload documents, clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects."
     }
   ],
   "changed_files_for_this_slice": [
-    "tests/test_runtime_lifecycle_app_contract.py",
+    "tests/test_ocr_engine_registry.py",
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
   ],
   "verification_commands": [
-    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N296 continuation.",
-    "git status --short --branch -> main...origin/main [ahead 125] clean before N296 edits.",
-    "Created rollback snapshot .rollback_snapshots/n296-boundary-recovery-probe-route-audit-20260628-210523 before N296 edits.",
-    "Official/mature references reused: Starlette routing Match/app.routes route matching and pytest.raises assertion docs for the deterministic read-only probe route-existence guard.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_runtime_lifecycle_app_contract.py -k \"boundary_recovery_probe_rows or recovery_ref_probe_endpoints\" -q -> 2 passed.",
+    "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N297 continuation.",
+    "git status --short --branch -> main...origin/main [ahead 126] clean before N297 edits.",
+    "Created rollback snapshot .rollback_snapshots/n297-ocr-engine-protocol-positive-conformance-20260628-211759 before N297 edits.",
+    "Official/mature references reused: typing.Protocol/runtime_checkable structural conformance semantics and pytest assertion docs for the positive OcrEngine conformance guard.",
+    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py -q -> 29 passed.",
     ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_runtime_lifecycle_app_contract.py tests\\test_ci_visibility_contract.py -q -> 22 passed."
   ],
   "next_authorized_local_actions": [
@@ -12714,7 +12742,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N296-boundary-recovery-probe-route-audit",
+  "latest_slice": "N297-ocr-engine-protocol-positive-conformance",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -14478,30 +14506,30 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-28T21:10:00+08:00",
+    "updated_at": "2026-06-28T21:25:00+08:00",
     "status": "active_requirements_proved_pending_authorized_gates",
     "is_goal_complete": false,
     "can_mark_goal_complete": false,
-    "requirements_total": 297,
+    "requirements_total": 298,
     "requirement_status_counts": {
-      "proved": 297
+      "proved": 298
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N296-boundary-recovery-probe-route-audit",
-    "latest_slice_id": "N296-boundary-recovery-probe-route-audit",
+    "latest_requirement_id": "N297-ocr-engine-protocol-positive-conformance",
+    "latest_slice_id": "N297-ocr-engine-protocol-positive-conformance",
     "completion_blockers": [
       {
         "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
         "status": "blocked",
         "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
         "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N296 proves deterministic boundary-recovery read-only probe route existence only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N296 contract test proves every boundary-recovery read-only resume probe resolves to a registered full-app GET route while preserving the live-proof authorization boundary."
+        "current_boundary": "N297 proves deterministic OcrEngine Protocol positive conformance for real built-in engines and the test mock only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
+        "evidence": "N297 contract test proves the real built-in OCR engines and conforming mock satisfy the OcrEngine Protocol while preserving the live-proof authorization boundary."
       }
     ],
     "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N296 proves deterministic boundary-recovery read-only probe route existence only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
+    "why_not_complete": "N297 proves deterministic OcrEngine Protocol positive conformance only. Live QA/model actual-loading still requires corrected credentials/provider preflight and a fresh OK smoke under the same provider/baseHost/model endpoint; OCR execution and WikiRegistry replay/write repair remain separately explicit-authority gated."
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -21519,5 +21547,49 @@
       "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
     ],
     "updated_at": "2026-06-28T21:10:00+08:00"
+  },
+  "n297_ocr_engine_protocol_positive_conformance_slice": {
+    "id": "N297-ocr-engine-protocol-positive-conformance",
+    "status": "proved",
+    "summary": "N297 adds a positive runtime_checkable conformance test asserting every real built-in OCR engine (WindowsOcrEngine, RapidOcrEngine, RemoteApiOcrEngine, PaddleOcrGpuEngine) and the conforming test mock satisfy the OcrEngine Protocol, and repairs the test's _MockOcrEngine which had silently dropped readiness_status/readiness_blockers and therefore no longer matched the current Protocol. The prior suite only asserted the negative legacy case, so a real engine dropping a required Protocol method would have passed CI; the new guard plus a member-presence check and a retained legacy negative self-check close that gap.",
+    "rollback_snapshot_id": "n297-ocr-engine-protocol-positive-conformance-20260628-211759",
+    "rollback_snapshot_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n297-ocr-engine-protocol-positive-conformance-20260628-211759",
+    "mature_references_checked": [
+      {
+        "topic": "N297 runtime_checkable Protocol structural conformance",
+        "source": "Python typing.Protocol / runtime_checkable documentation",
+        "url": "https://docs.python.org/3/library/typing.html#typing.runtime_checkable",
+        "status": "Reused existing OcrEngine runtime_checkable Protocol; isinstance checks method presence only, motivating an explicit positive conformance guard",
+        "checked_at": "2026-06-28T21:25:00+08:00",
+        "use_in_slice": "Used to justify asserting positive isinstance conformance over the real built-in OCR engines so a dropped Protocol method is caught instead of silently passing the negative-only legacy check."
+      },
+      {
+        "topic": "N297 conformance and self-check assertions",
+        "source": "pytest assertion documentation",
+        "url": "https://docs.pytest.org/en/stable/how-to/assert.html",
+        "status": "Reused existing pytest import in the OCR registry test module",
+        "checked_at": "2026-06-28T21:25:00+08:00",
+        "use_in_slice": "Used to assert each real engine and the conforming mock satisfy the OcrEngine Protocol while keeping the legacy negative self-check so the guard cannot pass against a degraded contract."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ocr_engine_registry.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N297 continuation.",
+      "git status --short --branch -> main...origin/main [ahead 126] clean before N297 edits.",
+      "Created rollback snapshot .rollback_snapshots/n297-ocr-engine-protocol-positive-conformance-20260628-211759 before N297 edits.",
+      "Official/mature references reused: typing.Protocol/runtime_checkable structural conformance semantics and pytest assertion docs for the positive OcrEngine conformance guard.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ocr_engine_registry.py -q -> 29 passed.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_runtime_lifecycle_app_contract.py tests\\test_ci_visibility_contract.py -q -> 22 passed."
+    ],
+    "residual_risk": "This proves deterministic OcrEngine Protocol positive conformance for the real built-in engines and the test mock only. It does not execute OCR, download or import heavy OCR runtimes, upload documents, clear the live provider/model actual-loading blocker, execute provider preflight or live smoke, replay or mutate WikiRegistry/Source Vault, mutate Zotero DB, modify github/ references, upload, push, tag, release, deploy, or prune Git loose objects.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, create rollback snapshot, and search official or mature references before editing.",
+      "Continue only with deterministic local recovery/proof hardening unless provider preflight and explicit live-smoke authorization are present.",
+      "Keep live QA/model actual-loading blocked until provider_preflight.status=proved and explicit live-smoke authorization exists; keep OCR execution and WikiRegistry replay/write repair behind explicit authorization boundaries."
+    ],
+    "updated_at": "2026-06-28T21:25:00+08:00"
   }
 }
