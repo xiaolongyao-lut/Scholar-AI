@@ -83,21 +83,6 @@
 !/docs/rag-evidence-architecture.md
 !/docs/rag-evidence-architecture.en.md
 !/docs/local-rerank-fallback-models.md
-!/docs/plans/
-/docs/plans/*
-!/docs/plans/autonomous-execution-framework.md
-!/docs/plans/autonomous-execution-planning-playbook.md
-!/docs/plans/longrun-goal-state-2026-06-19.json
-!/docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json
-!/docs/plans/scholar-ai-reference-derived-code-plan-2026-06-19.md
-!/docs/plans/scholar-ai-reference-derived-code-plan-verification-audit-2026-06-20.md
-!/docs/plans/scholar-ai-desktop-pywebview-smoke-2026-06-20.md
-!/docs/plans/scholar-ai-source-boundary-staging-readiness-2026-06-20.md
-!/docs/plans/scholar-ai-real-provider-api-smoke-2026-06-20.md
-!/docs/plans/scholar-ai-pre-stage-dry-run-2026-06-20.md
-!/docs/plans/runbooks/
-/docs/plans/runbooks/*
-!/docs/plans/runbooks/longrun-local-supervisor.md
 
 # Public installable Literature Assistant extension packages.
 # Commit only packages that the app can scan/install directly:
