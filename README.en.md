@@ -31,6 +31,21 @@ Current source version: [v0.1.8.4](CHANGELOG.md#0184---2026-06-17)
 
 See [Claude / Codex Toolbox](docs/claude-codex-toolbox.en.md) for detailed tool groups, proven chains, dependencies, verification commands, and security boundaries.
 
+## RAG And Evidence Architecture
+
+Scholar AI is built around a local literature RAG and evidence pipeline. The project page shows the spine; see [RAG and Evidence Architecture](docs/rag-evidence-architecture.en.md) for module details, code entry points, and fallback boundaries.
+
+```text
+PDF / Markdown / OCR materials
+        -> ingestion and structured chunks
+        -> doc_store / chunk_store / embedding cache
+        -> keyword + vector + rerank hybrid retrieval
+        -> search_refs / evidence_pack_build / integrity gate
+        -> smart reading / review writing / Word export / MCP tool calls
+```
+
+This pipeline turns "the system found something" into "this project, material, chunk, locator, and evidence status support this claim." Claude, Codex, and other MCP clients receive controlled tool results from this pipeline.
+
 ## Quick Start
 
 Requirements:

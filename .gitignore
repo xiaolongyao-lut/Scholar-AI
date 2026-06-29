@@ -80,6 +80,8 @@
 !/docs/OPTIONAL_ADDONS.md
 !/docs/claude-codex-toolbox.md
 !/docs/claude-codex-toolbox.en.md
+!/docs/rag-evidence-architecture.md
+!/docs/rag-evidence-architecture.en.md
 !/docs/local-rerank-fallback-models.md
 !/docs/plans/
 /docs/plans/*

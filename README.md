@@ -54,6 +54,21 @@ FastAPI / retrieval / export / workflow APIs
 
 桌面端负责文献库、PDF 阅读、模型配置、凭证管理和审计查看。MCP 工具箱负责把这些本地能力暴露给用户授权的 AI 客户端。
 
+## RAG 与证据架构
+
+Scholar AI 的核心是一条本地文献 RAG 与证据链路。项目页只展示主干，详细模块、代码入口和降级边界见 [RAG 与证据架构](docs/rag-evidence-architecture.md)。
+
+```text
+PDF / Markdown / OCR 材料
+        -> 入库与结构化切块
+        -> doc_store / chunk_store / embedding cache
+        -> 关键词 + 向量 + rerank 混合检索
+        -> search_refs / evidence_pack_build / integrity gate
+        -> 智能研读 / 综述写作 / Word 导出 / MCP 工具调用
+```
+
+这条链路让 Scholar AI 能把“检索到了什么”变成“哪个项目、哪篇材料、哪个 chunk、哪个证据状态支持了这句话”。外部 Claude / Codex 客户端通过 MCP 读取的是这些受控工具结果。
+
 ## 快速开始
 
 ### 1. 准备环境
