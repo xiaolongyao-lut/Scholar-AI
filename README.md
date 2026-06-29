@@ -1,51 +1,56 @@
 # Scholar AI
 
-Scholar AI 把本地文献库变成 Claude、Codex 和其他 MCP 客户端可调用的文献工具箱。
+[English](README.en.md) · [科研工作流与 Skills](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) · [MCP 工具箱文档](agent_mcp_server/README.md) · [快速开始](#快速开始)
 
-它让成熟的外部智能体通过 MCP 直接使用文献助手的检索、材料读取、导出、工作流产物和安全源码查看能力。桌面端继续负责文献库、PDF 阅读、模型与凭证配置、运行状态和审计查看。
+Scholar AI 是一个开源的本地科研工作台，用来管理 PDF 文献、构建可追溯证据、辅助综述写作，并把本地文献库变成 Claude、Codex 等 AI 客户端可调用的工具箱。
 
-当前源码版本 [v0.1.8.4](CHANGELOG.md#0184---2026-06-17) ·
-[MCP 工具箱文档](agent_mcp_server/README.md) ·
-[快速开始](#快速开始)
+它适合需要反复阅读论文、整理证据、导出文档和复用本地研究资料的学生、研究者和开源实验者。你可以把它当成一个桌面文献库，也可以把它接到支持 MCP 的 AI 客户端，让外部智能体检索材料、读取上下文、检查证据和生成研究产物。
 
-## MCP 优先方向
+当前源码版本：[v0.1.8.4](CHANGELOG.md#0184---2026-06-17)
 
-Scholar AI 当前主线是源码工作区 + 本地 MCP 工具箱：
+## 能做什么
 
-- Claude / Codex 通过 `agent_mcp_server/` 调用文献助手能力。
-- 文献助手后端通过本机 HTTP API 提供检索、材料、切块、批注导出和实验工作流能力。
-- 外部智能体可以读取允许范围内的源码，用于理解接口、抽取已有功能、修复工具问题和编排自己的工作流。
-- API key、运行时令牌、数据库、日志和用户私有状态不通过 MCP 明文暴露。
-- Agent Workspace 记录 MCP 调用审计、工作流产物和临时输出，避免外部智能体任务污染文献助手自己的任务中心。
+- 管理本地 PDF 文献、项目、页码级 chunk、批注和阅读状态。
+- 对文献库做关键词、向量、rerank 和证据融合检索。
+- 把检索结果组织成带来源、页码和完整性检查的证据包。
+- 辅助论文研读、文献综述、学术写作、图表候选提取和 Word 导出。
+- 检查 OCR 配置和扫描型材料处理路径。
+- 通过 MCP 工具箱让 Claude / Codex 调用本地文献能力，但不暴露原始 API key。
+- 通过 Agent Workspace 查看工具调用、审计记录、工作流产物和交接信息。
 
-## 给 Claude / Codex 的工具箱能力
+## 相关仓库
 
-| 工具族 | 代表工具 | 能做什么 |
+| 仓库 | 内容 |
 |---|---|
-| 源码查看 | `source.list_tree`, `source.search`, `source.read_file`, `source.read_symbols`, `source.inspect_routes` | 在白名单内理解 Scholar AI 源码、接口、符号和调用入口 |
-| 文献项目 | `literature.list_projects`, `literature.list_materials`, `literature.read_material`, `literature.get_material_chunks` | 找到项目、材料、页码级 chunk 和元数据 |
-| 检索证据 | `literature.search_refs`, `literature.evidence_pack_build`, `literature.evidence_integrity_gate`, `literature.knowledge_context_receipt` | 从本地文献和知识包生成可追溯证据，并证明上下文确实进入模型 |
-| OCR 与材料处理 | `literature.ocr_status`, `literature.ocr_engines`, `literature.ocr_health`, `literature.ocr_material` | 检查 OCR 策略、引擎可用性，并在授权后处理扫描型材料 |
-| 图表与引用 | `literature.figures_candidates`, `literature.figures_generate`, `literature.citations_sources`, `literature.citations_detect_overlap` | 抽取图表候选、生成图注/图表包、检查引用来源和重叠 |
-| 写作与导出 | `literature.outline_generate`, `literature.academic_writing_lint`, `literature.export_docx`, `literature.export_project_pack`, `literature.translate_pack` | 生成提纲、检查学术写作、导出 Word/项目包/翻译包 |
-| Agent Workspace | `literature.agent_workspace_status`, `literature.agent_resource_read`, `literature.agent_handoff_card`, `literature.workflow_passport` | 查看审计、读取资源、交接任务、复验工作流链路 |
-| 本地工作流 | `workflow.create_plan`, `workflow.run_json_workflow`, `artifact.write_markdown`, `artifact.read_artifact` | 让外部智能体写入、读取和复跑本地 JSON/Markdown 工作流产物 |
+| [Scholar AI](https://github.com/xiaolongyao-lut/Scholar-AI) | 本仓库，包含桌面端、后端、MCP 工具箱、检索、写作、OCR 和测试。 |
+| [scholar-ai-research-toolkit](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) | 可公开复用的科研工作流、Skill cards、论文阅读/翻译/写作/OCR/实验设计流程。 |
 
-当前重点是把文献助手做成外部智能体可靠可用的本地文献工具层。
+## Claude / Codex 工具箱
+
+`agent_mcp_server/` 提供一个本地 MCP server。Claude、Codex 或其他 MCP 客户端可以通过它调用 Scholar AI 的文献工具：
+
+- 源码查看：`source.list_tree`, `source.search`, `source.read_file`, `source.read_symbols`, `source.inspect_routes`
+- 文献项目：`literature.list_projects`, `literature.list_materials`, `literature.read_material`, `literature.get_material_chunks`
+- 检索证据：`literature.search_refs`, `literature.evidence_pack_build`, `literature.evidence_integrity_gate`, `literature.knowledge_context_receipt`
+- OCR 与材料处理：`literature.ocr_status`, `literature.ocr_engines`, `literature.ocr_health`, `literature.ocr_material`
+- 图表与引用：`literature.figures_candidates`, `literature.figures_generate`, `literature.citations_sources`, `literature.citations_detect_overlap`
+- 写作与导出：`literature.outline_generate`, `literature.academic_writing_lint`, `literature.export_docx`, `literature.export_project_pack`, `literature.translate_pack`
+- Agent Workspace：`literature.agent_workspace_status`, `literature.agent_resource_read`, `literature.agent_handoff_card`, `literature.workflow_passport`
+- 本地工作流：`workflow.create_plan`, `workflow.run_json_workflow`, `artifact.write_markdown`, `artifact.read_artifact`
 
 ## 已打通的工具链路
 
 | 链路 | 工具调用顺序 | 产出 |
 |---|---|---|
 | 检索取证 | `literature.list_projects` -> `literature.search_refs` -> `literature.evidence_pack_build` -> `literature.evidence_integrity_gate` | 带 ref、页码、材料来源和完整性检查的证据包 |
-| 上下文装载证明 | `literature.agent_resource_read` -> `literature.knowledge_context_receipt` -> provider tool-call transcript | 证明模型不是只看到搜索命中，而是实际收到 bounded context 和 receipt hash |
+| 上下文装载证明 | `literature.agent_resource_read` -> `literature.knowledge_context_receipt` -> provider tool-call transcript | 证明模型实际收到 bounded context 和 receipt hash |
 | 单篇研读 | `literature.read_material` -> `literature.get_material_chunks` -> `literature.figures_candidates` -> `literature.agent_handoff_card` | 可交接的单篇阅读摘要、图表候选和后续任务卡 |
 | 写作导出 | `literature.evidence_pack_build` -> `literature.outline_generate` -> `literature.academic_writing_lint` -> `literature.export_docx` | 带证据引用和格式检查的 Word 写作输出 |
 | OCR 准备 | `literature.ocr_status` -> `literature.ocr_engines` -> `literature.ocr_health` -> `literature.ocr_material` | 扫描型 PDF 的引擎选择、健康检查和授权后 OCR 处理 |
-| 源码修复 | `source.search` -> `source.read_symbols` -> `source.read_file` -> `literature.agent_workspace_status` | 外部智能体理解代码后，结合 Agent Workspace 审计定位修复面 |
+| 源码修复 | `source.search` -> `source.read_symbols` -> `source.read_file` -> `literature.agent_workspace_status` | 结合源码和审计信息定位修复面 |
 | 工作流复验 | `literature.workflow_passport` -> `literature.workflow_refresh_receipt` -> `literature.workflow_replay_lineage` | 将研究动作、证据、产物和交接记录串成可复验链路 |
 
-最近一次 live provider 验证没有使用 `Hi`、`ok` 或纯连通性探针，而是让模型真实请求 `literature.agent_resource_read` 与 `literature.knowledge_context_receipt`。`deepseek-v4-flash` 已完成 actual-loading gate；原始 provider key 不写入 Git、日志或公开文档。
+工具箱验证不使用 `Hi`、`ok` 这类纯连通性探针；上下文装载证明要求模型真实请求 `literature.agent_resource_read` 与 `literature.knowledge_context_receipt`。原始 provider key 不写入 Git、日志或公开文档。
 
 ## 工作方式
 
@@ -68,7 +73,7 @@ FastAPI / retrieval / export / workflow APIs
         └─ Agent Workspace audit artifacts
 ```
 
-桌面端在这个架构里是控制台和本地资料库：上传 PDF、查看材料、配置模型、管理凭证、检查日志、查看审计与工作流输出。Claude / Codex 是主要的智能体入口。
+桌面端负责文献库、PDF 阅读、模型配置、凭证管理和审计查看。MCP 工具箱负责把这些本地能力暴露给用户授权的 AI 客户端。
 
 ## 快速开始
 

@@ -2,6 +2,11 @@
 
 Local MCP toolbox for Codex and Claude.
 
+Related:
+
+- Main project: <https://github.com/xiaolongyao-lut/Scholar-AI>
+- Research workflows and skill cards: <https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit>
+
 ## Scope
 
 This project is source-checkout-first. It assumes the Scholar AI repo and
