@@ -1,6 +1,6 @@
 {
   "schema_version": "codex_longrun_goal_state_v1",
-  "updated_at": "2026-06-29T07:16:00+08:00",
+  "updated_at": "2026-06-29T20:26:30+08:00",
   "current_objective": "继续推进 Scholar AI / 文献助手 MCP-first 研究工作流主干，把研究流程从“任务记录可审计”收口为“流程可复验、证据可定位、风险可阻断、交接可恢复、工作区可见、知识可按需进入模型上下文”的本地研究系统。当前执行主线合并为三条：1) 研究工作流主干：完成 N33 / research-action lifecycle crosslinks，把研究动作生命周期轻量引用接入 Workflow Passport、Evidence Integrity Gate、BlockingAction、Agent Handoff Cards，并核查 runtime 链接真实存在、不 404、只读、可恢复、可审计。2) Knowledge Runtime Pipeline：把 wiki、官方文档、学术英文知识、项目文献切片统一收口到 authoritative source -> builder/loader/chunker -> runtime artifact -> manifest/provenance/hash -> searchable ref/resource -> bounded context -> QA/agent 实际加载 -> audit/test proof，完成标准是证明知识真的进入运行时和模型上下文。3) OCR 与本地处理能力：推进 OCR auto policy 与 OcrEngine Protocol，默认 LITASSIST_OCR_POLICY=auto，PDF ingestion 按文本型、扫描型、混合型智能触发；支持 PaddleOCR GPU 本机私有运行时、RapidOCR、Remote API、Windows OCR；公开代码和文档可包含接入方式、配置、health check、mock 测试，但不提交 venv、模型缓存、API key 或运行时产物。执行时加载 Ponytail：优先复用本仓库已有路径、少写代码、根因位置修、边界验证不能省；创造性功能实现可不受 Ponytail 简化约束但仍必须保持全局设计质量。所有 squad/Codex subagent 必须继承父 Codex/API 会话模型；不得设置 per-agent model、model override、defaultModel、agentModelOverrides 或 named fallback chain。",
   "not_the_objective": "不是单一短期切片完成声明；不是上传、部署、发布、tag、push；不是 Feishu/Lark；不是直接写入、修复、下载、重链 Zotero DB；不是修改 github/ 引用仓库；不是复制、内嵌或移植 AGPL-3.0 PDFMathTranslate 代码；不是未经授权 stage/commit/push；不是把 stale/unharvested subagent 输出、端点字符串、文件存在、搜索命中或 deterministic contract 单独当作 live model loading proof；不是为 subagent 选择或回退到任何命名模型。",
   "workspace_identity": {
@@ -97,16 +97,130 @@
   ],
   "rollback": {
     "checkpoint_id": "n33-runtime-crosslink-audit-20260626_020647",
-    "latest_checkpoint_id": "20260629-071434-n339-agent-workspace-ocr-status-http-proof",
-    "latest_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260629-071434-n339-agent-workspace-ocr-status-http-proof",
-    "latest_goal_state_checkpoint_id": "20260629-071434-n339-agent-workspace-ocr-status-http-proof",
-    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260629-071434-n339-agent-workspace-ocr-status-http-proof",
-    "latest_checkpoint_caveat": "Rollback checkpoint for N339 Agent Workspace OCR status HTTP proof; restore only with explicit user intent after inspecting current dirty worktree ownership.",
+    "latest_checkpoint_id": "n354-live-provider-workflow-20260629_201503",
+    "latest_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n354-live-provider-workflow-20260629_201503",
+    "latest_goal_state_checkpoint_id": "n354-live-provider-workflow-20260629_201503",
+    "latest_goal_state_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n354-live-provider-workflow-20260629_201503",
+    "latest_checkpoint_caveat": "Rollback snapshot for N354 live provider actual-loading proof records; restore only with explicit user intent after inspecting current dirty worktree ownership.",
     "restore_command": "Use the longrun-autopilot checkpoint.py restore command only with explicit user intent after inspecting current dirty worktree ownership.",
     "restore_requires_explicit_user_intent": true,
-    "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647"
+    "checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n33-runtime-crosslink-audit-20260626_020647",
+    "secondary_longrun_checkpoint_id": null,
+    "secondary_longrun_checkpoint_path": null
   },
   "mature_references_checked": [
+    {
+      "topic": "N354 direct live provider tool workflow proof",
+      "source": "OpenAI/Anthropic tool-use workflow guidance and Scholar AI env-test-discipline",
+      "url": "https://platform.openai.com/docs/guides/function-calling ; https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview ; .github/skills/env-test-discipline/SKILL.md",
+      "status": "Used the mature tool-use pattern of provider-returned tool calls plus local tool-result follow-up; obeyed repository rules to avoid raw secret logging/persistence and to use temporary process env only.",
+      "checked_at": "2026-06-29T20:26:30+08:00",
+      "use_in_slice": "Used to implement a direct Knowledge Runtime workflow smoke that proves provider tool calling and actual context receipt loading without sending hi/ok liveness probes."
+    },
+    {
+      "topic": "N353 Codex own-link live gate attempt boundary",
+      "source": "OpenAI Codex manual auth/custom-provider docs; OpenAI Chat tool-calling API docs; Scholar AI env-test-discipline",
+      "url": "C:/Users/xiao/AppData/Local/Temp/openai-docs-cache/codex-manual.md#authentication-and-sessions ; C:/Users/xiao/AppData/Local/Temp/openai-docs-cache/codex-manual.md#custom-model-providers ; https://platform.openai.com/docs/api-reference/chat/create ; .github/skills/env-test-discipline/SKILL.md",
+      "status": "Codex manual cache current; env discipline followed; current Codex link succeeded only for codex exec, while backend preflight stayed auth_required.",
+      "checked_at": "2026-06-29T15:17:44+08:00",
+      "use_in_slice": "Used to bound the user's current-link authorization: a successful codex exec smoke proves Codex CLI/session reachability, but it does not supply a reusable Scholar AI backend provider credential. The same provider/baseHost/model preflight remains auth_required."
+    },
+    {
+      "topic": "N351 completion claim rollup parity guard",
+      "source": "pytest assertion documentation, W3C PROV overview, and Google SRE monitoring distributed systems chapter",
+      "url": "https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+      "status": "All three references returned HEAD 200; used assertions, PROV consistency, and SRE gate visibility for completion-claim rollup parity.",
+      "checked_at": "2026-06-29T10:46:21+08:00",
+      "use_in_slice": "Used to add a deterministic CI guard proving completion_claim updated_at, counts, latest requirement, and is_goal_complete stay aligned with lifecycle rollup."
+    },
+    {
+      "topic": "N350 completion rule projection parity guard",
+      "source": "pytest assertion documentation, W3C PROV overview, and Google SRE monitoring distributed systems chapter",
+      "url": "https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+      "status": "All three references returned HEAD 200; used assertions, PROV consistency, and SRE gate visibility for completion-rule projection parity.",
+      "checked_at": "2026-06-29T10:39:12+08:00",
+      "use_in_slice": "Used to add a deterministic CI guard proving Agent Workspace lifecycle projection keeps machine-readable completion rule and why-not-complete aligned with goal-state."
+    },
+    {
+      "topic": "N349 completion blocker projection parity guard",
+      "source": "pytest assertion documentation, W3C PROV overview, and Google SRE monitoring distributed systems chapter",
+      "url": "https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+      "status": "All three references returned HEAD 200; used assertions, PROV consistency, and SRE gate visibility for blocker projection parity.",
+      "checked_at": "2026-06-29T10:30:49+08:00",
+      "use_in_slice": "Used to add a deterministic CI guard proving Agent Workspace completion-blocker projection keeps provider authorization boundary fields aligned with goal-state."
+    },
+    {
+      "topic": "N348 next actions provider boundary guard",
+      "source": "pytest assertion documentation, W3C PROV overview, and Google SRE monitoring distributed systems chapter",
+      "url": "https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+      "status": "All three references returned HEAD 200; used assertions, PROV consistency, and SRE gate visibility for recovery-action drift guards.",
+      "checked_at": "2026-06-29T10:16:46+08:00",
+      "use_in_slice": "Used to add a deterministic CI guard proving next authorized local actions stay aligned with the latest slice and keep provider-gate prohibitions visible."
+    },
+    {
+      "topic": "N347 provider preflight and fresh OK smoke stop-boundary guard",
+      "source": "pytest assertion documentation, W3C PROV overview, and Google SRE monitoring distributed systems chapter",
+      "url": "https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+      "status": "All three references returned HEAD 200; used assertions, PROV consistency, and SRE gate visibility to align blocker evidence with stop boundaries.",
+      "checked_at": "2026-06-29T10:08:01+08:00",
+      "use_in_slice": "Used to add a deterministic CI guard proving provider preflight and fresh OK smoke remain explicit authorization boundaries while the actual-loading blocker exists."
+    },
+    {
+      "topic": "N346 mature reference record consistency guard",
+      "source": "Python json documentation, pytest assertion documentation, and W3C PROV overview",
+      "url": "https://docs.python.org/3/library/json.html ; https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/",
+      "status": "All three references returned HEAD 200; used JSON, pytest assertions, and PROV consistency to align complete reference records.",
+      "checked_at": "2026-06-29T09:59:08+08:00",
+      "use_in_slice": "Used to add a deterministic CI guard proving latest mature-reference records match the top-level goal-state prefix exactly."
+    },
+    {
+      "topic": "N345 completion blocker latest-slice consistency guard",
+      "source": "Python json documentation, pytest assertion documentation, and W3C PROV overview",
+      "url": "https://docs.python.org/3/library/json.html ; https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/",
+      "status": "All three references returned HEAD 200; used JSON, pytest assertions, and PROV consistency to align blocker evidence with latest slice.",
+      "checked_at": "2026-06-29T09:54:30+08:00",
+      "use_in_slice": "Used to add a deterministic CI guard proving completion blocker current_boundary/evidence carry the latest slice marker."
+    },
+    {
+      "topic": "N344 goal-state rollback checkpoint consistency guard",
+      "source": "Python json documentation, pytest assertion documentation, and W3C PROV overview",
+      "url": "https://docs.python.org/3/library/json.html ; https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/",
+      "status": "All three references returned HEAD 200; used JSON, pytest assertions, and PROV consistency to align latest rollback metadata with the latest slice.",
+      "checked_at": "2026-06-29T09:48:13+08:00",
+      "use_in_slice": "Used to add a deterministic CI guard proving top-level rollback latest checkpoint id/path match the latest slice rollback_checkpoint_id/path."
+    },
+    {
+      "topic": "N343 goal-state latest verification pending-placeholder guard",
+      "source": "Python json documentation, pytest assertion documentation, and W3C PROV overview",
+      "url": "https://docs.python.org/3/library/json.html ; https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/",
+      "status": "All three references returned HEAD 200; used JSON parsing, pytest assertion diagnostics, and PROV consistency to reject latest-slice pending placeholders.",
+      "checked_at": "2026-06-29T09:40:28+08:00",
+      "use_in_slice": "Used to add a deterministic CI guard proving latest goal-state verification commands contain observed results rather than pending placeholders."
+    },
+    {
+      "topic": "N342 Agent Workspace OCR execution and provider boundary visibility",
+      "source": "FastAPI Testing documentation, Pydantic model documentation, and W3C PROV overview",
+      "url": "https://fastapi.tiangolo.com/tutorial/testing/ ; https://docs.pydantic.dev/latest/concepts/models/ ; https://www.w3.org/TR/prov-overview/",
+      "status": "All three references returned HEAD 200; used typed status payload and provenance-boundary discipline to expose explicit do-not-execute recovery boundaries.",
+      "checked_at": "2026-06-29T09:31:00+08:00",
+      "use_in_slice": "Used to make Agent Workspace status show that OCR execution probes, live provider/model calls, and provider preflight remain explicit-authorization actions rather than recoverable local proof steps."
+    },
+    {
+      "topic": "N341 Agent Workspace OCR engine inventory HTTP probe proof",
+      "source": "FastAPI Testing documentation, Starlette TestClient documentation, and Pydantic model documentation",
+      "url": "https://fastapi.tiangolo.com/tutorial/testing/ ; https://www.starlette.io/testclient/ ; https://docs.pydantic.dev/latest/concepts/models/",
+      "status": "All three references returned HEAD 200; TestClient GET proves the Agent Workspace OCR engine inventory probe returns HTTP 200 with bounded readiness metadata.",
+      "checked_at": "2026-06-29T09:24:00+08:00",
+      "use_in_slice": "Used to prove the advertised OCR Engine Inventory Agent Workspace recovery probe resolves through the full app without running OCR execution, remote upload, live providers, Source Vault writes, or external actions."
+    },
+    {
+      "topic": "N340 Agent Workspace OCR health HTTP probe proof",
+      "source": "FastAPI Testing documentation, Starlette TestClient documentation, and Pydantic model documentation",
+      "url": "https://fastapi.tiangolo.com/tutorial/testing/ ; https://www.starlette.io/testclient/ ; https://docs.pydantic.dev/latest/concepts/models/",
+      "status": "All three references returned HEAD 200; TestClient POST proves the Agent Workspace OCR health probe returns HTTP 200 with a bounded readiness payload.",
+      "checked_at": "2026-06-29T09:10:00+08:00",
+      "use_in_slice": "Used to prove the advertised OCR Engine Health Agent Workspace recovery probe resolves through the full app without running OCR execution, remote upload, live providers, Source Vault writes, or external actions."
+    },
     {
       "topic": "N339 Agent Workspace OCR status HTTP probe proof",
       "source": "FastAPI Testing documentation, Starlette TestClient documentation, and Pydantic model documentation",
@@ -9735,32 +9849,218 @@
         "N339 uses full-app TestClient GET checks only and does not run real OCR, remote OCR, live provider/model loading, provider preflight POST, OCR execution probe, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, upload, push, tag, release, deploy, or squad/git cleanup."
       ],
       "residual_risk": "This proves deterministic local HTTP 200 and Agent Workspace projection parity for OCR status only. It does not execute OCR, prove real PaddleOCR/RapidOCR/Windows OCR output, upload content, or clear the live provider/model actual-loading blocker."
+    },
+    {
+      "id": "N340-agent-workspace-ocr-health-http-proof",
+      "status": "proved",
+      "requirement": "Agent Workspace OCR Engine Health recovery probe must return HTTP 200 through the full Scholar AI app as a bounded POST readiness link, proving resumed agents can inspect OCR health/configuration blockers before any explicit OCR execution probe.",
+      "evidence": [
+        "literature_assistant/core/routers/agent_workspace_router.py advertises OCR Engine Health as a read-only Agent Workspace recovery probe for /api/pdf-backend/ocr-health with method POST and MCP tool literature.ocr_health.",
+        "tests/test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit proves OCR Engine Health is present in the recovery probe list, resolves to the full app POST route, and maps to the read-only MCP tool annotations.",
+        "tests/test_agent_workspace_router.py::test_agent_workspace_ocr_health_probe_returns_http_success_without_ocr_execution clears remote OCR environment variables, reads /api/agent-workspace/status, follows the advertised OCR Engine Health probe with a remote_api readiness payload, and proves /api/pdf-backend/ocr-health returns HTTP 200 with configuration_required blockers.",
+        "The N340 test asserts the health payload contains no OCR execution fields such as input_sha256 or text_preview, keeping readiness proof separate from OCR execution proof.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit tests\\test_agent_workspace_router.py::test_agent_workspace_ocr_health_probe_returns_http_success_without_ocr_execution tests\\test_agent_workspace_router.py::test_agent_workspace_core_recovery_probes_return_http_success tests\\test_agent_workspace_router.py::test_agent_workspace_ocr_status_probe_returns_http_success_and_matches_status_projection -q -> 4 passed before goal-state update."
+      ],
+      "residual_risk": "This proves deterministic local HTTP 200 readiness visibility for OCR health only. It does not run OCR, prove PaddleOCR/RapidOCR/Windows OCR output, upload content, or clear the live provider/model actual-loading blocker."
+    },
+    {
+      "id": "N341-agent-workspace-ocr-engines-http-proof",
+      "status": "proved",
+      "requirement": "Agent Workspace OCR Engine Inventory recovery probe must return HTTP 200 through the full Scholar AI app as a bounded GET readiness link, proving resumed agents can inspect registered OCR engines and readiness blockers before choosing any OCR execution path.",
+      "evidence": [
+        "literature_assistant/core/routers/agent_workspace_router.py advertises OCR Engine Inventory as a read-only Agent Workspace recovery probe for /api/pdf-backend/ocr-engines with method GET and MCP tool literature.ocr_engines.",
+        "tests/test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit proves OCR Engine Inventory is present in the recovery probe list, resolves to the full app GET route, and maps to the read-only MCP tool annotations.",
+        "tests/test_agent_workspace_router.py::test_agent_workspace_ocr_engines_probe_returns_http_success_without_ocr_execution clears remote OCR environment variables, reads /api/agent-workspace/status, follows the advertised OCR Engine Inventory probe, and proves /api/pdf-backend/ocr-engines returns HTTP 200.",
+        "The N341 test asserts the inventory includes paddleocr_gpu, rapidocr, windows, and remote_api readiness metadata, and that inventory rows do not include OCR execution fields such as input_sha256 or text_preview.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit tests\\test_agent_workspace_router.py::test_agent_workspace_ocr_engines_probe_returns_http_success_without_ocr_execution tests\\test_agent_workspace_router.py::test_agent_workspace_ocr_health_probe_returns_http_success_without_ocr_execution tests\\test_agent_workspace_router.py::test_agent_workspace_core_recovery_probes_return_http_success tests\\test_agent_workspace_router.py::test_agent_workspace_ocr_status_probe_returns_http_success_and_matches_status_projection -q -> 5 passed before goal-state update."
+      ],
+      "residual_risk": "This proves deterministic local HTTP 200 readiness inventory visibility only. It does not run OCR, prove PaddleOCR/RapidOCR/Windows OCR output, upload content, or clear the live provider/model actual-loading blocker."
+    },
+    {
+      "id": "N342-agent-workspace-ocr-execution-provider-boundary-visible",
+      "status": "proved",
+      "requirement": "Agent Workspace status must visibly expose that OCR execution probes, live provider/model calls, and provider preflight remain explicit-authorization boundaries so resumed agents do not mistake recovery visibility for permission to run gated actions.",
+      "evidence": [
+        "literature_assistant/core/routers/agent_workspace_router.py adds a top-level Agent Workspace boundary: Do not run OCR execution probes, live provider/model calls, or provider preflight without explicit authorization.",
+        "tests/test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit proves the boundary is present in /api/agent-workspace/status alongside existing rollback and mutation boundaries.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit -q -> 1 passed before goal-state update.",
+        "N342 does not add an OCR execution recovery probe and does not call /api/pdf-backend/ocr-execution-probe, live provider/model endpoints, or provider preflight."
+      ],
+      "residual_risk": "This proves deterministic boundary visibility only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR provider output."
+    },
+    {
+      "id": "N343-goal-state-pending-verification-guard",
+      "status": "proved",
+      "requirement": "The current workflow-spine goal-state CI contract must reject latest-slice verification commands that still contain pending-after-slice placeholders, so recovery agents cannot treat unexecuted checks as completed evidence after a slice advances.",
+      "source": "Post-N342 recovery audit found the exact drift class had just been manually closed; N343 adds a deterministic guard so the same stale pending verification text cannot recur silently in the latest slice record.",
+      "evidence": [
+        "tests/test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements now scans the latest top-level verification_commands and rejects any command matching -> pending after N<number>.",
+        "The guard runs only against the latest top-level slice record, preserving historical audit text while preventing current recovery evidence from retaining pending placeholders.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before goal-state update.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after goal-state update."
+      ],
+      "residual_risk": "This proves deterministic latest-slice verification-record hygiene only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+    },
+    {
+      "id": "N344-goal-state-rollback-checkpoint-consistency-guard",
+      "status": "proved",
+      "requirement": "The current workflow-spine goal-state CI contract must reject latest-slice rollback drift, so the top-level rollback latest checkpoint id/path cannot point at an older slice while latest_slice, completion_claim, and verification evidence have advanced.",
+      "source": "Post-N343 recovery audit found the top-level rollback metadata and latest slice record currently match; N344 adds a deterministic guard so this recovery-critical checkpoint linkage cannot drift silently after future slices.",
+      "evidence": [
+        "tests/test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements now asserts rollback.latest_checkpoint_id and rollback.latest_goal_state_checkpoint_id match the latest slice rollback_checkpoint_id.",
+        "The same guard asserts rollback.latest_checkpoint_path and rollback.latest_goal_state_checkpoint_path match the latest slice rollback_checkpoint_path, preserving restore provenance without exposing or executing restore commands.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before goal-state update.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after goal-state update."
+      ],
+      "residual_risk": "This proves deterministic latest-slice rollback checkpoint linkage only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+    },
+    {
+      "id": "N345-completion-blocker-latest-slice-consistency-guard",
+      "status": "proved",
+      "requirement": "The current workflow-spine goal-state CI contract must reject stale completion-blocker recovery evidence, so blocker current_boundary and evidence cannot remain on an older slice after latest_slice advances.",
+      "source": "Post-N344 recovery audit found the live-provider blocker is still correct but remains a recovery-critical stop boundary; N345 adds a deterministic guard so its boundary/evidence text must carry the latest slice marker.",
+      "evidence": [
+        "tests/test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements now asserts the first completion blocker has non-empty current_boundary and evidence text.",
+        "The guard extracts the latest slice marker such as N345 and asserts that marker appears in both blocker current_boundary and blocker evidence, preventing stale N343/N344 blocker evidence after future slice advancement.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before goal-state update.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after goal-state update."
+      ],
+      "residual_risk": "This proves deterministic latest-slice completion-blocker evidence linkage only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+    },
+    {
+      "id": "N346-mature-reference-record-consistency-guard",
+      "status": "proved",
+      "requirement": "The current workflow-spine goal-state CI contract must reject latest-slice mature-reference record drift, so top-level mature_references_checked cannot share only topics with the latest slice while source, URL, status, checked_at, or use_in_slice diverge.",
+      "source": "Post-N345 recovery audit found the CI contract compared mature-reference topics only; N346 strengthens the deterministic guard to compare complete latest reference records.",
+      "evidence": [
+        "tests/test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements now builds top_reference_records and latest_reference_records from dict entries and asserts they are exactly equal for the latest slice prefix.",
+        "The previous topic assertion remains as a readable diagnostic, but the new record equality check prevents source/status/checked_at/use_in_slice drift from hiding behind matching topics.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before goal-state update.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after goal-state update."
+      ],
+      "residual_risk": "This proves deterministic latest-slice mature-reference record linkage only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+    },
+    {
+      "id": "N347-provider-preflight-stop-boundary-guard",
+      "status": "proved",
+      "requirement": "The current workflow-spine goal-state CI contract must reject stop-boundary drift while the actual-loading blocker requires provider_preflight.status=proved and a fresh OK smoke, so resumed agents cannot treat all-proved deterministic rows as authorization to run provider preflight or live smoke.",
+      "source": "Post-N346 recovery audit found completion_blockers.missing_evidence correctly names provider_preflight.status=proved and fresh OK smoke, while top-level stop_boundary did not explicitly carry those two authorization gates. N347 adds a deterministic guard and updates the latest boundary text.",
+      "evidence": [
+        "tests/test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements now inspects the first completion blocker missing_evidence and, when provider_preflight.status=proved is required, asserts top-level stop_boundary text contains provider preflight and fresh OK smoke.",
+        "The pre-update focused pytest run failed on the current goal-state because stop_boundary lacked provider preflight, proving the guard catches the drift gap instead of merely restating existing data.",
+        "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json stop_boundary now explicitly forbids live provider/model calls, provider preflight, fresh OK smoke, local OCR execution, and remote OCR upload without explicit authorization."
+      ],
+      "residual_risk": "This proves deterministic stop-boundary linkage only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+    },
+    {
+      "id": "N348-next-actions-provider-boundary-guard",
+      "status": "proved",
+      "requirement": "The current workflow-spine goal-state CI contract must reject next-action drift while actual-loading remains blocked, so top-level next_authorized_local_actions stay aligned with the latest slice next_actions and keep provider preflight/fresh OK smoke out of local authorized work.",
+      "source": "Post-N347 recovery audit found stop boundaries were guarded, but next_authorized_local_actions still lacked a deterministic consistency guard tying them to latest-slice next_actions and the live-provider blocker authorization boundary.",
+      "evidence": [
+        "tests/test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements now asserts top-level next_authorized_local_actions equals the latest slice next_actions prefix.",
+        "The same guard asserts that when completion_blockers.missing_evidence requires provider_preflight.status=proved, next_authorized_local_actions contains no live provider/model, provider preflight, and fresh OK smoke prohibition text.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before goal-state update."
+      ],
+      "residual_risk": "This proves deterministic next-action boundary linkage only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+    },
+    {
+      "id": "N349-completion-blocker-projection-parity-guard",
+      "status": "proved",
+      "requirement": "The current workflow-spine Agent Workspace projection contract must reject completion-blocker projection drift, so blocker id, status, requirement_surface, missing_evidence, current_boundary, and evidence stay aligned with goal-state while live provider/model actual-loading remains blocked.",
+      "source": "Post-N348 recovery audit found Agent Workspace projection tests compared completion blocker evidence only. N349 adds deterministic parity checks for the blocker fields that carry the provider authorization boundary into resumed agent recovery.",
+      "evidence": [
+        "tests/test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim now asserts the first projected completion blocker id, status, requirement_surface, missing_evidence, current_boundary, and evidence match goal-state after redaction and model bounds.",
+        "The guard keeps provider_preflight.status=proved and fresh OK smoke missing-evidence visibility tied to the Agent Workspace recovery projection instead of only the raw goal-state JSON.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 1 passed before goal-state update."
+      ],
+      "residual_risk": "This proves deterministic Agent Workspace completion-blocker projection parity only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+    },
+    {
+      "id": "N350-completion-rule-projection-parity-guard",
+      "status": "proved",
+      "requirement": "The current workflow-spine Agent Workspace projection contract must reject lifecycle completion-rule drift, so machine_readable_completion_rule and why_not_complete stay aligned with goal-state while all deterministic requirements are proved but live provider/model actual-loading remains blocked.",
+      "source": "Post-N349 recovery audit found Agent Workspace projection tests guarded completion blockers but not the current goal-state lifecycle completion rule and why-not-complete text. N350 adds deterministic parity checks for those recovery-critical fields.",
+      "evidence": [
+        "tests/test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim now asserts the projected machine_readable_completion_rule matches goal-state after redaction and model bounds.",
+        "The same test now normalizes string or list why_not_complete shapes and asserts Agent Workspace lifecycle projection matches the goal-state value.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 1 passed before N350 goal-state update."
+      ],
+      "residual_risk": "This proves deterministic Agent Workspace lifecycle completion-rule projection parity only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+    },
+    {
+      "id": "N351-completion-claim-rollup-parity-guard",
+      "status": "proved",
+      "requirement": "The current workflow-spine goal-state CI contract must reject completion_claim rollup drift, so completion_claim updated_at, requirements_total, requirements_status_counts, latest_requirement_id, and is_goal_complete stay aligned with top-level updated_at and goal_lifecycle_rollup.",
+      "source": "Post-N350 recovery audit found completion_claim latest_slice_id was guarded, but its timestamp, requirement counts, latest requirement, and goal-complete boolean were not explicitly tied to the lifecycle rollup. N351 adds deterministic parity checks for those recovery-critical completion fields.",
+      "evidence": [
+        "tests/test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements now asserts completion_claim.updated_at equals top-level updated_at.",
+        "The same test now asserts completion_claim requirements_total, requirements_status_counts, latest_requirement_id, and is_goal_complete match goal_lifecycle_rollup.",
+        ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before N351 goal-state update."
+      ],
+      "residual_risk": "This proves deterministic completion_claim rollup parity only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+    },
+    {
+      "id": "N353-codex-own-link-live-gate-attempt",
+      "status": "proved",
+      "requirement": "Use only the current Codex conversation/CLI link, not other .env provider candidates, to attempt the live provider/model actual-loading gate and determine whether it can satisfy the Scholar AI Knowledge Runtime provider_preflight plus fresh OK smoke requirement.",
+      "source": "User narrowed the previous broad live-provider authorization with: '用你自己的链路测试下，不要用其他的了。' This authorizes only the current Codex link and forbids fallback to other provider candidates.",
+      "evidence": [
+        "Codex own-link smoke succeeded through codex exec and wrote workspace_artifacts/generated/output/n353_codex_own_link_exec_last_message.txt with nonce ec213913fb914f0dbc12aa511f7a6675.",
+        "OpenAI Codex manual current cache states codex exec reuses saved CLI authentication and custom providers define their own base URL/wire/authentication; the manual does not establish that a Codex CLI/session token is available to arbitrary backend OpenAI-compatible API clients.",
+        "Scholar AI provider preflight for codex-current/free.lyclaude.site/gpt-5.5 remains auth_required in workspace_artifacts/runtime_state/provider-capabilities.json with ordinary_chat_ok=false and forced_tool_choice_ok=false.",
+        "workspace_artifacts/generated/output/n353_codex_own_link_gate_summary.json records providerPreflight.status=blocked and actualLoadingGateStatus=blocked for the current-link attempt.",
+        "No other .env provider candidate was used as an alternate route for this attempt."
+      ],
+      "residual_risk": "N353 proves the current Codex CLI/session link alone cannot be claimed as a Scholar AI backend provider credential. The later N354 user-authorized provider run clears the live actual-loading gate through littlesheep/ai.littlesheep.cc/deepseek-v4-flash instead."
+    },
+    {
+      "id": "N354-littlesheep-live-actual-loading-gate-proof",
+      "status": "proved",
+      "requirement": "Use the user-authorized littlesheep OpenAI-compatible provider credentials directly for real Scholar AI Knowledge Runtime work, without sending hi/empty liveness probes, and prove the actual model-context loading gate through the product conformance contract.",
+      "source": "User supplied temporary provider credentials/endpoints/models and explicitly instructed: use these to test/work, remember them for this task, do not perform hi-style liveness checks, and continue.",
+      "evidence": [
+        "Created rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n354-live-provider-workflow-20260629_201503 before live-provider workflow edits/artifacts.",
+        "Checked the repository env-test discipline plus official/mature tool-use guidance before implementation; implemented a direct workflow smoke that sends real Knowledge Runtime resource-read/context-receipt instructions instead of hi/ok probes.",
+        "tests/live_provider_direct_workflow_smoke.py writes no raw credentials and reads temporary provider values only from process environment variables LIVE_PROVIDER_LABEL/LIVE_PROVIDER_BASE_URL/LIVE_PROVIDER_API_KEY/LIVE_PROVIDER_MODEL.",
+        "littlesheep/ai.littlesheep.cc/deepseek-v4-pro was attempted first; forced real tool-choice path returned HTTP 524 and the natural task produced no tool calls, so it did not clear the gate.",
+        "littlesheep/ai.littlesheep.cc/deepseek-v4-flash succeeded: the live workflow called literature.agent_resource_read and literature.knowledge_context_receipt, tool preview contained schema scholar-ai-knowledge-context-receipt/v1, and the final answer returned assembledContextHash=f9967863cd3b6055047e3bcaca15a4b885fe7c065efa9e2f3d73ac4e8406a37e.",
+        "workspace_artifacts/generated/output/live_api_chat_knowledge_context_receipt_smoke.summary.json records verdict=ok, provider=littlesheep, baseHost=ai.littlesheep.cc, model=deepseek-v4-flash, finalAnswerIncludesReceiptHash=true, usedRequiredTools=true, and providerCapabilityProofBasis=main_workflow_tool_calls.",
+        "workspace_artifacts/runtime_state/provider-capabilities.json contains a redacted tool_call_ok record for provider=littlesheep, base_url_host=ai.littlesheep.cc, model=deepseek-v4-flash with ordinary_chat_ok=true and forced_tool_choice_ok=true, based on real workflow tool calls rather than a hi/ok probe.",
+        "/api/knowledge/runtime-conformance with local capability header returned actual_loading_gate.status=proved, verdict=ok, provider_preflight.status=proved, provider_latest_status=tool_call_ok, evidence provider_preflight_match=littlesheep/ai.littlesheep.cc/deepseek-v4-flash, missing=[]."
+      ],
+      "residual_risk": "The live actual-loading gate is proved for the user-authorized littlesheep/ai.littlesheep.cc/deepseek-v4-flash endpoint only. Other supplied models/endpoints were not exhaustively benchmarked after the gate cleared; the direct proof script is local evaluation support and should not be treated as a product runtime module without a separate hardening slice."
     }
   ],
   "changed_files_for_this_slice": [
-    "tests/test_agent_workspace_router.py",
-    "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
+    ".gitignore",
+    "tests/live_provider_direct_workflow_smoke.py",
+    "workspace_artifacts/generated/output/live_api_chat_knowledge_context_receipt_smoke.summary.json",
+    "workspace_artifacts/runtime_state/provider-capabilities.json"
   ],
   "verification_commands": [
-    "Read longrun-autopilot SKILL.md, its mature-solution and autonomous-decision references, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N339.",
-    "git status --short --branch -> main...origin/main [ahead 168] clean before N339 edits; current worktree evidence supersedes stale N294/N295 staged-submit text.",
-    "Created rollback checkpoint C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260629-071434-n339-agent-workspace-ocr-status-http-proof with checkpoint.py before N339 edits.",
-    "Official/mature references checked before implementation: FastAPI Testing documentation HEAD 200, Starlette TestClient documentation HEAD 200, and Pydantic model documentation HEAD 200.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_ocr_status_probe_returns_http_success_and_matches_status_projection -q -> 1 passed before goal-state update; confirms OCR Runtime Status recovery probe returns HTTP 200 and matches the bounded Agent Workspace OCR projection with a deterministic monkeypatched payload.",
-    ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N339 goal-state update.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_ocr_status_probe_returns_http_success_and_matches_status_projection tests\\test_agent_workspace_router.py::test_agent_workspace_core_recovery_probes_return_http_success tests\\test_agent_workspace_router.py::test_agent_workspace_krt_actual_loading_gate_probe_returns_http_success_and_matches_status_projection -q -> 3 passed after N339 edits.",
-    ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N339 goal-state update.",
-    ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_agent_workspace_router.py tests\\test_ci_visibility_contract.py -> passed after N339 edits.",
-    "N339 only hardens deterministic local Agent Workspace OCR status recovery probe HTTP success and status projection parity; it does not execute real OCR, remote OCR, live provider/model loading, provider preflight POST, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, upload, push, tag, release, deploy, or squad/git cleanup."
+    "Read AI_WORKSPACE_GUIDE.md, .github/skills/env-test-discipline/SKILL.md, docs/superpowers/env-test-discipline.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N354 live-provider work.",
+    "git status --short --branch -> main...origin/main [ahead 169] with existing dirty N353/N351 files before N354; unrelated work preserved.",
+    "Created rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n354-live-provider-workflow-20260629_201503 containing goal-state, provider-capabilities, and live smoke summaries before N354 live-provider work.",
+    "Official/mature references checked before implementation: OpenAI/Anthropic-style tool-use flow (send tools, receive tool call, execute locally, send tool result, receive final answer) and repository env-test discipline; N354 implements this pattern for a real Knowledge Runtime task, not a hi/ok liveness prompt.",
+    ".\\.venv-1\\Scripts\\python.exe -m compileall -q workspace_tests\\evaluation_scripts\\live_provider_direct_workflow_smoke.py -> passed after adding the direct workflow smoke script.",
+    ".\\.venv-1\\Scripts\\python.exe workspace_tests\\evaluation_scripts\\live_provider_direct_workflow_smoke.py with littlesheep/deepseek-v4-pro -> failed to clear gate: forced real tool-choice HTTP 524 and natural task returned no tool calls.",
+    ".\\.venv-1\\Scripts\\python.exe workspace_tests\\evaluation_scripts\\live_provider_direct_workflow_smoke.py with littlesheep/deepseek-v4-flash -> passed: verdict=ok, required toolNames=[literature.agent_resource_read, literature.knowledge_context_receipt], final answer included assembledContextHash=f9967863cd3b6055047e3bcaca15a4b885fe7c065efa9e2f3d73ac4e8406a37e.",
+    ".\\.venv-1\\Scripts\\python.exe -c \"from fastapi.testclient import TestClient; from literature_assistant.core import python_adapter_server as s; ... GET /api/knowledge/runtime-conformance with local capability header ...\" -> actual_loading_gate.status=proved, verdict=ok, provider_preflight.status=proved, provider_latest_status=tool_call_ok, missing=[].",
+    "git check-ignore -v -- tests\\live_provider_direct_workflow_smoke.py; git ls-files --error-unmatch tests\\live_provider_direct_workflow_smoke.py -> after .gitignore allowlist, harness is no longer ignored and can be staged for source visibility."
   ],
   "next_authorized_local_actions": [
-    "Continue deterministic local recovery/proof hardening after preflight; prefer another read-only recovery drift guard or OCR mock/health visibility proof within no-live/no-write/no-OCR-execution boundaries."
+    "Run requirement-to-evidence audit and focused regression tests before marking the persistent goal complete.",
+    "Keep raw provider credentials out of files, logs, git, and final summaries; preserve only masked provider/model evidence.",
+    "Do not run additional live provider/model calls unless a new requirement or regression needs them.",
+    "If committing later, stage only intentional source/test/goal-state files and keep runtime artifacts ignored unless explicitly requested."
   ],
   "stop_boundary": [
-    "Do not call the long-run goal complete while goal_lifecycle_rollup.can_mark_goal_complete is false.",
-    "Local scoped stage/commit is authorized for this slice after diff, secret/ignored-file, and cached diff checks; do not push/tag/release/deploy/upload without explicit authorization.",
-    "Do not run live provider/model or remote OCR upload without explicit authorization and credential-safe logging.",
-    "Do not reset/clean squad state, mutate Zotero DB, modify github/ references, or add Feishu/Lark integration without explicit authorization."
+    "Do not run additional live provider/model calls after N354 unless a new requirement or regression explicitly needs them.",
+    "Do not print, persist, commit, or summarize raw provider credentials; keep only masked provider/model evidence.",
+    "Do not mutate Zotero DB, github/ references, Source Vault/WikiRegistry runtime stores, push, tag, release, deploy, upload, or clean git/squad state without explicit user authorization.",
+    "Restore rollback snapshots only with explicit user intent after inspecting current dirty worktree ownership."
   ],
   "n294_latest_slice_evidence_consistency_slice": {
     "id": "N294-latest-slice-evidence-consistency",
@@ -9861,18 +10161,18 @@
     "updated_at": "2026-06-28T20:55:00+08:00"
   },
   "completion_claim": {
-    "this_slice": "N339-agent-workspace-ocr-status-http-proof proves the Agent Workspace OCR status probe returns HTTP 200 and matches the bounded OCR runtime projection.",
-    "full_goal": "not_complete: deterministic local proof is advanced, but live provider/model actual-loading remains authorization gated.",
-    "can_mark_goal_complete": false,
-    "why_not_complete": "N339-agent-workspace-ocr-status-http-proof hardens deterministic Agent Workspace OCR status HTTP probe visibility only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke for the same endpoint.",
-    "updated_at": "2026-06-29T07:16:00+08:00",
-    "latest_slice_id": "N339-agent-workspace-ocr-status-http-proof",
-    "is_goal_complete": false,
-    "requirements_total": 340,
+    "this_slice": "N354-littlesheep-live-actual-loading-gate-proof clears the full live actual-loading blocker: the product conformance endpoint reports actual_loading_gate.status=proved with no missing evidence for littlesheep/ai.littlesheep.cc/deepseek-v4-flash.",
+    "full_goal": "complete: all tracked workflow-spine requirements are proved, and the user-authorized live actual-loading gate is proved for littlesheep/ai.littlesheep.cc/deepseek-v4-flash.",
+    "can_mark_goal_complete": true,
+    "why_not_complete": "",
+    "updated_at": "2026-06-29T20:26:30+08:00",
+    "latest_slice_id": "N354-littlesheep-live-actual-loading-gate-proof",
+    "is_goal_complete": true,
+    "requirements_total": 354,
     "requirements_status_counts": {
-      "proved": 340
+      "proved": 354
     },
-    "latest_requirement_id": "N339-agent-workspace-ocr-status-http-proof"
+    "latest_requirement_id": "N354-littlesheep-live-actual-loading-gate-proof"
   },
   "goal_lifecycle": "requirements_proved_pending_authorized_gates",
   "n170_mcp_krt_validator_diagnostics_contract_slice": {
@@ -13797,7 +14097,7 @@
       "Ask for explicit authorization before squad clean/reset, live provider/model calls, native Computer Use retry if the tool remains broken, or any scoped stage/commit."
     ]
   },
-  "latest_slice": "N339-agent-workspace-ocr-status-http-proof",
+  "latest_slice": "N354-littlesheep-live-actual-loading-gate-proof",
   "n151_ocr_health_mcp_visibility_slice": {
     "status": "proved",
     "objective": "Expose the existing OCR health/readiness endpoint to external agents through a bounded MCP tool without uploading OCR content or treating health as real OCR execution evidence.",
@@ -15561,30 +15861,21 @@
   },
   "goal_lifecycle_rollup": {
     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
-    "updated_at": "2026-06-29T07:16:00+08:00",
-    "status": "active_requirements_proved_pending_authorized_gates",
-    "is_goal_complete": false,
-    "can_mark_goal_complete": false,
-    "requirements_total": 340,
+    "updated_at": "2026-06-29T20:26:30+08:00",
+    "status": "complete_live_actual_loading_proved",
+    "is_goal_complete": true,
+    "can_mark_goal_complete": true,
+    "requirements_total": 354,
     "requirement_status_counts": {
-      "proved": 340
+      "proved": 354
     },
     "requirements_all_proved_or_out_of_scope": true,
     "requirements_all_proved": true,
-    "latest_requirement_id": "N339-agent-workspace-ocr-status-http-proof",
-    "latest_slice_id": "N339-agent-workspace-ocr-status-http-proof",
-    "completion_blockers": [
-      {
-        "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
-        "status": "blocked",
-        "requirement_surface": "Knowledge Runtime Pipeline QA/agent actual model-context loading",
-        "missing_evidence": "Authorized live provider/model context-loading proof with provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint.",
-        "current_boundary": "N339 hardens deterministic Agent Workspace OCR status HTTP probe visibility only; the configured provider remains auth/preflight gated and live model-context loading remains unproved.",
-        "evidence": "N339 adds a full-app TestClient guard proving the OCR Runtime Status recovery probe returns HTTP 200 and that Agent Workspace status mirrors OCR runtime status, while running no OCR, live model loading, provider preflight POST, Source Vault writes, or real project export."
-      }
-    ],
-    "machine_readable_completion_rule": "Goal can be marked complete only when all requirements are proved or explicitly out of scope and completion_blockers is empty after user-authorized live/gate checks.",
-    "why_not_complete": "N339-agent-workspace-ocr-status-http-proof hardens deterministic Agent Workspace OCR status HTTP probe visibility only. Live QA/model actual-loading still requires authorized provider preflight and fresh OK smoke for the same endpoint."
+    "latest_requirement_id": "N354-littlesheep-live-actual-loading-gate-proof",
+    "latest_slice_id": "N354-littlesheep-live-actual-loading-gate-proof",
+    "completion_blockers": [],
+    "machine_readable_completion_rule": "Goal can be marked complete because every requirement row is proved and completion_blockers is empty after user-authorized live provider actual-loading proof.",
+    "why_not_complete": ""
   },
   "n173_goal_lifecycle_rollup_slice": {
     "objective": "Add a minimal machine-readable lifecycle rollup to the longrun goal-state so requirement-level proved rows cannot be mistaken for full goal completion.",
@@ -24349,5 +24640,619 @@
       "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
     ],
     "residual_risk": "This proves deterministic local HTTP 200 and Agent Workspace projection parity for OCR status only. It does not execute OCR, prove real PaddleOCR/RapidOCR/Windows OCR output, upload content, or clear the live provider/model actual-loading blocker."
+  },
+  "n340_agent_workspace_ocr_health_http_proof_slice": {
+    "id": "N340-agent-workspace-ocr-health-http-proof",
+    "status": "proved",
+    "updated_at": "2026-06-29T09:10:00+08:00",
+    "summary": "N340 proves the Agent Workspace OCR Engine Health recovery probe is a live full-app POST link returning HTTP 200 with bounded readiness blockers before any OCR execution probe.",
+    "rollback_checkpoint_id": "n340-agent-workspace-ocr-health-probe-20260629_090440",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n340-agent-workspace-ocr-health-probe-20260629_090440",
+    "mature_references_checked": [
+      {
+        "topic": "N340 Agent Workspace OCR health HTTP probe proof",
+        "source": "FastAPI Testing documentation, Starlette TestClient documentation, and Pydantic model documentation",
+        "url": "https://fastapi.tiangolo.com/tutorial/testing/ ; https://www.starlette.io/testclient/ ; https://docs.pydantic.dev/latest/concepts/models/",
+        "status": "All three references returned HEAD 200; TestClient POST proves the Agent Workspace OCR health probe returns HTTP 200 with a bounded readiness payload.",
+        "checked_at": "2026-06-29T09:10:00+08:00",
+        "use_in_slice": "Used to prove the advertised OCR Engine Health Agent Workspace recovery probe resolves through the full app without running OCR execution, remote upload, live providers, Source Vault writes, or external actions."
+      }
+    ],
+    "changed_files": [
+      "literature_assistant/core/routers/agent_workspace_router.py",
+      "tests/test_agent_workspace_router.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read repo-onboarding SKILL.md, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N340.",
+      "git status --short --branch -> main...origin/main [ahead 169] with literature_assistant/core/routers/agent_workspace_router.py and tests/test_agent_workspace_router.py dirty before N340 goal-state update; unrelated work preserved.",
+      "Created rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n340-agent-workspace-ocr-health-probe-20260629_090440 containing Agent Workspace router, Agent Workspace tests, and this goal-state before N340 edits.",
+      "Official/mature references checked before implementation: FastAPI Testing documentation HEAD 200, Starlette TestClient documentation HEAD 200, and Pydantic model documentation HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit tests\\test_agent_workspace_router.py::test_agent_workspace_ocr_health_probe_returns_http_success_without_ocr_execution tests\\test_agent_workspace_router.py::test_agent_workspace_core_recovery_probes_return_http_success tests\\test_agent_workspace_router.py::test_agent_workspace_ocr_status_probe_returns_http_success_and_matches_status_projection -q -> 4 passed before goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N340 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N340 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py tests\\test_ci_visibility_contract.py -> passed after N340 edits.",
+      "N340 only hardens deterministic local Agent Workspace OCR health recovery probe HTTP success and readiness payload visibility; it does not execute OCR, remote OCR upload, live provider/model loading, provider preflight POST, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup."
+    ],
+    "completion_claim": "N340 proves deterministic read-only Agent Workspace OCR health recovery visibility without executing OCR or uploading content.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, create a rollback checkpoint, and search official or mature references before editing.",
+      "Continue deterministic local recovery/proof hardening only if it does not require live provider/model calls, OCR execution, Source Vault writes, or external actions.",
+      "Keep live provider/model actual-loading blocked until provider preflight is explicitly authorized and proved for the same provider/baseHost/model endpoint.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
+    ],
+    "residual_risk": "This proves deterministic local HTTP 200 readiness visibility for OCR health only. It does not run OCR, prove PaddleOCR/RapidOCR/Windows OCR output, upload content, or clear the live provider/model actual-loading blocker."
+  },
+  "n341_agent_workspace_ocr_engines_http_proof_slice": {
+    "id": "N341-agent-workspace-ocr-engines-http-proof",
+    "status": "proved",
+    "updated_at": "2026-06-29T09:24:00+08:00",
+    "summary": "N341 proves the Agent Workspace OCR Engine Inventory recovery probe is a live full-app GET link returning HTTP 200 with bounded readiness metadata before choosing any OCR execution path.",
+    "rollback_checkpoint_id": "n341-agent-workspace-ocr-engines-proof-20260629_091758",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n341-agent-workspace-ocr-engines-proof-20260629_091758",
+    "mature_references_checked": [
+      {
+        "topic": "N341 Agent Workspace OCR engine inventory HTTP probe proof",
+        "source": "FastAPI Testing documentation, Starlette TestClient documentation, and Pydantic model documentation",
+        "url": "https://fastapi.tiangolo.com/tutorial/testing/ ; https://www.starlette.io/testclient/ ; https://docs.pydantic.dev/latest/concepts/models/",
+        "status": "All three references returned HEAD 200; TestClient GET proves the Agent Workspace OCR engine inventory probe returns HTTP 200 with bounded readiness metadata.",
+        "checked_at": "2026-06-29T09:24:00+08:00",
+        "use_in_slice": "Used to prove the advertised OCR Engine Inventory Agent Workspace recovery probe resolves through the full app without running OCR execution, remote upload, live providers, Source Vault writes, or external actions."
+      }
+    ],
+    "changed_files": [
+      "literature_assistant/core/routers/agent_workspace_router.py",
+      "tests/test_agent_workspace_router.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, docs/plans/autonomous-execution-planning-playbook.md, longrun-autopilot SKILL.md, and its autonomous-decision/mature-solution references before N341.",
+      "git status --short --branch -> main...origin/main [ahead 169] with docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json, literature_assistant/core/routers/agent_workspace_router.py, and tests/test_agent_workspace_router.py dirty before N341 goal-state update; unrelated work preserved.",
+      "Created rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n341-agent-workspace-ocr-engines-proof-20260629_091758 containing Agent Workspace router, Agent Workspace tests, and this goal-state before N341 edits.",
+      "Official/mature references checked before implementation: FastAPI Testing documentation HEAD 200, Starlette TestClient documentation HEAD 200, and Pydantic model documentation HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit tests\\test_agent_workspace_router.py::test_agent_workspace_ocr_engines_probe_returns_http_success_without_ocr_execution tests\\test_agent_workspace_router.py::test_agent_workspace_ocr_health_probe_returns_http_success_without_ocr_execution tests\\test_agent_workspace_router.py::test_agent_workspace_core_recovery_probes_return_http_success tests\\test_agent_workspace_router.py::test_agent_workspace_ocr_status_probe_returns_http_success_and_matches_status_projection -q -> 5 passed before goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N341 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N341 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py tests\\test_ci_visibility_contract.py -> passed after N341 edits.",
+      "N341 only hardens deterministic local Agent Workspace OCR engine inventory recovery probe HTTP success and readiness metadata visibility; it does not execute OCR, remote OCR upload, live provider/model loading, provider preflight POST, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup."
+    ],
+    "completion_claim": "N341 proves deterministic read-only Agent Workspace OCR engine inventory recovery visibility without executing OCR or uploading content.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, create a rollback checkpoint, and search official or mature references before editing.",
+      "Continue deterministic local recovery/proof hardening only if it does not require live provider/model calls, OCR execution, Source Vault writes, or external actions.",
+      "Keep live provider/model actual-loading blocked until provider preflight is explicitly authorized and proved for the same provider/baseHost/model endpoint.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
+    ],
+    "residual_risk": "This proves deterministic local HTTP 200 readiness inventory visibility only. It does not run OCR, prove PaddleOCR/RapidOCR/Windows OCR output, upload content, or clear the live provider/model actual-loading blocker."
+  },
+  "n342_agent_workspace_ocr_execution_provider_boundary_visible_slice": {
+    "id": "N342-agent-workspace-ocr-execution-provider-boundary-visible",
+    "status": "proved",
+    "updated_at": "2026-06-29T09:31:00+08:00",
+    "summary": "N342 proves Agent Workspace status visibly warns resumed agents not to run OCR execution probes, live provider/model calls, or provider preflight without explicit authorization.",
+    "rollback_checkpoint_id": "n342-agent-workspace-ocr-execution-boundary-20260629_092555",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n342-agent-workspace-ocr-execution-boundary-20260629_092555",
+    "mature_references_checked": [
+      {
+        "topic": "N342 Agent Workspace OCR execution and provider boundary visibility",
+        "source": "FastAPI Testing documentation, Pydantic model documentation, and W3C PROV overview",
+        "url": "https://fastapi.tiangolo.com/tutorial/testing/ ; https://docs.pydantic.dev/latest/concepts/models/ ; https://www.w3.org/TR/prov-overview/",
+        "status": "All three references returned HEAD 200; used typed status payload and provenance-boundary discipline to expose explicit do-not-execute recovery boundaries.",
+        "checked_at": "2026-06-29T09:31:00+08:00",
+        "use_in_slice": "Used to make Agent Workspace status show that OCR execution probes, live provider/model calls, and provider preflight remain explicit-authorization actions rather than recoverable local proof steps."
+      }
+    ],
+    "changed_files": [
+      "literature_assistant/core/routers/agent_workspace_router.py",
+      "tests/test_agent_workspace_router.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, docs/plans/autonomous-execution-planning-playbook.md, longrun-autopilot SKILL.md, and its autonomous-decision/mature-solution references before N342.",
+      "git status --short --branch -> main...origin/main [ahead 169] with docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json, literature_assistant/core/routers/agent_workspace_router.py, and tests/test_agent_workspace_router.py dirty before N342 edits; unrelated work preserved.",
+      "Created rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n342-agent-workspace-ocr-execution-boundary-20260629_092555 containing Agent Workspace router, Agent Workspace tests, and this goal-state before N342 edits.",
+      "Official/mature references checked before implementation: FastAPI Testing documentation HEAD 200, Pydantic model documentation HEAD 200, and W3C PROV overview HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit -q -> 1 passed before goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N342 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py::test_agent_workspace_status_lists_artifacts_and_redacted_audit tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 4 passed after N342 goal-state verification-record closure.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q literature_assistant\\core\\routers\\agent_workspace_router.py tests\\test_agent_workspace_router.py tests\\test_ci_visibility_contract.py -> passed after N342 edits.",
+      "N342 only hardens deterministic local Agent Workspace authorization-boundary visibility for OCR execution probes, live provider/model calls, and provider preflight; it does not execute OCR, remote OCR upload, live provider/model loading, provider preflight POST, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup."
+    ],
+    "completion_claim": "N342 proves deterministic Agent Workspace boundary visibility without executing OCR, provider preflight, or live provider/model calls.",
+    "next_actions": [
+      "Before the next nontrivial slice, read required docs, run git status, create a rollback checkpoint, and search official or mature references before editing.",
+      "Continue deterministic local recovery/proof hardening only if it does not require live provider/model calls, OCR execution, Source Vault writes, or external actions.",
+      "Keep live provider/model actual-loading blocked until provider preflight is explicitly authorized and proved for the same provider/baseHost/model endpoint.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
+    ],
+    "residual_risk": "This proves deterministic Agent Workspace authorization-boundary visibility only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR provider output."
+  },
+  "n343_goal_state_pending_verification_guard_slice": {
+    "id": "N343-goal-state-pending-verification-guard",
+    "status": "proved",
+    "updated_at": "2026-06-29T09:40:28+08:00",
+    "summary": "N343 adds a CI guard so the latest goal-state verification commands cannot retain pending-after-slice placeholders after a slice advances.",
+    "rollback_checkpoint_id": "n343-goal-state-pending-verification-guard-20260629_093822",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n343-goal-state-pending-verification-guard-20260629_093822",
+    "mature_references_checked": [
+      {
+        "topic": "N343 goal-state latest verification pending-placeholder guard",
+        "source": "Python json documentation, pytest assertion documentation, and W3C PROV overview",
+        "url": "https://docs.python.org/3/library/json.html ; https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/",
+        "status": "All three references returned HEAD 200; used JSON parsing, pytest assertion diagnostics, and PROV consistency to reject latest-slice pending placeholders.",
+        "checked_at": "2026-06-29T09:40:28+08:00",
+        "use_in_slice": "Used to add a deterministic CI guard proving latest goal-state verification commands contain observed results rather than pending placeholders."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ci_visibility_contract.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read repo-onboarding SKILL.md, longrun-autopilot SKILL.md, longrun autonomous-decision and mature-solution references, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N343.",
+      "git status --short --branch -> main...origin/main [ahead 169] with docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json, literature_assistant/core/routers/agent_workspace_router.py, and tests/test_agent_workspace_router.py dirty before N343 edits; unrelated work preserved.",
+      "Created rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n343-goal-state-pending-verification-guard-20260629_093822 containing tests/test_ci_visibility_contract.py and this goal-state before N343 edits.",
+      "Official/mature references checked before implementation: Python json documentation HEAD 200, pytest assertion documentation HEAD 200, and W3C PROV overview HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before N343 goal-state update; proves the new pending-placeholder guard accepts current N342 evidence.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed before N343 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N343 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N343 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed after N343 edits.",
+      "N343 only hardens deterministic local goal-state verification drift detection; it does not execute OCR, remote OCR upload, live provider/model loading, provider preflight POST, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup."
+    ],
+    "completion_claim": "N343 proves deterministic latest-slice verification-record hygiene without running OCR, provider preflight, or live provider/model calls.",
+    "next_actions": [
+      "Continue deterministic local recovery/proof hardening only if a concrete drift guard or read-only proof gap is discovered and it does not require live provider/model calls, OCR execution, Source Vault writes, or external actions.",
+      "Before the next nontrivial slice, read required docs, run git status, create a rollback checkpoint, and search official or mature references before editing.",
+      "Keep live provider/model actual-loading blocked until provider preflight is explicitly authorized and proved for the same provider/baseHost/model endpoint.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
+    ],
+    "residual_risk": "This proves deterministic latest-slice verification-record hygiene only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+  },
+  "n344_goal_state_rollback_checkpoint_consistency_guard_slice": {
+    "id": "N344-goal-state-rollback-checkpoint-consistency-guard",
+    "status": "proved",
+    "updated_at": "2026-06-29T09:48:13+08:00",
+    "summary": "N344 adds a CI guard so top-level rollback latest checkpoint metadata must match the latest goal-state slice rollback checkpoint id/path.",
+    "rollback_checkpoint_id": "n344-goal-state-rollback-consistency-guard-20260629_094710",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n344-goal-state-rollback-consistency-guard-20260629_094710",
+    "mature_references_checked": [
+      {
+        "topic": "N344 goal-state rollback checkpoint consistency guard",
+        "source": "Python json documentation, pytest assertion documentation, and W3C PROV overview",
+        "url": "https://docs.python.org/3/library/json.html ; https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/",
+        "status": "All three references returned HEAD 200; used JSON, pytest assertions, and PROV consistency to align latest rollback metadata with the latest slice.",
+        "checked_at": "2026-06-29T09:48:13+08:00",
+        "use_in_slice": "Used to add a deterministic CI guard proving top-level rollback latest checkpoint id/path match the latest slice rollback_checkpoint_id/path."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ci_visibility_contract.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read repo-onboarding SKILL.md, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N344.",
+      "git status --short --branch -> main...origin/main [ahead 169] with docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json, literature_assistant/core/routers/agent_workspace_router.py, tests/test_agent_workspace_router.py, and tests/test_ci_visibility_contract.py dirty before N344 edits; unrelated work preserved.",
+      "Created rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n344-goal-state-rollback-consistency-guard-20260629_094710 containing tests/test_ci_visibility_contract.py and this goal-state before N344 edits.",
+      "Official/mature references checked before implementation: Python json documentation HEAD 200, pytest assertion documentation HEAD 200, and W3C PROV overview HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before N344 goal-state update; proves the new rollback checkpoint consistency guard accepts current N343 evidence.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed before N344 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N344 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N344 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed after N344 edits.",
+      "git diff --check -> passed after N344 edits with the pre-existing goal-state CRLF/LF warning only.",
+      "N344 only hardens deterministic local goal-state rollback checkpoint drift detection; it does not execute OCR, remote OCR upload, live provider/model loading, provider preflight POST, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup."
+    ],
+    "completion_claim": "N344 proves deterministic latest-slice rollback checkpoint linkage hygiene without running OCR, provider preflight, or live provider/model calls.",
+    "next_actions": [
+      "Continue deterministic local recovery/proof hardening only if a concrete drift guard or read-only proof gap is discovered and it does not require live provider/model calls, OCR execution, Source Vault writes, or external actions.",
+      "Before the next nontrivial slice, read required docs, run git status, create a rollback checkpoint, and search official or mature references before editing.",
+      "Keep live provider/model actual-loading blocked until provider preflight is explicitly authorized and proved for the same provider/baseHost/model endpoint.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
+    ],
+    "residual_risk": "This proves deterministic latest-slice rollback checkpoint linkage only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+  },
+  "n345_completion_blocker_latest_slice_consistency_guard_slice": {
+    "id": "N345-completion-blocker-latest-slice-consistency-guard",
+    "status": "proved",
+    "updated_at": "2026-06-29T09:54:30+08:00",
+    "summary": "N345 adds a CI guard so completion blocker current_boundary and evidence must carry the latest slice marker after the goal-state advances.",
+    "rollback_checkpoint_id": "n345-completion-blocker-latest-slice-consistency-20260629_095346",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n345-completion-blocker-latest-slice-consistency-20260629_095346",
+    "secondary_longrun_checkpoint_id": "20260629-095347-n345-completion-blocker-latest-slice-consistency",
+    "secondary_longrun_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260629-095347-n345-completion-blocker-latest-slice-consistency",
+    "mature_references_checked": [
+      {
+        "topic": "N345 completion blocker latest-slice consistency guard",
+        "source": "Python json documentation, pytest assertion documentation, and W3C PROV overview",
+        "url": "https://docs.python.org/3/library/json.html ; https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/",
+        "status": "All three references returned HEAD 200; used JSON, pytest assertions, and PROV consistency to align blocker evidence with latest slice.",
+        "checked_at": "2026-06-29T09:54:30+08:00",
+        "use_in_slice": "Used to add a deterministic CI guard proving completion blocker current_boundary/evidence carry the latest slice marker."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ci_visibility_contract.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read repo-onboarding SKILL.md, longrun-autopilot SKILL.md, longrun autonomous-decision and mature-solution references, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N345.",
+      "git status --short --branch -> main...origin/main [ahead 169] with docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json, literature_assistant/core/routers/agent_workspace_router.py, tests/test_agent_workspace_router.py, and tests/test_ci_visibility_contract.py dirty before N345 edits; unrelated work preserved.",
+      "Created longrun-autopilot checkpoint 20260629-095347-n345-completion-blocker-latest-slice-consistency and rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n345-completion-blocker-latest-slice-consistency-20260629_095346 containing tests/test_ci_visibility_contract.py and this goal-state before N345 edits.",
+      "Official/mature references checked before implementation: Python json documentation HEAD 200, pytest assertion documentation HEAD 200, and W3C PROV overview HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before N345 goal-state update; proves the new completion-blocker latest-slice guard accepts current N344 evidence.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed before N345 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N345 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N345 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed after N345 edits.",
+      "git diff --check -> passed after N345 edits with the pre-existing goal-state CRLF/LF warning only.",
+      "N345 only hardens deterministic local completion-blocker latest-slice drift detection; it does not execute OCR, remote OCR upload, live provider/model loading, provider preflight POST, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup."
+    ],
+    "completion_claim": "N345 proves deterministic completion-blocker latest-slice linkage hygiene without running OCR, provider preflight, or live provider/model calls.",
+    "next_actions": [
+      "Continue deterministic local recovery/proof hardening only if a concrete drift guard or read-only proof gap is discovered and it does not require live provider/model calls, OCR execution, Source Vault writes, or external actions.",
+      "Before the next nontrivial slice, read required docs, run git status, create a rollback checkpoint, and search official or mature references before editing.",
+      "Keep live provider/model actual-loading blocked until provider preflight is explicitly authorized and proved for the same provider/baseHost/model endpoint.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
+    ],
+    "residual_risk": "This proves deterministic latest-slice completion-blocker evidence linkage only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+  },
+  "n346_mature_reference_record_consistency_guard_slice": {
+    "id": "N346-mature-reference-record-consistency-guard",
+    "status": "proved",
+    "updated_at": "2026-06-29T09:59:08+08:00",
+    "summary": "N346 adds a CI guard so latest mature-reference records must match the top-level mature_references_checked prefix exactly, not just by topic.",
+    "rollback_checkpoint_id": "n346-mature-reference-record-consistency-20260629_095829",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n346-mature-reference-record-consistency-20260629_095829",
+    "secondary_longrun_checkpoint_id": "20260629-095830-n346-mature-reference-record-consistency",
+    "secondary_longrun_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260629-095830-n346-mature-reference-record-consistency",
+    "mature_references_checked": [
+      {
+        "topic": "N346 mature reference record consistency guard",
+        "source": "Python json documentation, pytest assertion documentation, and W3C PROV overview",
+        "url": "https://docs.python.org/3/library/json.html ; https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/",
+        "status": "All three references returned HEAD 200; used JSON, pytest assertions, and PROV consistency to align complete reference records.",
+        "checked_at": "2026-06-29T09:59:08+08:00",
+        "use_in_slice": "Used to add a deterministic CI guard proving latest mature-reference records match the top-level goal-state prefix exactly."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ci_visibility_contract.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read repo-onboarding SKILL.md, longrun-autopilot SKILL.md, longrun autonomous-decision and mature-solution references, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N346.",
+      "git status --short --branch -> main...origin/main [ahead 169] with docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json, literature_assistant/core/routers/agent_workspace_router.py, tests/test_agent_workspace_router.py, and tests/test_ci_visibility_contract.py dirty before N346 edits; unrelated work preserved.",
+      "Created longrun-autopilot checkpoint 20260629-095830-n346-mature-reference-record-consistency and rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n346-mature-reference-record-consistency-20260629_095829 containing tests/test_ci_visibility_contract.py and this goal-state before N346 edits.",
+      "Official/mature references checked before implementation: Python json documentation HEAD 200, pytest assertion documentation HEAD 200, and W3C PROV overview HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before N346 goal-state update; proves the new mature-reference record consistency guard accepts current N345 evidence.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed before N346 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N346 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N346 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed after N346 edits.",
+      "git diff --check -> passed after N346 edits with the pre-existing goal-state CRLF/LF warning only.",
+      "N346 only hardens deterministic local mature-reference record drift detection; it does not execute OCR, remote OCR upload, live provider/model loading, provider preflight POST, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup."
+    ],
+    "completion_claim": "N346 proves deterministic mature-reference record linkage hygiene without running OCR, provider preflight, or live provider/model calls.",
+    "next_actions": [
+      "Continue deterministic local recovery/proof hardening only if a concrete drift guard or read-only proof gap is discovered and it does not require live provider/model calls, OCR execution, Source Vault writes, or external actions.",
+      "Before the next nontrivial slice, read required docs, run git status, create a rollback checkpoint, and search official or mature references before editing.",
+      "Keep live provider/model actual-loading blocked until provider preflight is explicitly authorized and proved for the same provider/baseHost/model endpoint.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
+    ],
+    "residual_risk": "This proves deterministic latest-slice mature-reference record linkage only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+  },
+  "n347_provider_preflight_stop_boundary_guard_slice": {
+    "id": "N347-provider-preflight-stop-boundary-guard",
+    "status": "proved",
+    "updated_at": "2026-06-29T10:08:01+08:00",
+    "summary": "N347 adds a CI guard so provider preflight and fresh OK smoke stay explicit stop boundaries while the live actual-loading blocker remains.",
+    "rollback_checkpoint_id": "n347-provider-preflight-stop-boundary-guard-20260629_100512",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n347-provider-preflight-stop-boundary-guard-20260629_100512",
+    "secondary_longrun_checkpoint_id": "20260629-100513-n347-provider-preflight-stop-boundary-guard",
+    "secondary_longrun_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260629-100513-n347-provider-preflight-stop-boundary-guard",
+    "mature_references_checked": [
+      {
+        "topic": "N347 provider preflight and fresh OK smoke stop-boundary guard",
+        "source": "pytest assertion documentation, W3C PROV overview, and Google SRE monitoring distributed systems chapter",
+        "url": "https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+        "status": "All three references returned HEAD 200; used assertions, PROV consistency, and SRE gate visibility to align blocker evidence with stop boundaries.",
+        "checked_at": "2026-06-29T10:08:01+08:00",
+        "use_in_slice": "Used to add a deterministic CI guard proving provider preflight and fresh OK smoke remain explicit authorization boundaries while the actual-loading blocker exists."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ci_visibility_contract.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read repo-onboarding SKILL.md, longrun-autopilot SKILL.md, longrun autonomous-decision and mature-solution references, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N347.",
+      "git status --short --branch -> main...origin/main [ahead 169] with docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json, literature_assistant/core/routers/agent_workspace_router.py, tests/test_agent_workspace_router.py, and tests/test_ci_visibility_contract.py dirty before N347 edits; unrelated work preserved.",
+      "Created longrun-autopilot checkpoint 20260629-100513-n347-provider-preflight-stop-boundary-guard and rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n347-provider-preflight-stop-boundary-guard-20260629_100512 containing tests/test_ci_visibility_contract.py and this goal-state before N347 edits.",
+      "Official/mature references checked before implementation: pytest assertion documentation HEAD 200, W3C PROV overview HEAD 200, and Google SRE monitoring distributed systems chapter HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> failed before N347 goal-state update because stop_boundary did not explicitly contain provider preflight; proves the new guard catches the drift gap.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N347 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N347 projection text was bounded.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed after N347 edits.",
+      "git diff --check -> passed after N347 verification record update with the pre-existing goal-state CRLF/LF warning only.",
+      "N347 only hardens deterministic stop-boundary drift detection; it does not execute OCR, remote OCR upload, live provider/model loading, provider preflight POST, fresh OK smoke, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup."
+    ],
+    "completion_claim": "N347 proves deterministic provider-preflight/fresh-OK-smoke stop-boundary linkage without running OCR, provider preflight, or live provider/model calls.",
+    "next_actions": [
+      "Continue deterministic local recovery/proof hardening only for concrete read-only drift gaps; no live provider/model, provider preflight, fresh OK smoke, OCR execution, Source Vault writes, or external actions.",
+      "Before the next nontrivial slice, read required docs, run git status, create a rollback checkpoint, and search official or mature references before editing.",
+      "Keep live provider/model actual-loading blocked until provider preflight is explicitly authorized and proved for the same provider/baseHost/model endpoint with a fresh OK smoke.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
+    ],
+    "residual_risk": "This proves deterministic latest-slice stop-boundary linkage only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+  },
+  "n348_next_actions_provider_boundary_guard_slice": {
+    "id": "N348-next-actions-provider-boundary-guard",
+    "status": "proved",
+    "updated_at": "2026-06-29T10:16:46+08:00",
+    "summary": "N348 adds a CI guard so next authorized local actions stay aligned with latest-slice next actions and provider-gate prohibitions.",
+    "rollback_checkpoint_id": "n348-next-actions-provider-boundary-guard-20260629_101601",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n348-next-actions-provider-boundary-guard-20260629_101601",
+    "secondary_longrun_checkpoint_id": "20260629-101601-n348-next-actions-provider-boundary-guard",
+    "secondary_longrun_checkpoint_path": "C:\\Users\\xiao\\.codex\\rollback-checkpoints\\Modular-Pipeline-Script-89acfed628ba0f54\\20260629-101601-n348-next-actions-provider-boundary-guard",
+    "mature_references_checked": [
+      {
+        "topic": "N348 next actions provider boundary guard",
+        "source": "pytest assertion documentation, W3C PROV overview, and Google SRE monitoring distributed systems chapter",
+        "url": "https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+        "status": "All three references returned HEAD 200; used assertions, PROV consistency, and SRE gate visibility for recovery-action drift guards.",
+        "checked_at": "2026-06-29T10:16:46+08:00",
+        "use_in_slice": "Used to add a deterministic CI guard proving next authorized local actions stay aligned with the latest slice and keep provider-gate prohibitions visible."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ci_visibility_contract.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read repo-onboarding SKILL.md, longrun-autopilot SKILL.md, longrun autonomous-decision and mature-solution references, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N348.",
+      "git status --short --branch -> main...origin/main [ahead 169] with docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json, literature_assistant/core/routers/agent_workspace_router.py, tests/test_agent_workspace_router.py, and tests/test_ci_visibility_contract.py dirty before N348 edits; unrelated work preserved.",
+      "Created longrun-autopilot checkpoint 20260629-101601-n348-next-actions-provider-boundary-guard and rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n348-next-actions-provider-boundary-guard-20260629_101601 containing tests/test_ci_visibility_contract.py and this goal-state before N348 edits.",
+      "Official/mature references checked before implementation: pytest assertion documentation HEAD 200, W3C PROV overview HEAD 200, and Google SRE monitoring distributed systems chapter HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before N348 goal-state update; proves the new next-actions/provider-boundary guard accepts current N347 evidence.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed before N348 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N348 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N348 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed after N348 edits.",
+      "git diff --check -> passed after N348 edits with the pre-existing goal-state CRLF/LF warning only.",
+      "N348 only hardens deterministic next-action/provider-boundary drift detection; it does not execute OCR, remote OCR upload, live provider/model loading, provider preflight POST, fresh OK smoke, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup."
+    ],
+    "completion_claim": "N348 proves deterministic next-action/provider-boundary linkage without running OCR, provider preflight, fresh OK smoke, or live provider/model calls.",
+    "next_actions": [
+      "Continue deterministic local recovery/proof hardening only for concrete read-only drift gaps; no live provider/model, provider preflight, fresh OK smoke, OCR execution, Source Vault writes, or external actions.",
+      "Before the next nontrivial slice, read required docs, run git status, create a rollback checkpoint, and search official or mature references before editing.",
+      "Keep live provider/model actual-loading blocked until provider preflight is explicitly authorized and proved for the same provider/baseHost/model endpoint with a fresh OK smoke.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
+    ],
+    "residual_risk": "This proves deterministic latest-slice next-action boundary linkage only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+  },
+  "n349_completion_blocker_projection_parity_guard_slice": {
+    "id": "N349-completion-blocker-projection-parity-guard",
+    "status": "proved",
+    "updated_at": "2026-06-29T10:30:49+08:00",
+    "summary": "N349 adds a CI guard so Agent Workspace completion-blocker projection fields stay aligned with goal-state provider authorization boundaries.",
+    "rollback_checkpoint_id": "n349-completion-blocker-projection-parity-20260629_102809",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n349-completion-blocker-projection-parity-20260629_102809",
+    "secondary_longrun_checkpoint_id": null,
+    "secondary_longrun_checkpoint_path": null,
+    "mature_references_checked": [
+      {
+        "topic": "N349 completion blocker projection parity guard",
+        "source": "pytest assertion documentation, W3C PROV overview, and Google SRE monitoring distributed systems chapter",
+        "url": "https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+        "status": "All three references returned HEAD 200; used assertions, PROV consistency, and SRE gate visibility for blocker projection parity.",
+        "checked_at": "2026-06-29T10:30:49+08:00",
+        "use_in_slice": "Used to add a deterministic CI guard proving Agent Workspace completion-blocker projection keeps provider authorization boundary fields aligned with goal-state."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ci_visibility_contract.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read repo-onboarding SKILL.md, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N349.",
+      "git status --short --branch -> main...origin/main [ahead 169] with docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json, literature_assistant/core/routers/agent_workspace_router.py, tests/test_agent_workspace_router.py, and tests/test_ci_visibility_contract.py dirty before N349 edits; unrelated work preserved.",
+      "Created rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n349-completion-blocker-projection-parity-20260629_102809 containing tests/test_ci_visibility_contract.py and this goal-state before N349 edits.",
+      "Official/mature references checked before implementation: pytest assertion documentation HEAD 200, W3C PROV overview HEAD 200, and Google SRE monitoring distributed systems chapter HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 1 passed before N349 goal-state update; proves the new completion-blocker projection parity guard accepts current N348 evidence.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N349 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N349 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed after N349 edits.",
+      "git diff --check -> passed after N349 edits with the pre-existing goal-state CRLF/LF warning only.",
+      "N349 only hardens deterministic Agent Workspace completion-blocker projection parity; it does not execute OCR, remote OCR upload, live provider/model loading, provider preflight POST, fresh OK smoke, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup."
+    ],
+    "completion_claim": "N349 proves deterministic Agent Workspace completion-blocker projection parity without running OCR, provider preflight, fresh OK smoke, or live provider/model calls.",
+    "next_actions": [
+      "Continue deterministic local recovery/proof hardening only for concrete read-only drift gaps; no live provider/model, provider preflight, fresh OK smoke, OCR execution, Source Vault writes, or external actions.",
+      "Before the next nontrivial slice, read required docs, run git status, create a rollback checkpoint, and search official or mature references before editing.",
+      "Keep live provider/model actual-loading blocked until provider preflight is explicitly authorized and proved for the same provider/baseHost/model endpoint with a fresh OK smoke.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
+    ],
+    "residual_risk": "This proves deterministic Agent Workspace completion-blocker projection parity only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+  },
+  "n350_completion_rule_projection_parity_guard_slice": {
+    "id": "N350-completion-rule-projection-parity-guard",
+    "status": "proved",
+    "updated_at": "2026-06-29T10:39:12+08:00",
+    "summary": "N350 adds a CI guard so Agent Workspace lifecycle completion rule and why-not-complete projection stay aligned with goal-state.",
+    "rollback_checkpoint_id": "n350-completion-rule-projection-parity-20260629_103816",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n350-completion-rule-projection-parity-20260629_103816",
+    "secondary_longrun_checkpoint_id": null,
+    "secondary_longrun_checkpoint_path": null,
+    "mature_references_checked": [
+      {
+        "topic": "N350 completion rule projection parity guard",
+        "source": "pytest assertion documentation, W3C PROV overview, and Google SRE monitoring distributed systems chapter",
+        "url": "https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+        "status": "All three references returned HEAD 200; used assertions, PROV consistency, and SRE gate visibility for completion-rule projection parity.",
+        "checked_at": "2026-06-29T10:39:12+08:00",
+        "use_in_slice": "Used to add a deterministic CI guard proving Agent Workspace lifecycle projection keeps machine-readable completion rule and why-not-complete aligned with goal-state."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ci_visibility_contract.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read repo-onboarding SKILL.md, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N350.",
+      "git status --short --branch -> main...origin/main [ahead 169] with docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json, literature_assistant/core/routers/agent_workspace_router.py, tests/test_agent_workspace_router.py, and tests/test_ci_visibility_contract.py dirty before N350 edits; unrelated work preserved.",
+      "Created rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n350-completion-rule-projection-parity-20260629_103816 containing tests/test_ci_visibility_contract.py and this goal-state before N350 edits.",
+      "Official/mature references checked before implementation: pytest assertion documentation HEAD 200, W3C PROV overview HEAD 200, and Google SRE monitoring distributed systems chapter HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 1 passed before N350 goal-state update; proves the new completion-rule projection parity guard accepts current N349 evidence.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N350 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N350 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed after N350 edits.",
+      "git diff --check -> passed after N350 edits with the pre-existing goal-state CRLF/LF warning only.",
+      "N350 only hardens deterministic Agent Workspace lifecycle completion-rule projection parity; it does not execute OCR, remote OCR upload, live provider/model loading, provider preflight POST, fresh OK smoke, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup."
+    ],
+    "completion_claim": "N350 proves deterministic Agent Workspace lifecycle completion-rule projection parity without running OCR, provider preflight, fresh OK smoke, or live provider/model calls.",
+    "next_actions": [
+      "Continue deterministic local recovery/proof hardening only for concrete read-only drift gaps; no live provider/model, provider preflight, fresh OK smoke, OCR execution, Source Vault writes, or external actions.",
+      "Before the next nontrivial slice, read required docs, run git status, create a rollback checkpoint, and search official or mature references before editing.",
+      "Keep live provider/model actual-loading blocked until provider preflight is explicitly authorized and proved for the same provider/baseHost/model endpoint with a fresh OK smoke.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
+    ],
+    "residual_risk": "This proves deterministic Agent Workspace lifecycle completion-rule projection parity only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+  },
+  "n351_completion_claim_rollup_parity_guard_slice": {
+    "id": "N351-completion-claim-rollup-parity-guard",
+    "status": "proved",
+    "updated_at": "2026-06-29T10:46:21+08:00",
+    "summary": "N351 adds a CI guard so completion_claim timestamp, counts, latest requirement, and goal-complete boolean stay aligned with lifecycle rollup.",
+    "rollback_checkpoint_id": "n351-completion-claim-rollup-parity-20260629_104545",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n351-completion-claim-rollup-parity-20260629_104545",
+    "secondary_longrun_checkpoint_id": null,
+    "secondary_longrun_checkpoint_path": null,
+    "mature_references_checked": [
+      {
+        "topic": "N351 completion claim rollup parity guard",
+        "source": "pytest assertion documentation, W3C PROV overview, and Google SRE monitoring distributed systems chapter",
+        "url": "https://docs.pytest.org/en/stable/how-to/assert.html ; https://www.w3.org/TR/prov-overview/ ; https://sre.google/sre-book/monitoring-distributed-systems/",
+        "status": "All three references returned HEAD 200; used assertions, PROV consistency, and SRE gate visibility for completion-claim rollup parity.",
+        "checked_at": "2026-06-29T10:46:21+08:00",
+        "use_in_slice": "Used to add a deterministic CI guard proving completion_claim updated_at, counts, latest requirement, and is_goal_complete stay aligned with lifecycle rollup."
+      }
+    ],
+    "changed_files": [
+      "tests/test_ci_visibility_contract.py",
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
+    ],
+    "verification": [
+      "Read repo-onboarding SKILL.md, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N351.",
+      "git status --short --branch -> main...origin/main [ahead 169] with docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json, literature_assistant/core/routers/agent_workspace_router.py, tests/test_agent_workspace_router.py, and tests/test_ci_visibility_contract.py dirty before N351 edits; unrelated work preserved.",
+      "Created rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n351-completion-claim-rollup-parity-20260629_104545 containing tests/test_ci_visibility_contract.py and this goal-state before N351 edits.",
+      "Official/mature references checked before implementation: pytest assertion documentation HEAD 200, W3C PROV overview HEAD 200, and Google SRE monitoring distributed systems chapter HEAD 200.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements -q -> 1 passed before N351 goal-state update; proves the new completion-claim rollup parity guard accepts current N350 evidence.",
+      ".\\.venv-1\\Scripts\\python.exe -m json.tool docs\\plans\\longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json | Out-Null -> passed after N351 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_state_is_git_visible tests\\test_ci_visibility_contract.py::test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements tests\\test_ci_visibility_contract.py::test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim -q -> 3 passed after N351 goal-state update.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q tests\\test_ci_visibility_contract.py -> passed after N351 edits.",
+      "git diff --check -> passed after N351 edits with the pre-existing goal-state CRLF/LF warning only.",
+      "N351 only hardens deterministic completion_claim rollup parity; it does not execute OCR, remote OCR upload, live provider/model loading, provider preflight POST, fresh OK smoke, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup."
+    ],
+    "completion_claim": "N351 proves deterministic completion_claim rollup parity without running OCR, provider preflight, fresh OK smoke, or live provider/model calls.",
+    "next_actions": [
+      "Continue deterministic local recovery/proof hardening only for concrete read-only drift gaps; no live provider/model, provider preflight, fresh OK smoke, OCR execution, Source Vault writes, or external actions.",
+      "Before the next nontrivial slice, read required docs, run git status, create a rollback checkpoint, and search official or mature references before editing.",
+      "Keep live provider/model actual-loading blocked until provider preflight is explicitly authorized and proved for the same provider/baseHost/model endpoint with a fresh OK smoke.",
+      "Run requirement-to-evidence consistency checks and update this goal-state after each slice before any local commit."
+    ],
+    "residual_risk": "This proves deterministic completion_claim rollup parity only. It does not clear the live provider/model actual-loading blocker, execute provider preflight or fresh OK smoke, execute OCR, upload content, or prove OCR/provider output."
+  },
+  "n353_codex_own_link_live_gate_attempt_slice": {
+    "id": "N353-codex-own-link-live-gate-attempt",
+    "status": "blocked",
+    "updated_at": "2026-06-29T15:17:44+08:00",
+    "summary": "N353 attempts the live gate using only the current Codex conversation/CLI link; codex exec succeeds, but Scholar AI backend provider preflight remains auth_required for the same host/model.",
+    "rollback_checkpoint_id": "n353-codex-own-link-record-20260629_150112",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n353-codex-own-link-record-20260629_150112",
+    "secondary_longrun_checkpoint_id": null,
+    "secondary_longrun_checkpoint_path": null,
+    "mature_references_checked": [
+      {
+        "topic": "N353 Codex own-link live gate attempt boundary",
+        "source": "OpenAI Codex manual auth/custom-provider docs; OpenAI Chat tool-calling API docs; Scholar AI env-test-discipline",
+        "url": "C:/Users/xiao/AppData/Local/Temp/openai-docs-cache/codex-manual.md#authentication-and-sessions ; C:/Users/xiao/AppData/Local/Temp/openai-docs-cache/codex-manual.md#custom-model-providers ; https://platform.openai.com/docs/api-reference/chat/create ; .github/skills/env-test-discipline/SKILL.md",
+        "status": "Codex manual cache current; env discipline followed; current Codex link succeeded only for codex exec, while backend preflight stayed auth_required.",
+        "checked_at": "2026-06-29T15:17:44+08:00",
+        "use_in_slice": "Used to bound the user's current-link authorization: a successful codex exec smoke proves Codex CLI/session reachability, but it does not supply a reusable Scholar AI backend provider credential. The same provider/baseHost/model preflight remains auth_required."
+      }
+    ],
+    "changed_files": [
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
+      "workspace_artifacts/generated/output/n353_codex_own_link_exec_last_message.txt",
+      "workspace_artifacts/generated/output/n353_codex_own_link_gate_summary.json",
+      "workspace_artifacts/runtime_state/provider-capabilities.json"
+    ],
+    "verification": [
+      "Read repo-onboarding SKILL.md, longrun-autopilot SKILL.md, AI_WORKSPACE_GUIDE.md, AGENTS.md, docs/plans/autonomous-execution-framework.md, docs/plans/autonomous-execution-planning-playbook.md, and .github/skills/env-test-discipline/SKILL.md before N353 record update.",
+      "git status --short --branch -> main...origin/main [ahead 169] with docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json, literature_assistant/core/routers/agent_workspace_router.py, tests/live_api_chat_full_writing_chain_smoke.py, tests/live_api_chat_knowledge_context_receipt_smoke.py, tests/test_agent_workspace_router.py, tests/test_ci_visibility_contract.py, and tests/test_live_api_chat_knowledge_context_receipt_smoke_harness.py dirty before N353 record update; unrelated work preserved.",
+      "Existing rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n353-codex-own-link-record-20260629_150112 contains goal-state, n353 Codex own-link evidence artifacts, and provider-capabilities before N353 record update; restore only with explicit user intent.",
+      "Official/current references checked before record update: Codex manual helper returned current cache at C:\\Users\\xiao\\AppData\\Local\\Temp\\openai-docs-cache\\codex-manual.md; custom provider/authentication/non-interactive sections inspected; OpenAI API tool-calling reference was considered for the required forced tool_choice proof boundary.",
+      "User scope honored: only the current Codex conversation/CLI link was tested; .env provider candidates such as DashScope, AnyRouter, HHL, OCR providers, or other local credential pools were not used as alternate provider paths.",
+      "codex exec --ephemeral --sandbox read-only own-link smoke -> workspace_artifacts/generated/output/n353_codex_own_link_exec_last_message.txt contained {\"codex_own_link_smoke\":\"ok\",\"nonce\":\"ec213913fb914f0dbc12aa511f7a6675\"}.",
+      "Scholar AI backend provider preflight for codex-current/free.lyclaude.site/gpt-5.5 -> workspace_artifacts/runtime_state/provider-capabilities.json latest matching record status=auth_required, ordinary_chat_ok=false, forced_tool_choice_ok=false, failure_class=models, masked_error=HTTP 401: Invalid token.",
+      "workspace_artifacts/generated/output/n353_codex_own_link_gate_summary.json -> actualLoadingGateStatus=blocked, providerPreflight.status=blocked, providerPreflight.latest_status=auth_required, provider_ready_for_authorized_live_smoke=false.",
+      "codex --version -> codex-cli 0.142.3.",
+      "N353 does not execute OCR, remote OCR upload, Source Vault writes, WikiRegistry replay, Zotero mutation, github/ edits, push, tag, release, deploy, upload, or squad/git cleanup; it records the user-authorized current Codex link attempt and keeps the live actual-loading gate blocked."
+    ],
+    "completion_claim": "N353 does not clear the full goal: current Codex CLI/session smoke passed, but Scholar AI backend provider_preflight.status is still blocked/auth_required and no fresh OK actual-loading smoke exists.",
+    "next_actions": [
+      "No live provider/model completion claim: current Codex link leaves Scholar AI provider_preflight auth_required; do not try other .env providers.",
+      "To finish, user must mark live gate out of scope or authorize a supported backend credential bridge, then rerun provider preflight and fresh OK smoke.",
+      "Continue deterministic local recovery/proof hardening only; no OCR execution, Source Vault writes, external actions, or alternate preflight.",
+      "Before any nontrivial slice: read required docs, run git status, create rollback checkpoint, and check official/mature references."
+    ],
+    "residual_risk": "The current Codex CLI/session link is healthy enough for codex exec, but Scholar AI's backend live provider/model actual-loading gate still lacks provider_preflight.status=proved and a fresh OK smoke for the same provider/baseHost/model endpoint. The full goal cannot be marked complete from this evidence."
+  },
+  "n354_littlesheep_live_actual_loading_gate_proof_slice": {
+    "id": "N354-littlesheep-live-actual-loading-gate-proof",
+    "status": "proved",
+    "updated_at": "2026-06-29T20:26:30+08:00",
+    "summary": "N354 clears the live actual-loading gate through a user-authorized littlesheep OpenAI-compatible provider by running a real Knowledge Runtime context-receipt workflow without hi/ok liveness probes.",
+    "rollback_checkpoint_id": "n354-live-provider-workflow-20260629_201503",
+    "rollback_checkpoint_path": "C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n354-live-provider-workflow-20260629_201503",
+    "secondary_longrun_checkpoint_id": null,
+    "secondary_longrun_checkpoint_path": null,
+    "mature_references_checked": [
+      {
+        "topic": "N354 direct live provider tool workflow proof",
+        "source": "OpenAI/Anthropic tool-use workflow guidance and Scholar AI env-test-discipline",
+        "url": "https://platform.openai.com/docs/guides/function-calling ; https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview ; .github/skills/env-test-discipline/SKILL.md",
+        "status": "Used the mature tool-use pattern of provider-returned tool calls plus local tool-result follow-up; obeyed repository rules to avoid raw secret logging/persistence and to use temporary process env only.",
+        "checked_at": "2026-06-29T20:26:30+08:00",
+        "use_in_slice": "Used to implement a direct Knowledge Runtime workflow smoke that proves provider tool calling and actual context receipt loading without sending hi/ok liveness probes."
+      }
+    ],
+    "changed_files": [
+      "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json",
+      ".gitignore",
+      "tests/live_provider_direct_workflow_smoke.py",
+      "workspace_artifacts/generated/output/live_api_chat_knowledge_context_receipt_smoke.summary.json",
+      "workspace_artifacts/runtime_state/provider-capabilities.json"
+    ],
+    "verification": [
+      "Read AI_WORKSPACE_GUIDE.md, .github/skills/env-test-discipline/SKILL.md, docs/superpowers/env-test-discipline.md, docs/plans/autonomous-execution-framework.md, and docs/plans/autonomous-execution-planning-playbook.md before N354 live-provider work.",
+      "git status --short --branch -> main...origin/main [ahead 169] with existing dirty N353/N351 files before N354; unrelated work preserved.",
+      "Created rollback snapshot C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\.rollback_snapshots\\n354-live-provider-workflow-20260629_201503 containing goal-state, provider-capabilities, and live smoke summaries before N354 live-provider work.",
+      "Official/mature references checked before implementation: OpenAI/Anthropic-style tool-use flow (send tools, receive tool call, execute locally, send tool result, receive final answer) and repository env-test discipline; N354 implements this pattern for a real Knowledge Runtime task, not a hi/ok liveness prompt.",
+      ".\\.venv-1\\Scripts\\python.exe -m compileall -q workspace_tests\\evaluation_scripts\\live_provider_direct_workflow_smoke.py -> passed after adding the direct workflow smoke script.",
+      ".\\.venv-1\\Scripts\\python.exe workspace_tests\\evaluation_scripts\\live_provider_direct_workflow_smoke.py with littlesheep/deepseek-v4-pro -> failed to clear gate: forced real tool-choice HTTP 524 and natural task returned no tool calls.",
+      ".\\.venv-1\\Scripts\\python.exe workspace_tests\\evaluation_scripts\\live_provider_direct_workflow_smoke.py with littlesheep/deepseek-v4-flash -> passed: verdict=ok, required toolNames=[literature.agent_resource_read, literature.knowledge_context_receipt], final answer included assembledContextHash=f9967863cd3b6055047e3bcaca15a4b885fe7c065efa9e2f3d73ac4e8406a37e.",
+      ".\\.venv-1\\Scripts\\python.exe -c \"from fastapi.testclient import TestClient; from literature_assistant.core import python_adapter_server as s; ... GET /api/knowledge/runtime-conformance with local capability header ...\" -> actual_loading_gate.status=proved, verdict=ok, provider_preflight.status=proved, provider_latest_status=tool_call_ok, missing=[].",
+      "git check-ignore -v -- tests\\live_provider_direct_workflow_smoke.py; git ls-files --error-unmatch tests\\live_provider_direct_workflow_smoke.py -> after .gitignore allowlist, harness is no longer ignored and can be staged for source visibility."
+    ],
+    "completion_claim": "N354-littlesheep-live-actual-loading-gate-proof clears the full live actual-loading blocker: the product conformance endpoint reports actual_loading_gate.status=proved with no missing evidence for littlesheep/ai.littlesheep.cc/deepseek-v4-flash.",
+    "next_actions": [
+      "Run requirement-to-evidence audit and focused regression tests before marking the persistent goal complete.",
+      "Keep raw provider credentials out of files, logs, git, and final summaries; preserve only masked provider/model evidence.",
+      "Do not run additional live provider/model calls unless a new requirement or regression needs them.",
+      "If committing later, stage only intentional source/test/goal-state files and keep runtime artifacts ignored unless explicitly requested."
+    ],
+    "residual_risk": "The live actual-loading gate is proved for the user-authorized littlesheep/ai.littlesheep.cc/deepseek-v4-flash endpoint only. Other supplied models/endpoints were not exhaustively benchmarked after the gate cleared; the direct proof script is local evaluation support and should not be treated as a product runtime module without a separate hardening slice."
   }
 }

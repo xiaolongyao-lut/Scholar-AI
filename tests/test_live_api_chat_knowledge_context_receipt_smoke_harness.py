@@ -53,6 +53,23 @@ def test_live_query_requires_exact_context_hash_backflow() -> None:
     assert "不要改写、截断或解释这个 hash" in query
 
 
+def test_harness_promotes_product_import_roots_ahead_of_tests(monkeypatch: Any) -> None:
+    harness = _load_harness()
+    tests_root = str(_ROOT / "tests")
+    sentinel = "sentinel-path"
+
+    monkeypatch.setattr(sys, "path", [tests_root, str(harness.CORE), str(harness.ROOT), sentinel])
+
+    for import_path in (harness.CORE, harness.MCP_SRC, harness.ROOT):
+        harness._promote_import_path(import_path)  # type: ignore[attr-defined]
+
+    assert sys.path[:3] == [str(harness.ROOT), str(harness.MCP_SRC), str(harness.CORE)]
+    assert tests_root not in sys.path[:3]
+    assert sys.path.count(str(harness.CORE)) == 1
+    assert sys.path.count(str(harness.ROOT)) == 1
+    assert sentinel in sys.path
+
+
 def test_main_requires_explicit_live_provider_authorization(monkeypatch: Any) -> None:
     harness = _load_harness()
     summaries: list[dict[str, Any]] = []

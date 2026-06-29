@@ -481,6 +481,100 @@ def test_agent_workspace_ocr_status_probe_returns_http_success_and_matches_statu
     ]
 
 
+def test_agent_workspace_ocr_health_probe_returns_http_success_without_ocr_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OCR health recovery must prove readiness visibility without OCR execution."""
+
+    monkeypatch.delenv("LITASSIST_OCR_API_KEY", raising=False)
+    monkeypatch.delenv("LITASSIST_OCR_BASE_URL", raising=False)
+    monkeypatch.delenv("LITASSIST_OCR_ALLOW_REMOTE_UPLOAD", raising=False)
+
+    client = TestClient(server.app)
+    headers = {"X-LitAssist-Capability": server.get_local_api_capability_token()}
+    response = client.get("/api/agent-workspace/status", headers=headers)
+    assert response.status_code == 200
+    workspace_state = response.json()["workspace_state"]
+    probes = {
+        probe["label"]: probe
+        for probe in workspace_state["recovery_probes"]
+        if isinstance(probe.get("label"), str)
+    }
+    assert "OCR Engine Health" in probes
+    health_probe = probes["OCR Engine Health"]
+
+    assert health_probe["method"] == "POST"
+    assert health_probe["route"] == "/api/pdf-backend/ocr-health"
+    assert health_probe["read_only"] is True
+    assert health_probe["mcp_tool"] == "literature.ocr_health"
+    _assert_agent_workspace_probe_resolves_to_full_app_read_route(
+        health_probe,
+        method="POST",
+    )
+
+    health = client.post(
+        _agent_workspace_probe_url(health_probe),
+        json={"engine": "remote_api", "engine_config": {}},
+        headers=headers,
+    )
+    assert health.status_code == 200, health.text
+    payload = health.json()
+    assert payload["engine"] == "remote_api"
+    assert payload["ok"] is False
+    assert payload["readiness_status"] == "configuration_required"
+    assert payload["readiness_blockers"] == [
+        "remote OCR requires explicit api_key and base_url configuration"
+    ]
+    assert "next_safe_local_actions" in payload
+    assert "input_sha256" not in payload
+    assert "text_preview" not in payload
+
+
+def test_agent_workspace_ocr_engines_probe_returns_http_success_without_ocr_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OCR engine inventory recovery must expose readiness metadata only."""
+
+    monkeypatch.delenv("LITASSIST_OCR_API_KEY", raising=False)
+    monkeypatch.delenv("LITASSIST_OCR_BASE_URL", raising=False)
+    monkeypatch.delenv("LITASSIST_OCR_ALLOW_REMOTE_UPLOAD", raising=False)
+
+    client = TestClient(server.app)
+    headers = {"X-LitAssist-Capability": server.get_local_api_capability_token()}
+    response = client.get("/api/agent-workspace/status", headers=headers)
+    assert response.status_code == 200
+    workspace_state = response.json()["workspace_state"]
+    probes = {
+        probe["label"]: probe
+        for probe in workspace_state["recovery_probes"]
+        if isinstance(probe.get("label"), str)
+    }
+    assert "OCR Engine Inventory" in probes
+    engines_probe = probes["OCR Engine Inventory"]
+
+    assert engines_probe["method"] == "GET"
+    assert engines_probe["route"] == "/api/pdf-backend/ocr-engines"
+    assert engines_probe["read_only"] is True
+    assert engines_probe["mcp_tool"] == "literature.ocr_engines"
+    _assert_agent_workspace_probe_resolves_to_full_app_get_route(engines_probe)
+
+    engines = client.get(_agent_workspace_probe_url(engines_probe), headers=headers)
+    assert engines.status_code == 200, engines.text
+    payload = engines.json()
+    if not isinstance(payload, list):
+        raise AssertionError("OCR engine inventory probe must return a JSON list.")
+    engines_by_name = {item["name"]: item for item in payload if isinstance(item, dict)}
+    assert {"paddleocr_gpu", "rapidocr", "windows", "remote_api"} <= set(engines_by_name)
+    remote_api = engines_by_name["remote_api"]
+    assert remote_api["engine_type"] == "remote"
+    assert remote_api["requires_network"] is True
+    assert remote_api["readiness_status"] == "configuration_required"
+    assert "readiness_blockers" in remote_api
+    assert "next_safe_local_actions" in remote_api
+    assert all("input_sha256" not in item for item in payload if isinstance(item, dict))
+    assert all("text_preview" not in item for item in payload if isinstance(item, dict))
+
+
 def test_agent_workspace_krt_actual_loading_gate_probe_returns_http_success_and_matches_status_projection() -> None:
     """KRT actual-loading recovery must be inspectable without live provider execution."""
 
@@ -1132,6 +1226,8 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert [probe["label"] for probe in probes] == [
         "Desktop Smoke Evidence",
         "OCR Runtime Status",
+        "OCR Engine Inventory",
+        "OCR Engine Health",
         "Wiki Doctor",
         "Knowledge Runtime Conformance",
         "Knowledge Packages",
@@ -1167,6 +1263,18 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert ocr_probe["mcp_tool"] == "literature.ocr_status"
     assert "OCR policy" in ocr_probe["purpose"]
     assert "readiness blockers" in ocr_probe["purpose"]
+    ocr_engines_probe = next(probe for probe in probes if probe["label"] == "OCR Engine Inventory")
+    assert ocr_engines_probe["route"] == "/api/pdf-backend/ocr-engines"
+    assert ocr_engines_probe["method"] == "GET"
+    assert ocr_engines_probe["mcp_tool"] == "literature.ocr_engines"
+    assert "registered OCR engines" in ocr_engines_probe["purpose"]
+    assert "readiness blockers" in ocr_engines_probe["purpose"]
+    ocr_health_probe = next(probe for probe in probes if probe["label"] == "OCR Engine Health")
+    assert ocr_health_probe["route"] == "/api/pdf-backend/ocr-health"
+    assert ocr_health_probe["method"] == "POST"
+    assert ocr_health_probe["mcp_tool"] == "literature.ocr_health"
+    assert "OCR engine readiness" in ocr_health_probe["purpose"]
+    assert "explicit OCR execution probe" in ocr_health_probe["purpose"]
     wiki_doctor_probe = next(probe for probe in probes if probe["label"] == "Wiki Doctor")
     assert wiki_doctor_probe["route"] == "/api/wiki/doctor"
     assert wiki_doctor_probe["mcp_tool"] == "literature.wiki_doctor"
@@ -1280,6 +1388,9 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
     assert any("Goal Lifecycle Completion Gate" in item for item in payload["workspace_state"]["next_safe_local_actions"])
     assert any("Goal Requirement Drilldowns" in item for item in payload["workspace_state"]["next_safe_local_actions"])
     assert any("rollback checkpoint" in item for item in payload["workspace_state"]["boundaries"])
+    assert any("OCR execution probes" in item for item in payload["workspace_state"]["boundaries"])
+    assert any("live provider/model calls" in item for item in payload["workspace_state"]["boundaries"])
+    assert any("provider preflight" in item for item in payload["workspace_state"]["boundaries"])
     assert payload["artifacts"][0]["path"] == "reports/summary.md"
     assert ".audit" not in payload["artifacts"][0]["path"]
     serialized = json.dumps(payload, ensure_ascii=False)

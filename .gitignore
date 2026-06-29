@@ -311,6 +311,7 @@ htmlcov/
 !/tests/test_live_api_chat_full_writing_chain_smoke_harness.py
 !/tests/live_api_chat_knowledge_context_receipt_smoke.py
 !/tests/test_live_api_chat_knowledge_context_receipt_smoke_harness.py
+!/tests/live_provider_direct_workflow_smoke.py
 !/tests/test_mcp_phase2_tool_loop.py
 !/tests/test_runtime_router_contract.py
 !/tests/test_runtime_lifecycle_app_contract.py

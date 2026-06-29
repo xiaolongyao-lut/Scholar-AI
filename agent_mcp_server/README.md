@@ -1,16 +1,16 @@
-# Literature Assistant MCP Server
+# Scholar AI MCP Toolbox
 
 Local MCP toolbox for Codex and Claude.
 
 ## Scope
 
-This project is source-checkout-first. It assumes the Literature Assistant repo
-and `.venv-1` exist locally. Claude and Codex should connect to this server
-through direct MCP config that points at the checked-out repository.
+This project is source-checkout-first. It assumes the Scholar AI repo and
+`.venv-1` exist locally. Claude and Codex should connect to this server through
+direct MCP config that points at the checked-out repository.
 
-Claude/Codex should use this server to call Literature Assistant tools and to
-inspect safe source code. If a capability is missing, add an MCP tool or backend
-HTTP endpoint instead of creating an installer path.
+Claude/Codex should use this server to call Scholar AI tools and inspect safe
+source code. If a capability is missing, add an MCP tool or backend HTTP
+endpoint instead of creating an installer path.
 
 ## Tools
 
@@ -51,6 +51,26 @@ Groups (prefix → implementation):
 
 Experimental tools (OCR generation, visual review, translate/project packs,
 Python sandbox) are gated by `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1`.
+
+## Proven Workflow Chains
+
+These are the intended agent-facing chains. Use tool calls and returned refs as
+the durable state, not pasted prose from model output.
+
+| Chain | Tool order | Result |
+|---|---|---|
+| Evidence retrieval | `literature.list_projects` -> `literature.search_refs` -> `literature.evidence_pack_build` -> `literature.evidence_integrity_gate` | A source-grounded evidence pack with integrity status |
+| Actual context loading | `literature.agent_resource_read` -> `literature.knowledge_context_receipt` -> provider tool-call transcript | Proof that a model received bounded Scholar AI context and returned the receipt hash |
+| Paper reading | `literature.read_material` -> `literature.get_material_chunks` -> `literature.figures_candidates` -> `literature.agent_handoff_card` | A handoff-ready single-paper reading packet |
+| Academic writing | `literature.evidence_pack_build` -> `literature.outline_generate` -> `literature.academic_writing_lint` -> `literature.export_docx` | A docx-ready writing path tied to evidence |
+| OCR readiness | `literature.ocr_status` -> `literature.ocr_engines` -> `literature.ocr_health` -> `literature.ocr_material` | Engine selection, health blockers, then explicit OCR processing |
+| Source repair | `source.search` -> `source.read_symbols` -> `source.read_file` -> `literature.agent_workspace_status` | Source understanding plus audit-aware repair context |
+| Replay and handoff | `literature.workflow_passport` -> `literature.workflow_refresh_receipt` -> `literature.workflow_replay_lineage` -> `literature.agent_handoff_card` | Reproducible workflow lineage and a compact handoff card |
+
+The live provider proof path uses real Scholar AI tool requests. It must not use
+`Hi`, `ok`, or pure liveness prompts as evidence of model-context loading.
+Provider credentials stay in process environment or the desktop credential
+store and are never passed through this MCP server as raw values.
 
 ## Optional Full-Text Acquisition
 
@@ -103,8 +123,8 @@ $env:LITASSIST_MCP_BACKEND_STARTUP_TIMEOUT_SEC = "45"
 
 `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1` enables OCR/page-image artifact
 generation, visual review packs, translation packs, project packs, and the
-bounded Python sandbox. Translation model calls still go through the Literature
-Assistant backend; raw provider keys are never passed through MCP.
+bounded Python sandbox. Translation model calls still go through the Scholar AI
+backend; raw provider keys are never passed through MCP.
 
 By default, the wrapper only attaches to an already healthy
 `workspace_artifacts/runtime_state/desktop-runtime.json`. It does not open the

@@ -11,9 +11,25 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CORE = ROOT / "literature_assistant" / "core"
 MCP_SRC = ROOT / "agent_mcp_server" / "src"
-for import_path in (str(CORE), str(MCP_SRC), str(ROOT)):
-    if import_path not in sys.path:
-        sys.path.insert(0, import_path)
+
+
+def _promote_import_path(path: Path) -> None:
+    """Keep product import roots ahead of the script directory.
+
+    Args:
+        path: Absolute repository path that must win over `tests/` packages.
+    """
+
+    if not isinstance(path, Path):
+        raise TypeError("path must be a Path")
+    import_path = str(path)
+    while import_path in sys.path:
+        sys.path.remove(import_path)
+    sys.path.insert(0, import_path)
+
+
+for import_path in (CORE, MCP_SRC, ROOT):
+    _promote_import_path(import_path)
 
 os.environ.setdefault("LITASSIST_DISABLE_FILE_LOG", "1")
 os.environ.setdefault("LITASSIST_DISABLE_ROUTE_DUMP", "1")

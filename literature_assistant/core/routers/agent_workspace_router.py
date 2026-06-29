@@ -1811,6 +1811,7 @@ def _build_workspace_state() -> AgentWorkspaceState:
     knowledge_actual_loading_gate = _load_knowledge_actual_loading_gate_state()
     boundaries = [
         "Do not execute approvals, import-to-wiki writes, external uploads, push, tag, release, publish, or deploy from this status surface.",
+        "Do not run OCR execution probes, live provider/model calls, or provider preflight without explicit authorization.",
         "Do not mutate Zotero databases or github/ reference repositories from Agent Workspace state.",
         "Create a rollback checkpoint and re-check official or mature references before nontrivial edits.",
     ]
@@ -1843,6 +1844,19 @@ def _build_workspace_state() -> AgentWorkspaceState:
                 "/api/pdf-backend/ocr-status",
                 "Recover OCR policy, selected engine, readiness blockers, and redacted runtime config before claiming local processing capability.",
                 mcp_tool="literature.ocr_status",
+            ),
+            _workspace_recovery_probe(
+                "OCR Engine Inventory",
+                "/api/pdf-backend/ocr-engines",
+                "Recover registered OCR engines, availability, and readiness blockers before choosing any OCR execution path.",
+                mcp_tool="literature.ocr_engines",
+            ),
+            _workspace_recovery_probe(
+                "OCR Engine Health",
+                "/api/pdf-backend/ocr-health",
+                "Recover bounded OCR engine readiness and safe configuration actions before any explicit OCR execution probe.",
+                method="POST",
+                mcp_tool="literature.ocr_health",
             ),
             _workspace_recovery_probe(
                 "Wiki Doctor",

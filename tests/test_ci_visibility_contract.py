@@ -53,6 +53,7 @@ PYTEST_FOCUSED_CI_EXEMPTIONS: dict[str, str] = {
     "tests/conftest.py": "pytest support module, not a standalone CI target",
     "tests/live_api_chat_full_writing_chain_smoke.py": "live API smoke remains opt-in outside deterministic CI",
     "tests/live_api_chat_knowledge_context_receipt_smoke.py": "live Knowledge Runtime context-receipt smoke remains opt-in outside deterministic CI",
+    "tests/live_provider_direct_workflow_smoke.py": "live direct provider workflow smoke remains opt-in outside deterministic CI",
     "tests/test_api_probe_semantics.py": "legacy API probe contract outside the current KRT/N33 focused gate",
     "tests/test_build_windows_exe_script.py": "Windows packaging helper is outside Linux CI focused gate",
     "tests/test_chat_hybrid_retrieval.py": "broader retrieval regression outside the current KRT/N33 focused gate",
@@ -407,20 +408,32 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
         assert isinstance(latest_slice_record, dict)
         assert latest_slice_record.get("id") == top_latest_slice
         assert latest_slice_record.get("updated_at") == top_updated_at
+        rollback = payload.get("rollback")
+        assert isinstance(rollback, dict)
+        latest_checkpoint_id = latest_slice_record.get("rollback_checkpoint_id")
+        latest_checkpoint_path = latest_slice_record.get("rollback_checkpoint_path")
+        assert isinstance(latest_checkpoint_id, str) and latest_checkpoint_id.strip()
+        assert isinstance(latest_checkpoint_path, str) and latest_checkpoint_path.strip()
+        assert rollback.get("latest_checkpoint_id") == latest_checkpoint_id
+        assert rollback.get("latest_goal_state_checkpoint_id") == latest_checkpoint_id
+        assert rollback.get("latest_checkpoint_path") == latest_checkpoint_path
+        assert rollback.get("latest_goal_state_checkpoint_path") == latest_checkpoint_path
         top_mature_references = payload.get("mature_references_checked")
         latest_mature_references = latest_slice_record.get("mature_references_checked")
         assert isinstance(top_mature_references, list)
         assert isinstance(latest_mature_references, list) and latest_mature_references
+        top_reference_records = [
+            reference for reference in top_mature_references if isinstance(reference, dict)
+        ][: len(latest_mature_references)]
+        latest_reference_records = [
+            reference for reference in latest_mature_references if isinstance(reference, dict)
+        ]
+        assert top_reference_records == latest_reference_records
         top_reference_topics = [
             reference.get("topic")
-            for reference in top_mature_references
-            if isinstance(reference, dict)
-        ][: len(latest_mature_references)]
-        latest_reference_topics = [
-            reference.get("topic")
-            for reference in latest_mature_references
-            if isinstance(reference, dict)
+            for reference in top_reference_records
         ]
+        latest_reference_topics = [reference.get("topic") for reference in latest_reference_records]
         assert top_reference_topics == latest_reference_topics
         top_changed_files = payload.get("changed_files_for_this_slice")
         latest_changed_files = latest_slice_record.get("changed_files")
@@ -432,17 +445,50 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
         assert isinstance(top_verification_commands, list) and top_verification_commands
         assert isinstance(latest_verification_commands, list) and latest_verification_commands
         assert top_verification_commands == latest_verification_commands
+        top_next_actions = payload.get("next_authorized_local_actions")
+        latest_next_actions = latest_slice_record.get("next_actions")
+        assert isinstance(top_next_actions, list) and top_next_actions
+        assert isinstance(latest_next_actions, list) and latest_next_actions
+        top_next_action_records = [
+            action for action in top_next_actions if isinstance(action, str) and action.strip()
+        ]
+        latest_next_action_records = [
+            action for action in latest_next_actions if isinstance(action, str) and action.strip()
+        ][: len(top_next_action_records)]
+        assert top_next_action_records == latest_next_action_records
+        pending_latest_verifications = [
+            command
+            for command in top_verification_commands
+            if isinstance(command, str)
+            and re.search(r"->\s*pending after\s+N\d+", command, flags=re.IGNORECASE)
+        ]
+        assert not pending_latest_verifications, (
+            "Latest slice verification commands must record observed results, not pending placeholders:\n"
+            + _format_paths(set(pending_latest_verifications))
+        )
         completion_claim = payload.get("completion_claim")
         assert isinstance(completion_claim, dict)
         assert completion_claim.get("latest_slice_id") == top_latest_slice
+        assert completion_claim.get("updated_at") == top_updated_at
+        assert completion_claim.get("requirements_total") == rollup.get("requirements_total")
+        assert completion_claim.get("requirements_status_counts") == rollup.get("requirement_status_counts")
+        assert completion_claim.get("latest_requirement_id") == rollup.get("latest_requirement_id")
+        assert completion_claim.get("is_goal_complete") is rollup.get("is_goal_complete")
         completion_this_slice = completion_claim.get("this_slice")
         assert isinstance(completion_this_slice, str) and completion_this_slice.strip()
         assert top_latest_slice in completion_this_slice
         completion_why_not_complete = completion_claim.get("why_not_complete")
         rollup_why_not_complete = rollup.get("why_not_complete")
-        assert isinstance(completion_why_not_complete, str) and completion_why_not_complete.strip()
-        assert rollup_why_not_complete == completion_why_not_complete
-        assert top_latest_slice in rollup_why_not_complete
+        if rollup.get("can_mark_goal_complete") is False:
+            assert isinstance(completion_why_not_complete, str) and completion_why_not_complete.strip()
+            assert rollup_why_not_complete == completion_why_not_complete
+            assert top_latest_slice in rollup_why_not_complete
+        else:
+            assert completion_why_not_complete in {"", None}
+            assert (
+                rollup_why_not_complete in {"", None}
+                or rollup_why_not_complete == []
+            )
         if any("0 tools remain without annotations" in command for command in top_verification_commands):
             next_actions = payload.get("next_authorized_local_actions")
             assert isinstance(next_actions, list) and next_actions
@@ -466,8 +512,32 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
         assert rollup.get("can_mark_goal_complete") is False
         first_blocker = completion_blockers[0]
         assert isinstance(first_blocker, dict)
+        blocker_current_boundary = first_blocker.get("current_boundary")
+        assert isinstance(blocker_current_boundary, str) and blocker_current_boundary.strip()
         blocker_evidence = first_blocker.get("evidence")
         assert isinstance(blocker_evidence, str) and blocker_evidence.strip()
+        if isinstance(top_latest_slice, str) and top_latest_slice.strip():
+            latest_slice_marker = top_latest_slice.split("-", 1)[0]
+            assert latest_slice_marker in blocker_current_boundary
+            assert latest_slice_marker in blocker_evidence
+        blocker_missing_evidence = first_blocker.get("missing_evidence")
+        assert isinstance(blocker_missing_evidence, str) and blocker_missing_evidence.strip()
+        if "provider_preflight.status=proved" in blocker_missing_evidence:
+            stop_boundaries = payload.get("stop_boundary")
+            assert isinstance(stop_boundaries, list) and stop_boundaries
+            stop_boundary_text = "\n".join(
+                boundary for boundary in stop_boundaries if isinstance(boundary, str)
+            ).lower()
+            assert "provider preflight" in stop_boundary_text
+            assert "fresh ok smoke" in stop_boundary_text
+            next_actions = payload.get("next_authorized_local_actions")
+            assert isinstance(next_actions, list) and next_actions
+            next_action_text = "\n".join(
+                action for action in next_actions if isinstance(action, str)
+            ).lower()
+            assert "no live provider/model" in next_action_text
+            assert "provider preflight" in next_action_text
+            assert "fresh ok smoke" in next_action_text
 
     completion_claim = payload.get("completion_claim")
     assert isinstance(completion_claim, dict)
@@ -482,6 +552,12 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
         assert "complete" not in full_goal.lower() or full_goal.startswith("not_complete")
         assert isinstance(why_not_complete, str) and why_not_complete.strip()
         assert isinstance(rollup.get("why_not_complete"), str) and rollup.get("why_not_complete").strip()
+    else:
+        assert rollup.get("is_goal_complete") is True
+        assert not rollup.get("completion_blockers")
+        full_goal = completion_claim.get("full_goal")
+        assert isinstance(full_goal, str) and full_goal.strip()
+        assert full_goal.startswith("complete")
 
 
 def test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim() -> None:
@@ -513,7 +589,10 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
         action for action in next_actions if isinstance(action, str) and action.strip()
     ][: agent_workspace_router.MAX_GOAL_STATE_ACTIONS]
     assert summary.next_authorized_local_actions == expected_next_actions
-    assert any("deterministic local recovery/proof hardening" in action for action in expected_next_actions)
+    if completion_claim.get("can_mark_goal_complete") is False:
+        assert any("deterministic local recovery/proof hardening" in action for action in expected_next_actions)
+    else:
+        assert any("requirement-to-evidence audit" in action for action in expected_next_actions)
 
     stop_boundaries = payload.get("stop_boundary")
     assert isinstance(stop_boundaries, list) and stop_boundaries
@@ -521,8 +600,11 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
         boundary for boundary in stop_boundaries if isinstance(boundary, str) and boundary.strip()
     ][: agent_workspace_router.MAX_GOAL_STATE_BOUNDARIES]
     assert summary.stop_boundaries == expected_stop_boundaries
-    assert any("Do not call the long-run goal complete" in boundary for boundary in expected_stop_boundaries)
-    assert any("live provider/model" in boundary for boundary in expected_stop_boundaries)
+    if completion_claim.get("can_mark_goal_complete") is False:
+        assert any("Do not call the long-run goal complete" in boundary for boundary in expected_stop_boundaries)
+        assert any("live provider/model" in boundary for boundary in expected_stop_boundaries)
+    else:
+        assert any("Do not run additional live provider/model calls" in boundary for boundary in expected_stop_boundaries)
     assert any("Zotero DB" in boundary and "github/" in boundary for boundary in expected_stop_boundaries)
     authoritative_records = payload.get("authoritative_records")
     assert isinstance(authoritative_records, list) and authoritative_records
@@ -550,7 +632,9 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
     assert len(summary.mature_references_checked) == len(expected_mature_references)
     assert summary.mature_references_checked[0].source == expected_mature_references[0].get("source")
     assert summary.mature_references_checked[0].topic == expected_mature_references[0].get("topic")
-    assert summary.mature_references_checked[0].status == expected_mature_references[0].get("status")
+    expected_reference_status = expected_mature_references[0].get("status")
+    assert isinstance(expected_reference_status, str)
+    assert expected_reference_status.startswith(summary.mature_references_checked[0].status[:120])
     changed_files = payload.get("changed_files_for_this_slice")
     assert isinstance(changed_files, list) and changed_files
     expected_changed_files = [
@@ -571,9 +655,13 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
     assert "rollback-checkpoints" not in serialized_goal_state
     assert "Restore-Item" not in serialized_goal_state
     why_not_complete = completion_claim.get("why_not_complete")
-    assert isinstance(why_not_complete, str) and why_not_complete.strip()
-    assert summary.completion_claim.why_not_complete is not None
-    assert why_not_complete.startswith(summary.completion_claim.why_not_complete[:120])
+    if summary.completion_claim.can_mark_goal_complete is False:
+        assert isinstance(why_not_complete, str) and why_not_complete.strip()
+        assert summary.completion_claim.why_not_complete is not None
+        assert why_not_complete.startswith(summary.completion_claim.why_not_complete[:120])
+    else:
+        assert why_not_complete in {"", None}
+        assert summary.completion_claim.why_not_complete is None
     if summary.completion_claim.can_mark_goal_complete is False:
         assert summary.completion_claim.why_not_complete
         assert summary.lifecycle_rollup.completion_blockers
@@ -581,8 +669,46 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
             blocker for blocker in rollup.get("completion_blockers", []) if isinstance(blocker, dict)
         ][: agent_workspace_router.MAX_GOAL_LIFECYCLE_BLOCKERS]
         assert expected_blockers
-        first_expected_evidence = expected_blockers[0].get("evidence")
+        first_expected_blocker = expected_blockers[0]
+        first_summary_blocker = summary.lifecycle_rollup.completion_blockers[0]
+        first_expected_id = first_expected_blocker.get("id")
+        assert isinstance(first_expected_id, str) and first_expected_id.strip()
+        assert first_summary_blocker.id == (
+            agent_workspace_router._redact_text(first_expected_id).strip()[:160]
+        )
+        expected_limits = {
+            "status": 120,
+            "requirement_surface": 240,
+            "missing_evidence": 240,
+            "current_boundary": 240,
+        }
+        for field_name, max_chars in expected_limits.items():
+            expected_value = first_expected_blocker.get(field_name)
+            assert isinstance(expected_value, str) and expected_value.strip()
+            assert getattr(first_summary_blocker, field_name) == (
+                agent_workspace_router._redact_text(expected_value).strip()[:max_chars]
+            )
+        first_expected_evidence = first_expected_blocker.get("evidence")
         assert isinstance(first_expected_evidence, str) and first_expected_evidence.strip()
-        assert summary.lifecycle_rollup.completion_blockers[0].evidence == (
+        assert first_summary_blocker.evidence == (
             agent_workspace_router._redact_text(first_expected_evidence).strip()[:240]
         )
+        expected_completion_rule = rollup.get("machine_readable_completion_rule")
+        assert isinstance(expected_completion_rule, str) and expected_completion_rule.strip()
+        assert summary.lifecycle_rollup.machine_readable_completion_rule == (
+            agent_workspace_router._redact_text(expected_completion_rule).strip()[:240]
+        )
+        expected_rollup_why_not_raw = rollup.get("why_not_complete")
+        if isinstance(expected_rollup_why_not_raw, str):
+            expected_rollup_why_not = [
+                agent_workspace_router._redact_text(expected_rollup_why_not_raw).strip()[:240]
+            ]
+        else:
+            assert isinstance(expected_rollup_why_not_raw, list)
+            expected_rollup_why_not = [
+                agent_workspace_router._redact_text(item).strip()[:240]
+                for item in expected_rollup_why_not_raw
+                if isinstance(item, str) and item.strip()
+            ][: agent_workspace_router.MAX_GOAL_STATE_BOUNDARIES]
+        assert expected_rollup_why_not
+        assert summary.lifecycle_rollup.why_not_complete == expected_rollup_why_not
