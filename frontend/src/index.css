@@ -191,9 +191,88 @@
   }
 
   .glass-sidebar {
-    background: hsl(var(--sidebar));
+    background:
+      linear-gradient(180deg, hsl(var(--sidebar) / 0.98) 0%, hsl(var(--sidebar) / 0.94) 52%, hsl(var(--sidebar) / 0.99) 100%),
+      radial-gradient(circle at top, hsl(var(--sidebar-accent) / 0.14), transparent 34%);
     color: hsl(var(--sidebar-foreground));
     border-right: 1px solid hsl(var(--sidebar-border));
+    box-shadow:
+      inset -1px 0 0 hsl(0 0% 100% / 0.04),
+      16px 0 44px rgba(15, 23, 42, 0.14);
+  }
+
+  .app-shell {
+    background:
+      radial-gradient(circle at top left, hsl(var(--primary) / 0.08), transparent 26%),
+      radial-gradient(circle at bottom right, hsl(var(--secondary) / 0.06), transparent 24%),
+      linear-gradient(180deg, hsl(var(--surface-low)) 0%, hsl(var(--surface)) 42%, hsl(var(--surface-lowest)) 100%);
+  }
+
+  .app-main-panel {
+    background:
+      linear-gradient(180deg, hsl(var(--surface) / 0.96) 0%, hsl(var(--surface-low) / 0.92) 28%, hsl(var(--surface-lowest)) 100%);
+  }
+
+  .sidebar-brand-shell {
+    margin: 0.75rem;
+    border: 1px solid hsl(0 0% 100% / 0.08);
+    background:
+      linear-gradient(180deg, hsl(0 0% 100% / 0.06), hsl(0 0% 100% / 0.02));
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.04);
+    border-radius: 1rem;
+  }
+
+  .sidebar-footer-shell {
+    border-top: 1px solid hsl(0 0% 100% / 0.08);
+    background: linear-gradient(180deg, hsl(0 0% 100% / 0), hsl(0 0% 100% / 0.04));
+  }
+
+  .page-top-band {
+    background:
+      linear-gradient(180deg, hsl(var(--surface-lowest) / 0.96), hsl(var(--surface-low) / 0.94));
+    border-bottom: 1px solid hsl(var(--outline-variant) / 0.72);
+    box-shadow: 0 1px 0 hsl(0 0% 100% / 0.72);
+  }
+
+  .page-section-shell {
+    background:
+      linear-gradient(180deg, hsl(var(--surface-lowest)) 0%, hsl(var(--surface-low) / 0.68) 100%);
+    border: 1px solid hsl(var(--outline-variant) / 0.68);
+    box-shadow:
+      0 10px 28px rgba(15, 23, 42, 0.06),
+      inset 0 1px 0 hsl(0 0% 100% / 0.7);
+  }
+
+  .page-section-shell--muted {
+    background:
+      linear-gradient(180deg, hsl(var(--surface-low)) 0%, hsl(var(--surface-default) / 0.5) 100%);
+  }
+
+  .dialog-shell {
+    background:
+      radial-gradient(circle at top left, hsl(var(--primary) / 0.07), transparent 22%),
+      linear-gradient(180deg, hsl(var(--surface-low)) 0%, hsl(var(--surface)) 36%, hsl(var(--surface-lowest)) 100%);
+  }
+
+  .dialog-band {
+    background:
+      linear-gradient(180deg, hsl(var(--surface-lowest) / 0.96), hsl(var(--surface-low) / 0.95));
+    border-bottom: 1px solid hsl(var(--outline-variant) / 0.72);
+    box-shadow: 0 1px 0 hsl(0 0% 100% / 0.68);
+  }
+
+  .dialog-rail {
+    background:
+      linear-gradient(180deg, hsl(var(--surface-lowest)) 0%, hsl(var(--surface-low) / 0.75) 100%);
+    border-color: hsl(var(--outline-variant) / 0.72);
+    box-shadow:
+      0 16px 32px rgba(15, 23, 42, 0.05),
+      inset 0 1px 0 hsl(0 0% 100% / 0.72);
+  }
+
+  .dialog-divider {
+    background:
+      linear-gradient(180deg, transparent 0%, hsl(var(--outline-variant) / 0.46) 22%, hsl(var(--outline-variant) / 0.46) 78%, transparent 100%);
   }
 
   .writing-canvas {

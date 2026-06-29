@@ -121,7 +121,7 @@ function ResearchWorkbenchInner() {
 
   const handleTabStripActivate = useCallback((nextId: string) => {
     if (nextId === materialId) return;
-    navigate(`/workbench/paper/${encodeURIComponent(nextId)}`);
+    navigate(`/dialog?scope=paper&material_id=${encodeURIComponent(nextId)}&tab=reader`);
   }, [navigate, materialId]);
 
   const handleTabStripEmpty = useCallback(() => {

@@ -230,7 +230,7 @@ export function Jobs() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="shrink-0 border-b border-outline-variant/60 bg-surface-low px-6 py-4">
+      <div className="page-top-band shrink-0 px-6 py-5">
         <PageHeader
           icon={<Activity size={18} />}
           title={t('jobs.title')}
@@ -252,7 +252,7 @@ export function Jobs() {
 
       <div className="flex min-h-0 flex-1 flex-col overflow-auto px-6 py-4">
         {/* Filter chips */}
-        <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        <div className="page-section-shell page-section-shell--muted mb-4 flex flex-wrap items-center gap-2 rounded-2xl px-3 py-3">
           {[
             { key: '' as const, label: t('jobs.filter_all') },
             { key: 'running' as const, label: t('jobs.filter_running') },
@@ -265,10 +265,10 @@ export function Jobs() {
               type="button"
               onClick={() => setFilter(f.key as JobStatus | '')}
               className={cn(
-                'inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+                'inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-medium transition-all',
                 filter === f.key
-                  ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                  : 'border-outline-variant/60 bg-surface-low text-foreground/65 hover:border-primary/40 hover:text-foreground',
+                  ? 'border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/20'
+                  : 'border-outline-variant/60 bg-surface-lowest/75 text-foreground/65 hover:border-primary/40 hover:bg-surface-lowest hover:text-foreground',
               )}
             >
               {f.label}
@@ -276,19 +276,19 @@ export function Jobs() {
           ))}
         </div>
 
-        <section className="mb-4 rounded-md border border-outline-variant/60 bg-surface-lowest px-3 py-3">
+        <section className="page-section-shell mb-4 rounded-2xl px-4 py-4">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
               <Layers3 size={16} />
             </span>
             <div className="min-w-0 flex-1">
               <h2 className="font-display text-sm font-semibold text-foreground">知识沉淀</h2>
-              <p className="mt-0.5 text-[11px] text-foreground/45">记录、复审、沉淀、召回。</p>
+              <p className="mt-0.5 text-[11px] tracking-[0.01em] text-foreground/45">记录、复审、沉淀、召回。</p>
             </div>
             <button
               type="button"
               onClick={() => navigate('/wiki')}
-              className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 bg-surface-low px-2.5 py-1.5 text-xs text-foreground/65 transition-colors hover:border-primary/35 hover:text-primary"
+              className="inline-flex items-center gap-1 rounded-full border border-outline-variant/60 bg-surface-low px-3 py-1.5 text-xs text-foreground/65 transition-colors hover:border-primary/35 hover:text-primary"
             >
               打开
               <ChevronRight size={13} />
@@ -300,7 +300,7 @@ export function Jobs() {
                 key={task.id}
                 type="button"
                 onClick={() => navigate(task.route)}
-                className="group flex min-h-12 min-w-0 items-center gap-2 rounded-md border border-outline-variant/50 bg-surface-low px-3 py-2 text-left transition-colors hover:border-primary/35 hover:bg-surface-default/40"
+                className="group flex min-h-14 min-w-0 items-center gap-2 rounded-xl border border-outline-variant/50 bg-surface-low px-3 py-2.5 text-left transition-all hover:-translate-y-px hover:border-primary/35 hover:bg-surface-default/40 hover:shadow-[0_10px_20px_rgba(15,23,42,0.06)]"
               >
                 <task.icon size={14} className="shrink-0 text-primary/75" />
                 <span className="min-w-0 flex-1">
@@ -352,7 +352,7 @@ export function Jobs() {
             }
           />
         ) : (
-          <div className="overflow-hidden rounded-md border border-outline-variant/60 bg-surface-lowest">
+          <div className="page-section-shell overflow-hidden rounded-2xl">
             <ul className="divide-y divide-outline-variant/30">
               {filtered.map((job) => {
                 const cfg = statusConfig[job.status];
@@ -371,7 +371,7 @@ export function Jobs() {
                     onClick={() => handleJobRoute(job.route)}
                     onKeyDown={(event) => handleJobRouteKeyDown(event, job.route)}
                     className={cn(
-                      'group flex flex-col gap-2 px-4 py-3 transition-colors hover:bg-surface-default/40',
+                      'group flex flex-col gap-2 px-4 py-3.5 transition-colors hover:bg-surface-default/40',
                       job.route && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                     )}
                   >

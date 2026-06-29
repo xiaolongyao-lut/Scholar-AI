@@ -3471,14 +3471,14 @@ export function Dialog() {
   );
 
   return (
-    <div ref={dialogShellRef} className="flex h-full min-h-0 min-w-0 overflow-hidden bg-background">
+    <div ref={dialogShellRef} className="dialog-shell flex h-full min-h-0 min-w-0 overflow-hidden">
       {!historyRailCollapsed && (
         <>
       <aside
         style={{ width: paneWidths.history }}
-        className="hidden h-full min-h-0 shrink-0 flex-col border-r border-outline-variant/60 bg-surface-lowest lg:flex"
+        className="dialog-rail hidden h-full min-h-0 shrink-0 flex-col border-r lg:flex"
       >
-        <div className="border-b border-outline-variant/60 px-4 py-3">
+        <div className="dialog-band px-4 py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <h2 className="truncate text-sm font-semibold text-foreground">研读历史</h2>
@@ -3610,7 +3610,7 @@ export function Dialog() {
           <button
             type="button"
             onPointerDown={(event) => handlePaneResizeStart('history', event)}
-            className="hidden h-full w-2 shrink-0 cursor-col-resize items-center justify-center border-r border-outline-variant/30 bg-surface-lowest text-foreground/30 transition-colors hover:bg-primary/10 hover:text-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/40 lg:flex"
+            className="dialog-divider hidden h-full w-2 shrink-0 cursor-col-resize items-center justify-center border-r border-outline-variant/30 text-foreground/30 transition-colors hover:bg-primary/10 hover:text-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/40 lg:flex"
             aria-label="调整历史栏宽度"
             title="拖动调整历史栏宽度"
           >
@@ -3623,7 +3623,7 @@ export function Dialog() {
         aria-label="智能研读工作区"
         className="relative flex min-h-0 min-w-0 flex-1 flex-col"
       >
-        <div className="flex items-center justify-between gap-3 border-b border-outline-variant/60 bg-surface-low px-6 py-3">
+        <div className="dialog-band flex items-center justify-between gap-3 px-6 py-3">
           <div className="flex min-w-0 items-center gap-2">
             {historyRailCollapsed && (
               <button
@@ -3682,10 +3682,10 @@ export function Dialog() {
       {historyRailOpen && (
         <div className="fixed inset-0 z-40 flex justify-end bg-black/20 lg:hidden" onClick={() => setHistoryRailOpen(false)}>
           <aside
-            className="h-full w-full max-w-md bg-surface-lowest shadow-xl border-l border-outline-variant/60 flex flex-col"
+            className="dialog-rail flex h-full w-full max-w-md flex-col border-l shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-outline-variant/60 px-5 py-4">
+            <div className="dialog-band flex items-center justify-between px-5 py-4">
               <div>
                 <h2 className="text-lg font-semibold text-foreground">历史会话</h2>
                 <p className="text-xs text-foreground/55">恢复一段此前的对话以继续讨论</p>
@@ -3895,7 +3895,7 @@ export function Dialog() {
         <button
           type="button"
           onPointerDown={(event) => handlePaneResizeStart('context', event)}
-          className="hidden h-full w-2 shrink-0 cursor-col-resize items-center justify-center border-l border-outline-variant/30 bg-surface-lowest text-foreground/30 transition-colors hover:bg-primary/10 hover:text-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/40 lg:flex"
+          className="dialog-divider hidden h-full w-2 shrink-0 cursor-col-resize items-center justify-center border-l border-outline-variant/30 text-foreground/30 transition-colors hover:bg-primary/10 hover:text-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/40 lg:flex"
           aria-label="调整上下文栏宽度"
           title="拖动调整上下文栏宽度"
         >
@@ -3903,9 +3903,9 @@ export function Dialog() {
         </button>
         <aside
           style={{ width: paneWidths.context }}
-          className="hidden h-full min-h-0 shrink-0 flex-col border-l border-outline-variant/60 bg-surface-lowest lg:flex"
+          className="dialog-rail hidden h-full min-h-0 shrink-0 flex-col border-l lg:flex"
         >
-          <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant/60 px-3 py-2">
+          <div className="dialog-band flex shrink-0 items-center gap-2 px-3 py-2">
             {/* B6 (2026-06-13): contextRailTabs 实际有 4-6 个（读阅模式多出 2 个），
                 之前写死 grid-cols-3 导致第 4 个折到第二行（用户截图证据）。
                 改成 inline-style grid-template-columns 按运行时实际数量等分。 */}

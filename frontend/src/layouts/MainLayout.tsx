@@ -67,10 +67,10 @@ function NavItem({
       className={({ isActive }) => {
         const active = customActive ?? isActive;
         return cn(
-          'flex items-center gap-3 px-3 py-2.5 font-label text-sm transition-colors relative group',
+          'relative group flex items-center gap-3 rounded-xl px-3 py-2.5 font-label text-sm transition-all duration-200',
           active
-            ? 'text-white bg-white/10 border-l-[3px] border-sidebar-accent font-medium'
-            : 'text-white/55 hover:text-white hover:bg-white/5 border-l-[3px] border-transparent'
+            ? 'translate-x-[2px] border border-white/10 bg-white/12 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)] font-medium'
+            : 'border border-transparent text-white/58 hover:border-white/8 hover:bg-white/6 hover:text-white'
         );
       }}
     >
@@ -110,15 +110,15 @@ function NavGroup({ icon, label, basePath, collapsed, children, onNavigate }: {
           aria-label={label}
           title={label}
           className={cn(
-            'w-full flex items-center justify-center px-3 py-2.5 transition-colors border-l-[3px]',
+            'flex w-full items-center justify-center rounded-xl border px-3 py-2.5 transition-all duration-200',
             isInGroup
-              ? 'text-white bg-white/10 border-sidebar-accent'
-              : 'text-white/55 hover:text-white hover:bg-white/5 border-transparent'
+              ? 'border-white/10 bg-white/12 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]'
+              : 'border-transparent text-white/58 hover:border-white/8 hover:bg-white/6 hover:text-white'
           )}
         >
           {icon}
         </button>
-        <div className="absolute left-full top-0 ml-2 bg-sidebar border border-sidebar-border rounded-lg shadow-xl py-2 min-w-[180px] opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity z-50">
+        <div className="absolute left-full top-0 z-50 ml-2 min-w-[180px] rounded-2xl border border-white/10 bg-sidebar/95 py-2 shadow-2xl opacity-0 transition-opacity pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 backdrop-blur-xl">
           <div className="px-3 py-1.5 text-[10px] font-label font-medium text-white/30 uppercase tracking-wider">{label}</div>
           {children.map(child => (
             <NavLink
@@ -129,7 +129,7 @@ function NavGroup({ icon, label, basePath, collapsed, children, onNavigate }: {
               className={({ isActive }) =>
                 cn(
                   'flex items-center gap-2.5 px-3 py-2 text-xs font-label transition-colors',
-                  isActive ? 'text-sidebar-accent bg-white/10' : 'text-white/60 hover:text-white hover:bg-white/5'
+                  isActive ? 'bg-white/12 text-sidebar-accent' : 'text-white/60 hover:bg-white/6 hover:text-white'
                 )
               }
             >
@@ -148,10 +148,10 @@ function NavGroup({ icon, label, basePath, collapsed, children, onNavigate }: {
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'w-full flex items-center gap-3 px-3 py-2.5 font-label text-sm transition-colors border-l-[3px]',
+          'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 font-label text-sm transition-all duration-200',
           isInGroup
-            ? 'text-white bg-white/8 border-sidebar-accent font-medium'
-            : 'text-white/55 hover:text-white hover:bg-white/5 border-transparent'
+            ? 'border-white/10 bg-white/10 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)] font-medium'
+            : 'border-transparent text-white/58 hover:border-white/8 hover:bg-white/6 hover:text-white'
         )}
       >
         {icon}
@@ -179,10 +179,10 @@ function NavGroup({ icon, label, basePath, collapsed, children, onNavigate }: {
                   onClick={onNavigate}
                   className={({ isActive }) =>
                     cn(
-                      'flex items-center gap-2.5 px-2 py-2 font-label text-xs transition-colors rounded-sm',
+                      'flex items-center gap-2.5 rounded-lg px-2.5 py-2 font-label text-xs transition-colors',
                       isActive
-                        ? 'text-sidebar-accent bg-white/10 font-medium'
-                        : 'text-white/50 hover:text-white hover:bg-white/5'
+                        ? 'bg-white/12 text-sidebar-accent font-medium'
+                        : 'text-white/50 hover:bg-white/6 hover:text-white'
                     )
                   }
                 >
@@ -549,7 +549,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
   ), [t]);
 
   return (
-    <div className={`flex h-screen w-full overflow-hidden bg-surface selection:bg-primary/20 ${className || ''}`}>
+    <div className={`app-shell flex h-screen w-full overflow-hidden selection:bg-primary/20 ${className || ''}`}>
       <button
         type="button"
         onClick={() => setIsMobileNavOpen(true)}
@@ -581,7 +581,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
               transition={{ duration: 0.18, ease: 'easeOut' }}
               className="glass-sidebar relative flex h-full w-[280px] max-w-[82vw] flex-col shadow-2xl"
             >
-              <div className="flex items-center justify-between px-5 py-4">
+              <div className="sidebar-brand-shell flex items-center justify-between px-5 py-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <img
                     src="/app-icon-128.png"
@@ -606,7 +606,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
               <nav className="custom-scrollbar flex flex-1 flex-col gap-0.5 overflow-y-auto px-2">
                 {renderNavigation(false, closeMobileNav)}
               </nav>
-              <div className="border-t border-white/10 p-3">
+              <div className="sidebar-footer-shell p-3">
                 <div className="flex items-center gap-2 px-2">
                   <ThemeToggle compact={false} />
                   <button
@@ -640,7 +640,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
         className="glass-sidebar z-30 hidden h-full flex-shrink-0 flex-col md:flex"
       >
         {/* Brand */}
-        <div className={cn('flex items-center overflow-hidden', leftNavCollapsed ? 'flex-col gap-2 px-3 py-4 justify-center' : 'px-6 py-5 justify-between')}>
+        <div className={cn('sidebar-brand-shell flex items-center overflow-hidden', leftNavCollapsed ? 'flex-col justify-center gap-2 px-3 py-4' : 'justify-between px-6 py-5')}>
           <AnimatePresence mode="wait">
             {!leftNavCollapsed && (
               <motion.div
@@ -681,12 +681,12 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-2 flex flex-col gap-0.5 overflow-y-auto custom-scrollbar">
+        <nav className="custom-scrollbar flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-1">
           {renderNavigation(leftNavCollapsed)}
         </nav>
 
         {/* Bottom actions */}
-        <div className="mt-auto border-t border-white/10 p-3">
+        <div className="sidebar-footer-shell mt-auto p-3">
           <div className={cn(
             "flex items-center gap-2",
             leftNavCollapsed ? "justify-center" : "justify-start px-2"
@@ -708,7 +708,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
       </motion.aside>
 
       {/* ── Main Content ── */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="app-main-panel flex min-w-0 flex-1 flex-col">
 
         {/* Page Content */}
         <main

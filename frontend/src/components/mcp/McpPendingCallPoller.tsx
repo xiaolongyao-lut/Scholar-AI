@@ -82,6 +82,24 @@ function documentIsHidden(): boolean {
   return typeof document !== 'undefined' && document.visibilityState === 'hidden';
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function readHttpStatus(error: unknown): number | null {
+  if (!isRecord(error)) return null;
+  const response = error.response;
+  if (isRecord(response) && typeof response.status === 'number') {
+    return response.status;
+  }
+  return typeof error.status === 'number' ? error.status : null;
+}
+
+function isDecideTerminalError(error: unknown): boolean {
+  const status = readHttpStatus(error);
+  return status === 404 || status === 410;
+}
+
 function runSharedPendingPoll(poll: PollPendingMcpCalls): Promise<PendingMcpToolCall[]> {
   if (sharedPollPromise) return sharedPollPromise;
   let currentPoll: Promise<PendingMcpToolCall[]>;
@@ -105,6 +123,11 @@ export function McpPendingCallPoller({
   const [inFlight, setInFlight] = React.useState(false);
   const pollInFlightRef = React.useRef(false);
   const pendingRef = React.useRef<PendingMcpToolCall | null>(null);
+  // call_ids the operator already decided. Prevents an orphaned backend
+  // pending entry (e.g. the runner coroutine was cancelled mid-decision so
+  // `store.decide()` never ran) from re-popping the same modal every tick.
+  // Bounded: once the backend reaps the entry the id simply stops appearing.
+  const decidedIdsRef = React.useRef<Set<string>>(new Set());
 
   const poll = pollOverride ?? listPendingMcpCalls;
   const decide = decideOverride
@@ -156,16 +179,27 @@ export function McpPendingCallPoller({
         scheduleNext(nextDelay(true));
         return;
       }
+      // While hidden, don't burn a request the operator can't act on; just
+      // reschedule on the background interval. visibilitychange fires an
+      // immediate catch-up poll when the window regains focus.
+      if (documentIsHidden()) {
+        scheduleNext(backgroundIntervalMs);
+        return;
+      }
 
       pollInFlightRef.current = true;
       let foundPending = false;
       try {
         const list = await runSharedPendingPoll(poll);
         if (cancelled) return;
-        foundPending = list.length > 0;
+        // Drop call_ids the operator already decided this session. An orphaned
+        // backend entry (runner cancelled before store.decide()) would otherwise
+        // re-pop the modal on every tick until the backend reaps it.
+        const fresh = list.filter((p) => !decidedIdsRef.current.has(p.id));
+        foundPending = fresh.length > 0;
         // Render the first pending call; the rest queue up for next ticks.
         // Don't replace an existing pending render mid-decision.
-        setPending((current) => current ?? list[0] ?? null);
+        setPending((current) => current ?? fresh[0] ?? null);
       } catch {
         // Network / 5xx — log and continue. Backend timeout is the safety net.
 
@@ -203,14 +237,23 @@ export function McpPendingCallPoller({
     ) => {
       if (inFlight) return;
       setInFlight(true);
+      let suppressCallId = false;
       try {
         await decide(callId, decision, rememberForRun);
-      } catch {
-        // 404 means the backend already cleaned up (timeout or duplicate).
-        // Either way the modal should close.
+        suppressCallId = true;
+      } catch (error: unknown) {
+        // 404/410 means the backend already cleaned up (timeout or duplicate).
+        // Transient network/5xx errors must stay retryable on the next poll.
+        suppressCallId = isDecideTerminalError(error);
 
         console.warn('[McpPendingCallPoller] decide failed; closing pending prompt without exposing backend detail');
       } finally {
+        // Record the decision so an orphaned backend entry can't re-pop the
+        // same modal. Do not suppress transient decide failures; those need a
+        // visible retry if the backend still has a real pending call.
+        if (suppressCallId) {
+          decidedIdsRef.current.add(callId);
+        }
         setPending(null);
         setInFlight(false);
       }

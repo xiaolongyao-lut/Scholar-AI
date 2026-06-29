@@ -106,6 +106,10 @@ export function useJobEventPolling({
         return;
       }
 
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
       pollTimer = setTimeout(() => {
         void pollOnce();
       }, currentPollIntervalMs);
@@ -160,6 +164,13 @@ export function useJobEventPolling({
 
     const pollOnce = async () => {
       if (cancelled || pollInFlight || terminalHandled) {
+        return;
+      }
+      // Skip scheduled polls while the tab is hidden — visibilitychange
+      // triggers an immediate catch-up poll on regain, so a hidden tick
+      // would only burn a request the user can't see.
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        scheduleNextPoll();
         return;
       }
 
@@ -226,8 +237,25 @@ export function useJobEventPolling({
 
     void pollOnce();
 
+    // Visibility sensitivity: a hidden tab/window gains nothing from 1s job
+    // polling. Pause while hidden, and poll immediately on regain so the
+    // timeline catches up without waiting for the next scheduled tick.
+    const handleVisibilityChange = () => {
+      if (cancelled || terminalHandled) return;
+      if (typeof document === 'undefined') return;
+      if (document.visibilityState === 'visible') {
+        void pollOnce();
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
     return () => {
       cancelled = true;
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
       if (pollTimer) {
         clearTimeout(pollTimer);
       }

@@ -461,7 +461,31 @@ export function VolumeAnalysis() {
     let cancelled = false;
     let timer: number | null = null;
 
+    const isDocumentHidden = () => (
+      typeof document !== 'undefined' && document.visibilityState === 'hidden'
+    );
+
+    const clearTimer = () => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    const scheduleNextPoll = () => {
+      if (cancelled) return;
+      clearTimer();
+      timer = window.setTimeout(() => {
+        void poll();
+      }, 2500);
+    };
+
     const poll = async () => {
+      if (cancelled) return;
+      if (isDocumentHidden()) {
+        scheduleNextPoll();
+        return;
+      }
       try {
         const status = await svc.getBatchTaskStatus(batchTaskId);
         if (cancelled) return;
@@ -490,9 +514,7 @@ export function VolumeAnalysis() {
 
         const isTerminal = status.status === 'succeeded' || status.status === 'failed' || status.status === 'cancelled';
         if (!isTerminal) {
-          timer = window.setTimeout(() => {
-            void poll();
-          }, 2500);
+          scheduleNextPoll();
           return;
         }
 
@@ -505,15 +527,28 @@ export function VolumeAnalysis() {
         }
       } catch {
         // keep current UI; polling errors should not break the page
+        scheduleNextPoll();
       }
     };
 
+    const handleVisibilityChange = () => {
+      if (cancelled || isDocumentHidden()) {
+        return;
+      }
+      clearTimer();
+      void poll();
+    };
+
     void poll();
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
 
     return () => {
       cancelled = true;
-      if (timer !== null) {
-        window.clearTimeout(timer);
+      clearTimer();
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
       }
     };
   }, [batchTaskId, loadAnalysis, loadVolumes, selectedVolumeKey, svc]);

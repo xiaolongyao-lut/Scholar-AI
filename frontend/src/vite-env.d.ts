@@ -2,6 +2,9 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string;
+  readonly VITE_ENABLE_CONTEXTUAL?: string;
+  readonly VITE_ENABLE_DEV_ROUTES?: string;
+  readonly VITE_ENABLE_SAMPLING_PANEL?: string;
   readonly VITE_FLAG_RESEARCH_WORKBENCH?: string;
   readonly VITE_SMART_READ_DEBUG?: string;
 }

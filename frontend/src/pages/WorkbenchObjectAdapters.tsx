@@ -23,7 +23,7 @@ function WorkbenchWikiInner() {
         <>
           <button
             type="button"
-            onClick={() => navigate('/library')}
+            onClick={() => navigate('/knowledge')}
             className="flex shrink-0 items-center gap-1 rounded p-1 text-foreground/60 hover:bg-surface-high hover:text-foreground"
             title="返回文献库"
             aria-label="返回文献库"
@@ -70,7 +70,7 @@ function WorkbenchInspirationInner() {
         <>
           <button
             type="button"
-            onClick={() => navigate('/library')}
+            onClick={() => navigate('/knowledge')}
             className="flex shrink-0 items-center gap-1 rounded p-1 text-foreground/60 hover:bg-surface-high hover:text-foreground"
             title="返回文献库"
             aria-label="返回文献库"

@@ -681,11 +681,10 @@ export function Workbench() {
                         const canOpen = !!s.material_id;
                         const handleOpen = () => {
                           if (!s.material_id) return;
-                          const page = typeof s.page_number === 'number' && s.page_number > 0 ? s.page_number : undefined;
-                          const params = page ? new URLSearchParams({ page: String(page) }) : new URLSearchParams();
+                          const params = new URLSearchParams({ scope: 'paper', material_id: s.material_id, tab: 'reader' });
+                          if (typeof s.page_number === 'number' && s.page_number > 0) params.set('page', String(s.page_number));
                           if (s.chunk_id) params.set('chunk', s.chunk_id);
-                          const suffix = params.toString() ? `?${params.toString()}` : '';
-                          navigate(`/workbench/paper/${encodeURIComponent(s.material_id)}${suffix}`);
+                          navigate(`/dialog?${params.toString()}`);
                         };
                         return (
                           <button

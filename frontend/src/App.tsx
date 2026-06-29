@@ -1,5 +1,6 @@
 import React, { Suspense, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { DevRouteGate } from './components/common/DevRouteGate';
 import { MainLayout } from './layouts/MainLayout';
 import { WritingProvider } from './contexts/WritingContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -127,9 +128,15 @@ const App = () => {
                       <Route path="/workbench/wiki" element={<Navigate to="/wiki" replace />} />
                       <Route path="/workbench/inspiration" element={<Navigate to="/dialog" replace />} />
                       <Route path="/jobs" element={<Jobs />} />
-                      <Route path="/agent-workspace" element={<AgentWorkspace />} />
-                      <Route path="/__desktop_acceptance/agent-workspace" element={<DesktopAcceptanceAgentWorkspace />} />
-                      <Route path="/__desktop_acceptance/semantic-review" element={<DesktopAcceptanceSemanticReview />} />
+                      <Route path="/agent-workspace" element={
+                        <DevRouteGate fallback="/jobs"><AgentWorkspace /></DevRouteGate>
+                      } />
+                      <Route path="/__desktop_acceptance/agent-workspace" element={
+                        <DevRouteGate fallback="/jobs"><DesktopAcceptanceAgentWorkspace /></DevRouteGate>
+                      } />
+                      <Route path="/__desktop_acceptance/semantic-review" element={
+                        <DevRouteGate fallback="/jobs"><DesktopAcceptanceSemanticReview /></DevRouteGate>
+                      } />
                       <Route path="/evolution" element={<Navigate to="/wiki" replace />} />
                       <Route path="/settings" element={<SettingsPage />} />
 

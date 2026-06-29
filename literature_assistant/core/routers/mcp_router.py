@@ -496,9 +496,18 @@ async def migrate_env_to_refs(
 @router.get("/pending-calls")
 async def list_pending_calls() -> list[dict[str, Any]]:
     """Return MCP tool calls currently waiting for user approval."""
-    from mcp_runtime.pending_calls import get_pending_call_store
+    from mcp_runtime.pending_calls import (
+        PENDING_CALL_TIMEOUT_SECONDS_DEFAULT,
+        get_pending_call_store,
+    )
 
     store = get_pending_call_store()
+    # Reap orphaned entries before listing. If a chat request is cancelled
+    # mid-decision (client disconnect / tab close), the runner coroutine is
+    # cancelled rather than timing out, so its `store.decide()` never runs
+    # and the entry would otherwise linger — re-popping the approval modal
+    # on every poll until process restart.
+    store.expire_older_than(PENDING_CALL_TIMEOUT_SECONDS_DEFAULT)
     return [p.model_dump(mode="json") for p in store.list_all()]
 
 

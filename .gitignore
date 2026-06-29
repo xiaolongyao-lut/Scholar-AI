@@ -172,6 +172,8 @@ htmlcov/
 !/frontend/src/components/graph/GraphPayloadViewer.test.tsx
 !/frontend/src/components/graph/semanticReviewSpec.test.ts
 !/frontend/src/components/inspiration/SparkEvidencePills.test.tsx
+!/frontend/src/components/mcp/McpPendingCallPoller.test.tsx
+!/frontend/src/hooks/useJobEventPolling.test.tsx
 !/frontend/src/pages/AgentWorkspace.test.tsx
 !/frontend/src/pages/DesktopAcceptanceAgentWorkspace.test.tsx
 !/frontend/src/pages/WikiWorkbench.test.tsx
