@@ -2004,7 +2004,7 @@ async def get_agent_workspace_status(
     artifacts, total_bytes = _load_artifacts(artifact_limit, preview_chars)
     audit_records = _load_audit_records(audit_limit)
     return AgentWorkspaceStatus(
-        artifact_root=str(root),
+        artifact_root=_workspace_state_path(root),
         artifact_count=len(_iter_artifact_files(root)),
         audit_count=len(audit_records),
         total_artifact_bytes=total_bytes,
