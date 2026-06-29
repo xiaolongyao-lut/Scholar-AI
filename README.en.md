@@ -31,20 +31,64 @@ Current source version: [v0.1.8.4](CHANGELOG.md#0184---2026-06-17)
 
 See [Claude / Codex Toolbox](docs/claude-codex-toolbox.en.md) for detailed tool groups, proven chains, dependencies, verification commands, and security boundaries.
 
+## How It Works
+
+```text
+Claude / Codex / MCP client
+        |
+        | 1. stdio MCP: list_tools / call_tool
+        v
+agent_mcp_server/
+        |
+        +-- source.*       read-only source tree, symbols, routes, file excerpts
+        +-- literature.*   backend literature, evidence, OCR, writing, knowledge APIs
+        +-- workflow.*     local JSON workflow planning, execution, replay
+        +-- artifact.*     Markdown / JSON artifact read-write index
+        |
+        | HTTP + local token
+        v
+Scholar AI backend
+        |
+        +-- FastAPI routers and typed response models
+        +-- project / material / chunk stores
+        +-- retrieval, evidence, OCR, writing, export services
+        +-- model and credential settings
+        +-- Agent Workspace audit and workflow artifacts
+```
+
+The desktop app owns the literature workspace, PDF reading, model settings, credential management, and audit views. The MCP toolbox exposes those local capabilities to user-authorized AI clients: `source.*` is backend-independent and read-only over allowlisted source files; `literature.*` calls backend HTTP APIs; `workflow.*` and `artifact.*` keep research actions and artifacts replayable. Tool results are redacted, size-limited, and returned with machine-readable refs, locators, and integrity state.
+
 ## RAG And Evidence Architecture
 
-Scholar AI is built around a local literature RAG and evidence pipeline. The project page shows the spine; see [RAG and Evidence Architecture](docs/rag-evidence-architecture.en.md) for module details, code entry points, and fallback boundaries.
+Scholar AI is built around a local literature RAG and evidence pipeline. It is not a single vector search: local materials become locatable chunks, then different user paths enter stable refs, smart-reading context, Wiki joint recall, and evidence integrity checks. See [RAG and Evidence Architecture](docs/rag-evidence-architecture.en.md) for module details, code entry points, and fallback boundaries.
 
 ```text
 PDF / Markdown / OCR materials
-        -> ingestion and structured chunks
-        -> doc_store / chunk_store / embedding cache
-        -> keyword + vector + rerank hybrid retrieval
-        -> search_refs / evidence_pack_build / integrity gate
-        -> smart reading / review writing / Word export / MCP tool calls
+        |
+        v
+ingestion and structured chunks
+        |  doc_store / chunk_store / page locator / section_path
+        v
+seed retrieval
+        |  lexical refs / BM25 / dense embeddings / optional rerank
+        v
+bounded expansion
+        |  TOLF aspect-query diffusion
+        |  bridge-lexicon query expansion
+        |  Wiki linked-page expansion
+        |  project + wiki weighted RRF
+        |  same-section table / formula / figure siblings
+        v
+evidence shaping
+        |  search_refs / evidence_pack_build / locator coverage
+        v
+integrity gates
+        |  evidence_integrity_gate / qrels status / context receipt
+        v
+smart reading / review writing / Word export / MCP tool calls
 ```
 
-This pipeline turns "the system found something" into "this project, material, chunk, locator, and evidence status support this claim." Claude, Codex, and other MCP clients receive controlled tool results from this pipeline.
+This pipeline turns "the system found something" into "this project, material, chunk, locator, and integrity state support this claim." Different entry points do not pretend to use one heavy path: `search_refs` provides stable read-only refs; smart reading can combine TOLF, RRF, structured neighbors, and hybrid retrieval; evidence packs condense project chunks, Wiki refs, and knowledge refs into reviewable results. Claude, Codex, and other MCP clients receive controlled tool results from this pipeline.
 
 ## Quick Start
 
