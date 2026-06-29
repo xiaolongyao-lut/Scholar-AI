@@ -1,6 +1,6 @@
 # Scholar AI
 
-[English](README.en.md) · [Claude / Codex 工具箱](docs/claude-codex-toolbox.md) · [科研工作流与 Skills](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) · [快速开始](#快速开始)
+[English](README.en.md) · [Releases](https://github.com/xiaolongyao-lut/Scholar-AI/releases) · [Claude / Codex 工具箱](docs/claude-codex-toolbox.md) · [科研工作流与 Skills](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) · [快速开始](#快速开始)
 
 Scholar AI 是一个开源的本地科研工作台，用来管理 PDF 文献、构建可追溯证据、辅助综述写作，并把本地文献库变成 Claude、Codex 等 AI 客户端可调用的工具箱。
 
@@ -155,7 +155,7 @@ $env:LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS = "1"
 
 ## 桌面控制台
 
-桌面端仍然是本地资料和配置的入口，但它服务于 MCP-first 工作流：
+桌面端仍然是本地资料和配置的入口，也负责支撑外部 AI 客户端使用本地文献能力：
 
 - 导入和管理 PDF 文献。
 - 查看 PDF、页码、高亮、便签和阅读位置。

@@ -179,7 +179,7 @@ Non-mutating CLI command preview:
 ```
 
 Use the config example or the print-only helper above for the current
-MCP-first path.
+source-checkout path.
 
 ## Claude
 
@@ -196,7 +196,7 @@ Non-mutating Claude Code command preview:
 ```
 
 Use the desktop config example or the Claude Code helper above for the current
-MCP-first path.
+source-checkout path.
 
 ## Security Foundation
 

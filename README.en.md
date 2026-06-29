@@ -1,6 +1,6 @@
 # Scholar AI
 
-[中文](README.md) · [Claude / Codex Toolbox](docs/claude-codex-toolbox.en.md) · [Research Workflows and Skills](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) · [Quick Start](#quick-start)
+[中文](README.md) · [Releases](https://github.com/xiaolongyao-lut/Scholar-AI/releases) · [Claude / Codex Toolbox](docs/claude-codex-toolbox.en.md) · [Research Workflows and Skills](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) · [Quick Start](#quick-start)
 
 Scholar AI is an open-source local research workspace for managing PDFs, building traceable evidence, drafting literature-review materials, and exposing a local research toolbox to Claude, Codex, and other MCP clients.
 
