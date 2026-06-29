@@ -1,6 +1,6 @@
 # Scholar AI
 
-[中文](README.md) · [Research Workflows and Skills](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) · [MCP Toolbox](agent_mcp_server/README.md) · [Quick Start](#quick-start)
+[中文](README.md) · [Claude / Codex Toolbox](docs/claude-codex-toolbox.en.md) · [Research Workflows and Skills](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) · [Quick Start](#quick-start)
 
 Scholar AI is an open-source local research workspace for managing PDFs, building traceable evidence, drafting literature-review materials, and exposing a local research toolbox to Claude, Codex, and other MCP clients.
 
@@ -27,27 +27,9 @@ Current source version: [v0.1.8.4](CHANGELOG.md#0184---2026-06-17)
 
 ## Claude / Codex Toolbox
 
-`agent_mcp_server/` provides a local MCP server. Claude, Codex, and other MCP clients can use it to call Scholar AI capabilities:
+`agent_mcp_server/` provides a local MCP server so Claude, Codex, and other MCP clients can call Scholar AI literature retrieval, evidence-pack, OCR, writing-export, Agent Workspace, and safe source-inspection tools.
 
-- Source inspection: `source.list_tree`, `source.search`, `source.read_file`, `source.read_symbols`, `source.inspect_routes`
-- Literature projects: `literature.list_projects`, `literature.list_materials`, `literature.read_material`, `literature.get_material_chunks`
-- Evidence retrieval: `literature.search_refs`, `literature.evidence_pack_build`, `literature.evidence_integrity_gate`, `literature.knowledge_context_receipt`
-- OCR and material processing: `literature.ocr_status`, `literature.ocr_engines`, `literature.ocr_health`, `literature.ocr_material`
-- Figures and citations: `literature.figures_candidates`, `literature.figures_generate`, `literature.citations_sources`, `literature.citations_detect_overlap`
-- Writing and export: `literature.outline_generate`, `literature.academic_writing_lint`, `literature.export_docx`, `literature.export_project_pack`, `literature.translate_pack`
-- Agent Workspace: `literature.agent_workspace_status`, `literature.agent_resource_read`, `literature.agent_handoff_card`, `literature.workflow_passport`
-- Local workflow artifacts: `workflow.create_plan`, `workflow.run_json_workflow`, `artifact.write_markdown`, `artifact.read_artifact`
-
-## Workflow Chains
-
-| Chain | Tool Order | Output |
-|---|---|---|
-| Evidence retrieval | `literature.list_projects` -> `literature.search_refs` -> `literature.evidence_pack_build` -> `literature.evidence_integrity_gate` | Evidence pack with refs, pages, material provenance, and integrity status |
-| Actual context loading | `literature.agent_resource_read` -> `literature.knowledge_context_receipt` -> provider tool-call transcript | Proof that a model received bounded context and a receipt hash |
-| Single-paper reading | `literature.read_material` -> `literature.get_material_chunks` -> `literature.figures_candidates` -> `literature.agent_handoff_card` | Handoff-ready reading packet |
-| Writing export | `literature.evidence_pack_build` -> `literature.outline_generate` -> `literature.academic_writing_lint` -> `literature.export_docx` | Word output tied to checked evidence |
-| OCR readiness | `literature.ocr_status` -> `literature.ocr_engines` -> `literature.ocr_health` -> `literature.ocr_material` | Engine readiness, blockers, and authorized OCR processing |
-| Workflow replay | `literature.workflow_passport` -> `literature.workflow_refresh_receipt` -> `literature.workflow_replay_lineage` | Replayable lineage for research actions, evidence, artifacts, and handoff |
+See [Claude / Codex Toolbox](docs/claude-codex-toolbox.en.md) for detailed tool groups, proven chains, dependencies, verification commands, and security boundaries.
 
 ## Quick Start
 

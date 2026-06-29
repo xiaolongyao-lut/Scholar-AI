@@ -5,6 +5,7 @@ Local MCP toolbox for Codex and Claude.
 Related:
 
 - Main project: <https://github.com/xiaolongyao-lut/Scholar-AI>
+- Detailed toolbox guide: [docs/claude-codex-toolbox.md](../docs/claude-codex-toolbox.md)
 - Research workflows and skill cards: <https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit>
 
 ## Scope
