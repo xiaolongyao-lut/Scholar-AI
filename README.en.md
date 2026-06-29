@@ -23,7 +23,7 @@ Current source version: [v0.1.8.4](CHANGELOG.md#0184---2026-06-17)
 | Repository | Contents |
 |---|---|
 | [Scholar AI](https://github.com/xiaolongyao-lut/Scholar-AI) | This repository: desktop app, backend, MCP toolbox, retrieval, writing, OCR, and tests. |
-| [scholar-ai-research-toolkit](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) | Public research workflow recipes and skill cards for paper reading, translation, writing, OCR, experiment design, and evidence work. |
+| [scholar-ai-research-toolkit](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) | Scholar AI workflow recipes and skill cards for paper reading, translation, writing, OCR, experiment design, and evidence work. |
 
 ## Claude / Codex Toolbox
 
