@@ -299,9 +299,16 @@ export function KnowledgeBase() {
   }, [activeProjectId]);
 
   const openPdfInWorkbench = useCallback((materialId: string, page?: number) => {
-    const pageQuery = page && page > 0 ? `?page=${encodeURIComponent(String(page))}` : '';
-    navigate(`/workbench/paper/${encodeURIComponent(materialId)}${pageQuery}`);
-  }, [navigate]);
+    const normalizedMaterialId = materialId.trim();
+    if (!normalizedMaterialId) return;
+    const params = new URLSearchParams();
+    params.set('scope', 'paper');
+    params.set('material_id', normalizedMaterialId);
+    params.set('tab', 'reader');
+    if (activeProjectId) params.set('project_id', activeProjectId);
+    if (page && page > 0) params.set('page', String(Math.round(page)));
+    navigate(`/dialog?${params.toString()}`);
+  }, [activeProjectId, navigate]);
 
   const openMaterialInSmartRead = useCallback((doc: KBDocument) => {
     const materialId = doc.id.trim();
@@ -421,7 +428,7 @@ export function KnowledgeBase() {
         timeout: 15000,
         signal: abortController.signal,
       });
-      setScanNotice(`已提交文献入库任务，可在 Agent Workspace 查看进度。任务状态：${data.runtime_job_ref.status}`);
+      setScanNotice(`已提交文献入库任务，可在任务中心查看进度。任务状态：${data.runtime_job_ref.status}`);
     } catch (err: unknown) {
       if (scanStopRequestedRef.current || isAbortLikeError(err)) {
         setScanNotice('已停止扫描。');

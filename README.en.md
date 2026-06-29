@@ -2,21 +2,21 @@
 
 [中文](README.md) · [Releases](https://github.com/xiaolongyao-lut/Scholar-AI/releases) · [Claude / Codex Toolbox](docs/claude-codex-toolbox.en.md) · [Research Workflows and Skills](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) · [Quick Start](#quick-start)
 
-Scholar AI is an open-source local research workspace for managing PDFs, building traceable evidence, drafting literature-review materials, and exposing a local research toolbox to Claude, Codex, and other MCP clients.
+Scholar AI is a local research workspace for papers, PDFs, notes, evidence, and literature-review writing. It also lets Claude, Codex, or another MCP client search and reuse your local research material through controlled tools.
 
-It is designed for students, researchers, and open-source experimenters who repeatedly read papers, collect source-grounded notes, export documents, and want AI agents to work with local research material without receiving raw provider credentials.
+The everyday problem is simple: papers scatter, notes drift away from sources, page numbers get lost, and review writing turns into constant tab switching. Scholar AI keeps the material, page locators, chunks, notes, evidence packs, and exports in one local workflow. Humans still judge and write; tools help find, organize, verify, and repeat the boring parts.
 
 Current source version: [v0.1.8.4](CHANGELOG.md#0184---2026-06-17)
 
 ## What It Provides
 
-- Local PDF projects, materials, page-level chunks, annotations, and reading state.
+- Local PDF projects, materials, page-level chunks, annotations, and reading positions.
 - Keyword, vector, rerank, and evidence-fusion retrieval over a local literature workspace.
 - Source-grounded evidence packs with refs, pages, material provenance, and integrity checks.
 - Smart reading, literature-review drafting, academic writing checks, figure candidates, and Word export.
 - OCR readiness checks for scanned materials.
 - A local [MCP toolbox](docs/claude-codex-toolbox.en.md) that lets Claude / Codex call Scholar AI tools without exposing raw API keys.
-- Agent Workspace views for tool-call audit, workflow artifacts, handoff records, and replayable research actions.
+- A task center for long-running jobs, tool-call results, and replayable research artifacts.
 
 ## Related Repositories
 
@@ -27,7 +27,7 @@ Current source version: [v0.1.8.4](CHANGELOG.md#0184---2026-06-17)
 
 ## Claude / Codex Toolbox
 
-[`agent_mcp_server/`](agent_mcp_server/README.md) provides a local MCP server so Claude, Codex, and other MCP clients can call Scholar AI literature retrieval, evidence-pack, OCR, writing-export, Agent Workspace, and safe source-inspection tools.
+[`agent_mcp_server/`](agent_mcp_server/README.md) provides a local MCP server for Claude, Codex, and other MCP clients. It turns literature retrieval, evidence packs, OCR, writing export, workflow artifacts, and safe source inspection into callable tools.
 
 See [Claude / Codex Toolbox](docs/claude-codex-toolbox.en.md) for detailed tool groups, proven chains, dependencies, verification commands, and security boundaries.
 
@@ -53,14 +53,14 @@ Scholar AI backend
         +-- project / material / chunk stores
         +-- retrieval, evidence, OCR, writing, export services
         +-- model and credential settings
-        +-- Agent Workspace audit and workflow artifacts
+        +-- task, audit, and workflow artifacts
 ```
 
-The desktop app owns the literature workspace, PDF reading, model settings, credential management, and audit views. The MCP toolbox exposes those local capabilities to user-authorized AI clients: `source.*` is backend-independent and read-only over allowlisted source files; `literature.*` calls backend HTTP APIs; `workflow.*` and `artifact.*` keep research actions and artifacts replayable. Tool results are redacted, size-limited, and returned with machine-readable refs, locators, and integrity state.
+The desktop app owns the literature workspace, PDF reading, model settings, credential management, and task views. The MCP toolbox exposes local capabilities to user-authorized Claude / Codex clients: `source.*` reads allowlisted source files; `literature.*` calls backend literature APIs; `workflow.*` and `artifact.*` keep research actions and artifacts replayable. Tool results are redacted, size-limited, and returned with machine-readable refs, locators, and integrity state.
 
 ## RAG And Evidence Architecture
 
-Scholar AI is built around a local literature RAG and evidence pipeline. It is not a single vector search: local materials become locatable chunks, then different user paths enter stable refs, smart-reading context, Wiki joint recall, and evidence integrity checks. See [RAG and Evidence Architecture](docs/rag-evidence-architecture.en.md) for module details, code entry points, and fallback boundaries.
+Scholar AI's RAG is more than dropping text into a vector store. After ingestion, each material becomes locatable chunks. Smart reading, Wiki synthesis, review writing, and Claude / Codex tool calls try to keep project, material, page, chunk, and integrity state attached as the answer moves forward. See [RAG and Evidence Architecture](docs/rag-evidence-architecture.en.md) for module details, code entry points, and fallback boundaries.
 
 ```text
 PDF / Markdown / OCR materials
@@ -88,7 +88,7 @@ integrity gates
 smart reading / review writing / Word export / MCP tool calls
 ```
 
-This pipeline turns "the system found something" into "this project, material, chunk, locator, and integrity state support this claim." Different entry points do not pretend to use one heavy path: `search_refs` provides stable read-only refs; smart reading can combine TOLF, RRF, structured neighbors, and hybrid retrieval; evidence packs condense project chunks, Wiki refs, and knowledge refs into reviewable results. Claude, Codex, and other MCP clients receive controlled tool results from this pipeline.
+The goal is practical: important claims should be traceable back to a project, material, page, and chunk when possible. Lightweight lookup uses `search_refs`; smart reading can combine TOLF, RRF, structured neighbors, and hybrid retrieval; evidence packs condense project chunks, Wiki refs, and knowledge refs into reviewable results. Claude, Codex, and other MCP clients receive controlled tool results from this pipeline.
 
 ## Quick Start
 

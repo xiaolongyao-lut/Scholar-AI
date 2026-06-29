@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { MainLayout } from './layouts/MainLayout';
 import { WritingProvider } from './contexts/WritingContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -12,7 +12,6 @@ import { McpPendingCallPoller } from './components/mcp/McpPendingCallPoller';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 // Route-level lazy imports keep the initial shell small.
-const Workbench = React.lazy(() => import('./pages/Workbench').then(m => ({ default: m.Workbench })));
 const Projects = React.lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
 const KnowledgeBase = React.lazy(() => import('./pages/KnowledgeBase').then(m => ({ default: m.KnowledgeBase })));
 const KnowledgeDeposits = React.lazy(() => import('./pages/KnowledgeDeposits').then(m => ({ default: m.KnowledgeDeposits })));
@@ -24,8 +23,6 @@ const DesktopAcceptanceAgentWorkspace = React.lazy(() => import('./pages/Desktop
 const DesktopAcceptanceSemanticReview = React.lazy(() => import('./pages/DesktopAcceptanceSemanticReview').then(m => ({ default: m.DesktopAcceptanceSemanticReview })));
 const DraftStudio = React.lazy(() => import('./components/DraftStudio').then(m => ({ default: m.DraftStudio })));
 const Dialog = React.lazy(() => import('./pages/Dialog').then(m => ({ default: m.Dialog })));
-const ResearchWorkbench = React.lazy(() => import('./pages/ResearchWorkbench').then(m => ({ default: m.ResearchWorkbench })));
-const WorkbenchWiki = React.lazy(() => import('./pages/WorkbenchObjectAdapters').then(m => ({ default: m.WorkbenchWiki })));
 const WritingOverview = React.lazy(() => import('./pages/writing/WritingOverview').then(m => ({ default: m.WritingOverview })));
 const OutlineManager = React.lazy(() => import('./pages/writing/OutlineManager').then(m => ({ default: m.OutlineManager })));
 const SourcesCitations = React.lazy(() => import('./pages/writing/SourcesCitations').then(m => ({ default: m.SourcesCitations })));
@@ -40,6 +37,22 @@ const LazyFallback = () => (
     </div>
   </div>
 );
+
+const PaperWorkbenchRedirect = () => {
+  const { materialId = '' } = useParams<{ materialId: string }>();
+  const [searchParams] = useSearchParams();
+  const normalizedMaterialId = materialId.trim();
+  if (!normalizedMaterialId) return <Navigate to="/dialog" replace />;
+
+  const nextParams = new URLSearchParams(searchParams);
+  nextParams.set('scope', 'paper');
+  nextParams.set('material_id', normalizedMaterialId);
+  nextParams.delete('material');
+  if (!nextParams.get('tab')) {
+    nextParams.set('tab', 'reader');
+  }
+  return <Navigate to={`/dialog?${nextParams.toString()}`} replace />;
+};
 
 const App = () => {
   // B19 (2026-06-14): React-side fallback for F5 / Ctrl+R reload. The backend
@@ -100,7 +113,7 @@ const App = () => {
 
                       {/* Standalone pages */}
                       <Route path="/knowledge" element={<KnowledgeBase />} />
-                      <Route path="/library" element={<Workbench />} />
+                      <Route path="/library" element={<Navigate to="/knowledge" replace />} />
                       <Route path="/wiki" element={<KnowledgeDeposits />} />
                       <Route path="/projects" element={<Projects />} />
                       <Route path="/volume" element={<VolumeAnalysis />} />
@@ -109,17 +122,15 @@ const App = () => {
                       <Route path="/intelligent-chat" element={<Navigate to="/dialog" replace />} />
                       <Route path="/dialog" element={<Dialog />} />
                       <Route path="/discussion" element={<Navigate to="/dialog?mode=discussion" replace />} />
-                      {/* ResearchWorkbench — gated by VITE_FLAG_RESEARCH_WORKBENCH; otherwise
-                          the component itself redirects to /knowledge. */}
-                      <Route path="/workbench/paper/:materialId" element={<ResearchWorkbench />} />
+                      <Route path="/workbench/paper/:materialId" element={<PaperWorkbenchRedirect />} />
                       <Route path="/workbench/discussion" element={<Navigate to="/dialog?mode=discussion" replace />} />
-                      <Route path="/workbench/wiki" element={<WorkbenchWiki />} />
+                      <Route path="/workbench/wiki" element={<Navigate to="/wiki" replace />} />
                       <Route path="/workbench/inspiration" element={<Navigate to="/dialog" replace />} />
                       <Route path="/jobs" element={<Jobs />} />
                       <Route path="/agent-workspace" element={<AgentWorkspace />} />
                       <Route path="/__desktop_acceptance/agent-workspace" element={<DesktopAcceptanceAgentWorkspace />} />
                       <Route path="/__desktop_acceptance/semantic-review" element={<DesktopAcceptanceSemanticReview />} />
-                      <Route path="/evolution" element={<KnowledgeDeposits />} />
+                      <Route path="/evolution" element={<Navigate to="/wiki" replace />} />
                       <Route path="/settings" element={<SettingsPage />} />
 
                       {/* Fallback */}

@@ -254,12 +254,15 @@ export function GraphPayloadViewer({
     }
 
     const params = new URLSearchParams();
+    params.set('scope', 'paper');
+    params.set('material_id', target.material_id);
+    params.set('tab', 'reader');
+    if (normalizedProjectId) params.set('project_id', normalizedProjectId);
     if (page) params.set('page', String(page));
     if (target.chunk_id) params.set('chunk', target.chunk_id);
     const bboxParam = encodePdfBboxParam(bbox, bboxUnit);
     if (bboxParam) params.set('bbox', bboxParam);
-    const suffix = params.toString() ? `?${params.toString()}` : '';
-    navigate(`/workbench/paper/${encodeURIComponent(target.material_id)}${suffix}`);
+    navigate(`/dialog?${params.toString()}`);
   }, [navigate, onNavigateTarget, projectId]);
 
   const onNodeClick: NodeMouseHandler = useCallback((_, rfNode) => {

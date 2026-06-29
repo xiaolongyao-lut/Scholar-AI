@@ -174,6 +174,9 @@ function readPdfAnchors(frontmatter: Record<string, unknown>): WikiPdfAnchor[] {
 
 function pdfAnchorHref(anchor: WikiPdfAnchor): string {
   const params = new URLSearchParams();
+  params.set('scope', 'paper');
+  params.set('material_id', anchor.materialId);
+  params.set('tab', 'reader');
   if (anchor.page) {
     params.set('page', String(anchor.page));
   }
@@ -184,8 +187,7 @@ function pdfAnchorHref(anchor: WikiPdfAnchor): string {
   if (bbox) {
     params.set('bbox', bbox);
   }
-  const suffix = params.toString() ? `?${params.toString()}` : '';
-  return `/workbench/paper/${encodeURIComponent(anchor.materialId)}${suffix}`;
+  return `/dialog?${params.toString()}`;
 }
 
 function buildPageAttributeSummaries(page: WikiPageDetailModel): PageAttributeSummary[] {

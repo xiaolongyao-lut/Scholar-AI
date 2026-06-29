@@ -189,10 +189,13 @@ export function EvidencePill({
     }
 
     if (Number.isFinite(pageNum) && pageNum > 0) params.set('page', String(pageNum));
+    params.set('scope', 'paper');
+    params.set('material_id', evidence.material_id);
+    params.set('tab', 'reader');
+    if (projectId?.trim()) params.set('project_id', projectId.trim());
     if (evidence.chunk_id) params.set('chunk', evidence.chunk_id);
     if (bboxParam) params.set('bbox', bboxParam);
-    const suffix = params.toString() ? `?${params.toString()}` : '';
-    navigate(`/workbench/paper/${encodeURIComponent(evidence.material_id)}${suffix}`);
+    navigate(`/dialog?${params.toString()}`);
   };
 
   const label = friendlyLabel(evidence);

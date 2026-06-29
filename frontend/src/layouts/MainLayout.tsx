@@ -21,7 +21,6 @@ import {
   Settings,
   ShieldCheck,
   Activity,
-  TerminalSquare,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -53,11 +52,8 @@ function NavItem({
 }) {
   const location = useLocation();
   // When `activePaths` is supplied, the item lights up on every path that
-  // starts with any of those prefixes — so the "知识库" tab stays
-  // highlighted while the user is inside the PDF reader at
-  // /workbench/paper/..., the "智能研读" tab stays highlighted inside
-  // /dialog, and so on. Falls back to NavLink's default isActive when no
-  // activePaths is given.
+  // starts with any of those prefixes. Falls back to NavLink's default
+  // isActive when no activePaths is given.
   const customActive = activePaths
     ? activePaths.some(prefix => prefix === '/'
         ? location.pathname === '/'
@@ -387,17 +383,11 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
 
   const _getHeaderTitle = () => {
     if (isWritingRoute) return t('writing.workbench_title');
-    if (location.pathname.startsWith('/library')) return '文献库';
-    if (location.pathname.startsWith('/workbench/paper')) return '研究工作台 · 文献';
-    if (location.pathname.startsWith('/workbench/discussion')) return '研究工作台 · 多智能体讨论';
-    if (location.pathname.startsWith('/workbench/wiki')) return '研究工作台 · Wiki';
-    if (location.pathname.startsWith('/workbench')) return '研究工作台';
     if (location.pathname.startsWith('/knowledge')) return t('kb.title');
     if (location.pathname.startsWith('/wiki')) return '知识沉淀';
     if (location.pathname.startsWith('/projects')) return t('projects.title');
     if (location.pathname.startsWith('/settings')) return t('settings.title');
     if (location.pathname.startsWith('/jobs')) return t('jobs.title');
-    if (location.pathname.startsWith('/evolution')) return '知识沉淀';
     if (location.pathname.startsWith('/volume')) return t('volume.title');
     if (location.pathname.startsWith('/dialog')) return t('nav.workbench');
     if (location.pathname.startsWith('/discussion')) return t('nav.multi_agent_discussion');
@@ -523,7 +513,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
         icon={<Database size={20} />}
         label={t('nav.knowledge')}
         collapsed={collapsed}
-        activePaths={['/knowledge', '/library', '/workbench/paper']}
+        activePaths={['/knowledge']}
         onNavigate={onNavigate}
       />
 
@@ -548,13 +538,12 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
         icon={<BookOpenCheck size={20} />}
         label="知识沉淀"
         collapsed={collapsed}
-        activePaths={['/wiki', '/evolution', '/workbench/wiki']}
+        activePaths={['/wiki']}
         onNavigate={onNavigate}
       />
       <NavItem to="/projects" icon={<FolderKanban size={20} />} label={t('nav.projects')} collapsed={collapsed} onNavigate={onNavigate} />
       <NavItem to="/volume" icon={<FileText size={20} />} label={t('nav.volume')} collapsed={collapsed} onNavigate={onNavigate} />
       <NavItem to="/jobs" icon={<Activity size={20} />} label={t('nav.jobs')} collapsed={collapsed} onNavigate={onNavigate} />
-      <NavItem to="/agent-workspace" icon={<TerminalSquare size={20} />} label="Agent Workspace" collapsed={collapsed} onNavigate={onNavigate} />
       <NavItem to="/settings" icon={<Settings size={20} />} label={t('nav.settings')} collapsed={collapsed} onNavigate={onNavigate} />
     </>
   ), [t]);

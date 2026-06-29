@@ -1200,6 +1200,9 @@ function coerceNormalizedBbox(value: unknown): number[] | null {
 
 function buildWorkbenchPath(ref: Reference): string {
   const params = new URLSearchParams();
+  params.set('scope', 'paper');
+  params.set('material_id', ref.materialId);
+  params.set('tab', 'reader');
   if (ref.firstPage && ref.firstPage > 0) {
     params.set('page', String(ref.firstPage));
   }
@@ -1211,6 +1214,5 @@ function buildWorkbenchPath(ref: Reference): string {
     const bboxParam = encodePdfBboxParam(bbox);
     if (bboxParam) params.set('bbox', bboxParam);
   }
-  const query = params.toString();
-  return `/workbench/paper/${encodeURIComponent(ref.materialId)}${query ? `?${query}` : ''}`;
+  return `/dialog?${params.toString()}`;
 }

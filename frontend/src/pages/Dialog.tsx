@@ -2505,7 +2505,11 @@ export function Dialog() {
   }
   const handleOpenPinnedMaterial = () => {
     if (!pinnedMaterialId) return;
-    navigate(`/workbench/paper/${encodeURIComponent(pinnedMaterialId)}`);
+    writeReaderSearchParams(pinnedMaterialId, {
+      title: pinnedMaterialTitle,
+      page: effectiveReaderPage,
+      replace: false,
+    });
   };
   function writeReaderSearchParams(
     materialId: string,
