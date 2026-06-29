@@ -33,6 +33,9 @@ These paths are acceptable public Git candidates after normal review:
 
 - Product code: `literature_assistant/`, `frontend/src/`,
   `frontend/index.html`, `frontend/openapi/`, `extension_packages/`.
+  Package-local operator notes such as `literature_assistant/00-index/`,
+  `literature_assistant/AGENT_SOURCE_MAP.md`, and runtime skill audit logs are
+  local-only unless explicitly rewritten as public user documentation.
 - Frontend build metadata: `frontend/package.json`,
   `frontend/package-lock.json`, `frontend/tsconfig*.json`,
   `frontend/vite*.ts`, `frontend/postcss.config.js`,
@@ -40,24 +43,21 @@ These paths are acceptable public Git candidates after normal review:
 - Backend and startup metadata: `pyproject.toml`, `requirements-ci.txt`,
   `requirements-pin.txt`, `run_literature_assistant.py`, `sitecustomize.py`,
   `start.py`, `start.bat`, `start_desktop.py`.
-- Public project documents: `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`,
+- Public project documents: `README.md`, `CONTRIBUTING.md`,
   `SECURITY.md`, `LICENSE`, `SOURCE_RELEASE_POLICY.md`, and selected
   user-facing how-to files under `docs/` after scrub review.
 - Test reproducibility files: `pytest.ini`, `tests/`, selected
   `frontend/**/*.test.ts`, `frontend/**/*.test.tsx`, `frontend/tests/`,
-  and `frontend/src/test/` when they contain no private fixtures.
-- Release reproducibility files: `packaging/`, `.github/workflows/ci.yml`,
-  `.github/workflows/online-smoke.yml`, and selected release workflows that do
-  not require local-only secrets.
+  and `frontend/src/test/` when they contain no private fixtures. Keep
+  `workspace_tests/` local-only by default; do not publish evaluation
+  manifests, canary qrels, diagnostic fixtures, or generated smoke inputs.
+- Public CI files: `.github/workflows/ci.yml` and
+  `.github/workflows/online-smoke.yml` when scrubbed.
 - Build and verification scripts that are safe to run from a clone:
-  `scripts/audit_pyinstaller_hiddenimports.py`,
-  `scripts/build_windows_exe.ps1`, `scripts/dump_pyinstaller_analysis.py`,
   `scripts/embedding_backfill.py`, `scripts/export_openapi_schema.py`,
   `scripts/ingest_project_pdfs.py`,
-  `scripts/release_forbidden_path_scan.py`,
-  `scripts/release_secret_scan.py`,
-  `scripts/smoke_frozen_first_launch.py`, and
-  `scripts/smoke_windows_release.ps1`.
+  `scripts/release_forbidden_path_scan.py`, and
+  `scripts/release_secret_scan.py`.
 - Example environment files: `.env.example` and `frontend.env.example` only
   when every value is a placeholder.
 
@@ -75,6 +75,12 @@ Never commit these paths or file classes:
   `.codex/`, `.squad/`, `.kilo/`, `.cursor/`, `.continue/`, and `.opencode/`.
 - Internal plans and evidence: `docs/plans/`, long-run runbooks, smoke
   artifacts, evaluation outputs, cost logs, and private review notes.
+- Internal execution prompts and local diagnostics: `tools/`, `workspace_tests/`,
+  root-level ad hoc evaluation scripts, local-only performance probes, and files
+  containing machine paths or operator handoff instructions.
+- Abandoned installer and release-history surfaces: `packaging/`, frozen-app
+  smoke helpers, PyInstaller/Inno build scripts, and local changelogs unless a
+  future release decision explicitly reopens binary distribution.
 - External references and vendored workspaces: `github/`,
   `workspace_references/`, `legacy_archive/`, copied third-party repos, and
   non-installable skill/plugin catalogs.
@@ -111,11 +117,18 @@ Before pushing a source-boundary change:
 1. Create a rollback snapshot for the files being edited.
 2. Re-check official or mature references if the boundary changes.
 3. Stage explicit paths only; do not use broad `git add .`.
-4. Run `git diff --cached --check`.
-5. Run `git ls-files -ci --exclude-standard` and fix any tracked ignored file.
-6. Run the release secret scan over newly public paths.
-7. Run the forbidden path scan for release trees or uploaded source assets.
-8. Inspect the tagged tree before publishing a release archive.
+4. Classify the remote-facing tree, not just local diffs. Confirm the public
+   tree contains only usable source, dependency metadata, public docs, selected
+   tests, and selected CI.
+5. Run `git ls-files` checks for forbidden public roots: `tools/`,
+   `workspace_tests/`, `docs/plans/`, `workspace_artifacts/`,
+   `workspace_references/`, local agent instruction files, package-local audit
+   logs, and root ad hoc evaluation scripts.
+6. Run `git diff --cached --check`.
+7. Run `git ls-files -ci --exclude-standard` and fix any tracked ignored file.
+8. Run the release secret scan over newly public paths.
+9. Run the forbidden path scan for release trees or uploaded source assets.
+10. Inspect the tagged tree before publishing a release archive.
 
 ## Release Rule
 

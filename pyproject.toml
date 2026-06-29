@@ -49,13 +49,6 @@ desktop = [
     "pywin32>=306,<400; sys_platform == 'win32'",
 ]
 
-packaging = [
-    "build>=1.0,<2.0",
-    "pyinstaller>=6.0,<7.0; sys_platform == 'win32'",
-    "pyinstaller-hooks-contrib>=2024.0,<2027.0; sys_platform == 'win32'",
-    "pefile>=2023.2.7,<2025.0; sys_platform == 'win32'",
-]
-
 dev = [
     "pytest>=7.0,<10.0",
     "pytest-asyncio>=0.23,<2.0",

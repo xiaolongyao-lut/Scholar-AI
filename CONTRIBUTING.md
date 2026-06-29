@@ -19,7 +19,7 @@ Backend:
 
 ```powershell
 .\.venv-1\Scripts\python.exe .\run_literature_assistant.py paths
-.\.venv-1\Scripts\python.exe -m compileall -q literature_assistant run_literature_assistant.py sitecustomize.py tests\conftest.py workspace_tests\evaluation_scripts
+.\.venv-1\Scripts\python.exe -m compileall -q literature_assistant run_literature_assistant.py sitecustomize.py tests\conftest.py
 .\.venv-1\Scripts\python.exe -m pytest tests --collect-only -q
 ```
 
@@ -44,9 +44,10 @@ npm run build
 
 GitHub release `Source code` archives are generated from the tagged Git tree.
 The public tree should include product source, dependency metadata, public docs,
-safe tests, and release rebuild scripts. It must not include credentials,
+safe tests, and selected release rebuild scripts. It must not include credentials,
 runtime state, local agent instructions, private planning notes, generated
-release outputs, or external reference repositories.
+release outputs, evaluation manifests, long-run prompts, or external reference
+repositories.
 
 Use `SOURCE_RELEASE_POLICY.md` as the source allowlist and denylist. Stage public
 boundary changes with explicit paths and run the listed pre-push checks before
@@ -54,4 +55,7 @@ publishing.
 
 ## Generated Files
 
-Generated runtime output belongs under `workspace_artifacts/` and is ignored by Git. Evaluation fixtures and deterministic manifests belong under `workspace_tests/` when they are required to reproduce tests.
+Generated runtime output belongs under `workspace_artifacts/` and is ignored by
+Git. Evaluation fixtures, deterministic manifests, and local diagnostic inputs
+belong under `workspace_tests/` and are local-only unless the source release
+policy explicitly promotes a sanitized fixture.

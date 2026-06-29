@@ -357,7 +357,6 @@ def test_python_dependency_specs_have_upper_bounds() -> None:
     dependencies = list(pyproject["project"]["dependencies"])
     dependencies.extend(pyproject["project"]["optional-dependencies"]["rag"])
     dependencies.extend(pyproject["project"]["optional-dependencies"]["desktop"])
-    dependencies.extend(pyproject["project"]["optional-dependencies"]["packaging"])
 
     assert dependencies
     for spec in dependencies:

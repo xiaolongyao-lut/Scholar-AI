@@ -50,6 +50,7 @@
 # are explicitly converted into product docs under docs/plans/.
 /SECURITY_AUDIT_*.md
 /SECURITY_AUDIT_REPORT_*.md
+/CHANGELOG.md
 
 # Root-only GitHub files are ignored by default because this workspace contains
 # private agent scaffolding. Public CI workflows may be promoted explicitly under
@@ -187,43 +188,22 @@ htmlcov/
 /github/
 /my-project/
 /packaging/
-!/packaging/
-/packaging/*
-!/packaging/assets/
-/packaging/assets/*
-!/packaging/assets/license.txt
-!/packaging/assets/icon.ico
-!/packaging/assets/icon.png
-!/packaging/inno-setup/
-/packaging/inno-setup/*
-!/packaging/inno-setup/literature-assistant.iss
-!/packaging/pyinstaller/
-/packaging/pyinstaller/*
-!/packaging/pyinstaller/literature-assistant.spec
-!/packaging/pyinstaller/runtime_hook.py
 /scripts/
 !/scripts/
 /scripts/*
-!/scripts/audit_pyinstaller_hiddenimports.py
-!/scripts/build_windows_exe.ps1
-!/scripts/dump_pyinstaller_analysis.py
 !/scripts/embedding_backfill.py
 !/scripts/export_openapi_schema.py
 !/scripts/ingest_project_pdfs.py
 !/scripts/release_forbidden_path_scan.py
 !/scripts/release_secret_scan.py
-!/scripts/smoke_frozen_first_launch.py
-!/scripts/smoke_windows_release.ps1
 /skills/
 /tools/
-!/tools/
-/tools/*
-!/tools/longrun/
-/tools/longrun/*
-!/tools/longrun/longrun-prompt.md
 # Third-party package copies must live under /extension_packages only when they
 # are Literature Assistant installable packages; do not embed them in runtime code.
 /literature_assistant/core/skills/importers/ui-ux-pro-max/
+/literature_assistant/00-index/
+/literature_assistant/AGENT_SOURCE_MAP.md
+/literature_assistant/core/skills/imported/user/.audit/
 
 # Workspace runtime/generated artifacts.
 # Keep these local by default; public commits should use explicit product paths.
@@ -232,29 +212,6 @@ htmlcov/
 /workspace_artifacts/
 /workspace_references/
 /workspace_tests/
-!/workspace_tests/
-/workspace_tests/*
-!/workspace_tests/evaluation_manifests/
-/workspace_tests/evaluation_manifests/*
-!/workspace_tests/evaluation_manifests/rerank_canary_dry_run_sample.json
-!/workspace_tests/evaluation_manifests/rerank_canary_queries.jsonl
-!/workspace_tests/evaluation_manifests/rerank_canary_qrels.jsonl
-!/workspace_tests/fixtures/
-/workspace_tests/fixtures/*
-!/workspace_tests/fixtures/wiki_graph_doctor_smoke/
-/workspace_tests/fixtures/wiki_graph_doctor_smoke/*
-!/workspace_tests/fixtures/wiki_graph_doctor_smoke/pages/
-/workspace_tests/fixtures/wiki_graph_doctor_smoke/pages/*
-!/workspace_tests/fixtures/wiki_graph_doctor_smoke/pages/concepts/
-/workspace_tests/fixtures/wiki_graph_doctor_smoke/pages/concepts/*
-!/workspace_tests/fixtures/wiki_eval_smoke/
-/workspace_tests/fixtures/wiki_eval_smoke/*
-!/workspace_tests/fixtures/wiki_eval_smoke/manifest.json
-!/workspace_tests/fixtures/wiki_eval_smoke/pages/
-/workspace_tests/fixtures/wiki_eval_smoke/pages/*
-!/workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/
-/workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/*
-!/workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/*.md
 
 # Workspace scratch areas. Public tests and release scripts may be promoted
 # explicitly under SOURCE_RELEASE_POLICY.md; generated evaluation data stays
@@ -263,7 +220,6 @@ htmlcov/
 !/tests/
 /tests/*
 # Public-source candidate tests stay path-explicit until the full tests tree is reviewed.
-!/tests/test_build_windows_exe_script.py
 !/tests/test_chat_hybrid_retrieval.py
 !/tests/test_chunk_vector_store_dim_allowlist.py
 !/tests/test_credentials_sampling.py
@@ -279,12 +235,10 @@ htmlcov/
 !/tests/test_ocr_classifier.py
 !/tests/test_ocr_engine_registry.py
 !/tests/test_ocr_ingestion.py
-!/tests/test_pyinstaller_hiddenimports.py
 !/tests/test_pyproject_runtime_metadata.py
 !/tests/test_rag_structured_sibling_inclusion.py
 !/tests/test_release_secret_scan.py
 !/tests/test_skill_export.py
-!/tests/test_smoke_frozen_host_appdata.py
 !/tests/test_start_launchers_security.py
 !/tests/test_tolf_rag_fusion.py
 !/tests/test_wiki_crud.py
@@ -358,8 +312,16 @@ htmlcov/
 /gateb_phase_b_pool_export.py
 /integrated_pipeline.py
 /local_rerank_server.py
+/batch_controller.py
+/build_eval_corpus.py
+/eval_tolf_text_pilot.py
+/local_embedding_server.py
 /recovery_cli.py
 /recovery_workflows.py
+/test_abstract_extraction.py
+/test_ocr_classifier.py
+/test_pymupdf_batch_performance.py
+/test_remote_document_parse.py
 /test_word_docx_smoke.py
 /tests_semantic_themes.py
 

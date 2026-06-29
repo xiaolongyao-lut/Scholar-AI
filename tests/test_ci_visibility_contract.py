@@ -17,12 +17,12 @@ WORKFLOW_SPINE_GOAL_STATE = (
     "docs/plans/longrun-goal-state-2026-06-22-scholar-ai-research-workflow-spine.json"
 )
 PRIVATE_LOCAL_PLAN_PROBE = "docs/plans/private-local-audit-placeholder.md"
-WIKI_EVAL_SMOKE_VISIBLE_FIXTURES = (
+WORKSPACE_TESTS_LOCAL_ONLY_PROBES = (
+    "workspace_tests/evaluation_manifests/rerank_canary_queries.jsonl",
+    "workspace_tests/evaluation_manifests/rerank_canary_qrels.jsonl",
     "workspace_tests/fixtures/wiki_eval_smoke/manifest.json",
     "workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/baseline-contrast.md",
     "workspace_tests/fixtures/wiki_eval_smoke/pages/synthesis/paper-a.md",
-)
-WIKI_GRAPH_DOCTOR_LOCAL_ONLY_PROBE = (
     "workspace_tests/fixtures/wiki_graph_doctor_smoke/pages/concepts/alpha-model.md"
 )
 KNOWLEDGE_RUNTIME_PACKAGE_KINDS = (
@@ -55,7 +55,6 @@ PYTEST_FOCUSED_CI_EXEMPTIONS: dict[str, str] = {
     "tests/live_api_chat_knowledge_context_receipt_smoke.py": "live Knowledge Runtime context-receipt smoke remains opt-in outside deterministic CI",
     "tests/live_provider_direct_workflow_smoke.py": "live direct provider workflow smoke remains opt-in outside deterministic CI",
     "tests/test_api_probe_semantics.py": "legacy API probe contract outside the current KRT/N33 focused gate",
-    "tests/test_build_windows_exe_script.py": "Windows packaging helper is outside Linux CI focused gate",
     "tests/test_chat_hybrid_retrieval.py": "broader retrieval regression outside the current KRT/N33 focused gate",
     "tests/test_chunk_vector_store_dim_allowlist.py": "vector-store compatibility check outside the current KRT/N33 focused gate",
     "tests/test_credentials_sampling.py": "credential sampling regression outside the current KRT/N33 focused gate",
@@ -79,14 +78,12 @@ PYTEST_FOCUSED_CI_EXEMPTIONS: dict[str, str] = {
     "tests/test_provider_endpoint_policy.py": "provider endpoint policy regression outside the current KRT/N33 focused gate",
     "tests/test_provider_endpoint_policy_fake_ip.py": "provider endpoint fake-IP regression outside the current KRT/N33 focused gate",
     "tests/test_provider_endpoint_policy_loopback.py": "provider endpoint loopback regression outside the current KRT/N33 focused gate",
-    "tests/test_pyinstaller_hiddenimports.py": "PyInstaller hidden-import regression outside Linux CI focused gate",
-    "tests/test_pyproject_runtime_metadata.py": "packaging metadata regression outside the current KRT/N33 focused gate",
+    "tests/test_pyproject_runtime_metadata.py": "runtime metadata regression outside the current KRT/N33 focused gate",
     "tests/test_rag_ablation_evaluator.py": "RAG ablation evaluator regression outside the current KRT/N33 focused gate",
     "tests/test_rag_structured_sibling_inclusion.py": "RAG sibling inclusion regression outside the current KRT/N33 focused gate",
     "tests/test_release_secret_scan.py": "release secret-scan regression outside the current KRT/N33 focused gate",
     "tests/test_search_refs_contract.py": "search refs contract outside the current KRT/N33 focused gate",
     "tests/test_skill_export.py": "skill export regression outside the current KRT/N33 focused gate",
-    "tests/test_smoke_frozen_host_appdata.py": "frozen Windows smoke outside Linux CI focused gate",
     "tests/test_start_launchers_security.py": "launcher security regression outside the current KRT/N33 focused gate",
     "tests/test_token_utils_offline.py": "token utility regression outside the current KRT/N33 focused gate",
     "tests/test_tolf_rag_fusion.py": "TOLF RAG fusion regression outside the current KRT/N33 focused gate",
@@ -338,12 +335,15 @@ def test_docs_plans_stay_local_only() -> None:
     assert _is_git_ignored(PRIVATE_LOCAL_PLAN_PROBE)
 
 
-def test_selected_workspace_fixtures_are_path_explicit() -> None:
-    """Selected workspace fixtures must be complete without exposing adjacent local fixtures."""
-    for path in WIKI_EVAL_SMOKE_VISIBLE_FIXTURES:
-        assert (REPO_ROOT / path).is_file()
-        assert not _is_git_ignored(path)
-    assert _is_git_ignored(WIKI_GRAPH_DOCTOR_LOCAL_ONLY_PROBE)
+def test_workspace_tests_stay_local_only() -> None:
+    """Workspace evaluation manifests and fixtures must stay out of public Git."""
+    visible_records = _git_visible_paths(
+        ("workspace_tests",),
+        re.compile(r"^workspace_tests/[A-Za-z0-9_./-]+$"),
+    )
+    assert not visible_records
+    for path in WORKSPACE_TESTS_LOCAL_ONLY_PROBES:
+        assert _is_git_ignored(path)
 
 
 def test_knowledge_runtime_test_evidence_nodes_resolve() -> None:

@@ -6,7 +6,7 @@ Scholar AI is a local research workspace for PDF papers, page-level evidence, re
 
 This repository includes the desktop app, FastAPI backend, RAG / evidence pipeline, MCP toolbox, frontend UI, tests, and release scripts. It is intended for source checkouts, architecture inspection, reusable local research workflows, and continued development.
 
-Current source version: [v0.1.8.4](CHANGELOG.md#0184---2026-06-17)
+Published builds and historical versions are listed in [GitHub Releases](https://github.com/xiaolongyao-lut/Scholar-AI/releases).
 
 ## What It Provides
 
