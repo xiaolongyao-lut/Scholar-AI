@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      PYTHONPATH: literature_assistant/core
+      PYTHONPATH: literature_assistant/core:agent_mcp_server/src
       PYTHONUTF8: "1"
       RUNTIME_ENV_DISABLE_DOTENV: "1"
       LITERATURE_ASSISTANT_RUNTIME_STATE_ROOT: ${{ github.workspace }}/workspace_artifacts/runtime_state/pytest_ci
@@ -103,6 +103,13 @@ jobs:
       - name: Run Wiki Frontend Evidence Tests
         run: |
           npm run test -- --run \
+            src/components/DiscussionPanel/DiscussionPanel.evidencePills.test.tsx \
+            src/components/chat/MessageBubble.test.tsx \
+            src/components/evidence/EvidencePill.test.tsx \
+            src/components/graph/GraphPayloadViewer.test.tsx \
+            src/components/inspiration/SparkEvidencePills.test.tsx \
+            src/components/mcp/McpPendingCallPoller.test.tsx \
+            src/components/wiki/WikiPagePreviewPanel.test.tsx \
             src/services/agentWorkspaceApi.test.ts \
             src/services/knowledgeApi.test.tsx \
             src/services/wikiApi.test.ts \
@@ -110,6 +117,7 @@ jobs:
             src/components/wiki/wikiDisplay.test.ts \
             src/components/wiki/WikiImportMarkdownPanel.test.tsx \
             src/components/wiki/WikiStatusCard.test.tsx \
+            src/hooks/useJobEventPolling.test.tsx \
             src/pages/AgentWorkspace.test.tsx \
             src/pages/DesktopAcceptanceAgentWorkspace.test.tsx \
             src/pages/WikiWorkbench.test.tsx

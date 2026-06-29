@@ -11,7 +11,7 @@
     "test:e2e": "npx playwright test",
     "test:e2e:agent-workspace": "npx playwright test --config playwright.agent-workspace.config.ts",
     "test:all": "vitest run && npx playwright test",
-    "generate:openapi:schema": "..\\.venv-1\\Scripts\\python.exe ..\\scripts\\export_openapi_schema.py --output openapi\\modular-pipeline-openapi.json",
+    "generate:openapi:schema": "node ./scripts/generate-openapi-schema.mjs --output openapi/modular-pipeline-openapi.json",
     "generate:openapi:types": "openapi-typescript ./openapi/modular-pipeline-openapi.json -o ./src/generated/openapi.ts",
     "generate:openapi": "npm run generate:openapi:schema && npm run generate:openapi:types",
     "generate:openapi:if-needed": "node ./scripts/generate-openapi-if-needed.mjs",

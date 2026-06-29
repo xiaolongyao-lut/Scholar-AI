@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
@@ -47,7 +48,6 @@ GIT_VISIBLE_TEST_RE = re.compile(
     r"frontend/e2e/[A-Za-z0-9_./-]+\.spec\.ts)$"
 )
 GIT_VISIBLE_TEST_ROOTS = ("tests", "agent_mcp_server/tests", "frontend/src", "frontend/e2e")
-GIT_VISIBLE_PUBLIC_RECORD_ROOTS = ("docs/plans",)
 
 PYTEST_FOCUSED_CI_EXEMPTIONS: dict[str, str] = {
     "tests/conftest.py": "pytest support module, not a standalone CI target",
@@ -327,15 +327,14 @@ def test_git_visible_tests_are_classified_for_focused_ci() -> None:
     )
 
 
-def test_current_workflow_spine_goal_state_is_git_visible() -> None:
-    """Current workflow-spine goal-state is public-visible while private plans stay local-only."""
+def test_docs_plans_stay_local_only() -> None:
+    """Internal plan and goal-state records must stay out of the public Git tree."""
     visible_records = _git_visible_paths(
-        GIT_VISIBLE_PUBLIC_RECORD_ROOTS,
+        ("docs",),
         re.compile(r"^docs/plans/[A-Za-z0-9_./-]+\.(?:json|md)$"),
     )
-    assert (REPO_ROOT / WORKFLOW_SPINE_GOAL_STATE).is_file()
-    assert WORKFLOW_SPINE_GOAL_STATE in visible_records
-    assert not _is_git_ignored(WORKFLOW_SPINE_GOAL_STATE)
+    assert not visible_records
+    assert _is_git_ignored(WORKFLOW_SPINE_GOAL_STATE)
     assert _is_git_ignored(PRIVATE_LOCAL_PLAN_PROBE)
 
 
@@ -373,6 +372,8 @@ def test_knowledge_runtime_test_evidence_nodes_resolve() -> None:
 
 def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> None:
     """Goal lifecycle rollup must stay machine-consistent with requirement rows."""
+    if not (REPO_ROOT / WORKFLOW_SPINE_GOAL_STATE).is_file():
+        pytest.skip("local-only workflow-spine goal-state record is not present in this checkout")
     payload = _read_json_object(REPO_ROOT / WORKFLOW_SPINE_GOAL_STATE)
     requirements = payload.get("requirements")
     assert isinstance(requirements, list) and requirements
@@ -564,6 +565,13 @@ def test_current_workflow_spine_agent_workspace_projection_exposes_completion_cl
     """Agent Workspace recovery projection must expose the real goal completion gate."""
 
     from literature_assistant.core.routers import agent_workspace_router
+
+    if not (REPO_ROOT / WORKFLOW_SPINE_GOAL_STATE).is_file():
+        summary = agent_workspace_router._load_goal_state_summary()
+        assert summary.available is False
+        assert summary.path is None
+        assert summary.error == "no longrun goal-state record found"
+        return
 
     payload = _read_json_object(REPO_ROOT / WORKFLOW_SPINE_GOAL_STATE)
     completion_claim = payload.get("completion_claim")

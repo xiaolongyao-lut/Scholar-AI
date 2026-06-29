@@ -133,6 +133,9 @@ function autoGenerateOpenApiPlugin() {
   return {
     name: 'litassist-openapi-sync',
     buildStart(): void {
+      if (process.env.VITEST === 'true') {
+        return;
+      }
       if (openApiIsCurrent()) return;
       const npmCli = process.env.npm_execpath;
       const command = npmCli ? process.execPath : (process.platform === 'win32' ? 'npm.cmd' : 'npm');
