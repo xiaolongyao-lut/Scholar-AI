@@ -15,19 +15,19 @@ Current source version: [v0.1.8.4](CHANGELOG.md#0184---2026-06-17)
 - Source-grounded evidence packs with refs, pages, material provenance, and integrity checks.
 - Smart reading, literature-review drafting, academic writing checks, figure candidates, and Word export.
 - OCR readiness checks for scanned materials.
-- A local MCP toolbox that lets Claude / Codex call Scholar AI tools without exposing raw API keys.
+- A local [MCP toolbox](docs/claude-codex-toolbox.en.md) that lets Claude / Codex call Scholar AI tools without exposing raw API keys.
 - Agent Workspace views for tool-call audit, workflow artifacts, handoff records, and replayable research actions.
 
 ## Related Repositories
 
 | Repository | Contents |
 |---|---|
-| [Scholar AI](https://github.com/xiaolongyao-lut/Scholar-AI) | This repository: desktop app, backend, MCP toolbox, retrieval, writing, OCR, and tests. |
+| [Scholar AI](https://github.com/xiaolongyao-lut/Scholar-AI) | This repository: desktop app, backend, [MCP toolbox](docs/claude-codex-toolbox.en.md), retrieval, writing, OCR, and tests. |
 | [scholar-ai-research-toolkit](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) | Scholar AI workflow recipes and skill cards for paper reading, translation, writing, OCR, experiment design, and evidence work. |
 
 ## Claude / Codex Toolbox
 
-`agent_mcp_server/` provides a local MCP server so Claude, Codex, and other MCP clients can call Scholar AI literature retrieval, evidence-pack, OCR, writing-export, Agent Workspace, and safe source-inspection tools.
+[`agent_mcp_server/`](agent_mcp_server/README.md) provides a local MCP server so Claude, Codex, and other MCP clients can call Scholar AI literature retrieval, evidence-pack, OCR, writing-export, Agent Workspace, and safe source-inspection tools.
 
 See [Claude / Codex Toolbox](docs/claude-codex-toolbox.en.md) for detailed tool groups, proven chains, dependencies, verification commands, and security boundaries.
 
@@ -57,6 +57,8 @@ MCP toolbox self-test:
 .\agent_mcp_server\bin\lit-assistant-mcp.ps1 -SelfTest
 ```
 
+For tool groups, proven chains, dependencies, verification commands, and security boundaries, see [Claude / Codex Toolbox](docs/claude-codex-toolbox.en.md).
+
 ## Security Boundary
 
 - Source tools only read allowlisted paths.
@@ -68,7 +70,7 @@ MCP toolbox self-test:
 
 | Path | Purpose |
 |---|---|
-| `agent_mcp_server/` | Local MCP toolbox for Claude / Codex |
+| [`agent_mcp_server/`](agent_mcp_server/README.md) | Local [MCP toolbox](docs/claude-codex-toolbox.en.md) for Claude / Codex |
 | `literature_assistant/` | Python backend, retrieval, Wiki, writing, credentials, settings, and local APIs |
 | `frontend/` | React / Vite / pywebview desktop console |
 | `scripts/` | OpenAPI, index maintenance, release checks, and utility scripts |

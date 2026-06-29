@@ -20,7 +20,9 @@ endpoint instead of creating an installer path.
 
 ## Tools
 
-Use MCP `list_tools` for the live registry. For the full scenario map,
+Use MCP `list_tools` for the live registry. For the public toolbox overview,
+dependency notes, verification commands, and security boundary, read
+[Claude / Codex Toolbox](../docs/claude-codex-toolbox.en.md). For the full scenario map,
 typical workflow chains, full tool-name index, and the tool→code three-hop locator, read
 [`CAPABILITY_MAP.md`](./CAPABILITY_MAP.md) — agents can pull it via
 `source.read_file path=agent_mcp_server/CAPABILITY_MAP.md`.
@@ -61,7 +63,8 @@ Python sandbox) are gated by `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1`.
 ## Proven Workflow Chains
 
 These are the intended agent-facing chains. Use tool calls and returned refs as
-the durable state, not pasted prose from model output.
+the durable state, not pasted prose from model output. A reader-facing summary
+of these chains is also published in [Claude / Codex Toolbox](../docs/claude-codex-toolbox.en.md).
 
 | Chain | Tool order | Result |
 |---|---|---|
