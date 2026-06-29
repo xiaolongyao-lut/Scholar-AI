@@ -20,8 +20,21 @@ from .tools import (
 )
 
 
+def _is_repo_root(candidate: Path) -> bool:
+    """Return True when ``candidate`` has the private or public repo anchors."""
+
+    if (candidate / "AI_WORKSPACE_GUIDE.md").exists():
+        return True
+    return (
+        (candidate / "SOURCE_RELEASE_POLICY.md").is_file()
+        and (candidate / "pyproject.toml").is_file()
+        and (candidate / "agent_mcp_server").is_dir()
+        and (candidate / "literature_assistant").is_dir()
+    )
+
+
 def find_repo_root(start: Path | None = None) -> Path:
-    """Find the repository root containing AI_WORKSPACE_GUIDE.md.
+    """Find the repository root from private or public source-tree anchors.
 
     Args:
         start: Optional path to start from. Defaults to this module path.
@@ -35,13 +48,13 @@ def find_repo_root(start: Path | None = None) -> Path:
     env_root = os.environ.get("LITERATURE_ASSISTANT_REPO_ROOT")
     if env_root:
         candidate = Path(env_root).expanduser().resolve()
-        if (candidate / "AI_WORKSPACE_GUIDE.md").exists():
+        if _is_repo_root(candidate):
             return candidate
-        raise RuntimeError("LITERATURE_ASSISTANT_REPO_ROOT does not contain AI_WORKSPACE_GUIDE.md")
+        raise RuntimeError("LITERATURE_ASSISTANT_REPO_ROOT does not contain Scholar AI repository anchors")
 
     current = (start or Path(__file__)).resolve()
     for candidate in [current, *current.parents]:
-        if (candidate / "AI_WORKSPACE_GUIDE.md").exists():
+        if _is_repo_root(candidate):
             return candidate
     raise RuntimeError("Could not find repository root from MCP server path")
 

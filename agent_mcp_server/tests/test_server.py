@@ -4,11 +4,23 @@ from pathlib import Path
 
 from lit_assistant_mcp.audit import AuditLog
 from lit_assistant_mcp.policy import PathPolicy
-from lit_assistant_mcp.server import create_mcp_server
+from lit_assistant_mcp.server import create_mcp_server, find_repo_root
 from lit_assistant_mcp.tools.source import SourceTools
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_find_repo_root_accepts_public_source_tree_anchor(tmp_path: Path, monkeypatch) -> None:
+    """Public clones do not include local-only AI workspace guides."""
+
+    (tmp_path / "SOURCE_RELEASE_POLICY.md").write_text("# policy\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = \"scholar-ai\"\n", encoding="utf-8")
+    (tmp_path / "agent_mcp_server").mkdir()
+    (tmp_path / "literature_assistant").mkdir()
+    monkeypatch.setenv("LITERATURE_ASSISTANT_REPO_ROOT", str(tmp_path))
+
+    assert find_repo_root() == tmp_path.resolve()
 
 
 def _assert_read_only_annotations(tool: object) -> None:
