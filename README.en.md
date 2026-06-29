@@ -88,7 +88,7 @@ integrity gates
 smart reading / review writing / Word export / MCP tool calls
 ```
 
-The goal is practical: important claims should be traceable back to a project, material, page, and chunk when possible. Lightweight lookup uses `search_refs`; smart reading can combine TOLF, RRF, structured neighbors, and hybrid retrieval; evidence packs condense project chunks, Wiki refs, and knowledge refs into reviewable results. Claude, Codex, and other MCP clients receive controlled tool results from this pipeline.
+The output stage keeps the same evidence record: project, material, page, chunk, and integrity state. `search_refs` handles lightweight lookup; smart reading can add TOLF, RRF, structured neighbors, and hybrid retrieval; `evidence_pack_build` combines project chunks, Wiki refs, and knowledge refs into reviewable evidence packs. Claude, Codex, and other MCP clients read those controlled evidence results through MCP.
 
 ## Quick Start
 

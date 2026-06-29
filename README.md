@@ -88,7 +88,7 @@ PDF / Markdown / OCR 材料
 智能研读 / 综述写作 / Word 导出 / MCP 工具调用
 ```
 
-这条链路的目标很简单：回答里每个重要说法，最好都能追到“哪个项目、哪篇材料、哪一页、哪个 chunk”。轻量检索走 `search_refs`；智能研读可以组合 TOLF、RRF、结构化邻居和混合检索；证据包会把项目 chunk、Wiki refs 和知识 refs 收束成可复查结果。Claude / Codex 通过 MCP 读到的也是这些受控结果。
+输出阶段沿用同一套 evidence record：项目、材料、页码、chunk 和完整性状态。`search_refs` 负责轻量查询；智能研读按需叠加 TOLF、RRF、结构化邻居和混合检索；`evidence_pack_build` 将项目 chunks、Wiki refs 与知识 refs 汇总为可复查的证据包。Claude / Codex 通过 MCP 读取的是这些受控证据结果。
 
 ## 快速开始
 
