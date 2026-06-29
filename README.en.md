@@ -2,9 +2,9 @@
 
 [中文](README.md) · [Releases](https://github.com/xiaolongyao-lut/Scholar-AI/releases) · [Claude / Codex Toolbox](docs/claude-codex-toolbox.en.md) · [Research Workflows and Skills](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) · [Quick Start](#quick-start)
 
-Scholar AI is a local research workspace for papers, PDFs, notes, evidence, and literature-review writing. It also lets Claude, Codex, or another MCP client search and reuse your local research material through controlled tools.
+Scholar AI is a local research workspace for PDF papers, page-level evidence, reading notes, Wiki knowledge, and literature-review writing. The desktop app manages materials, settings, and task views; the local MCP server lets Claude, Codex, or another MCP client call the same research workflow with user authorization.
 
-The everyday problem is simple: papers scatter, notes drift away from sources, page numbers get lost, and review writing turns into constant tab switching. Scholar AI keeps the material, page locators, chunks, notes, evidence packs, and exports in one local workflow. Humans still judge and write; tools help find, organize, verify, and repeat the boring parts.
+This repository includes the desktop app, FastAPI backend, RAG / evidence pipeline, MCP toolbox, frontend UI, tests, and release scripts. It is intended for source checkouts, architecture inspection, reusable local research workflows, and continued development.
 
 Current source version: [v0.1.8.4](CHANGELOG.md#0184---2026-06-17)
 
@@ -27,7 +27,7 @@ Current source version: [v0.1.8.4](CHANGELOG.md#0184---2026-06-17)
 
 ## Claude / Codex Toolbox
 
-[`agent_mcp_server/`](agent_mcp_server/README.md) provides a local MCP server for Claude, Codex, and other MCP clients. It turns literature retrieval, evidence packs, OCR, writing export, workflow artifacts, and safe source inspection into callable tools.
+[`agent_mcp_server/`](agent_mcp_server/README.md) provides a local MCP server for Claude, Codex, and other MCP clients. It exposes Scholar AI through controlled tool groups: `source.*`, `literature.*`, `workflow.*`, and `artifact.*`. The server calls the local backend with a local token and does not receive raw provider keys.
 
 See [Claude / Codex Toolbox](docs/claude-codex-toolbox.en.md) for detailed tool groups, proven chains, dependencies, verification commands, and security boundaries.
 
@@ -60,7 +60,7 @@ The desktop app owns the literature workspace, PDF reading, model settings, cred
 
 ## RAG And Evidence Architecture
 
-Scholar AI's RAG is more than dropping text into a vector store. After ingestion, each material becomes locatable chunks. Smart reading, Wiki synthesis, review writing, and Claude / Codex tool calls try to keep project, material, page, chunk, and integrity state attached as the answer moves forward. See [RAG and Evidence Architecture](docs/rag-evidence-architecture.en.md) for module details, code entry points, and fallback boundaries.
+Scholar AI's retrieval pipeline uses project, material, page, and chunk identifiers as the base locator model. Ingestion writes doc, chunk, and page-locator records; retrieval, Wiki synthesis, smart reading, review writing, and MCP tool calls reuse those locators and record refs, locator coverage, and integrity state during evidence-pack construction. See [RAG and Evidence Architecture](docs/rag-evidence-architecture.en.md) for module details, code entry points, and fallback boundaries.
 
 ```text
 PDF / Markdown / OCR materials
