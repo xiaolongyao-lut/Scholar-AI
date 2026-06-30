@@ -10,6 +10,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from .repo_root import is_repo_root
+
 DESKTOP_RUNTIME_FILENAME = "desktop-runtime.json"
 
 
@@ -540,7 +542,7 @@ def _find_repo_root(start: Path | None = None) -> Path | None:
     candidates.append(current)
     candidates.extend(current.parents)
     for candidate in candidates:
-        if (candidate / "AI_WORKSPACE_GUIDE.md").exists():
+        if is_repo_root(candidate):
             return candidate
     return None
 

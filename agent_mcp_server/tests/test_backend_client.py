@@ -206,6 +206,51 @@ def test_runtime_descriptor_supplies_base_url_when_not_configured(
     }
 
 
+def test_runtime_descriptor_can_be_found_from_public_source_tree(
+    mock_httpx_client,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GitHub ZIP users should not need local-only workspace guide anchors."""
+
+    repo_root = tmp_path / "Scholar-AI-main"
+    repo_root.mkdir()
+    (repo_root / "SOURCE_RELEASE_POLICY.md").write_text("# policy\n", encoding="utf-8")
+    (repo_root / "pyproject.toml").write_text("[project]\nname = \"scholar-ai\"\n", encoding="utf-8")
+    (repo_root / "agent_mcp_server").mkdir()
+    (repo_root / "literature_assistant").mkdir()
+    runtime_root = repo_root / "workspace_artifacts" / "runtime_state"
+    runtime_root.mkdir(parents=True)
+    descriptor_file = runtime_root / "desktop-runtime.json"
+    descriptor_file.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "pid": os.getpid(),
+                "process_kind": "desktop",
+                "base_url": "http://127.0.0.1:45679",
+                "ready": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(repo_root)
+    monkeypatch.delenv("LITERATURE_ASSISTANT_RUNTIME_STATE_ROOT", raising=False)
+    monkeypatch.delenv("LITERATURE_ASSISTANT_USER_ROOT", raising=False)
+    monkeypatch.delenv("LITERATURE_ASSISTANT_BASE_URL", raising=False)
+    mock_instance = Mock()
+    mock_response = Mock()
+    mock_response.json.return_value = {"status": "healthy"}
+    mock_instance.get.return_value = mock_response
+    mock_httpx_client.return_value = mock_instance
+
+    client = BackendClient(base_url=None)
+    result = client.get("/health")
+
+    assert result["is_error"] is False
+    assert mock_httpx_client.call_args.kwargs["base_url"] == "http://127.0.0.1:45679"
+
+
 def test_unattached_runtime_has_actionable_message(
     mock_httpx_client,
     tmp_path: Path,

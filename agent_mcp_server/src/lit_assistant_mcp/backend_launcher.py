@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from .repo_root import validate_repo_root
+
 
 DEFAULT_BACKEND_URL = "http://127.0.0.1:8000"
 DEFAULT_STARTUP_TIMEOUT_SEC = 45.0
@@ -29,7 +31,7 @@ def ensure_backend_running(
     """Ensure a debug local HTTP backend exists for MCP runtime tools.
 
     Args:
-        repo_root: Repository root containing ``AI_WORKSPACE_GUIDE.md``.
+        repo_root: Private checkout or public source-tree repository root.
         base_url: Backend base URL; only loopback HTTP URLs are auto-started.
         startup_timeout_sec: Maximum wait for the health endpoint.
         python_executable: Python used to launch Uvicorn when needed.
@@ -44,9 +46,7 @@ def ensure_backend_running(
     MCP startup should use ``runtime_attach`` so the user-visible desktop app is
     the runtime owner.
     """
-    repo_root = repo_root.expanduser().resolve()
-    if not (repo_root / "AI_WORKSPACE_GUIDE.md").is_file():
-        raise ValueError("repo_root must point at the Literature Assistant repository root")
+    repo_root = validate_repo_root(repo_root)
     if not isinstance(base_url, str) or not base_url.strip():
         raise ValueError("base_url must be a non-empty string")
     if startup_timeout_sec <= 0:

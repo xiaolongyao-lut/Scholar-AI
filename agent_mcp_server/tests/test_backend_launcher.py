@@ -19,6 +19,18 @@ def _repo_root(tmp_path: Path) -> Path:
     return root
 
 
+def _public_repo_root(tmp_path: Path) -> Path:
+    """Create the public-source anchor shape used by GitHub ZIP downloads."""
+
+    root = tmp_path / "public-repo"
+    root.mkdir()
+    (root / "SOURCE_RELEASE_POLICY.md").write_text("# policy\n", encoding="utf-8")
+    (root / "pyproject.toml").write_text("[project]\nname = \"scholar-ai\"\n", encoding="utf-8")
+    (root / "agent_mcp_server").mkdir()
+    (root / "literature_assistant").mkdir()
+    return root
+
+
 def test_existing_health_skips_process_start(tmp_path: Path) -> None:
     """Reachable backends should not spawn another Uvicorn process."""
     repo_root = _repo_root(tmp_path)
@@ -32,6 +44,19 @@ def test_existing_health_skips_process_start(tmp_path: Path) -> None:
     assert result is True
     assert get.call_args.args[0] == "http://127.0.0.1:8000/health"
     popen.assert_not_called()
+
+
+def test_public_source_tree_anchor_is_accepted(tmp_path: Path) -> None:
+    """Published source archives do not include local-only workspace guides."""
+
+    repo_root = _public_repo_root(tmp_path)
+    response = Mock()
+    response.raise_for_status.return_value = None
+    with patch("lit_assistant_mcp.backend_launcher.httpx.get", return_value=response) as get:
+        result = ensure_backend_running(repo_root, startup_timeout_sec=1.0)
+
+    assert result is True
+    assert get.call_args.args[0] == "http://127.0.0.1:8000/health"
 
 
 def test_loopback_backend_is_started_when_health_missing(tmp_path: Path) -> None:

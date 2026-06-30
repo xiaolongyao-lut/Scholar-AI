@@ -97,6 +97,8 @@ def test_wrapper_defaults_to_attach_only_desktop_policy() -> None:
     """Default MCP startup should not open the desktop without explicit opt-in."""
     source = WRAPPER.read_text(encoding="utf-8")
 
+    assert "SOURCE_RELEASE_POLICY.md" in source
+    assert "AI_WORKSPACE_GUIDE.md" in source
     assert "LITASSIST_MCP_ALLOW_DESKTOP_AUTOSTART" in source
     assert "LITASSIST_MCP_KEEP_CONSOLE" in source
     assert "GetConsoleWindow" in source
@@ -105,11 +107,115 @@ def test_wrapper_defaults_to_attach_only_desktop_policy() -> None:
     assert '"--force-launch"' in source
 
 
+def test_wrapper_accepts_public_source_tree_without_local_workspace_guide(tmp_path: Path) -> None:
+    """Download ZIP users should not need local-only workspace guide files."""
+    if platform.system() != "Windows":
+        return
+
+    public_root = tmp_path / "Scholar-AI-main"
+    wrapper_dir = public_root / "agent_mcp_server" / "bin"
+    python_dir = public_root / ".venv-1" / "Scripts"
+    wrapper_dir.mkdir(parents=True)
+    python_dir.mkdir(parents=True)
+    (public_root / "SOURCE_RELEASE_POLICY.md").write_text("# policy\n", encoding="utf-8")
+    (public_root / "pyproject.toml").write_text("[project]\nname = \"scholar-ai\"\n", encoding="utf-8")
+    (public_root / "literature_assistant").mkdir()
+    (public_root / "agent_mcp_server" / "src").mkdir(parents=True)
+    (python_dir / "python.exe").write_text("", encoding="utf-8")
+    test_wrapper = wrapper_dir / "lit-assistant-mcp.ps1"
+    test_wrapper.write_text(WRAPPER.read_text(encoding="utf-8"), encoding="utf-8")
+    env = os.environ.copy()
+    env["LITERATURE_ASSISTANT_REPO_ROOT"] = str(public_root)
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_wrapper),
+            "-PrintConfig",
+        ],
+        cwd=public_root,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=env,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert Path(payload["repo_root"]) == public_root.resolve()
+    assert payload["mcp_source_root"].endswith("agent_mcp_server\\src")
+
+
+def test_add_user_scripts_accept_public_source_tree_without_local_workspace_guide(tmp_path: Path) -> None:
+    """Claude/Codex helper scripts should also work from GitHub source archives."""
+    if platform.system() != "Windows":
+        return
+
+    public_root = tmp_path / "Scholar-AI-main"
+    packaging_root = public_root / "agent_mcp_server" / "packaging"
+    bin_root = public_root / "agent_mcp_server" / "bin"
+    (packaging_root / "claude-code").mkdir(parents=True)
+    (packaging_root / "codex").mkdir(parents=True)
+    bin_root.mkdir(parents=True)
+    (public_root / "SOURCE_RELEASE_POLICY.md").write_text("# policy\n", encoding="utf-8")
+    (public_root / "pyproject.toml").write_text("[project]\nname = \"scholar-ai\"\n", encoding="utf-8")
+    (public_root / "literature_assistant").mkdir()
+    (public_root / "agent_mcp_server" / "src").mkdir(parents=True)
+    (bin_root / "lit-assistant-mcp.ps1").write_text("param()\n", encoding="utf-8")
+    (packaging_root / "claude-code" / "add-user.ps1").write_text(
+        (CLAUDE_CODE / "add-user.ps1").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (packaging_root / "codex" / "add-user.ps1").write_text(
+        (CODEX_PACKAGING / "add-user.ps1").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env["LITERATURE_ASSISTANT_REPO_ROOT"] = str(public_root)
+    for script_path, expected in (
+        (
+            packaging_root / "claude-code" / "add-user.ps1",
+            "claude mcp add literature-assistant --scope user --transport stdio",
+        ),
+        (
+            packaging_root / "codex" / "add-user.ps1",
+            "codex mcp add literature_assistant",
+        ),
+    ):
+        completed = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_path),
+                "-PrintOnly",
+            ],
+            cwd=public_root,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env=env,
+        )
+
+        assert expected in completed.stdout
+        assert str(bin_root / "lit-assistant-mcp.ps1") in completed.stdout
+
+
 def test_claude_code_script_prints_non_mutating_add_command() -> None:
     """Claude Code helper should support a safe print-only mode."""
     if platform.system() != "Windows":
         return
 
+    env = os.environ.copy()
+    env["LITERATURE_ASSISTANT_REPO_ROOT"] = str(REPO_ROOT)
     completed = subprocess.run(
         [
             "powershell",
@@ -125,6 +231,7 @@ def test_claude_code_script_prints_non_mutating_add_command() -> None:
         capture_output=True,
         text=True,
         timeout=20,
+        env=env,
     )
 
     assert "claude mcp add literature-assistant --scope user --transport stdio" in completed.stdout
@@ -137,6 +244,8 @@ def test_codex_script_prints_non_mutating_add_command() -> None:
     if platform.system() != "Windows":
         return
 
+    env = os.environ.copy()
+    env["LITERATURE_ASSISTANT_REPO_ROOT"] = str(REPO_ROOT)
     completed = subprocess.run(
         [
             "powershell",
@@ -152,6 +261,7 @@ def test_codex_script_prints_non_mutating_add_command() -> None:
         capture_output=True,
         text=True,
         timeout=20,
+        env=env,
     )
 
     assert "codex mcp add literature_assistant" in completed.stdout

@@ -6,6 +6,24 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Test-RepositoryRoot {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Candidate
+    )
+
+    if (Test-Path -LiteralPath (Join-Path $Candidate "AI_WORKSPACE_GUIDE.md") -PathType Leaf) {
+        return $true
+    }
+
+    return (
+        (Test-Path -LiteralPath (Join-Path $Candidate "SOURCE_RELEASE_POLICY.md") -PathType Leaf) -and
+        (Test-Path -LiteralPath (Join-Path $Candidate "pyproject.toml") -PathType Leaf) -and
+        (Test-Path -LiteralPath (Join-Path $Candidate "agent_mcp_server") -PathType Container) -and
+        (Test-Path -LiteralPath (Join-Path $Candidate "literature_assistant") -PathType Container)
+    )
+}
+
 function Resolve-RepositoryRoot {
     param(
         [Parameter(Mandatory = $true)]
@@ -14,20 +32,20 @@ function Resolve-RepositoryRoot {
 
     if (-not [string]::IsNullOrWhiteSpace($env:LITERATURE_ASSISTANT_REPO_ROOT)) {
         $envRoot = (Resolve-Path -LiteralPath $env:LITERATURE_ASSISTANT_REPO_ROOT).Path
-        if (Test-Path -LiteralPath (Join-Path $envRoot "AI_WORKSPACE_GUIDE.md")) {
+        if (Test-RepositoryRoot -Candidate $envRoot) {
             return $envRoot
         }
-        throw "LITERATURE_ASSISTANT_REPO_ROOT does not contain AI_WORKSPACE_GUIDE.md: $envRoot"
+        throw "LITERATURE_ASSISTANT_REPO_ROOT does not contain Scholar AI repository anchors: $envRoot"
     }
 
     $current = (Resolve-Path -LiteralPath $ScriptPath).Path
     while ($true) {
-        if (Test-Path -LiteralPath (Join-Path $current "AI_WORKSPACE_GUIDE.md")) {
+        if (Test-RepositoryRoot -Candidate $current) {
             return $current
         }
         $parent = Split-Path -Parent $current
         if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $current) {
-            throw "Could not find repository root containing AI_WORKSPACE_GUIDE.md"
+            throw "Could not find repository root containing Scholar AI repository anchors"
         }
         $current = $parent
     }

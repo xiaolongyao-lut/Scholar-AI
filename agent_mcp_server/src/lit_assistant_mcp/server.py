@@ -8,6 +8,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from .audit import AuditLog
+from .repo_root import is_repo_root
 from .tools import (
     ExperimentalTools,
     RuntimeTools,
@@ -18,19 +19,6 @@ from .tools import (
     create_default_source_tools,
     create_default_workflow_tools,
 )
-
-
-def _is_repo_root(candidate: Path) -> bool:
-    """Return True when ``candidate`` has the private or public repo anchors."""
-
-    if (candidate / "AI_WORKSPACE_GUIDE.md").exists():
-        return True
-    return (
-        (candidate / "SOURCE_RELEASE_POLICY.md").is_file()
-        and (candidate / "pyproject.toml").is_file()
-        and (candidate / "agent_mcp_server").is_dir()
-        and (candidate / "literature_assistant").is_dir()
-    )
 
 
 def find_repo_root(start: Path | None = None) -> Path:
@@ -48,13 +36,13 @@ def find_repo_root(start: Path | None = None) -> Path:
     env_root = os.environ.get("LITERATURE_ASSISTANT_REPO_ROOT")
     if env_root:
         candidate = Path(env_root).expanduser().resolve()
-        if _is_repo_root(candidate):
+        if is_repo_root(candidate):
             return candidate
         raise RuntimeError("LITERATURE_ASSISTANT_REPO_ROOT does not contain Scholar AI repository anchors")
 
     current = (start or Path(__file__)).resolve()
     for candidate in [current, *current.parents]:
-        if _is_repo_root(candidate):
+        if is_repo_root(candidate):
             return candidate
     raise RuntimeError("Could not find repository root from MCP server path")
 

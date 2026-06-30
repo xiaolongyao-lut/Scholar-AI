@@ -15,6 +15,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from .repo_root import validate_repo_root
+
 
 DESKTOP_RUNTIME_FILENAME = "desktop-runtime.json"
 DESKTOP_RUNTIME_CLOSED_FILENAME = "desktop-runtime-closed.json"
@@ -43,7 +45,7 @@ def ensure_desktop_runtime_attached(
     """Attach to a visible desktop runtime, launching it when allowed.
 
     Args:
-        repo_root: Repository root containing ``AI_WORKSPACE_GUIDE.md``.
+        repo_root: Private checkout or public source-tree repository root.
         startup_timeout_sec: Maximum time to wait for descriptor readiness.
         python_executable: Interpreter used to launch ``start_desktop.py``.
         env: Environment visible to the launched desktop process.
@@ -54,9 +56,7 @@ def ensure_desktop_runtime_attached(
         A validated attachment or ``None`` when attachment is unavailable.
     """
 
-    resolved_root = repo_root.expanduser().resolve()
-    if not (resolved_root / "AI_WORKSPACE_GUIDE.md").is_file():
-        raise ValueError("repo_root must point at the Literature Assistant repository root")
+    resolved_root = validate_repo_root(repo_root)
     if startup_timeout_sec <= 0:
         raise ValueError("startup_timeout_sec must be positive")
 

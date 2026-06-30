@@ -27,6 +27,19 @@ def _repo_root(tmp_path: Path) -> Path:
     return root
 
 
+def _public_repo_root(tmp_path: Path) -> Path:
+    """Create a public source-tree marker without local-only workspace guides."""
+
+    root = tmp_path / "public-repo"
+    root.mkdir()
+    (root / "SOURCE_RELEASE_POLICY.md").write_text("# policy\n", encoding="utf-8")
+    (root / "pyproject.toml").write_text("[project]\nname = \"scholar-ai\"\n", encoding="utf-8")
+    (root / "agent_mcp_server").mkdir()
+    (root / "literature_assistant").mkdir()
+    (root / "start_desktop.py").write_text("print('desktop')\n", encoding="utf-8")
+    return root
+
+
 def _write_descriptor(repo_root: Path, *, pid: int | None = None) -> Path:
     """Write a descriptor plus matching capability file for attach tests."""
 
@@ -98,6 +111,20 @@ def test_missing_descriptor_launches_desktop_when_allowed(tmp_path: Path) -> Non
 
     assert attached is None
     launch.assert_called_once()
+
+
+def test_public_source_tree_anchor_can_attach_without_launch(tmp_path: Path) -> None:
+    """Public source archives should pass root validation for attach-only MCP."""
+
+    repo_root = _public_repo_root(tmp_path)
+    attached = ensure_desktop_runtime_attached(
+        repo_root,
+        startup_timeout_sec=1.0,
+        env={},
+        launch_when_missing=False,
+    )
+
+    assert attached is None
 
 
 def test_closed_marker_blocks_relaunch_after_user_close(tmp_path: Path) -> None:

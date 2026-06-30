@@ -4,6 +4,24 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Test-RepositoryRoot {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Candidate
+    )
+
+    if (Test-Path -LiteralPath (Join-Path $Candidate "AI_WORKSPACE_GUIDE.md") -PathType Leaf) {
+        return $true
+    }
+
+    return (
+        (Test-Path -LiteralPath (Join-Path $Candidate "SOURCE_RELEASE_POLICY.md") -PathType Leaf) -and
+        (Test-Path -LiteralPath (Join-Path $Candidate "pyproject.toml") -PathType Leaf) -and
+        (Test-Path -LiteralPath (Join-Path $Candidate "agent_mcp_server") -PathType Container) -and
+        (Test-Path -LiteralPath (Join-Path $Candidate "literature_assistant") -PathType Container)
+    )
+}
+
 function Resolve-RepositoryRoot {
     param(
         [Parameter(Mandatory = $true)]
@@ -12,12 +30,12 @@ function Resolve-RepositoryRoot {
 
     $current = (Resolve-Path -LiteralPath $ScriptPath).Path
     while ($true) {
-        if (Test-Path -LiteralPath (Join-Path $current "AI_WORKSPACE_GUIDE.md")) {
+        if (Test-RepositoryRoot -Candidate $current) {
             return $current
         }
         $parent = Split-Path -Parent $current
         if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $current) {
-            throw "Could not find repository root containing AI_WORKSPACE_GUIDE.md"
+            throw "Could not find repository root containing Scholar AI repository anchors"
         }
         $current = $parent
     }

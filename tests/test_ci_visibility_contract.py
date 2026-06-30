@@ -185,8 +185,22 @@ def _git_visible_tests() -> set[str]:
     return _git_visible_paths(GIT_VISIBLE_TEST_ROOTS, GIT_VISIBLE_TEST_RE)
 
 
+def _require_git_worktree() -> None:
+    """Skip Git-index visibility contracts when running from a source archive."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 or result.stdout.strip().lower() != "true":
+        pytest.skip("Git visibility contracts require a .git worktree, not a source ZIP archive")
+
+
 def _git_visible_paths(roots: tuple[str, ...], path_pattern: re.Pattern[str]) -> set[str]:
     """Return git-visible paths under bounded roots using git's ignore engine."""
+    _require_git_worktree()
     result = subprocess.run(
         [
             "git",
@@ -214,6 +228,7 @@ def _git_visible_paths(roots: tuple[str, ...], path_pattern: re.Pattern[str]) ->
 
 def _is_git_ignored(path: str) -> bool:
     """Return whether git-ignore rules hide a repository-relative path."""
+    _require_git_worktree()
     normalized = _normalize_path(path)
     result = subprocess.run(
         ["git", "check-ignore", "-q", "--", normalized],
