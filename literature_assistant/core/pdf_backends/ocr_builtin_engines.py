@@ -30,6 +30,23 @@ from .ocr_engine import OcrEngineHealth, OcrReadinessStatus
 
 _LANGUAGE_TAG_RE = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*$")
 _DEFAULT_WINDOWS_OCR_TIMEOUT_SECONDS = 90
+_REMOTE_OCR_PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
+    "generic": {
+        "base_url": "",
+        "endpoint_path": "/ocr",
+        "model": "",
+    },
+    "mistral": {
+        "base_url": "https://api.mistral.ai/v1",
+        "endpoint_path": "/ocr",
+        "model": "mistral-ocr-latest",
+    },
+    "mineru": {
+        "base_url": "https://mineru.net/api",
+        "endpoint_path": "/v4/file-urls/batch",
+        "model": "pipeline",
+    },
+}
 _EXTERNAL_OCR_JSON_PREFIX = "__LITASSIST_OCR_JSON__"
 _PADDLEOCR_PYTHON_ENV_VAR = "LITASSIST_PADDLEOCR_PYTHON"
 _RAPIDOCR_PYTHON_ENV_VAR = "LITASSIST_RAPIDOCR_PYTHON"
@@ -582,12 +599,46 @@ class PaddleOcrGpuEngine(_BaseOptionalOcrEngine):
     def _dependency_present(self) -> bool:
         if self._external_python_executable() is not None:
             try:
-                return self._external_probe().get("paddleocr_present") is True
+                probe = self._external_probe()
             except Exception:
                 return False
-        if _optional_module_present("paddleocr"):
-            return True
-        return False
+            return probe.get("paddleocr_present") is True and probe.get("paddle_present") is True
+        return _optional_module_present("paddleocr") and _optional_module_present("paddle")
+
+    def _missing_dependency_reason(
+        self,
+        *,
+        paddleocr_present: bool,
+        paddle_present: bool,
+        runtime_label: str,
+    ) -> str:
+        """Return a bounded dependency blocker for one PaddleOCR Python runtime.
+
+        Args:
+            paddleocr_present: Whether ``importlib`` can locate ``paddleocr``.
+            paddle_present: Whether ``importlib`` can locate PaddlePaddle's
+                runtime module ``paddle``.
+            runtime_label: Non-empty label for the probed Python runtime.
+
+        Returns:
+            Human-readable blocker without local secrets.
+        """
+
+        if not isinstance(paddleocr_present, bool) or not isinstance(paddle_present, bool):
+            raise TypeError("dependency presence flags must be booleans")
+        label = str(runtime_label or "").strip()
+        if not label:
+            raise ValueError("runtime_label must be non-empty")
+
+        missing: list[str] = []
+        if not paddleocr_present:
+            missing.append("paddleocr")
+        if not paddle_present:
+            missing.append("paddlepaddle runtime module 'paddle'")
+        if not missing:
+            return ""
+        verb = "is" if len(missing) == 1 else "are"
+        return f"{' and '.join(missing)} {verb} not installed in the {label}"
 
     def is_available(self) -> bool:
         return self._dependency_present()
@@ -599,14 +650,22 @@ class PaddleOcrGpuEngine(_BaseOptionalOcrEngine):
                 probe = self._external_probe()
             except Exception as exc:  # noqa: BLE001 - bounded local readiness diagnostic
                 return f"external PaddleOCR Python is unavailable: {str(exc)[:300]}"
-            if probe.get("paddleocr_present") is not True:
-                return "paddleocr is not installed in the configured external Python runtime"
+            reason = self._missing_dependency_reason(
+                paddleocr_present=probe.get("paddleocr_present") is True,
+                paddle_present=probe.get("paddle_present") is True,
+                runtime_label="configured external Python runtime",
+            )
+            if reason:
+                return reason
             return None
-        if _optional_module_present("paddleocr"):
+        reason = self._missing_dependency_reason(
+            paddleocr_present=_optional_module_present("paddleocr"),
+            paddle_present=_optional_module_present("paddle"),
+            runtime_label="active Python runtime",
+        )
+        if not reason:
             return None
-        if not self._dependency_present():
-            return "paddleocr is not installed in the active Python runtime"
-        return None
+        return reason
 
     def readiness_status(self) -> OcrReadinessStatus:
         if not self._dependency_present():
@@ -633,12 +692,13 @@ class PaddleOcrGpuEngine(_BaseOptionalOcrEngine):
             )
 
         elapsed = (time.perf_counter() - started) * 1000.0
-        ok = probe.get("paddleocr_present") is True
-        detail = (
-            "available via external Python runtime"
-            if ok
-            else "paddleocr is not installed in the configured external Python runtime"
+        ok = probe.get("paddleocr_present") is True and probe.get("paddle_present") is True
+        missing_reason = self._missing_dependency_reason(
+            paddleocr_present=probe.get("paddleocr_present") is True,
+            paddle_present=probe.get("paddle_present") is True,
+            runtime_label="configured external Python runtime",
         )
+        detail = "available via external Python runtime" if ok else missing_reason
         return OcrEngineHealth(
             ok=ok,
             detail=detail,
@@ -1068,11 +1128,17 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
             return "remote OCR requires explicit allow_remote_upload=true consent"
         if api_key and base_url:
             try:
+                provider = self._provider()
                 self._validated_base_url()
                 self._endpoint_path()
                 self._timeout_seconds()
             except (TypeError, ValueError) as exc:
                 return str(exc)
+            if provider == "mineru":
+                return (
+                    "MinerU uses asynchronous document parsing; configure it as "
+                    "an OCR credential, but do not select it for page-level OCR."
+                )
             return None
         return "remote OCR requires explicit api_key and base_url configuration"
 
@@ -1080,6 +1146,8 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
         reason = self.unavailable_reason()
         if reason is None:
             return "ready"
+        if "asynchronous document parsing" in reason:
+            return "adapter_not_wired"
         if "allow_remote_upload" in reason or "configuration" in reason:
             return "configuration_required"
         return "configuration_required"
@@ -1110,10 +1178,29 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
         if unavailable is not None:
             raise RuntimeError(unavailable)
 
+        provider = self._provider()
+        if provider == "mineru":
+            raise RuntimeError(
+                "MinerU uses an asynchronous document-parse workflow; use the "
+                "remote document parser for whole-PDF parsing instead of page-level OCR."
+            )
+
         image_bytes = self._read_image_bytes(image)
-        payload = self._request_payload(image_bytes, language=language_tag)
-        response = self._post_ocr_payload(payload)
+        if provider == "mistral":
+            payload = self._mistral_request_payload(image_bytes)
+            response = self._post_ocr_payload(payload, provider=provider)
+        else:
+            payload = self._request_payload(image_bytes, language=language_tag)
+            response = self._post_ocr_payload(payload, provider=provider)
         return self._extract_response_text(response).strip()
+
+    def _provider(self) -> str:
+        raw = str(self.config.get("provider") or "generic").strip().lower()
+        if raw in {"", "custom"}:
+            return "generic"
+        if raw not in _REMOTE_OCR_PROVIDER_DEFAULTS:
+            raise ValueError("remote OCR provider must be one of: generic, mistral, mineru")
+        return raw
 
     def _api_key(self) -> str:
         return str(
@@ -1121,9 +1208,18 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
         ).strip()
 
     def _base_url(self) -> str:
+        provider = self._provider()
+        default = _REMOTE_OCR_PROVIDER_DEFAULTS[provider]["base_url"]
         return str(
-            self.config.get("base_url") or os.environ.get("LITASSIST_OCR_BASE_URL") or ""
+            self.config.get("base_url")
+            or os.environ.get("LITASSIST_OCR_BASE_URL")
+            or default
         ).strip()
+
+    def _model(self) -> str:
+        provider = self._provider()
+        default = _REMOTE_OCR_PROVIDER_DEFAULTS[provider]["model"]
+        return str(self.config.get("model") or default).strip()
 
     def _allow_remote_upload(self) -> bool:
         value = self.config.get("allow_remote_upload", False)
@@ -1150,7 +1246,9 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
         return normalized in {"localhost", "127.0.0.1", "::1"}
 
     def _endpoint_path(self) -> str:
-        raw = str(self.config.get("endpoint_path") or "/ocr").strip()
+        provider = self._provider()
+        default = _REMOTE_OCR_PROVIDER_DEFAULTS[provider]["endpoint_path"]
+        raw = str(self.config.get("endpoint_path") or default).strip()
         if not raw:
             raise ValueError("remote OCR endpoint_path must be non-empty")
         if not raw.startswith("/"):
@@ -1195,12 +1293,26 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
         payload[language_field] = language
         return payload
 
-    def _post_ocr_payload(self, payload: Mapping[str, Any]) -> Any:
+    def _mistral_request_payload(self, image_bytes: bytes) -> dict[str, Any]:
+        model = self._model()
+        if not model:
+            raise ValueError("Mistral OCR requires a model name")
+        return {
+            "model": model,
+            "document": {
+                "type": "image_url",
+                "image_url": f"data:image/png;base64,{base64.b64encode(image_bytes).decode('ascii')}",
+            },
+        }
+
+    def _post_ocr_payload(self, payload: Mapping[str, Any], *, provider: str) -> Any:
         url = urljoin(self._validated_base_url(), self._endpoint_path().lstrip("/"))
         headers = {
             "Authorization": f"Bearer {self._api_key()}",
             "Accept": "application/json",
         }
+        if provider == "mistral":
+            headers["Content-Type"] = "application/json"
         with httpx.Client(timeout=self._timeout_seconds(), follow_redirects=False) as client:
             response = client.post(url, json=dict(payload), headers=headers)
         response.raise_for_status()
@@ -1231,6 +1343,8 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
             "result.text",
             "result.content",
             "result.markdown",
+            "pages.markdown",
+            "pages.text",
             "pages.0.text",
             "pages.0.markdown",
         ):
@@ -1247,6 +1361,12 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
             if isinstance(current, Mapping):
                 current = current.get(segment)
             elif isinstance(current, list):
+                if segment in {"text", "markdown", "content"}:
+                    collected = []
+                    for item in current:
+                        if isinstance(item, Mapping) and item.get(segment) is not None:
+                            collected.append(item[segment])
+                    return collected if collected else None
                 try:
                     index = int(segment)
                 except ValueError:

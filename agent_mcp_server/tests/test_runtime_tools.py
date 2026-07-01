@@ -2,10 +2,12 @@
 
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
 from lit_assistant_mcp.audit import AuditLog
+from lit_assistant_mcp.runtime_attach import DesktopRuntimeAttachment
 from lit_assistant_mcp.tools.runtime import RuntimeTools
 
 
@@ -130,6 +132,73 @@ def test_config_status_calls_health(tools: RuntimeTools, backend: FakeBackend) -
     assert result["is_error"] is False
     assert result["data"]["status"] == "ok"
     assert backend.calls[-1] == ("json", "/health", None)
+
+
+def test_launch_desktop_uses_existing_runtime_attach_without_close_tool(tmp_path: Path, backend: FakeBackend) -> None:
+    """Explicit launch requests should open/reopen the existing source desktop surface."""
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    descriptor = repo_root / "workspace_artifacts" / "runtime_state" / "desktop-runtime.json"
+    descriptor.parent.mkdir(parents=True)
+    attached = DesktopRuntimeAttachment(
+        base_url="http://127.0.0.1:8123",
+        capability_file=None,
+        descriptor_file=descriptor,
+        pid=12345,
+        process_kind="desktop",
+    )
+    tools = RuntimeTools(
+        backend=backend,
+        audit=AuditLog(tmp_path / "workspace_artifacts/agent_mcp_workflows/.audit"),
+        repo_root=repo_root,
+    )
+
+    with patch("lit_assistant_mcp.tools.runtime.ensure_desktop_runtime_attached", return_value=attached) as attach:
+        result = tools.launch_desktop(initial_path="/settings?section=ocr", startup_timeout_sec=12)
+
+    assert result["is_error"] is False
+    data = result["data"]
+    assert data["status"] == "running"
+    assert data["window_title"] == "文献助手"
+    assert data["base_url"] == "http://127.0.0.1:8123"
+    assert data["initial_path"] == "/settings?section=ocr"
+    assert data["close_behavior"] == "用户手动关闭文献助手窗口；MCP 不提供自动关闭工具。"
+    assert data["start_command"]["powershell"] == "& .\\.venv-1\\Scripts\\python.exe .\\start_desktop.py"
+    assert data["start_command"]["terminal"] == "visible"
+    assert data["terminal_behavior"].startswith("explicit MCP launch opens a visible PowerShell terminal")
+    kwargs = attach.call_args.kwargs
+    assert kwargs["repo_root"] == repo_root.resolve()
+    assert kwargs["startup_timeout_sec"] == 12.0
+    assert kwargs["launch_when_missing"] is True
+    assert kwargs["terminal_visible"] is True
+    assert kwargs["env"]["LITERATURE_ASSISTANT_DESKTOP_INITIAL_PATH"] == "/settings?section=ocr"
+    assert kwargs["env"]["LITASSIST_MCP_FORCE_DESKTOP_AUTOSTART"] == "1"
+
+
+def test_launch_desktop_rejects_unsafe_initial_path_before_launch(tmp_path: Path, backend: FakeBackend) -> None:
+    """Initial desktop routes must stay inside the SPA path space."""
+
+    tools = RuntimeTools(backend=backend, repo_root=tmp_path)
+
+    with patch("lit_assistant_mcp.tools.runtime.ensure_desktop_runtime_attached") as attach:
+        with pytest.raises(ValueError, match="initial_path"):
+            tools.launch_desktop(initial_path="https://example.invalid")
+
+    attach.assert_not_called()
+
+
+def test_launch_desktop_without_repo_root_returns_guided_error(backend: FakeBackend) -> None:
+    """Injected HTTP-only RuntimeTools should fail closed with manual startup guidance."""
+
+    tools = RuntimeTools(backend=backend)
+
+    result = tools.launch_desktop()
+
+    assert result["is_error"] is True
+    assert result["error_code"] == "repo_root_unavailable"
+    assert result["data"]["status"] == "unavailable"
+    assert result["data"]["close_behavior"] == "用户手动关闭文献助手窗口；MCP 不提供自动关闭工具。"
 
 
 def test_health_check_calls_passive_health_endpoint(
@@ -2340,7 +2409,7 @@ def test_behavior_eval_pack_flags_observation_red_flags_and_redacts(
                 "text": (
                     "All citations are verified by DOI 10.5555/fiction.1. "
                     "The draft is ready for submission from C:/Users/xiao/private/source.pdf "
-                    "with token='sk-abcdefghijklmnopqrstuvwxyz123456'."
+                    "with token='fake-token-for-redaction-test'."
                 ),
                 "evidence_refs": [{"ref_id": "chunk:c1", "material_id": "mat1"}],
                 "metadata": {
@@ -2365,7 +2434,7 @@ def test_behavior_eval_pack_flags_observation_red_flags_and_redacts(
         "export_readiness_overclaim",
     }.issubset(case_ids)
     assert "C:/Users/xiao/private" not in str(data)
-    assert "sk-abcdefghijklmnopqrstuvwxyz" not in str(data)
+    assert "fake-token-for-redaction-test" not in str(data)
     assert "[REDACTED:LOCAL_PATH]" in str(data)
     assert "[REDACTED:API_KEY_ASSIGN]" in str(data)
     assert backend.calls == []

@@ -17,6 +17,7 @@ export interface SettingsCredentialsSummary {
   generation: number;
   embedding: number;
   rerank: number;
+  ocr: number;
 }
 
 export interface SettingsFeatureFlag {

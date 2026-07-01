@@ -620,15 +620,15 @@ embedding_router = _build_config_routes(embedding_store, "/api/embedding", "Embe
 
 
 class LocalEmbeddingStatusPayload(BaseModel):
-    """Snapshot of the local embedding fallback for the Settings UI.
+    """Snapshot of in-process local embedding loading for the Settings UI.
 
     Rendered as a status chip / badge next to the Embedding card. Mirrors
     ``LocalRerankStatusPayload`` field-by-field so the frontend can reuse
     the same chip component for both.
 
-    ``available=true`` means embedding will gracefully fall back to a
-    locally-cached SentenceTransformer (default ``BAAI/bge-m3``) when the
-    upstream API fails; ``available=false`` means an API outage will
+    ``available=true`` means embedding can use a locally cached
+    SentenceTransformer (default ``BAAI/bge-m3``) in the backend Python
+    process when the upstream API fails; ``available=false`` means an API outage will
     propagate as ``EmbeddingAPIError`` to the caller.
     """
 
@@ -642,14 +642,15 @@ class LocalEmbeddingStatusPayload(BaseModel):
     batch_size: int
     loaded: bool
     hf_cache_dir: str
+    unavailable_reason: str = ""
 
 
 @embedding_router.get("/local-status", response_model=LocalEmbeddingStatusPayload)
 async def get_local_embedding_status() -> LocalEmbeddingStatusPayload:
-    """Status of the local embedding fallback (model weights / device / availability).
+    """Status of in-process local embedding loading (weights / device / availability).
 
     Used by Settings UI to render a chip telling the user whether
-    embedding will gracefully fall back to a local SentenceTransformer
+    embedding can use a local SentenceTransformer from the backend process
     when the configured API embedding fails. Does NOT load weights —
     runs in <1 ms on a warm process.
     """
@@ -668,6 +669,7 @@ async def get_local_embedding_status() -> LocalEmbeddingStatusPayload:
             batch_size=0,
             loaded=False,
             hf_cache_dir="",
+            unavailable_reason="local_embedding_adapter 模块不可用。",
         )
     return LocalEmbeddingStatusPayload(**get_status())
 

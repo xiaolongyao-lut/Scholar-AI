@@ -25,6 +25,7 @@ class CredentialCategory(str, Enum):
     GENERATION = "generation"
     EMBEDDING = "embedding"
     RERANK = "rerank"
+    OCR = "ocr"
 
 
 class CredentialProtocol(str, Enum):
@@ -33,6 +34,7 @@ class CredentialProtocol(str, Enum):
     ANTHROPIC_MESSAGES = "anthropic_messages"
     EMBEDDINGS = "embeddings"
     RERANK = "rerank"
+    OCR = "ocr"
 
 
 class CredentialStrategyHint(str, Enum):

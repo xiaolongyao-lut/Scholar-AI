@@ -32,6 +32,8 @@ import type { WritingProject } from '@/types/resources';
 import { useToast } from '@/components/ui/Toast';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
+const SCHOLAR_AI_DOCS_URL = 'https://github.com/xiaolongyao-lut/Scholar-AI';
+
 /* ─── NavItem: Single sidebar link ─── */
 function NavItem({
   to,
@@ -275,10 +277,15 @@ function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
                 <li className="flex items-center gap-2.5"><Folder size={14} className="text-primary/60" /> <span>{t('nav.help_projects')}</span></li>
               </ul>
               <div className="pt-4 mt-4 border-t border-outline-variant">
-                <button className="text-primary hover:underline font-label text-xs flex items-center gap-1.5">
+                <a
+                  href={SCHOLAR_AI_DOCS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline font-label text-xs flex items-center gap-1.5"
+                >
                   {t('nav.view_docs')}
                   <ChevronRight size={12} />
-                </button>
+                </a>
               </div>
             </div>
           </motion.div>

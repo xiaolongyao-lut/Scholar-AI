@@ -36,6 +36,7 @@ Env knobs (mirror LOCAL_RERANK_*):
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import logging
 import os
 from pathlib import Path
@@ -153,6 +154,28 @@ def is_available() -> bool:
     return _allow_download()
 
 
+def _missing_dependency_names() -> list[str]:
+    """Return missing import packages required by in-process local loading."""
+    missing: list[str] = []
+    if importlib.util.find_spec("torch") is None:
+        missing.append("torch")
+    if importlib.util.find_spec("sentence_transformers") is None:
+        missing.append("sentence-transformers")
+    return missing
+
+
+def _unavailable_reason(model_name: str) -> str:
+    """Explain why in-process local loading cannot be invoked safely."""
+    if _is_disabled():
+        return "LOCAL_EMBEDDING_DISABLED=1 已关闭本机进程加载。"
+    missing = _missing_dependency_names()
+    if missing:
+        return f"缺少 Python 依赖：{', '.join(missing)}。"
+    if not _weights_present(model_name) and not _allow_download():
+        return "模型权重未在缓存中，且未设置 LOCAL_EMBEDDING_ALLOW_DOWNLOAD=1。"
+    return ""
+
+
 def get_status() -> dict[str, Any]:
     """Aggregate status snapshot for UI / settings endpoints.
 
@@ -164,8 +187,9 @@ def get_status() -> dict[str, Any]:
     """
     model_name = _model_name()
     device_env_override = os.environ.get("LOCAL_EMBEDDING_DEVICE", "").strip() or None
+    available = is_available()
     return {
-        "available": is_available(),
+        "available": available,
         "disabled": _is_disabled(),
         "weights_present": _weights_present(model_name),
         "allow_download": _allow_download(),
@@ -177,6 +201,7 @@ def get_status() -> dict[str, Any]:
         ),
         "loaded": _LOCAL_ENCODER_LOADED and _LOCAL_ENCODER is not None,
         "hf_cache_dir": str(_hf_cache_root()),
+        "unavailable_reason": "" if available else _unavailable_reason(model_name),
     }
 
 

@@ -137,9 +137,20 @@ backend; raw provider keys are never passed through MCP.
 
 By default, the wrapper only attaches to an already healthy
 `workspace_artifacts/runtime_state/desktop-runtime.json`. It does not open the
-desktop app when no runtime is present; MCP tools return a bounded backend
-unavailable result until the user starts `文献助手` manually or asks for an
-explicit reopen.
+desktop app when no runtime is present. If the user asks the agent to start
+`文献助手` or Scholar AI, the same MCP server should call
+`literature.launch_desktop`; when no healthy desktop runtime is already
+attached, this opens a visible PowerShell terminal and runs the source desktop
+command from the repository root:
+
+```powershell
+& .\.venv-1\Scripts\python.exe .\start_desktop.py
+```
+
+The visible terminal is part of the explicit user-requested launch flow. The
+stdio MCP wrapper itself stays hidden/protocol-clean. Closing stays a normal
+user action: the user closes the `文献助手` window or its terminal, and ordinary
+MCP reconnects will not reopen it silently.
 
 Use `.\agent_mcp_server\bin\lit-assistant-mcp.ps1 -ForceLaunch` for an
 explicit Codex-driven desktop reopen. Set

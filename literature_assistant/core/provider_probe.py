@@ -66,6 +66,20 @@ class ProbeResult:
     """Upstream provider's own error message (when extractable), already redacted."""
     note: str | None = None
     """Optional success annotation, e.g. "base_url 404 but chat endpoint reachable"."""
+    model: str | None = None
+    """Configured model id used by the real Scholar readiness probe."""
+    response_model: str | None = None
+    """Provider-reported model id when the response envelope includes one."""
+    finish_reason: str | None = None
+    """Provider finish/stop reason, normalized from the response envelope."""
+    usage: dict[str, Any] | None = None
+    """Provider token usage metadata when available."""
+    response_preview: str | None = None
+    """Short redacted preview of the model response for local diagnostics."""
+    capability_verdict: str | None = None
+    """Machine-readable Scholar readiness verdict."""
+    checks: dict[str, bool] | None = None
+    """Bounded checklist used to derive capability_verdict."""
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +193,23 @@ _PROBE_CHAT_PATHS: dict[str, str] = {
     "anthropic_messages": "/messages",
 }
 
+_SCHOLAR_PROBE_SYSTEM_PROMPT = (
+    "You are a Scholar AI model-readiness probe. Follow the user's evidence "
+    "and return only the requested compact JSON object."
+)
+_SCHOLAR_PROBE_USER_PROMPT = (
+    '请完成一次 Scholar AI 接入测试。只基于材料回答，严格输出一行 JSON，不要 Markdown。'
+    'JSON 模板：{"verdict":"usable","answer":"...","evidence_ids":["S1"],"limits":"..."}\n'
+    "材料 S1：检索增强生成在回答前引用原文证据，可以降低幻觉风险，并帮助用户回到来源核对。\n"
+    "问题：根据材料，Scholar AI 为什么要在回答中保留证据编号？"
+)
+_SCHOLAR_PROBE_RESPONSE_TEMPLATE = {
+    "verdict": "usable",
+    "answer": "证据编号把回答和来源材料绑定，便于核对并降低幻觉风险。",
+    "evidence_ids": ["S1"],
+    "limits": "仅依据给定材料判断。",
+}
+
 
 def _chat_probe_url(base_url: str, protocol: str) -> str | None:
     """Return the chat-style endpoint URL for a 1-token ping, or None when N/A.
@@ -194,28 +225,166 @@ def _chat_probe_url(base_url: str, protocol: str) -> str | None:
     return f"{base_url.rstrip('/')}{suffix}"
 
 
-def _chat_probe_payload(protocol: str) -> dict[str, Any] | None:
-    """Smallest possible request body for the chat-style ping per protocol.
+def _chat_probe_payload(protocol: str, model: str) -> dict[str, Any] | None:
+    """Build a real-model Scholar readiness prompt for chat-style protocols.
 
-    Uses a deliberately-invalid model id so providers that strictly validate
-    the model surface `model_not_found` (which proves auth+routing work
-    without burning real tokens). Providers that don't validate the model
-    accept `max_tokens=1` and burn ~1 token.
+    Args:
+        protocol: Credential protocol slug.
+        model: Configured provider model id. Must be non-empty for chat probes.
+
+    Returns:
+        Provider request payload, or None when the protocol is not chat-like.
     """
     proto = (protocol or "").lower()
+    normalized_model = (model or "").strip()
+    if not normalized_model:
+        return None
     if proto == "anthropic_messages":
         return {
-            "model": "claude-3-5-haiku-20241022",
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "."}],
+            "model": normalized_model,
+            "max_tokens": 180,
+            "temperature": 0,
+            "system": _SCHOLAR_PROBE_SYSTEM_PROMPT,
+            "messages": [{"role": "user", "content": _SCHOLAR_PROBE_USER_PROMPT}],
         }
-    if proto in ("openai_chat_completions", "openai_responses"):
+    if proto == "openai_responses":
         return {
-            "model": "_provider_probe_no_real_model",
-            "messages": [{"role": "user", "content": "."}],
-            "max_tokens": 1,
+            "model": normalized_model,
+            "input": [
+                {"role": "system", "content": _SCHOLAR_PROBE_SYSTEM_PROMPT},
+                {"role": "user", "content": _SCHOLAR_PROBE_USER_PROMPT},
+            ],
+            "max_output_tokens": 180,
+            "temperature": 0,
+        }
+    if proto == "openai_chat_completions":
+        return {
+            "model": normalized_model,
+            "messages": [
+                {"role": "system", "content": _SCHOLAR_PROBE_SYSTEM_PROMPT},
+                {"role": "user", "content": _SCHOLAR_PROBE_USER_PROMPT},
+            ],
+            "max_tokens": 180,
+            "temperature": 0,
         }
     return None
+
+
+def _compact_text(value: Any) -> str:
+    """Extract visible text from common provider content shapes."""
+
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text") or item.get("content")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(part for part in parts if part.strip())
+    return ""
+
+
+def _extract_probe_response(protocol: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize model text and metadata from OpenAI/Anthropic envelopes."""
+
+    proto = (protocol or "").lower()
+    content = ""
+    finish_reason: str | None = None
+    if proto == "anthropic_messages":
+        content = _compact_text(payload.get("content"))
+        finish_reason = payload.get("stop_reason") if isinstance(payload.get("stop_reason"), str) else None
+    elif proto == "openai_responses":
+        output_text = payload.get("output_text")
+        if isinstance(output_text, str):
+            content = output_text
+        else:
+            output = payload.get("output")
+            if isinstance(output, list):
+                chunks: list[str] = []
+                for item in output:
+                    if not isinstance(item, dict):
+                        continue
+                    chunks.append(_compact_text(item.get("content")))
+                content = "\n".join(chunk for chunk in chunks if chunk.strip())
+        status = payload.get("status")
+        finish_reason = status if isinstance(status, str) else None
+    else:
+        choices = payload.get("choices")
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            if isinstance(first, dict):
+                message = first.get("message")
+                if isinstance(message, dict):
+                    content = _compact_text(message.get("content"))
+                reason = first.get("finish_reason")
+                finish_reason = reason if isinstance(reason, str) else None
+
+    response_model = payload.get("model")
+    usage = payload.get("usage")
+    return {
+        "content": content.strip(),
+        "response_model": response_model if isinstance(response_model, str) else None,
+        "finish_reason": finish_reason,
+        "usage": usage if isinstance(usage, dict) else None,
+    }
+
+
+def _json_object_from_text(text: str) -> dict[str, Any] | None:
+    """Decode the first JSON object from a model response when present."""
+
+    if not isinstance(text, str) or not text.strip():
+        return None
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        data = _json.loads(cleaned[start:end + 1])
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _judge_scholar_probe_response(content: str) -> dict[str, Any]:
+    """Return a deterministic verdict for the Scholar readiness prompt."""
+
+    text = (content or "").strip()
+    lowered = text.lower()
+    data = _json_object_from_text(text)
+    evidence_ids = data.get("evidence_ids") if isinstance(data, dict) else None
+    answer = data.get("answer") if isinstance(data, dict) else None
+    verdict = data.get("verdict") if isinstance(data, dict) else None
+    evidence_text = " ".join(str(item) for item in evidence_ids) if isinstance(evidence_ids, list) else ""
+    answer_text = answer if isinstance(answer, str) else text
+    answer_lower = answer_text.lower()
+    grounding_terms = ("证据", "来源", "原文", "核对", "幻觉", "evidence", "source", "ground")
+    checks = {
+        "content_present": bool(text),
+        "json_template": isinstance(data, dict),
+        "verdict_usable": isinstance(verdict, str) and verdict.strip().lower() in {"usable", "ok", "pass", "ready"},
+        "evidence_id_s1": "s1" in evidence_text.lower() or "s1" in lowered,
+        "grounding_answer": any(term in answer_lower for term in grounding_terms),
+    }
+    if all(checks.values()):
+        capability_verdict = "scholar_ready"
+    elif checks["content_present"] and checks["evidence_id_s1"] and checks["grounding_answer"]:
+        capability_verdict = "usable_text_response"
+    elif checks["content_present"]:
+        capability_verdict = "weak_response"
+    else:
+        capability_verdict = "empty_response"
+    return {
+        "capability_verdict": capability_verdict,
+        "checks": checks,
+    }
 
 
 def _build_auth_headers(api_key: str, protocol: str) -> dict[str, str]:
@@ -232,6 +401,7 @@ def probe_endpoint_reachability(
     base_url: str,
     api_key: str,
     protocol: str,
+    model: str = "",
     *,
     timeout_s: float = 8.0,
 ) -> ProbeResult:
@@ -240,20 +410,21 @@ def probe_endpoint_reachability(
     Strategy (each step short-circuits on a clear verdict):
       1. HEAD base_url — fastest, but many gateways return 4xx on bare /v1.
       2. GET base_url  — picks up the 4xx body for diagnostic display.
-      3. POST chat/completions with a 1-token ping — catches NewAPI/one-api
-         gateways that only respond on the chat subpath. A 200 OR a
-         "model_not_found"-style 4xx body counts as REACHABLE (auth works,
-         routing works, only the deliberately-fake probe model is unknown).
+      3. POST the configured real model with a tiny Scholar-readiness prompt.
+         A 200 only counts as OK when the response carries enough evidence to
+         be usable by Scholar AI.
 
     Caller MUST run validate_outbound_endpoint(strict=False) before calling
     this — we don't repeat that here so the caller can choose how to surface
     the rejection.
     """
     base_url = (base_url or "").strip()
+    normalized_model = (model or "").strip()
     headers = {**_build_auth_headers(api_key, protocol),
+               "Content-Type": "application/json",
                "User-Agent": "literature-assistant-provider-probe/1.0"}
 
-    result = ProbeResult(ok=False, url_used=base_url, method="HEAD")
+    result = ProbeResult(ok=False, url_used=base_url, method="HEAD", model=normalized_model or None)
     try:
         with httpx.Client(timeout=timeout_s, follow_redirects=False) as client:
             # 1. HEAD then GET on base_url
@@ -266,13 +437,18 @@ def probe_endpoint_reachability(
                 sc = resp.status_code
                 result.status_code = sc
 
-            if 200 <= sc < 400:
+            chat_url = _chat_probe_url(base_url, protocol)
+            if 200 <= sc < 400 and chat_url is None:
                 result.ok = True
                 return result
 
-            # 2. Try chat-completions ping for NewAPI-style gateways
-            chat_url = _chat_probe_url(base_url, protocol)
-            chat_payload = _chat_probe_payload(protocol)
+            # 2. Try a real Scholar prompt for NewAPI/OpenAI-compatible gateways.
+            chat_payload = _chat_probe_payload(protocol, normalized_model)
+            if chat_url and not chat_payload:
+                result.method = "POST"
+                result.url_used = chat_url
+                result.error = "model_required_for_scholar_probe"
+                return result
             if chat_url and chat_payload:
                 try:
                     chat_resp = client.post(chat_url, json=chat_payload, headers=headers)
@@ -286,25 +462,26 @@ def probe_endpoint_reachability(
                 chat_sc = chat_resp.status_code
                 chat_body = chat_resp.text or ""
                 chat_msg = _extract_provider_error_message(chat_body)
-                signals = (
-                    "model_not_found",
-                    "no available channel",
-                    "unknown model",
-                    "model not found",
-                    "invalid model",
-                    "_provider_probe_no_real_model",
-                )
-                auth_ok = (
-                    200 <= chat_sc < 400
-                    or (chat_msg and any(s in chat_msg.lower() for s in signals))
-                )
-                if auth_ok:
+                if 200 <= chat_sc < 400:
+                    data = _json_object_response(chat_resp) or {}
+                    normalized = _extract_probe_response(protocol, data)
+                    judgment = _judge_scholar_probe_response(str(normalized["content"]))
+                    preview = _redact_secrets(str(normalized["content"]))[:240]
                     result.ok = True
                     result.status_code = chat_sc
                     result.method = "POST"
                     result.url_used = chat_url
-                    result.note = "base_url returned error; chat endpoint reachable"
+                    result.note = "Scholar readiness prompt completed"
                     result.provider_message = chat_msg
+                    result.response_model = normalized["response_model"]
+                    result.finish_reason = normalized["finish_reason"]
+                    result.usage = normalized["usage"]
+                    result.response_preview = preview
+                    result.capability_verdict = judgment["capability_verdict"]
+                    result.checks = judgment["checks"]
+                    if result.capability_verdict not in {"scholar_ready", "usable_text_response"}:
+                        result.ok = False
+                        result.error = "scholar_probe_response_unusable"
                     return result
 
                 # chat endpoint also failed → surface its error (better signal)

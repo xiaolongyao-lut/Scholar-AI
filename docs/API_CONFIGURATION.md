@@ -50,6 +50,33 @@ Only put low-privilege frontend keys in `frontend/.env.local`. Do not put
 backend provider keys such as `OPENAI_API_KEY`, rerank keys, embedding keys, or
 admin tokens in frontend env files.
 
+## Desktop API Credentials
+
+The desktop Settings page is the preferred place to configure runtime providers.
+Open `Settings -> API Configuration -> API Credentials`, then create one saved
+credential per provider/model pair. Each credential records:
+
+- usage category: chat/writing, embedding, rerank, or OCR/document parsing;
+- provider, base URL, model or parse mode;
+- protocol shape, such as OpenAI-compatible chat, embeddings, rerank, or OCR;
+- local trust confirmation for custom gateways or local model servers.
+
+Chat, embedding, rerank, and OCR settings apply saved credentials by ID. Raw API
+keys stay in the local credential store and are not returned to the frontend,
+MCP server, or Git-tracked files.
+
+For remote OCR:
+
+- Mistral OCR uses the OCR credential category, base URL
+  `https://api.mistral.ai/v1`, model `mistral-ocr-latest`, and endpoint path
+  `/ocr`.
+- MinerU uses the OCR/document parsing credential category, base URL
+  `https://mineru.net/api`, and parse modes such as `pipeline`, `vlm`, or
+  `MinerU-HTML`. It is an asynchronous whole-document parser, not a page-level
+  OCR health probe.
+- Custom OCR services can use the OCR protocol with their own base URL,
+  endpoint path, model/parse mode, and explicit upload consent in OCR Settings.
+
 ## MCP Packages
 
 This section is for optional MCP packages that Scholar AI can scan and manage

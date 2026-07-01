@@ -39,6 +39,7 @@ def test_local_status_payload_exposes_aggregator_fields(monkeypatch: pytest.Monk
         "batch_size": 8,
         "loaded": False,
         "hf_cache_dir": "/fake/path",
+        "unavailable_reason": "",
     }
     monkeypatch.setattr(local_rerank_adapter, "get_status", lambda: fake)
 
@@ -66,6 +67,7 @@ def test_local_status_falls_back_when_adapter_import_fails(monkeypatch: pytest.M
     assert result.disabled is True
     assert result.weights_present is False
     assert result.model_name == ""
+    assert result.unavailable_reason == "local_rerank_adapter 模块不可用。"
 
 
 def test_local_status_reports_device_override(monkeypatch: pytest.MonkeyPatch) -> None:

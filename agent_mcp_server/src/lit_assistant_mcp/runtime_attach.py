@@ -41,6 +41,7 @@ def ensure_desktop_runtime_attached(
     python_executable: str | Path | None = None,
     env: Mapping[str, str] | None = None,
     launch_when_missing: bool = True,
+    terminal_visible: bool = False,
 ) -> DesktopRuntimeAttachment | None:
     """Attach to a visible desktop runtime, launching it when allowed.
 
@@ -51,6 +52,8 @@ def ensure_desktop_runtime_attached(
         env: Environment visible to the launched desktop process.
         launch_when_missing: Whether to open the desktop UI if no descriptor is
             currently valid.
+        terminal_visible: Whether a new launch should open a visible terminal
+            running the source desktop command.
 
     Returns:
         A validated attachment or ``None`` when attachment is unavailable.
@@ -73,6 +76,7 @@ def ensure_desktop_runtime_attached(
         repo_root=resolved_root,
         python_executable=python_executable,
         env=env,
+        terminal_visible=terminal_visible,
     )
     deadline = time.monotonic() + startup_timeout_sec
     while time.monotonic() < deadline:
@@ -151,15 +155,41 @@ def launch_desktop_runtime(
     repo_root: Path,
     python_executable: str | Path | None = None,
     env: Mapping[str, str] | None = None,
+    terminal_visible: bool = False,
 ) -> None:
-    """Launch the source desktop app without opening an extra terminal window."""
+    """Launch the source desktop app from the checked-out repository.
+
+    Args:
+        repo_root: Scholar AI source checkout root.
+        python_executable: Optional Python interpreter for ``start_desktop.py``.
+        env: Environment passed to the launched process.
+        terminal_visible: Open a user-visible terminal for explicit launch
+            requests. Default autostart remains hidden for protocol-clean MCP.
+    """
 
     start_script = repo_root / "start_desktop.py"
     if not start_script.is_file():
         raise ValueError("start_desktop.py not found under repo_root")
     launch_env = dict(os.environ if env is None else env)
     launch_env.setdefault("LITERATURE_ASSISTANT_REPO_ROOT", str(repo_root))
-    executable = _desktop_python_executable(python_executable or _default_python_executable(repo_root))
+    raw_executable = python_executable or _default_python_executable(repo_root)
+    if terminal_visible:
+        executable = _terminal_python_executable(raw_executable)
+        command = _visible_terminal_launch_command(
+            repo_root=repo_root,
+            executable=executable,
+            start_script=start_script,
+        )
+        subprocess.Popen(
+            command,
+            cwd=repo_root,
+            env=launch_env,
+            creationflags=_creation_flags(terminal_visible=True),
+            close_fds=False,
+        )
+        return
+
+    executable = _desktop_python_executable(raw_executable)
     command = _desktop_launch_command(executable=executable, start_script=start_script)
     stdout_path, stderr_path = _desktop_autostart_log_paths(repo_root)
     with stdout_path.open("ab") as stdout_file, stderr_path.open("ab") as stderr_file:
@@ -170,7 +200,7 @@ def launch_desktop_runtime(
             stdin=subprocess.DEVNULL,
             stdout=stdout_file,
             stderr=stderr_file,
-            creationflags=_creation_flags(visible=True),
+            creationflags=_creation_flags(terminal_visible=False),
             close_fds=False,
         )
 
@@ -248,6 +278,47 @@ def _desktop_launch_command(*, executable: str, start_script: Path) -> list[str]
     return [executable, str(start_script)]
 
 
+def _visible_terminal_launch_command(*, repo_root: Path, executable: str, start_script: Path) -> list[str]:
+    """Return the explicit user-facing terminal launch command.
+
+    Why:
+        Agent-triggered "open 文献助手" requests should follow the same visible
+        source workflow a human runs from the repository root, while stdio MCP
+        startup stays quiet unless this explicit path is selected.
+    """
+
+    if not isinstance(repo_root, Path) or not repo_root.is_dir():
+        raise ValueError("repo_root must be an existing directory")
+    if not isinstance(executable, str) or not executable.strip():
+        raise ValueError("executable must be a non-empty string")
+    if not isinstance(start_script, Path) or not start_script.is_file():
+        raise ValueError("start_script must be an existing file")
+    if os.name != "nt":
+        return [executable, str(start_script)]
+    command = (
+        "$ErrorActionPreference = 'Stop'; "
+        f"Set-Location -LiteralPath {_powershell_single_quote(str(repo_root))}; "
+        f"& {_powershell_single_quote(executable)} {_powershell_single_quote(str(start_script))}"
+    )
+    return [
+        "powershell.exe",
+        "-NoExit",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        command,
+    ]
+
+
+def _powershell_single_quote(value: str) -> str:
+    """Return a single-quoted PowerShell literal for a filesystem path."""
+
+    if not isinstance(value, str) or not value:
+        raise ValueError("value must be a non-empty string")
+    return "'" + value.replace("'", "''") + "'"
+
+
 def _desktop_python_executable(executable: str | Path) -> str:
     """Return the GUI Python executable for desktop autostart when available."""
 
@@ -259,6 +330,17 @@ def _desktop_python_executable(executable: str | Path) -> str:
     gui_executable = executable_path.with_name("pythonw.exe")
     if gui_executable.is_file():
         return str(gui_executable)
+    return str(executable)
+
+
+def _terminal_python_executable(executable: str | Path) -> str:
+    """Return a console Python executable for visible terminal launches."""
+
+    executable_path = Path(executable)
+    if os.name == "nt" and executable_path.name.lower() == "pythonw.exe":
+        console_executable = executable_path.with_name("python.exe")
+        if console_executable.is_file():
+            return str(console_executable)
     return str(executable)
 
 
@@ -350,20 +432,22 @@ def _default_python_executable(repo_root: Path) -> Path:
     return repo_root / ".venv-1" / "bin" / "python"
 
 
-def _creation_flags(*, visible: bool) -> int:
+def _creation_flags(*, terminal_visible: bool) -> int:
     """Return process flags for desktop autostart.
 
     Args:
-        visible: Whether the pywebview application window should be user-visible.
+        terminal_visible: Whether Windows should allocate a console window.
 
     Why:
-        ``visible`` means the native ``文献助手`` window is allowed to appear,
-        not that Windows should allocate a console. The desktop app is a GUI
-        acceptance surface; logs belong in ``workspace_artifacts``.
+        Hidden MCP autostart writes logs to ``workspace_artifacts``. Explicit
+        agent launch requests should allocate a terminal so the user can see
+        the same source command flow they would run manually.
     """
 
     if os.name != "nt":
         return 0
+    if terminal_visible:
+        return int(getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
     return int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 

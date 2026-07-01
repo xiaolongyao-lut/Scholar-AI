@@ -17,6 +17,15 @@ import { getSampling, putSampling, deleteSamplingTask, type SamplingParams, type
 import { buildSamplingSaveRequest, hasSamplingOverrides, updateSamplingOverrides } from '@/services/samplingPayload';
 import { listFeatureFlags, setFeatureFlag, type FeatureFlagEntry } from '@/services/featureFlagsApi';
 import { getUnifiedSettings, type UnifiedSettings, type SettingsApiConfig } from '@/services/settingsApi';
+import {
+  checkOcrHealth,
+  fetchOcrStatus,
+  saveOcrEngineSelection,
+  type OcrEnginePublicInfo,
+  type OcrHealthResponse,
+  type OcrPolicy,
+  type OcrStatusResponse,
+} from '@/services/pdfBackendApi';
 import { Tooltip as UiTooltip } from '@/components/ui/Tooltip';
 import { migrateLegacyCredentials } from '@/components/settings/subsystemMigration';
 import { CslStylesSection } from '@/components/settings/CslStylesSection';
@@ -123,11 +132,15 @@ function Field({
   label,
   tooltip,
   htmlFor,
+  description,
+  descriptionId,
   children,
 }: {
   label: string;
   tooltip?: string;
   htmlFor?: string;
+  description?: string;
+  descriptionId?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -137,6 +150,11 @@ function Field({
         {tooltip && <Tooltip text={tooltip} />}
       </label>
       {children}
+      {description ? (
+        <p id={descriptionId} className="text-[11px] leading-relaxed text-foreground/45">
+          用途：{description}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -147,6 +165,7 @@ function TextInput({
   placeholder,
   mono,
   ariaLabel,
+  ariaDescribedBy,
   onChange,
 }: {
   id?: string;
@@ -154,6 +173,7 @@ function TextInput({
   placeholder?: string;
   mono?: boolean;
   ariaLabel?: string;
+  ariaDescribedBy?: string;
   onChange?: (v: string) => void;
 }) {
   return (
@@ -164,6 +184,7 @@ function TextInput({
       onChange={e => onChange?.(e.target.value)}
       placeholder={placeholder}
       aria-label={ariaLabel ?? placeholder ?? '文本输入'}
+      aria-describedby={ariaDescribedBy}
       readOnly={!onChange}
       className={cn(
         'w-full bg-surface-high rounded-lg px-3 py-2 border border-outline-variant/50 text-sm text-foreground',
@@ -208,6 +229,7 @@ function SliderInput({
   max,
   step,
   ariaLabel,
+  ariaDescribedBy,
   onChange,
 }: {
   id?: string;
@@ -216,6 +238,7 @@ function SliderInput({
   max: number;
   step: number;
   ariaLabel?: string;
+  ariaDescribedBy?: string;
   onChange?: (v: number) => void;
 }) {
   const [v, setV] = useState(value);
@@ -227,6 +250,7 @@ function SliderInput({
         type="range" min={min} max={max} step={step} value={v}
         onChange={e => { const n = Number(e.target.value); setV(n); onChange?.(n); }}
         aria-label={ariaLabel ?? '滑动输入'}
+        aria-describedby={ariaDescribedBy}
         className="flex-1 accent-primary h-1.5"
       />
       <span className="font-mono text-xs text-foreground/60 w-10 text-right tabular-nums">{v}</span>
@@ -532,6 +556,7 @@ interface EmbeddingPublicConfig {
 }
 
 type EndpointSubsystem = 'generation' | 'embedding' | 'rerank';
+type AppliedCredentialSubsystem = EndpointSubsystem | 'ocr';
 
 function SectionApiSettings({
   onOpenSection,
@@ -600,6 +625,8 @@ function SectionApiSettings({
             />
           </div>
 
+          <OcrApiSettingsCard />
+
           <div className="grid gap-3 sm:grid-cols-2">
             <button
               type="button"
@@ -614,7 +641,7 @@ function SectionApiSettings({
                 共 {settings.credentials.total} 个，启用 {settings.credentials.enabled} 个
               </p>
               <p className="mt-1 text-[10px] text-foreground/35">
-                研读/写作 {settings.credentials.generation} · 向量 {settings.credentials.embedding} · 重排 {settings.credentials.rerank}
+                研读/写作 {settings.credentials.generation} · 向量 {settings.credentials.embedding} · 重排 {settings.credentials.rerank} · OCR {settings.credentials.ocr}
               </p>
             </button>
             <button
@@ -655,6 +682,902 @@ function credentialToEndpointForm(credential: RuntimeCredentialPublic): ApiEndpo
   };
 }
 
+function RuntimeBoundaryNotice({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <div className="rounded-lg border border-primary/15 bg-primary/5 p-3">
+      <div className="flex items-start gap-2.5">
+        <Info size={16} className="mt-0.5 shrink-0 text-primary" />
+        <div className="min-w-0 text-xs leading-relaxed text-foreground/65">
+          <div className="font-medium text-foreground">{title}</div>
+          <div className="mt-1 space-y-1">{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface OcrSettingsForm {
+  selectedEngine: string;
+  apiKey: string;
+  baseUrl: string;
+  endpointPath: string;
+  responseTextPath: string;
+  provider: 'generic' | 'mistral' | 'mineru';
+  model: string;
+  credentialId: string;
+  language: string;
+  pythonExecutable: string;
+  powershellExecutable: string;
+  runtimeMethod: '' | 'predict' | 'ocr' | '__call__';
+  allowRemoteUpload: boolean;
+  allowInsecureHttp: boolean;
+  remoteTimeoutSeconds: number;
+  localTimeoutSeconds: number;
+}
+
+const DEFAULT_OCR_FORM: OcrSettingsForm = {
+  selectedEngine: '',
+  apiKey: '',
+  baseUrl: '',
+  endpointPath: '/ocr',
+  responseTextPath: '',
+  provider: 'generic',
+  model: '',
+  credentialId: '',
+  language: 'en',
+  pythonExecutable: '',
+  powershellExecutable: '',
+  runtimeMethod: '',
+  allowRemoteUpload: false,
+  allowInsecureHttp: false,
+  remoteTimeoutSeconds: 60,
+  localTimeoutSeconds: 300,
+};
+
+function readStringConfig(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function readOcrProviderConfig(value: unknown): OcrSettingsForm['provider'] {
+  return value === 'mistral' || value === 'mineru' || value === 'generic' ? value : 'generic';
+}
+
+function readBooleanConfig(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+  return false;
+}
+
+function readNumberConfig(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function readRuntimeMethodConfig(value: unknown): OcrSettingsForm['runtimeMethod'] {
+  return value === 'predict' || value === 'ocr' || value === '__call__' ? value : '';
+}
+
+function ocrStatusToSettingsForm(status: OcrStatusResponse | null): OcrSettingsForm {
+  if (!status) return DEFAULT_OCR_FORM;
+  const config = status.engine_config && typeof status.engine_config === 'object'
+    ? status.engine_config
+    : {};
+  return {
+    selectedEngine: status.configured_engine ?? '',
+    apiKey: '',
+    baseUrl: readStringConfig(config.base_url),
+    endpointPath: readStringConfig(config.endpoint_path) || DEFAULT_OCR_FORM.endpointPath,
+    responseTextPath: readStringConfig(config.response_text_path),
+    provider: readOcrProviderConfig(config.provider),
+    model: readStringConfig(config.model),
+    credentialId: readStringConfig(config.credential_id),
+    language: status.language || DEFAULT_OCR_FORM.language,
+    pythonExecutable: readStringConfig(config.python_executable),
+    powershellExecutable: readStringConfig(config.powershell_executable),
+    runtimeMethod: readRuntimeMethodConfig(config.runtime_method),
+    allowRemoteUpload: readBooleanConfig(config.allow_remote_upload),
+    allowInsecureHttp: readBooleanConfig(config.allow_insecure_http),
+    remoteTimeoutSeconds: readNumberConfig(config.timeout_seconds, DEFAULT_OCR_FORM.remoteTimeoutSeconds),
+    localTimeoutSeconds: readNumberConfig(config.timeout_seconds, DEFAULT_OCR_FORM.localTimeoutSeconds),
+  };
+}
+
+function buildRemoteOcrEngineConfig(form: OcrSettingsForm): Record<string, unknown> {
+  const config: Record<string, unknown> = {
+    base_url: form.baseUrl.trim(),
+    endpoint_path: form.endpointPath.trim() || DEFAULT_OCR_FORM.endpointPath,
+    provider: form.provider,
+    model: form.model.trim(),
+    credential_id: form.credentialId.trim(),
+    allow_remote_upload: form.allowRemoteUpload,
+    allow_insecure_http: form.allowInsecureHttp,
+    timeout_seconds: form.remoteTimeoutSeconds,
+  };
+  if (form.apiKey.trim()) {
+    config.api_key = form.apiKey.trim();
+  }
+  if (form.responseTextPath.trim()) {
+    config.response_text_path = form.responseTextPath.trim();
+  }
+  return config;
+}
+
+function buildLocalOcrEngineConfig(engineName: string, form: OcrSettingsForm): Record<string, unknown> {
+  const config: Record<string, unknown> = {
+    timeout_seconds: form.localTimeoutSeconds,
+    language: form.language.trim() || DEFAULT_OCR_FORM.language,
+  };
+  if ((engineName === 'rapidocr' || engineName === 'paddleocr_gpu') && form.pythonExecutable.trim()) {
+    config.python_executable = form.pythonExecutable.trim();
+  }
+  if (engineName === 'paddleocr_gpu' && form.runtimeMethod) {
+    config.runtime_method = form.runtimeMethod;
+  }
+  if (engineName === 'windows' && form.powershellExecutable.trim()) {
+    config.powershell_executable = form.powershellExecutable.trim();
+  }
+  return config;
+}
+
+function buildOcrEngineConfig(engineName: string | null, form: OcrSettingsForm): Record<string, unknown> {
+  if (engineName === 'remote_api') {
+    return buildRemoteOcrEngineConfig(form);
+  }
+  if (engineName) {
+    return buildLocalOcrEngineConfig(engineName, form);
+  }
+  return {};
+}
+
+function readinessLabel(status: string): string {
+  switch (status) {
+    case 'ready':
+      return '就绪';
+    case 'dependency_missing':
+      return '缺少依赖';
+    case 'configuration_required':
+      return '需要配置';
+    case 'adapter_not_wired':
+      return '适配未接通';
+    case 'platform_unsupported':
+      return '平台不支持';
+    default:
+      return '不可用';
+  }
+}
+
+function ocrPolicyLabel(policy: OcrPolicy): string {
+  switch (policy) {
+    case 'auto':
+      return '自动';
+    case 'engine':
+      return '固定引擎';
+    case 'none':
+      return '关闭';
+    default:
+      return policy;
+  }
+}
+
+function engineTypeLabel(engine: Pick<OcrEnginePublicInfo, 'engine_type' | 'requires_network'>): string {
+  if (engine.engine_type === 'remote' || engine.requires_network) {
+    return '远程';
+  }
+  return '本地';
+}
+
+function engineStatusTone(engine: OcrEnginePublicInfo): string {
+  if (engine.available) {
+    return 'border-emerald-500/25 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300';
+  }
+  if (engine.readiness_status === 'configuration_required') {
+    return 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300';
+  }
+  return 'border-outline-variant/50 bg-surface-lowest text-foreground/60';
+}
+
+function localOcrRuntimeFieldLabel(engineName: string | null): string {
+  if (engineName === 'windows') return 'PowerShell 路径（可选）';
+  if (engineName === 'paddleocr_gpu') return 'PaddleOCR Python 路径（可选）';
+  if (engineName === 'rapidocr') return 'RapidOCR Python 路径（可选）';
+  return '外部 Python 路径（可选）';
+}
+
+function localOcrRuntimeFieldTooltip(engineName: string | null): string {
+  if (engineName === 'windows') return '不填时使用系统 powershell.exe。';
+  if (engineName === 'paddleocr_gpu') {
+    return '填写装有 paddleocr 和 paddlepaddle 的 python.exe；不要填写 PaddleOCR-main 文件夹。';
+  }
+  if (engineName === 'rapidocr') {
+    return '填写装有 rapidocr 或 rapidocr_onnxruntime 的 python.exe；不填时使用当前 Python 环境。';
+  }
+  return '不填时使用当前 Python 环境；可指向装有 OCR 依赖的独立 Python。';
+}
+
+function localOcrRuntimeFieldDescription(engineName: string | null): string {
+  if (engineName === 'windows') {
+    return '当系统 PATH 找不到 PowerShell，或你要指定 PowerShell 版本时填写。';
+  }
+  if (engineName === 'paddleocr_gpu') {
+    return '这里需要 Python 解释器路径，例如 venv 的 Scripts\\python.exe；下载的 PaddleOCR-main 源码目录本身不会被当作运行时。';
+  }
+  if (engineName === 'rapidocr') {
+    return '这里需要 Python 解释器路径；该环境里应能 import rapidocr 或 rapidocr_onnxruntime。';
+  }
+  return '本地 OCR 可用独立 Python 环境承载依赖，避免污染主程序环境。';
+}
+
+function localOcrRuntimePlaceholder(engineName: string | null): string {
+  if (engineName === 'windows') {
+    return 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+  }
+  if (engineName === 'paddleocr_gpu') {
+    return 'C:\\path\\to\\paddleocr-venv\\Scripts\\python.exe';
+  }
+  if (engineName === 'rapidocr') {
+    return 'C:\\path\\to\\rapidocr-venv\\Scripts\\python.exe';
+  }
+  return 'C:\\path\\to\\python.exe';
+}
+
+function inferOcrProviderFromCredential(
+  credential: Pick<RuntimeCredentialPublic, 'provider' | 'model'>,
+): OcrSettingsForm['provider'] {
+  const text = `${credential.provider} ${credential.model}`.toLowerCase();
+  if (text.includes('mistral')) return 'mistral';
+  if (text.includes('mineru') || text.includes('magic-pdf')) return 'mineru';
+  return 'generic';
+}
+
+function endpointPathForOcrCredential(
+  credential: Pick<RuntimeCredentialPublic, 'provider' | 'model' | 'base_url'>,
+): string {
+  const provider = inferOcrProviderFromCredential(credential);
+  const url = credential.base_url.trim().replace(/\/+$/, '');
+  if (provider === 'mistral') return url.endsWith('/ocr') ? '' : '/ocr';
+  if (provider === 'mineru') return url.endsWith('/file-urls/batch') ? '' : '/v4/file-urls/batch';
+  return '/ocr';
+}
+
+function OcrApiSettingsCard(): JSX.Element {
+  const trackedTimeout = useTrackedTimeout();
+  const [status, setStatus] = useState<OcrStatusResponse | null>(null);
+  const [form, setForm] = useState<OcrSettingsForm>(DEFAULT_OCR_FORM);
+  const [policy, setPolicy] = useState<OcrPolicy>('auto');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [health, setHealth] = useState<OcrHealthResponse | null>(null);
+  const [selectedOcrCredentialId, setSelectedOcrCredentialId] = useState('');
+  const fieldDescriptionIds = {
+    policy: 'ocr-policy-purpose',
+    engine: 'ocr-engine-purpose',
+    language: 'ocr-language-purpose',
+    localPython: 'ocr-local-python-purpose',
+    localPowershell: 'ocr-local-powershell-purpose',
+    localRuntimeMethod: 'ocr-local-runtime-method-purpose',
+    localTimeout: 'ocr-local-timeout-purpose',
+    baseUrl: 'ocr-base-url-purpose',
+    endpointPath: 'ocr-endpoint-path-purpose',
+    apiKey: 'ocr-key-help',
+    responsePath: 'ocr-response-path-purpose',
+    timeout: 'ocr-timeout-purpose',
+  };
+
+  const loadStatus = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const next = await fetchOcrStatus();
+      setStatus(next);
+      setPolicy(next.policy);
+      setForm(ocrStatusToSettingsForm(next));
+    } catch (err) {
+      setError(formatSettingsActionError(err, 'OCR 状态加载失败，请稍后重试。'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadStatus(); }, [loadStatus]);
+
+  const engines = status?.available_engines ?? [];
+  const configuredEngine = form.selectedEngine.trim() || null;
+  const activeEngineName = configuredEngine ?? status?.selected_engine ?? status?.configured_engine ?? null;
+  const activeEngine = engines.find((engine) => engine.name === activeEngineName) ?? null;
+  const selectedRemoteEngine = engines.find((engine) => engine.name === 'remote_api') ?? null;
+  const localEngines = engines.filter((engine) => engine.engine_type === 'local');
+  const remoteEngines = engines.filter((engine) => engine.engine_type === 'remote');
+  const showRemoteFields = configuredEngine === 'remote_api';
+  const showLocalFields = Boolean(configuredEngine && configuredEngine !== 'remote_api');
+  const autoSelectionActive = policy !== 'none' && !configuredEngine;
+  const patchForm = (patch: Partial<OcrSettingsForm>) => setForm((current) => ({ ...current, ...patch }));
+
+  const handleOcrCredentialApplied = useCallback((credential: RuntimeCredentialPublic) => {
+    setSelectedOcrCredentialId(credential.credential_id);
+    setPolicy('engine');
+    setHealth(null);
+    patchForm({
+      selectedEngine: 'remote_api',
+      provider: inferOcrProviderFromCredential(credential),
+      baseUrl: credential.base_url,
+      model: credential.model,
+      credentialId: credential.credential_id,
+      endpointPath: endpointPathForOcrCredential(credential),
+      apiKey: '',
+      allowRemoteUpload: true,
+    });
+    setMessage(`已应用 OCR API：${credential.provider} · ${credential.model}`);
+    void loadStatus();
+    trackedTimeout(() => setMessage(''), 3000);
+  }, [loadStatus, trackedTimeout]);
+
+  const handleSave = async () => {
+    const engineForSave = form.selectedEngine.trim() || null;
+    if (policy === 'engine' && !engineForSave) {
+      setError('固定引擎模式需要先选择一个 OCR 引擎。');
+      setMessage('');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMessage('');
+    setHealth(null);
+    try {
+      const response = await saveOcrEngineSelection({
+        policy,
+        engine: policy === 'none' ? null : engineForSave,
+        language: form.language.trim() || DEFAULT_OCR_FORM.language,
+        engine_config: buildOcrEngineConfig(engineForSave, form),
+      });
+      setStatus(response.status);
+      setPolicy(response.status.policy);
+      setForm(ocrStatusToSettingsForm(response.status));
+      setMessage('OCR 设置已保存。');
+      trackedTimeout(() => setMessage(''), 3000);
+    } catch (err) {
+      setError(formatSettingsActionError(err, 'OCR 设置保存失败，请检查引擎、语言和字段。'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleHealthCheck = async () => {
+    const engineForCheck = activeEngineName;
+    if (!engineForCheck) {
+      setError('当前没有可检查的 OCR 引擎，请先刷新状态或选择一个引擎。');
+      setMessage('');
+      return;
+    }
+    setChecking(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await checkOcrHealth({
+        engine: engineForCheck,
+        engine_config: buildOcrEngineConfig(engineForCheck, form),
+      });
+      setHealth(result);
+    } catch (err) {
+      setError(formatSettingsActionError(err, 'OCR 健康检查失败。'));
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <div className="rounded-lg border border-outline-variant bg-surface p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="font-headline text-lg font-semibold text-foreground">OCR 设置</h2>
+            <p className="mt-1 text-xs leading-relaxed text-foreground/60">
+              用途：在扫描版 PDF 和图片型页面中提取文字。默认优先使用本地 OCR；只有选择远程引擎并明确允许上传时，
+              页面图片才会发送到外部服务。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadStatus()}
+            disabled={loading || saving || checking}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-high px-3 py-2 text-xs font-medium text-foreground/65 transition-colors hover:border-primary/35 hover:text-primary disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            刷新状态
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg border border-outline-variant/50 bg-surface-lowest p-3">
+            <div className="text-[10px] text-foreground/40">当前策略</div>
+            <div className="mt-1 text-sm font-medium text-foreground">{status ? ocrPolicyLabel(status.policy) : '加载中'}</div>
+            <div className="mt-1 text-[10px] text-foreground/45">自动模式只在检测到扫描页时尝试 OCR</div>
+          </div>
+          <div className="rounded-lg border border-outline-variant/50 bg-surface-lowest p-3">
+            <div className="text-[10px] text-foreground/40">当前命中引擎</div>
+            <div className="mt-1 font-mono text-sm text-foreground">{status?.selected_engine ?? status?.configured_engine ?? '未选择'}</div>
+            <div className="mt-1 text-[10px] text-foreground/45">本地引擎不上传页面图片</div>
+          </div>
+          <div className="rounded-lg border border-outline-variant/50 bg-surface-lowest p-3">
+            <div className="text-[10px] text-foreground/40">远程 OCR 状态</div>
+            <div className="mt-1 text-sm text-foreground">
+              {selectedRemoteEngine ? readinessLabel(selectedRemoteEngine.readiness_status) : '未加载'}
+            </div>
+            <div className="mt-1 text-[10px] text-foreground/45">
+              {selectedRemoteEngine?.available ? '可用于远程识别' : selectedRemoteEngine?.unavailable_reason ?? '等待状态加载'}
+            </div>
+          </div>
+        </div>
+
+        {status?.warning ? (
+          <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+            {status.warning}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="rounded-lg border border-outline-variant bg-surface p-4">
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-foreground">OCR 引擎</h3>
+          <p className="mt-1 text-xs leading-relaxed text-foreground/55">
+            本地引擎适合日常扫描件识别；远程 API 适合你已有专用 OCR 服务并接受页面图片上传的场景。
+          </p>
+        </div>
+        <RuntimeBoundaryNotice title="这里只显示后端已注册或已配置的 OCR 引擎。">
+          <p>
+            用户下载了新的 OCR 程序后，只有两种方式会出现在这里：接成 Remote OCR API，或在后端注册为新的 OCR engine。
+            仅仅把可执行文件放到磁盘上，界面不会自动扫描和新增下拉选项。
+          </p>
+          <p>
+            已注册的本地引擎会显示依赖状态和路径字段；未注册的自定义 OCR 请先按项目文档接入后端，再刷新状态。
+          </p>
+        </RuntimeBoundaryNotice>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <Field
+            label="OCR 策略"
+            htmlFor="ocr-policy"
+            description="决定什么时候触发 OCR。建议保持自动；只有需要强制指定 RapidOCR、Windows OCR、PaddleOCR 或远程 API 时再固定引擎。"
+            descriptionId={fieldDescriptionIds.policy}
+          >
+            <select
+              id="ocr-policy"
+              value={policy}
+              onChange={(event) => setPolicy(event.target.value as OcrPolicy)}
+              disabled={loading || saving}
+              aria-describedby={fieldDescriptionIds.policy}
+              className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground focus:border-primary/40 focus:outline-none disabled:opacity-60"
+            >
+              <option value="auto">自动：扫描页需要时 OCR，本地优先</option>
+              <option value="engine">固定使用下方选择的引擎</option>
+              <option value="none">关闭 OCR</option>
+            </select>
+          </Field>
+          <Field
+            label="选择引擎"
+            htmlFor="ocr-engine"
+            description="自动选择不是单独脚本；需要配置 Python、PowerShell 或远程 API 路径时，先选择具体引擎。"
+            descriptionId={fieldDescriptionIds.engine}
+          >
+            <select
+              id="ocr-engine"
+              value={form.selectedEngine}
+              onChange={(event) => {
+                patchForm({ selectedEngine: event.target.value });
+                setHealth(null);
+              }}
+              disabled={loading || saving || policy === 'none'}
+              aria-describedby={fieldDescriptionIds.engine}
+              className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground focus:border-primary/40 focus:outline-none disabled:opacity-60"
+            >
+              <option value="">自动选择可用引擎</option>
+              {localEngines.length > 0 ? (
+                <optgroup label="本地 OCR">
+                  {localEngines.map((engine) => (
+                    <option key={engine.name} value={engine.name}>
+                      {engine.display_name} · {readinessLabel(engine.readiness_status)}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {remoteEngines.length > 0 ? (
+                <optgroup label="远程 OCR">
+                  {remoteEngines.map((engine) => (
+                    <option key={engine.name} value={engine.name}>
+                      {engine.display_name} · {readinessLabel(engine.readiness_status)}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+            </select>
+          </Field>
+          {autoSelectionActive ? (
+            <div className="md:col-span-2 rounded-lg border border-primary/15 bg-primary/5 p-3">
+              <div className="flex items-start gap-2.5">
+                <Info size={16} className="mt-0.5 shrink-0 text-primary" />
+                <div className="min-w-0 text-xs leading-relaxed text-foreground/65">
+                  <div className="font-medium text-foreground">自动选择不是脚本，也没有独立路径。</div>
+                  <div className="mt-1">
+                    后端内置选择器按 <span className="font-mono text-foreground">paddleocr_gpu → rapidocr → windows → remote_api</span> 检查可用性；
+                    当前命中 {activeEngine ? activeEngine.display_name : activeEngineName ?? '等待状态加载'}。
+                  </div>
+                  <div className="mt-1 text-foreground/55">
+                    要填写路径，请在“选择引擎”中改选具体项：RapidOCR / PaddleOCR GPU 填装好依赖的 python.exe，Windows OCR 填 PowerShell 路径，Remote OCR API 从 API 凭证应用服务地址、模型和密钥。
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <Field
+            label="识别语言"
+            htmlFor="ocr-language"
+            tooltip="传给 OCR 引擎的语言标签，例如 en、zh、zh-CN。"
+            description="告诉 OCR 服务优先按哪种语言识别，影响中英文混排、公式周边文本和参考文献页的识别准确率。"
+            descriptionId={fieldDescriptionIds.language}
+          >
+            <TextInput
+              id="ocr-language"
+              value={form.language}
+              placeholder="en"
+              ariaDescribedBy={fieldDescriptionIds.language}
+              onChange={(value) => patchForm({ language: value })}
+            />
+          </Field>
+          {showLocalFields ? (
+            <Field
+              label={localOcrRuntimeFieldLabel(activeEngineName)}
+              htmlFor="ocr-local-runtime"
+              tooltip={localOcrRuntimeFieldTooltip(activeEngineName)}
+              description={localOcrRuntimeFieldDescription(activeEngineName)}
+              descriptionId={activeEngineName === 'windows' ? fieldDescriptionIds.localPowershell : fieldDescriptionIds.localPython}
+            >
+              <TextInput
+                id="ocr-local-runtime"
+                value={activeEngineName === 'windows' ? form.powershellExecutable : form.pythonExecutable}
+                placeholder={localOcrRuntimePlaceholder(activeEngineName)}
+                mono
+                ariaDescribedBy={activeEngineName === 'windows' ? fieldDescriptionIds.localPowershell : fieldDescriptionIds.localPython}
+                onChange={(value) => activeEngineName === 'windows'
+                  ? patchForm({ powershellExecutable: value })
+                  : patchForm({ pythonExecutable: value })}
+              />
+            </Field>
+          ) : null}
+          {configuredEngine === 'paddleocr_gpu' ? (
+            <Field
+              label="PaddleOCR 调用方法"
+              htmlFor="ocr-local-runtime-method"
+              description="仅当当前 PaddleOCR 版本需要指定 predict、ocr 或 __call__ 时设置；默认让后端自动探测。"
+              descriptionId={fieldDescriptionIds.localRuntimeMethod}
+            >
+              <select
+                id="ocr-local-runtime-method"
+                value={form.runtimeMethod}
+                onChange={(event) => patchForm({ runtimeMethod: event.target.value as OcrSettingsForm['runtimeMethod'] })}
+                aria-describedby={fieldDescriptionIds.localRuntimeMethod}
+                className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground focus:border-primary/40 focus:outline-none"
+              >
+                <option value="">自动探测</option>
+                <option value="predict">predict</option>
+                <option value="ocr">ocr</option>
+                <option value="__call__">__call__</option>
+              </select>
+            </Field>
+          ) : null}
+          {showLocalFields ? (
+            <Field
+              label="本地超时时间（秒）"
+              htmlFor="ocr-local-timeout"
+              tooltip="本地 OCR 或外部 Python 探测/执行超时，范围 5-1800 秒；Windows OCR 保存时后端会限制到 600 秒。"
+              description="限制单页本地识别等待时间，避免缺依赖或大图像让解析流程长时间卡住。"
+              descriptionId={fieldDescriptionIds.localTimeout}
+            >
+              <SliderInput
+                id="ocr-local-timeout"
+                value={form.localTimeoutSeconds}
+                min={5}
+                max={1800}
+                step={5}
+                ariaDescribedBy={fieldDescriptionIds.localTimeout}
+                onChange={(value) => patchForm({ localTimeoutSeconds: value })}
+              />
+            </Field>
+          ) : null}
+        </div>
+
+        <div className="mt-4 grid gap-3">
+          {engines.length === 0 && !loading ? (
+            <div className="rounded-lg border border-outline-variant/50 bg-surface-lowest p-3 text-xs text-foreground/55">
+              暂未加载到 OCR 引擎，请确认后端已启动并刷新状态。
+            </div>
+          ) : null}
+          {engines.map((engine) => (
+            <button
+              key={engine.name}
+              type="button"
+              onClick={() => {
+                patchForm({ selectedEngine: engine.name });
+                setHealth(null);
+              }}
+              className={cn(
+                'rounded-lg border p-3 text-left transition-colors hover:border-primary/35',
+                form.selectedEngine === engine.name ? 'border-primary/45 bg-primary/5' : engineStatusTone(engine),
+              )}
+              aria-pressed={form.selectedEngine === engine.name}
+            >
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">{engine.display_name}</span>
+                    <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px]">
+                      {engineTypeLabel(engine)}
+                    </span>
+                    {engine.requires_network ? (
+                      <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-700 dark:text-amber-300">
+                        需要网络/可能上传
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+                        本地处理
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-foreground/55">
+                    {engine.available ? '当前环境可用。' : engine.unavailable_reason ?? '当前环境不可用。'}
+                  </p>
+                  {engine.readiness_blockers.length > 0 ? (
+                    <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-foreground/45">
+                      阻塞：{engine.readiness_blockers.join('；')}
+                    </p>
+                  ) : null}
+                </div>
+                <span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[10px] text-foreground/60">
+                  {readinessLabel(engine.readiness_status)}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {showRemoteFields ? (
+          <div className="mt-5 rounded-lg border border-outline-variant/50 bg-surface-lowest p-4">
+            <div className="mb-4 flex items-start gap-2">
+              <Network size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-foreground">远程 OCR API</h3>
+                <p className="mt-1 text-xs leading-relaxed text-foreground/55">
+                  远程引擎从 API 凭证读取访问密钥；这里显示当前服务、模型/解析模式和最终接口路径。
+                </p>
+              </div>
+            </div>
+            <div className="mb-4">
+              <AppliedCredentialPicker
+                subsystem="ocr"
+                selectedId={selectedOcrCredentialId || form.credentialId}
+                onSelectedIdChange={setSelectedOcrCredentialId}
+                onApplied={handleOcrCredentialApplied}
+                disabled={loading || saving || checking}
+              />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+          <Field
+            label="服务类型"
+            htmlFor="ocr-provider"
+            tooltip="Mistral 可作为同步页级 OCR；MinerU 是异步整篇文档解析服务，不会作为页级 OCR 自动执行。"
+            description="决定后端按哪种官方接口组装请求；自定义接口选择 Generic。"
+          >
+            <select
+              id="ocr-provider"
+              value={form.provider}
+              onChange={(event) => patchForm({ provider: event.target.value as OcrSettingsForm['provider'] })}
+              className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground focus:border-primary/40 focus:outline-none"
+            >
+              <option value="generic">Generic 自定义 OCR JSON</option>
+              <option value="mistral">Mistral OCR</option>
+              <option value="mineru">MinerU 文档解析</option>
+            </select>
+          </Field>
+          <Field
+            label="模型 / 解析模式"
+            htmlFor="ocr-model"
+            description="Mistral 默认 mistral-ocr-latest；MinerU 可填 pipeline、vlm 或 MinerU-HTML。"
+          >
+            <TextInput
+              id="ocr-model"
+              value={form.model}
+              placeholder={form.provider === 'mistral' ? 'mistral-ocr-latest' : form.provider === 'mineru' ? 'pipeline' : 'model'}
+              mono
+              onChange={(value) => patchForm({ model: value })}
+            />
+          </Field>
+          <Field
+            label="服务地址"
+            htmlFor="ocr-base-url"
+            tooltip="远程 OCR 服务 base URL，例如 https://example.com/api。"
+            description="从 API 凭证带入；Scholar AI 会把它和接口路径拼成最终请求地址。"
+            descriptionId={fieldDescriptionIds.baseUrl}
+          >
+            <TextInput
+              id="ocr-base-url"
+              value={form.baseUrl}
+              placeholder="https://your-ocr-service.example"
+              mono
+              ariaDescribedBy={fieldDescriptionIds.baseUrl}
+              onChange={(value) => patchForm({ baseUrl: value })}
+            />
+          </Field>
+          <Field
+            label="接口路径"
+            htmlFor="ocr-endpoint-path"
+            tooltip="相对服务地址的 OCR 路径，默认 /ocr。"
+            description="匹配你的 OCR 服务实际路由，例如 /ocr、/v1/ocr 或 /api/vision/ocr。"
+            descriptionId={fieldDescriptionIds.endpointPath}
+          >
+            <TextInput
+              id="ocr-endpoint-path"
+              value={form.endpointPath}
+              placeholder="/ocr"
+              mono
+              ariaDescribedBy={fieldDescriptionIds.endpointPath}
+              onChange={(value) => patchForm({ endpointPath: value })}
+            />
+          </Field>
+          <Field
+            label="访问密钥"
+            htmlFor="ocr-api-key"
+            tooltip="建议通过上方 API 凭证选择器管理密钥；这里仅保留手动覆盖入口。"
+            description="手动输入会写入本机 OCR runtime 配置；状态接口只显示脱敏值。"
+            descriptionId={fieldDescriptionIds.apiKey}
+          >
+            <input
+              id="ocr-api-key"
+              type="password"
+              value={form.apiKey}
+              onChange={(event) => patchForm({ apiKey: event.target.value })}
+              placeholder={status?.engine_config.api_key ? '已保存密钥不回显' : 'OCR API Key'}
+              aria-describedby={fieldDescriptionIds.apiKey}
+              autoComplete="off"
+              data-lpignore="true"
+              data-form-type="other"
+              className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 font-mono text-sm text-foreground transition-colors focus:border-primary/40 focus:outline-none"
+            />
+          </Field>
+          <Field
+            label="文本字段路径"
+            htmlFor="ocr-response-path"
+            tooltip="可选。响应 JSON 中提取文本的位置，例如 data.text 或 pages.0.markdown。"
+            description="当 OCR 服务返回 JSON 时，指定从哪个字段读取最终文本；留空时使用后端默认解析。"
+            descriptionId={fieldDescriptionIds.responsePath}
+          >
+            <TextInput
+              id="ocr-response-path"
+              value={form.responseTextPath}
+              placeholder="data.text"
+              mono
+              ariaDescribedBy={fieldDescriptionIds.responsePath}
+              onChange={(value) => patchForm({ responseTextPath: value })}
+            />
+          </Field>
+            </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <label className="flex items-start gap-3 rounded-lg border border-outline-variant/50 bg-surface-lowest p-3">
+            <input
+              type="checkbox"
+              checked={form.allowRemoteUpload}
+              onChange={(event) => patchForm({ allowRemoteUpload: event.target.checked })}
+              className="mt-1 h-4 w-4 accent-primary"
+            />
+            <span>
+              <span className="block text-sm font-medium text-foreground">允许上传页面图片到远程 OCR 服务</span>
+              <span className="mt-1 block text-xs leading-relaxed text-foreground/55">
+                远程 OCR 会发送扫描页图片。只有确认服务可信、合规时再开启。
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 rounded-lg border border-outline-variant/50 bg-surface-lowest p-3">
+            <input
+              type="checkbox"
+              checked={form.allowInsecureHttp}
+              onChange={(event) => patchForm({ allowInsecureHttp: event.target.checked })}
+              className="mt-1 h-4 w-4 accent-primary"
+            />
+            <span>
+              <span className="block text-sm font-medium text-foreground">允许非 HTTPS 本地/内网服务</span>
+              <span className="mt-1 block text-xs leading-relaxed text-foreground/55">
+                默认要求 HTTPS；本地代理或内网 OCR 服务可显式开启。
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <div className="mt-4">
+          <Field
+            label="超时时间（秒）"
+            htmlFor="ocr-timeout"
+            tooltip="远程 OCR 请求超时，范围 5-600 秒。"
+            description="限制单次远程识别最多等待多久，避免大页图像或外部服务卡住整个解析流程。"
+            descriptionId={fieldDescriptionIds.timeout}
+          >
+            <SliderInput
+              id="ocr-timeout"
+              value={form.remoteTimeoutSeconds}
+              min={5}
+              max={600}
+              step={5}
+              ariaDescribedBy={fieldDescriptionIds.timeout}
+              onChange={(value) => patchForm({ remoteTimeoutSeconds: value })}
+            />
+          </Field>
+        </div>
+          </div>
+        ) : null}
+
+        {error ? (
+          <div className="mt-4 rounded-lg border border-red-500/20 bg-red-50 p-3 text-xs leading-relaxed text-red-700 dark:bg-red-500/10 dark:text-red-300">
+            {error}
+          </div>
+        ) : null}
+        {message ? (
+          <div className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+            {message}
+          </div>
+        ) : null}
+        {health ? (
+          <div className="mt-4 rounded-lg border border-outline-variant/50 bg-surface-lowest p-3 text-xs leading-relaxed text-foreground/65">
+            <div className="font-medium text-foreground">
+              健康检查：{health.ok ? '通过' : '未通过'} · {readinessLabel(health.readiness_status)}
+            </div>
+            <div className="mt-1">{health.detail}</div>
+            {health.readiness_blockers.length > 0 ? (
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {health.readiness_blockers.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleHealthCheck()}
+            disabled={checking || saving || loading || !activeEngineName || policy === 'none'}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-high px-3 py-2 text-xs font-medium text-foreground/65 transition-colors hover:border-primary/35 hover:text-primary disabled:opacity-50"
+          >
+            {checking ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+            检查当前引擎
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={saving || loading || (policy === 'engine' && !form.selectedEngine)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            保存 OCR 设置
+          </button>
+          {activeEngine ? (
+            <span className="text-[11px] text-foreground/45">
+              当前检查目标：{activeEngine.display_name}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AppliedCredentialPicker({
   subsystem,
   selectedId,
@@ -662,7 +1585,7 @@ function AppliedCredentialPicker({
   onApplied,
   disabled,
 }: {
-  subsystem: EndpointSubsystem;
+  subsystem: AppliedCredentialSubsystem;
   selectedId: string;
   onSelectedIdChange: (credentialId: string) => void;
   onApplied: (credential: RuntimeCredentialPublic) => void;
@@ -1004,6 +1927,18 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
           智能研读与写作 API。
         </p>
       </div>
+      <RuntimeBoundaryNotice title="问答模型按兼容 API 服务显示，不扫描本机模型文件。">
+        <p>
+          本地部署的 DeepSeek、Qwen、Llama 等模型，只要通过 Ollama、vLLM、LM Studio 或自建服务暴露 OpenAI-compatible Chat API，
+          就在这里填写服务地址和模型名称；本地服务没有密钥时可留空。
+        </p>
+        <p>
+          设置页显示保存后的供应商、服务地址和模型名称，以及连接测试结果；不会枚举 Ollama、vLLM 或模型缓存目录里的全部文件。
+        </p>
+        <p>
+          “获取模型”只读取当前服务的模型列表接口。若服务不支持模型列表，手动填写模型名后用“测试连接”验证即可。
+        </p>
+      </RuntimeBoundaryNotice>
       <SmartReadDefaultTierControl />
       {loading ? (
         <p className="text-xs text-foreground/40 italic">加载中…</p>
@@ -1313,10 +2248,25 @@ function EmbeddingCard({ t, settings: _settings, onChange: _onChange }: { t: (k:
           {t('settings.section_embedding')}
         </h4>
         <div className="flex items-center gap-2">
-          <LocalEmbeddingFallbackChip />
+          <LocalEmbeddingInProcessChip />
           <StatusPill status={config?.has_api_key ? 'online' : 'ready'} t={t} />
         </div>
       </div>
+      <RuntimeBoundaryNotice title="Embedding 可以接远程服务、本地兼容 API，或使用本机进程加载。">
+        <p>
+          常规本地部署建议走 API：Ollama、vLLM、LM Studio 或自建 embedding 服务在下面填写服务地址和模型名。
+          “本机进程加载（无需 API）”是另一路 Python 进程直接加载依赖和权重的方式，不需要填写服务地址。
+        </p>
+        <p>
+          本机进程加载不可用通常是缺少 Python 依赖、权重不完整或被环境变量关闭，不代表本地 API 没有配置。
+        </p>
+      </RuntimeBoundaryNotice>
+      <LocalRuntimeStatusDetails
+        endpoint="/api/embedding/local-status"
+        title="Embedding"
+        envPrefix="LOCAL_EMBEDDING"
+        apiServiceCopy="本地兼容 API 服务不会自动扫描，需要在服务地址和模型名称中手动配置，或通过“获取模型”读取当前服务的模型列表。"
+      />
 
       {loading ? (
         <p className="text-xs text-foreground/40 italic">加载中…</p>
@@ -1458,22 +2408,23 @@ interface LocalRerankStatus {
   batch_size: number;
   loaded: boolean;
   hf_cache_dir: string;
+  unavailable_reason?: string;
 }
 
 /**
- * Status chip for the local rerank fallback.
+ * Status chip for the local rerank in-process loader.
  *
- * Tells the user whether rerank will gracefully fall back to a local
- * model when the configured API rerank fails. Polls /api/rerank/local-status
- * once on mount — fast (<1ms backend probe, no model loading).
+ * Tells the user whether rerank can use a local model loaded by the backend
+ * Python process. Polls /api/rerank/local-status once on mount — fast
+ * (<1ms backend probe, no model loading).
  *
  * Color rubric:
- *   green   → available (API failure → local fallback works)
+ *   green   → available (API failure → in-process local model works)
  *   amber   → weights missing but download allowed
  *   slate   → disabled by operator (LOCAL_RERANK_DISABLED=1)
  *   red     → weights missing AND no download (API failure → static sort)
  */
-function LocalRerankFallbackChip() {
+function LocalRerankInProcessChip() {
   const [status, setStatus] = useState<LocalRerankStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -1497,14 +2448,14 @@ function LocalRerankFallbackChip() {
   if (loading) {
     return (
       <span className="text-[10px] text-foreground/40 italic">
-        正在探测本地回退…
+        正在探测本机进程加载…
       </span>
     );
   }
   if (!status) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600 dark:bg-slate-700/40 dark:text-slate-300">
-        本地回退: 状态未知
+        本机进程加载: 状态未知
       </span>
     );
   }
@@ -1515,20 +2466,20 @@ function LocalRerankFallbackChip() {
 
   if (status.disabled) {
     chipClass = "bg-slate-100 text-slate-600 dark:bg-slate-700/40 dark:text-slate-300";
-    label = "本地回退: 已禁用";
-    tip = `运维通过 LOCAL_RERANK_DISABLED=1 关闭。云端 rerank 失败时将退回到静态 hybrid_score 排序，不再尝试本地模型。`;
+    label = "本机进程加载: 已禁用";
+    tip = `运维通过 LOCAL_RERANK_DISABLED=1 关闭。配置的 rerank API 失败时将改用静态 hybrid_score 排序，不再尝试本机进程加载。`;
   } else if (status.available) {
     chipClass = "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300";
-    label = `本地回退: 可用 · ${status.device.toUpperCase()}`;
-    tip = `云端 rerank API 失败时，会自动回退到本地模型 ${status.model_name}（${status.device}${status.device_source === 'env_override' ? '，已手动指定' : '，自动探测'}），不需要联网。模型权重已就绪。`;
+    label = `本机进程加载: 可用 · ${status.device.toUpperCase()}`;
+    tip = `配置的 rerank API 失败时，后端 Python 进程可以直接加载本地模型 ${status.model_name}（${status.device}${status.device_source === 'env_override' ? '，已手动指定' : '，自动探测'}）。不需要服务地址，模型权重已就绪。`;
   } else if (status.weights_present === false && status.allow_download) {
     chipClass = "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300";
-    label = "本地回退: 需下载";
-    tip = `权重 ${status.model_name} 未在本机 HF 缓存，但允许联网下载（LOCAL_RERANK_ALLOW_DOWNLOAD=1）。首次回退会拉取大约 1.5GB。`;
+    label = "本机进程加载: 需下载";
+    tip = `权重 ${status.model_name} 未在本机 HF 缓存，但允许联网下载（LOCAL_RERANK_ALLOW_DOWNLOAD=1）。首次使用本机进程加载会拉取大约 1.5GB。`;
   } else {
     chipClass = "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300";
-    label = "本地回退: 不可用";
-    tip = `本机没有 ${status.model_name} 权重，且未允许下载（LOCAL_RERANK_ALLOW_DOWNLOAD 未设置）。云端 rerank 失败时，将退回到静态 hybrid_score 排序。要启用：先 \`pip install transformers torch\`，然后把权重放到 ${status.hf_cache_dir}，或者设置 LOCAL_RERANK_ALLOW_DOWNLOAD=1 允许联网下载。`;
+    label = "本机进程加载: 不可用";
+    tip = status.unavailable_reason || `本机没有 ${status.model_name} 权重，且未允许下载（LOCAL_RERANK_ALLOW_DOWNLOAD 未设置）。配置的 rerank API 失败时，将改用静态 hybrid_score 排序。要启用：先 \`pip install transformers torch\`，然后把权重放到 ${status.hf_cache_dir}，或者设置 LOCAL_RERANK_ALLOW_DOWNLOAD=1 允许联网下载。`;
   }
 
   return (
@@ -1552,17 +2503,115 @@ interface LocalEmbeddingStatus {
   batch_size: number;
   loaded: boolean;
   hf_cache_dir: string;
+  unavailable_reason?: string;
+}
+
+type LocalRuntimeStatus = LocalEmbeddingStatus & Partial<Pick<LocalRerankStatus, 'max_length'>>;
+
+function localRuntimeStatusLabel(status: LocalRuntimeStatus): string {
+  if (status.disabled) return '已禁用';
+  if (status.available) return `可用 · ${status.device.toUpperCase()}`;
+  if (!status.weights_present && status.allow_download) return '首次使用会下载权重';
+  return '不可用';
+}
+
+function localRuntimeUnavailableReason(status: LocalRuntimeStatus, title: string): string {
+  if (status.available) return '';
+  if (status.unavailable_reason) return status.unavailable_reason;
+  if (status.disabled) return `${title} 本机进程加载已被环境变量关闭。`;
+  if (!status.weights_present && !status.allow_download) return '模型权重不在缓存中，且未允许自动下载。';
+  return '后端运行环境缺少本机进程加载所需依赖，或设备环境不可用。';
+}
+
+function localRuntimeStatusClass(status: LocalRuntimeStatus): string {
+  if (status.disabled) return 'border-slate-300/40 bg-slate-500/5 text-slate-700 dark:text-slate-300';
+  if (status.available) return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
+  if (!status.weights_present && status.allow_download) return 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300';
+  return 'border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300';
+}
+
+function LocalRuntimeStatusDetails({
+  endpoint,
+  title,
+  envPrefix,
+  apiServiceCopy,
+}: {
+  endpoint: string;
+  title: string;
+  envPrefix: 'LOCAL_EMBEDDING' | 'LOCAL_RERANK';
+  apiServiceCopy: string;
+}): JSX.Element {
+  const [status, setStatus] = useState<LocalRuntimeStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data } = await axios.get<LocalRuntimeStatus>(`${getApiBaseUrl()}${endpoint}`);
+        if (!cancelled) setStatus(data);
+      } catch {
+        if (!cancelled) setStatus(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [endpoint]);
+
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-outline-variant/45 bg-surface-low px-3 py-2 text-[11px] text-foreground/45">
+        正在读取{title}本地运行时状态…
+      </div>
+    );
+  }
+
+  if (!status) {
+    return (
+      <div className="rounded-lg border border-outline-variant/45 bg-surface-low px-3 py-2 text-[11px] leading-relaxed text-foreground/50">
+        {title}本机进程加载状态不可用。配置本地模型 API 不受影响；{apiServiceCopy}
+      </div>
+    );
+  }
+
+  const unavailableReason = localRuntimeUnavailableReason(status, title);
+
+  return (
+    <div className={cn('rounded-lg border px-3 py-2 text-[11px] leading-relaxed', localRuntimeStatusClass(status))}>
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <span className="font-medium">{title}本机进程加载（无需 API）：{localRuntimeStatusLabel(status)}</span>
+        <span className="font-mono text-[10px] opacity-80">{status.model_name || '未配置模型'}</span>
+      </div>
+      <div className="mt-1 grid gap-1 text-foreground/55 sm:grid-cols-2 dark:text-foreground/60">
+        <span>设备：{status.device}{status.device_source === 'env_override' ? '（环境变量指定）' : '（自动探测）'}</span>
+        <span>权重：{status.weights_present ? '已在缓存中' : '缓存中未找到'}</span>
+        <span>批量：{status.batch_size}</span>
+        {typeof status.max_length === 'number' ? <span>最大长度：{status.max_length}</span> : null}
+        <span className="sm:col-span-2 break-all">缓存目录：{status.hf_cache_dir || '未返回'}</span>
+      </div>
+      {unavailableReason ? (
+        <p className="mt-1 font-medium text-current">
+          不可用原因：{unavailableReason}这不是因为没有填写 API；如果你用 Ollama、vLLM、LM Studio 或其他本地服务，请在下面配置服务地址和模型名。
+        </p>
+      ) : null}
+      <p className="mt-1 text-foreground/50">
+        这块只表示后端 Python 进程直接加载模型的能力，由 <span className="font-mono">{envPrefix}_MODEL_NAME</span>、<span className="font-mono">{envPrefix}_DEVICE</span>、
+        <span className="font-mono">{envPrefix}_ALLOW_DOWNLOAD</span> 等环境变量控制；{apiServiceCopy}
+      </p>
+    </div>
+  );
 }
 
 /**
- * Status chip for the local embedding fallback.
+ * Status chip for the local embedding in-process loader.
  *
- * Same pattern as LocalRerankFallbackChip — tells the user whether
- * embedding will gracefully fall back to a local SentenceTransformer
- * (default BAAI/bge-m3) when the configured API embedding fails.
+ * Same pattern as LocalRerankInProcessChip — tells the user whether
+ * embedding can use a local SentenceTransformer loaded by the backend Python
+ * process when the configured API embedding fails.
  * Polls /api/embedding/local-status once on mount.
  */
-function LocalEmbeddingFallbackChip() {
+function LocalEmbeddingInProcessChip() {
   const [status, setStatus] = useState<LocalEmbeddingStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -1586,14 +2635,14 @@ function LocalEmbeddingFallbackChip() {
   if (loading) {
     return (
       <span className="text-[10px] text-foreground/40 italic">
-        正在探测本地回退…
+        正在探测本机进程加载…
       </span>
     );
   }
   if (!status) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600 dark:bg-slate-700/40 dark:text-slate-300">
-        本地回退: 状态未知
+        本机进程加载: 状态未知
       </span>
     );
   }
@@ -1604,20 +2653,20 @@ function LocalEmbeddingFallbackChip() {
 
   if (status.disabled) {
     chipClass = "bg-slate-100 text-slate-600 dark:bg-slate-700/40 dark:text-slate-300";
-    label = "本地回退: 已禁用";
-    tip = `运维通过 LOCAL_EMBEDDING_DISABLED=1 关闭。云端 embedding 失败时不会尝试本地回退，错误会向上传递。`;
+    label = "本机进程加载: 已禁用";
+    tip = `运维通过 LOCAL_EMBEDDING_DISABLED=1 关闭。配置的 embedding API 失败时不会尝试本机进程加载，错误会向上传递。`;
   } else if (status.available) {
     chipClass = "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300";
-    label = `本地回退: 可用 · ${status.device.toUpperCase()}`;
-    tip = `云端 embedding API 失败时，会自动回退到本地模型 ${status.model_name}（${status.device}${status.device_source === 'env_override' ? '，已手动指定' : '，自动探测'}），不需要联网。模型权重已就绪。`;
+    label = `本机进程加载: 可用 · ${status.device.toUpperCase()}`;
+    tip = `配置的 embedding API 失败时，后端 Python 进程可以直接加载本地模型 ${status.model_name}（${status.device}${status.device_source === 'env_override' ? '，已手动指定' : '，自动探测'}）。不需要服务地址，模型权重已就绪。`;
   } else if (status.weights_present === false && status.allow_download) {
     chipClass = "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300";
-    label = "本地回退: 需下载";
-    tip = `权重 ${status.model_name} 未在本机 HF 缓存，但允许联网下载（LOCAL_EMBEDDING_ALLOW_DOWNLOAD=1）。首次回退会拉取大约 2.3GB（bge-m3）。`;
+    label = "本机进程加载: 需下载";
+    tip = `权重 ${status.model_name} 未在本机 HF 缓存，但允许联网下载（LOCAL_EMBEDDING_ALLOW_DOWNLOAD=1）。首次使用本机进程加载会拉取大约 2.3GB（bge-m3）。`;
   } else {
     chipClass = "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300";
-    label = "本地回退: 不可用";
-    tip = `本机没有 ${status.model_name} 权重，且未允许下载（LOCAL_EMBEDDING_ALLOW_DOWNLOAD 未设置）。云端 embedding 失败时错误会向上传递。要启用：先 \`pip install sentence-transformers torch\`，然后把权重放到 ${status.hf_cache_dir}，或者设置 LOCAL_EMBEDDING_ALLOW_DOWNLOAD=1 允许联网下载。`;
+    label = "本机进程加载: 不可用";
+    tip = status.unavailable_reason || `本机没有 ${status.model_name} 权重，且未允许下载（LOCAL_EMBEDDING_ALLOW_DOWNLOAD 未设置）。配置的 embedding API 失败时错误会向上传递。要启用：先 \`pip install sentence-transformers torch\`，然后把权重放到 ${status.hf_cache_dir}，或者设置 LOCAL_EMBEDDING_ALLOW_DOWNLOAD=1 允许联网下载。`;
   }
 
   return (
@@ -1754,10 +2803,25 @@ function RerankCard({ t: _t }: { t: (k: string, p?: Record<string, string | numb
           <Tooltip text="文献检索后的精排模型，可接云端 rerank，也可接本地 BGE 等 Cohere 兼容服务。保存后会立即应用到本机语义路由。" />
         </h4>
         <div className="flex items-center gap-2">
-          <LocalRerankFallbackChip />
+          <LocalRerankInProcessChip />
           <StatusPill status={config?.has_api_key ? 'online' : 'ready'} t={_t} />
         </div>
       </div>
+      <RuntimeBoundaryNotice title="Rerank 可以接兼容 API 服务，也可以使用本机进程加载。">
+        <p>
+          常规本地部署建议走 API：BGE reranker、Qwen rerank 或其他兼容服务在下面填写服务地址和模型名。
+          “本机进程加载（无需 API）”是另一路 Python 进程直接加载依赖和权重的方式，不需要填写服务地址。
+        </p>
+        <p>
+          本机进程加载不可用通常是缺少 Python 依赖、权重不完整或被环境变量关闭，不代表本地 API 没有配置。
+        </p>
+      </RuntimeBoundaryNotice>
+      <LocalRuntimeStatusDetails
+        endpoint="/api/rerank/local-status"
+        title="Rerank"
+        envPrefix="LOCAL_RERANK"
+        apiServiceCopy="本地兼容 API 服务不会自动扫描，需要在服务地址和模型名称中手动配置，或通过“获取模型”读取当前服务的模型列表。"
+      />
 
       {testStatus === 'ok' && testMessage && (
         <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg min-w-0 dark:border-emerald-700/40 dark:bg-emerald-500/15">
@@ -1892,7 +2956,8 @@ function SectionSemanticRouting({ t, settings, onChange }: { t: (k: string, p?: 
       <details className="rounded-lg border border-outline-variant/45 bg-surface-lowest px-3 py-2 text-[11px] text-foreground/50">
         <summary className="cursor-pointer font-medium text-foreground/65 hover:text-foreground/80">本地向量化与重排怎么接？</summary>
         <p className="mt-2 leading-relaxed">
-          填写兼容服务地址与模型名称。
+          有两种接法：第一种是本地服务暴露兼容 API，在下面填写服务地址和模型名称；第二种是使用本机进程加载，
+          由环境变量指定模型名、设备和是否允许下载权重。界面显示当前后端状态，不会扫描硬盘上的所有模型文件。
         </p>
       </details>
       <EmbeddingCard t={t} settings={settings} onChange={onChange} />
@@ -3342,6 +4407,7 @@ export function SettingsPage() {
     chat: <SectionChat t={t} settings={settings} onChange={setSettings} isDirty={isDirty} />,
     embedding: <SectionSemanticRouting t={t} settings={settings} onChange={setSettings} />,
     rerank: <SectionSemanticRouting t={t} settings={settings} onChange={setSettings} />,
+    ocr: <OcrApiSettingsCard />,
     'semantic-routing': <SectionSemanticRouting t={t} settings={settings} onChange={setSettings} />,
     sampling: <SectionChat t={t} settings={settings} onChange={setSettings} isDirty={isDirty} />,
     workspace: <SectionWorkspace t={t} settings={settings} onChange={setSettings} />,

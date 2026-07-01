@@ -7,6 +7,8 @@ import os
 import base64
 import binascii
 import hashlib
+import importlib.metadata
+import importlib.util
 import tempfile
 import time
 from pathlib import Path
@@ -16,6 +18,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from feature_flags import is_enabled
+from credential_store import CredentialNotFoundError
 from pdf_backends import (
     ENV_VAR,
     OcrEngine,
@@ -33,6 +37,8 @@ from project_paths import REPO_ROOT, WORKSPACE_ARTIFACTS_ROOT
 
 
 router = APIRouter(prefix="/api/pdf-backend", tags=["PDF Backend"])
+_MARKER_PKG = "marker-pdf"
+_MARKER_IMPORT_PROBE = "marker.converters.pdf"
 _MAX_OCR_PROBE_IMAGE_BYTES = 10 * 1024 * 1024
 _MAX_OCR_PROBE_BASE64_CHARS = 16 * 1024 * 1024
 _OCR_PROBE_IMAGE_SUFFIXES = {
@@ -56,6 +62,11 @@ class PDFBackendStatus(BaseModel):
     env_var_value: str | None
     external_backends_supported: bool
     install_hint: str
+    feature_flag_name: str
+    feature_flag_enabled: bool
+    marker_installed: bool
+    marker_version: str | None
+    marker_install_hint: str
     ocr_policy: str
     ocr_configured_engine: str | None
     ocr_selected_engine: str | None
@@ -126,6 +137,16 @@ class OcrHealthResponse(BaseModel):
     readiness_status: OcrReadinessStatus = "ready"
     readiness_blockers: list[str] = Field(default_factory=list)
     next_safe_local_actions: list[str] = Field(default_factory=list)
+
+
+class OcrCredentialApplyRequest(BaseModel):
+    """Apply a saved OCR RuntimeCredential to remote OCR runtime config."""
+
+    credential_id: str = Field(min_length=1, max_length=128)
+    provider: str | None = Field(default=None, max_length=64)
+    allow_remote_upload: bool = True
+    allow_insecure_http: bool = False
+    timeout_seconds: int = Field(default=60, ge=5, le=600)
 
 
 class OcrExecutionProbeRequest(BaseModel):
@@ -323,6 +344,32 @@ def _ocr_health_response_payload(engine: OcrEngine, health: Any) -> dict[str, An
     return payload
 
 
+def _remote_ocr_provider_from_credential(
+    provider_name: str,
+    model_name: str,
+) -> str:
+    """Infer a remote OCR provider preset from saved credential metadata."""
+
+    text = f"{provider_name} {model_name}".strip().lower()
+    if "mistral" in text:
+        return "mistral"
+    if "mineru" in text or "magic-pdf" in text:
+        return "mineru"
+    return "generic"
+
+
+def _remote_ocr_endpoint_for_provider(provider: str, base_url: str) -> str:
+    """Return provider-specific endpoint path without duplicating base path."""
+
+    normalized = str(provider or "generic").strip().lower()
+    url = str(base_url or "").strip().rstrip("/")
+    if normalized == "mistral":
+        return "" if url.endswith("/ocr") else "/ocr"
+    if normalized == "mineru":
+        return "" if url.endswith("/file-urls/batch") else "/v4/file-urls/batch"
+    return "/ocr"
+
+
 def _ocr_execution_blocked_payload(
     *,
     engine: OcrEngine,
@@ -368,11 +415,34 @@ def _resolve_active_backend() -> tuple[str, str]:
     return "pymupdf", "default"
 
 
+def _probe_marker_installed() -> tuple[bool, str | None]:
+    """Return whether optional marker-pdf tooling is importable.
+
+    Returns:
+        A tuple of ``(installed, version)``. ``installed`` only becomes true
+        when the runtime module can be resolved; version may be absent for
+        editable or path-only installs.
+    """
+
+    version: str | None = None
+    try:
+        version = importlib.metadata.version(_MARKER_PKG)
+    except importlib.metadata.PackageNotFoundError:
+        version = None
+
+    try:
+        installed = importlib.util.find_spec(_MARKER_IMPORT_PROBE) is not None
+    except ModuleNotFoundError:
+        installed = False
+    return installed, version
+
+
 @router.get("/status", response_model=PDFBackendStatus)
 def get_pdf_backend_status() -> PDFBackendStatus:
     """Return current core PDF backend wiring."""
     backend, source = _resolve_active_backend()
     ocr_status = public_ocr_status()
+    marker_installed, marker_version = _probe_marker_installed()
     return PDFBackendStatus(
         active_backend=backend,
         active_source=source,
@@ -382,6 +452,14 @@ def get_pdf_backend_status() -> PDFBackendStatus:
         install_hint=(
             "Core PDF parsing uses PyMuPDF. Heavy OCR/parser runtimes should "
             "be installed as optional local providers outside core source."
+        ),
+        feature_flag_name="pdf_parser_marker",
+        feature_flag_enabled=is_enabled("pdf_parser_marker"),
+        marker_installed=marker_installed,
+        marker_version=marker_version,
+        marker_install_hint=(
+            "pip install marker-pdf"
+            "  # ~2GB including torch/surya-ocr; first parse can take 5-15 minutes per PDF"
         ),
         ocr_policy=str(ocr_status["policy"]),
         ocr_configured_engine=ocr_status["configured_engine"],
@@ -445,18 +523,95 @@ def check_ocr_engine_health(request: OcrHealthRequest) -> OcrHealthResponse:
     """Run a lightweight readiness probe for one OCR engine."""
 
     try:
+        runtime_config = resolve_ocr_runtime_config()
         if request.engine:
-            engine = build_ocr_engine(request.engine, request.engine_config)
+            engine_config = (
+                request.engine_config
+                if request.engine_config
+                else runtime_config.engine_config
+            )
+            engine = build_ocr_engine(request.engine, engine_config)
         else:
-            status = public_ocr_status()
+            status = public_ocr_status(runtime_config)
             selected = status.get("selected_engine")
             if not isinstance(selected, str) or not selected:
                 raise ValueError(str(status.get("warning") or "no OCR engine selected"))
-            engine = build_ocr_engine(selected, request.engine_config)
+            engine = build_ocr_engine(selected, runtime_config.engine_config)
         health = engine.health_check()
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return OcrHealthResponse(**_ocr_health_response_payload(engine, health))
+
+
+@router.post("/ocr-config/apply-credential", response_model=OcrEngineSelectionResponse)
+def apply_ocr_credential(
+    request: OcrCredentialApplyRequest,
+) -> OcrEngineSelectionResponse:
+    """Apply a saved OCR credential to the remote OCR runtime config."""
+
+    from routers.credentials_router import get_credential_store
+
+    try:
+        credential = get_credential_store().get_internal(request.credential_id)
+    except CredentialNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "credential_not_found",
+                "message": "凭证不存在或已被删除。",
+            },
+        ) from exc
+    if not credential.enabled:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "credential_disabled",
+                "message": "选择的凭证已停用，请更换凭证。",
+            },
+        )
+    if credential.category.value != "ocr":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "credential category mismatch: expected ocr, "
+                f"got {credential.category.value}"
+            ),
+        )
+
+    provider = (
+        request.provider.strip().lower()
+        if isinstance(request.provider, str) and request.provider.strip()
+        else _remote_ocr_provider_from_credential(credential.provider, credential.model)
+    )
+    engine_config: dict[str, Any] = {
+        "provider": provider,
+        "base_url": credential.base_url,
+        "endpoint_path": _remote_ocr_endpoint_for_provider(provider, credential.base_url),
+        "api_key": credential.api_key,
+        "model": credential.model,
+        "allow_remote_upload": request.allow_remote_upload,
+        "allow_insecure_http": request.allow_insecure_http,
+        "timeout_seconds": request.timeout_seconds,
+    }
+    config = OcrRuntimeConfig(
+        policy="engine",
+        engine="remote_api",
+        language="en",
+        source="config",
+        engine_config=engine_config,
+    )
+    try:
+        build_ocr_engine("remote_api", engine_config)
+        path = write_ocr_runtime_config(config)
+        resolved = resolve_ocr_runtime_config(config_path=path)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return OcrEngineSelectionResponse(
+        saved=True,
+        config_path=str(path),
+        status=OcrStatusResponse(**public_ocr_status(resolved)),
+    )
 
 
 @router.post(

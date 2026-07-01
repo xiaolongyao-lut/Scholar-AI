@@ -327,6 +327,74 @@ def test_remote_api_adapter_runs_only_with_explicit_upload_consent(
     ]
 
 
+def test_remote_api_mistral_provider_uses_official_ocr_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[dict[str, Any]] = []
+
+    class _MockClient:
+        def __init__(self, *, timeout: float, follow_redirects: bool) -> None:
+            self.timeout = timeout
+            self.follow_redirects = follow_redirects
+
+        def __enter__(self) -> "_MockClient":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def post(
+            self,
+            url: str,
+            *,
+            json: dict[str, Any],
+            headers: dict[str, str],
+        ) -> httpx.Response:
+            requests.append({"url": url, "json": dict(json), "headers": dict(headers)})
+            return httpx.Response(
+                200,
+                json={"pages": [{"markdown": "page one"}, {"markdown": "page two"}]},
+                request=httpx.Request("POST", url),
+            )
+
+    monkeypatch.setattr(ocr_builtin_engines.httpx, "Client", _MockClient)
+    engine = RemoteApiOcrEngine(
+        {
+            "provider": "mistral",
+            "api_key": "secret-value",
+            "base_url": "https://api.mistral.ai/v1",
+            "model": "mistral-ocr-latest",
+            "allow_remote_upload": True,
+        }
+    )
+
+    assert engine.ocr_image(b"image-bytes", language="en") == "page one\npage two"
+    assert requests[0]["url"] == "https://api.mistral.ai/v1/ocr"
+    assert requests[0]["json"]["model"] == "mistral-ocr-latest"
+    assert requests[0]["json"]["document"]["type"] == "image_url"
+    assert requests[0]["json"]["document"]["image_url"].startswith("data:image/png;base64,")
+    assert requests[0]["headers"]["Authorization"] == "Bearer secret-value"
+
+
+def test_remote_api_mineru_provider_is_not_page_level_ocr() -> None:
+    engine = RemoteApiOcrEngine(
+        {
+            "provider": "mineru",
+            "api_key": "secret-value",
+            "base_url": "https://mineru.net/api",
+            "model": "pipeline",
+            "allow_remote_upload": True,
+        }
+    )
+
+    health = engine.health_check()
+
+    assert engine.is_available() is False
+    assert engine.readiness_status() == "adapter_not_wired"
+    assert health.ok is False
+    assert "asynchronous document parsing" in health.detail
+
+
 def test_remote_api_health_check_does_not_create_http_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -355,7 +423,7 @@ def test_paddleocr_status_and_health_do_not_import_heavy_runtime(
     monkeypatch.setattr(
         ocr_builtin_engines.importlib.util,
         "find_spec",
-        lambda name: object() if name == "paddleocr" else None,
+        lambda name: object() if name in {"paddleocr", "paddle"} else None,
     )
     monkeypatch.setattr(
         ocr_builtin_engines.importlib,
@@ -374,6 +442,39 @@ def test_paddleocr_status_and_health_do_not_import_heavy_runtime(
     assert paddle["readiness_blockers"] == []
     assert health.ok is True
     assert health.readiness_status == "ready"
+
+
+def test_paddleocr_status_requires_paddle_runtime_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ocr_builtin_engines.importlib.util,
+        "find_spec",
+        lambda name: object() if name == "paddleocr" else None,
+    )
+    monkeypatch.setattr(
+        ocr_builtin_engines.importlib,
+        "import_module",
+        lambda name: pytest.fail(f"status/health must not import {name}"),
+    )
+
+    status = public_ocr_status(OcrRuntimeConfig(policy="engine", engine="paddleocr_gpu"))
+    engine = PaddleOcrGpuEngine()
+    health = engine.health_check()
+
+    paddle = next(item for item in status["available_engines"] if item["name"] == "paddleocr_gpu")
+    assert status["selected_engine"] is None
+    assert paddle["available"] is False
+    assert paddle["readiness_status"] == "dependency_missing"
+    assert paddle["readiness_blockers"] == [
+        "paddlepaddle runtime module 'paddle' is not installed in the active Python runtime"
+    ]
+    assert engine.is_available() is False
+    assert engine.readiness_status() == "dependency_missing"
+    assert health.ok is False
+    assert health.detail == (
+        "paddlepaddle runtime module 'paddle' is not installed in the active Python runtime"
+    )
 
 
 def test_paddleocr_status_can_use_configured_external_python_runtime(
@@ -740,7 +841,7 @@ def test_paddleocr_engine_runs_lazy_optional_adapter_with_v3_result_shape(
     monkeypatch.setattr(
         ocr_builtin_engines.importlib.util,
         "find_spec",
-        lambda name: object() if name == "paddleocr" else None,
+        lambda name: object() if name in {"paddleocr", "paddle"} else None,
     )
     monkeypatch.setattr(
         ocr_builtin_engines.importlib,
@@ -790,7 +891,7 @@ def test_paddleocr_engine_reads_v2_line_shape_from_bytes(
     monkeypatch.setattr(
         ocr_builtin_engines.importlib.util,
         "find_spec",
-        lambda name: object() if name == "paddleocr" else None,
+        lambda name: object() if name in {"paddleocr", "paddle"} else None,
     )
     monkeypatch.setattr(
         ocr_builtin_engines.importlib,
@@ -812,7 +913,7 @@ def test_paddleocr_engine_rejects_invalid_config_without_model_load(
     monkeypatch.setattr(
         ocr_builtin_engines.importlib.util,
         "find_spec",
-        lambda name: object() if name == "paddleocr" else None,
+        lambda name: object() if name in {"paddleocr", "paddle"} else None,
     )
     monkeypatch.setattr(
         ocr_builtin_engines.importlib,

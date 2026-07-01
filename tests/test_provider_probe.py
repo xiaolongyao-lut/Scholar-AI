@@ -27,6 +27,7 @@ from provider_probe import (  # noqa: E402
     _chat_probe_payload,
     _chat_probe_url,
     _extract_provider_error_message,
+    _judge_scholar_probe_response,
     probe_openai_tool_calling_capability,
     _redact_secrets,
     validate_outbound_endpoint,
@@ -128,17 +129,47 @@ def test_chat_probe_url_returns_none_for_non_chat_protocols() -> None:
 
 
 def test_chat_probe_payload_per_protocol() -> None:
-    openai = _chat_probe_payload("openai_chat_completions")
+    openai = _chat_probe_payload("openai_chat_completions", "deepseek-v4-flash")
     assert openai is not None
-    assert openai["max_tokens"] == 1
-    assert openai["messages"] == [{"role": "user", "content": "."}]
+    assert openai["model"] == "deepseek-v4-flash"
+    assert openai["max_tokens"] == 180
+    assert "Scholar AI" in openai["messages"][0]["content"]
+    assert "evidence_ids" in openai["messages"][1]["content"]
 
-    anthropic = _chat_probe_payload("anthropic_messages")
+    responses = _chat_probe_payload("openai_responses", "gpt-4.1-mini")
+    assert responses is not None
+    assert responses["model"] == "gpt-4.1-mini"
+    assert responses["max_output_tokens"] == 180
+    assert "input" in responses
+
+    anthropic = _chat_probe_payload("anthropic_messages", "claude-3-5-haiku-20241022")
     assert anthropic is not None
-    assert anthropic["model"].startswith("claude-")
-    assert anthropic["max_tokens"] == 1
+    assert anthropic["model"] == "claude-3-5-haiku-20241022"
+    assert anthropic["max_tokens"] == 180
 
-    assert _chat_probe_payload("embeddings") is None
+    assert _chat_probe_payload("embeddings", "text-embedding-3-small") is None
+    assert _chat_probe_payload("openai_chat_completions", "") is None
+
+
+def test_scholar_probe_judges_template_response_ready() -> None:
+    result = _judge_scholar_probe_response(
+        '{"verdict":"usable","answer":"保留证据编号可以绑定来源，便于核对并降低幻觉风险。","evidence_ids":["S1"],"limits":"仅依据材料。"}'
+    )
+
+    assert result["capability_verdict"] == "scholar_ready"
+    assert result["checks"]["json_template"] is True
+    assert result["checks"]["evidence_id_s1"] is True
+
+
+def test_scholar_probe_accepts_plain_text_with_warning() -> None:
+    result = _judge_scholar_probe_response("根据 S1，证据编号能帮助核对来源并降低幻觉风险。")
+
+    assert result["capability_verdict"] == "usable_text_response"
+    assert result["checks"]["json_template"] is False
+
+
+def test_chat_probe_payload_requires_real_model() -> None:
+    assert _chat_probe_payload("openai_chat_completions", "   ") is None
 
 
 # ---------------------------------------------------------------------------

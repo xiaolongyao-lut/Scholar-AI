@@ -2,8 +2,9 @@
  * Settings page section ids and URL compatibility normalization.
  *
  * Standalone embedding/rerank routes now share the semantic routing surface,
- * and standalone sampling routes now share the chat surface. Old bookmarks
- * remain valid through normalization here.
+ * standalone OCR routes now share the API surface, and standalone sampling
+ * routes now share the chat surface. Old bookmarks remain valid through
+ * normalization here.
  */
 
 export type SectionId =
@@ -11,6 +12,7 @@ export type SectionId =
   | 'chat'
   | 'embedding'
   | 'rerank'
+  | 'ocr'
   | 'semantic-routing'
   | 'workspace'
   | 'sampling'
@@ -27,6 +29,7 @@ export const SECTION_IDS: readonly SectionId[] = [
   'chat',
   'embedding',
   'rerank',
+  'ocr',
   'semantic-routing',
   'workspace',
   'sampling',
@@ -49,6 +52,9 @@ export function isSectionId(value: string | null): value is SectionId {
 export function normalizeSection(value: SectionId): SectionId {
   if (value === 'embedding' || value === 'rerank') {
     return 'semantic-routing';
+  }
+  if (value === 'ocr') {
+    return 'api';
   }
   if (value === 'sampling') {
     return 'chat';

@@ -1,16 +1,3 @@
-/**
- * PDF Backend Status Card — A16a UI 状态探测.
- *
- * Surfaces from GET /api/pdf-backend/status:
- *   - active backend (pymupdf / marker) + 来源 (env / feature_flag / default)
- *   - marker-pdf 是否已安装 + 版本
- *   - 安装指引命令
- *
- * Rendered under the "实验性功能" section, immediately above the
- * pdf_parser_marker feature flag toggle so users see the install state
- * before flipping the toggle and the value lets them know whether the
- * flag will actually take effect.
- */
 import { useEffect, useState } from 'react';
 import { fetchPdfBackendStatus, type PDFBackendStatus } from '@/services/pdfBackendApi';
 
@@ -57,13 +44,11 @@ export function PDFBackendStatusCard(): JSX.Element {
     );
   }
 
-  const backendLabel = status.active_backend === 'marker' ? 'marker(结构化)' : 'PyMuPDF(默认)';
+  const backendLabel = status.active_backend === 'pymupdf' ? 'PyMuPDF(默认)' : status.active_backend;
   const sourceLabel = (() => {
     switch (status.active_source) {
       case 'env':
         return `由环境变量 ${status.env_var_name}=${status.env_var_value ?? ''} 指定`;
-      case 'feature_flag':
-        return '由下方实验性开关启用';
       default:
         return '系统默认';
     }
@@ -72,6 +57,7 @@ export function PDFBackendStatusCard(): JSX.Element {
   const installColor = status.marker_installed
     ? 'text-emerald-700 dark:text-emerald-300'
     : 'text-slate-500 dark:text-slate-400';
+  const ocrLabel = status.ocr_selected_engine ?? status.ocr_configured_engine ?? '未选择';
 
   return (
     <div className="rounded border border-slate-200 dark:border-slate-700 p-3 text-sm space-y-2">
@@ -81,32 +67,43 @@ export function PDFBackendStatusCard(): JSX.Element {
         <span className="text-xs text-slate-500 dark:text-slate-400">({sourceLabel})</span>
       </div>
       <div className={`flex items-baseline gap-2 flex-wrap ${installColor}`}>
-        <span>marker-pdf 包:</span>
+        <span>marker-pdf 可选工具:</span>
         {status.marker_installed ? (
           <span>
-            ✓ 已安装{status.marker_version ? `(${status.marker_version})` : ''}
+            已安装{status.marker_version ? `(${status.marker_version})` : ''}
           </span>
         ) : (
-          <span>✗ 未安装</span>
+          <span>未安装</span>
         )}
       </div>
       {!status.marker_installed && (
         <div className="rounded bg-slate-50 dark:bg-slate-800/50 p-2 text-xs">
-          <div className="text-slate-600 dark:text-slate-300 mb-1">在终端运行以下命令安装:</div>
+          <div className="text-slate-600 dark:text-slate-300 mb-1">需要结构化解析时再安装:</div>
           <code className="block font-mono text-slate-800 dark:text-slate-200 break-all">
             {status.marker_install_hint}
           </code>
         </div>
       )}
-      {status.marker_installed
-        && status.active_backend === 'pymupdf'
-        && !status.feature_flag_enabled
-        && status.active_source !== 'env' && (
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            marker 已安装但尚未启用。打开下方「PDF 结构化解析(marker)」开关即可在新上传的 PDF 上使用 marker;
-            已入库的旧 PDF 需在项目工作台点「重新解析以获取结构化索引」按 marker 重建。
-          </div>
-        )}
+      {status.marker_installed && !status.feature_flag_enabled && status.active_source !== 'env' && (
+        <div className="text-xs text-slate-500 dark:text-slate-400">
+          marker 已安装但实验开关未打开。打开下方「PDF 结构化解析(marker)」后，新上传 PDF 可走结构化解析。
+        </div>
+      )}
+      <div className="flex items-baseline gap-2 flex-wrap text-slate-700 dark:text-slate-200">
+        <span>扫描件 OCR:</span>
+        <span className="font-mono">{status.ocr_policy}</span>
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          selected {ocrLabel} · lang {status.ocr_language} · source {status.ocr_config_source}
+        </span>
+      </div>
+      {status.ocr_warning && (
+        <div className="rounded bg-amber-50 dark:bg-amber-900/20 p-2 text-xs text-amber-800 dark:text-amber-200">
+          {status.ocr_warning}
+        </div>
+      )}
+      <div className="rounded bg-slate-50 dark:bg-slate-800/50 p-2 text-xs text-slate-600 dark:text-slate-300">
+        {status.install_hint}
+      </div>
     </div>
   );
 }

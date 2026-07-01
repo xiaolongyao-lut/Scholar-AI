@@ -242,7 +242,12 @@ def test_ocr_engine_selection_can_enable_remote_api_with_explicit_consent(
     assert remote.readiness_blockers == []
 
 
-def test_ocr_health_returns_unavailable_without_uploading_content() -> None:
+def test_ocr_health_returns_unavailable_without_uploading_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LITASSIST_OCR_CONFIG_PATH", str(tmp_path / "ocr_config.json"))
+
     payload = check_ocr_engine_health(OcrHealthRequest(engine="remote_api"))
 
     assert payload.engine == "remote_api"

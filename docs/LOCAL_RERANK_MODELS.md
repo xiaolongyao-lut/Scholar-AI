@@ -1,8 +1,8 @@
-# 本地 Rerank 回退模型
+# Rerank 本机进程加载模型
 
 文献助手主路径走后端配置的 rerank API。外部智能体通过 MCP 使用检索能力，不直接接收 rerank provider key。
 
-当远端 rerank API 失败、被限流或网络断开时，系统可以回退到一个本地 cross-encoder 模型对候选文献重新排序；如果连本地模型也不可用，最终退到 `hybrid_score` 静态排序兜底。
+当远端 rerank API 失败、被限流或网络断开时，后端 Python 进程可以直接加载一个本地 cross-encoder 模型，对候选文献重新排序；如果这一路也不可用，最终改用 `hybrid_score` 静态排序兜底。
 
 默认本地模型是 **`BAAI/bge-reranker-v2-m3`**(约 1.5GB,中英双语,4 层 cross-encoder)。如果你想换成其他开源模型,本文是操作手册。
 
@@ -55,7 +55,7 @@ huggingface-cli download <model_name> --local-dir ~/hf_models/<model_name>
 LOCAL_RERANK_ALLOW_DOWNLOAD=1
 ```
 
-文献助手第一次回退时会自动 `from_pretrained()` 下载到 HF 缓存。**这会消耗运行时延** — 首次回退可能要等 30 秒以上,不推荐生产环境用这条路径。
+文献助手第一次使用本机进程加载时会自动 `from_pretrained()` 下载到 HF 缓存。**这会消耗运行时延** — 首次使用可能要等 30 秒以上,不推荐生产环境用这条路径。
 
 ### 3. 告诉文献助手
 
@@ -71,15 +71,15 @@ LOCAL_RERANK_MODEL_NAME=BAAI/bge-reranker-large
 LOCAL_RERANK_DEVICE=cuda         # 默认 auto:有 GPU 用 cuda,没 GPU 用 cpu
 LOCAL_RERANK_MAX_LENGTH=512      # 默认 512,clamp [16, 8192]
 LOCAL_RERANK_BATCH_SIZE=8        # 默认 8,clamp [1, 128]
-LOCAL_RERANK_DISABLED=0          # 设 1 完全关闭本地回退
+LOCAL_RERANK_DISABLED=0          # 设 1 完全关闭本机进程加载
 ```
 
-重启后端(`uvicorn ...`)后,在 **Settings → Rerank 模型配置 → 本地回退 chip** 里看状态:
+重启后端(`uvicorn ...`)后,在 **Settings → Rerank 模型配置 → 本机进程加载 chip** 里看状态:
 
-- 🟢 **本地回退: 可用 · CUDA** — 一切就绪
-- 🟡 **本地回退: 需下载** — 权重不在,但允许联网拉
-- 🔴 **本地回退: 不可用** — 权重不在且没允许下载
-- ⚫ **本地回退: 已禁用** — 运维显式关掉了
+- 🟢 **本机进程加载: 可用 · CUDA** — 一切就绪
+- 🟡 **本机进程加载: 需下载** — 权重不在,但允许联网拉
+- 🔴 **本机进程加载: 不可用** — 权重不在且没允许下载
+- ⚫ **本机进程加载: 已禁用** — 运维显式关掉了
 
 ## 团队使用建议
 
@@ -89,8 +89,8 @@ LOCAL_RERANK_DISABLED=0          # 设 1 完全关闭本地回退
 
 1. 其他用户主路径走 **同一个云端 rerank API**(从 Settings → Rerank 模型配置 配的),跟你完全一样
 2. 当云端 rerank API 抖动时:
-   - 他们机器**没装权重 / 没 GPU** → 本地回退报"不可用" → 用 hybrid_score 静态兜底排序(P1 已实测,质量退化但不崩溃)
-   - 他们装了权重 → 本地回退在 CPU 跑(慢但可用,3 秒一批)
+   - 他们机器**没装权重 / 没 GPU** → 本机进程加载报"不可用" → 用 hybrid_score 静态兜底排序(P1 已实测,质量退化但不崩溃)
+   - 他们装了权重 → 本机进程加载在 CPU 跑(慢但可用,3 秒一批)
 3. 任何时候都不会**因为 rerank 失败而让 chat 失败**
 
 | 场景 | 建议 |
@@ -101,17 +101,17 @@ LOCAL_RERANK_DISABLED=0          # 设 1 完全关闭本地回退
 
 ## 排错
 
-**Q: chip 一直说"本地回退: 不可用",但我已经下载了权重**
+**Q: chip 一直说"本机进程加载: 不可用",但我已经下载了权重**
 - 检查 HF 缓存目录是否对:`C:\Users\<you>\.cache\huggingface\hub\models--<org>--<name>\snapshots\<commit>\`
 - 该 snapshot 里要有 `config.json` + `model.safetensors` (或 `pytorch_model.bin`)
 - chip 显示的 `hf_cache_dir` 字段就是助手实际查的地方
 
-**Q: chip 说"可用"但回退时报错**
+**Q: chip 说"可用"但本机进程加载时报错**
 - 跑 `python -c "from local_rerank_adapter import score_pairs; print(score_pairs('test', ['a','b']))"` 在终端复现
 - 后端日志找 `local_rerank_adapter:` 前缀的 ERROR 行
 
-**Q: 我想完全关掉本地回退**
-- 设 `LOCAL_RERANK_DISABLED=1`,chip 会变⚫,云端 API 失败时直接退 hybrid_score 排序
+**Q: 我想完全关掉本机进程加载**
+- 设 `LOCAL_RERANK_DISABLED=1`,chip 会变⚫,云端 API 失败时直接使用 hybrid_score 排序
 
 **Q: 我想强制用 CPU(GPU 已被别的服务占了)**
 - 设 `LOCAL_RERANK_DEVICE=cpu`,chip 会显示 `device_source: env_override`
@@ -123,6 +123,6 @@ LOCAL_RERANK_DISABLED=0          # 设 1 完全关闭本地回退
 | `literature_assistant/core/local_rerank_adapter.py` | 适配器主体。`is_available()` / `get_status()` / `score_pairs()` / `rerank_dicts()` 公共 API |
 | `literature_assistant/core/local_rerank_server.py` | (可选)把适配器包成 127.0.0.1:7997 HTTP server,让其他进程也能用 |
 | `literature_assistant/core/routers/rerank_config_router.py` | `/api/rerank/local-status` endpoint 给前端 chip 用 |
-| `frontend/src/pages/Settings.tsx` `LocalRerankFallbackChip` | UI 状态指示 |
+| `frontend/src/pages/Settings.tsx` `LocalRerankInProcessChip` | UI 状态指示 |
 
 换模型只需要改 env 变量,**不需要改代码**。如果要支持非 HuggingFace 的 rerank 引擎(比如 Vespa rerank、Pinecone 等),那是适配器层改动,不在本文档范围。

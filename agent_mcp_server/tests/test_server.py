@@ -103,6 +103,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "source.inspect_routes",
         "source.find_references",
         "source.explain_entrypoints",
+        "literature.launch_desktop",
         "literature.config_status",
         "literature.health_check",
         "literature.zotero_attachment_health",
@@ -253,6 +254,7 @@ def test_server_registers_source_and_runtime_tools() -> None:
     for tool_name in read_only_tool_names:
         _assert_read_only_annotations(tools_by_name[tool_name])
     _assert_execution_probe_annotations(tools_by_name["literature.ocr_execution_probe"])
+    _assert_local_write_annotations(tools_by_name["literature.launch_desktop"])
 
     wiki_import_annotations = tools_by_name["literature.wiki_import"].annotations
     assert wiki_import_annotations is not None

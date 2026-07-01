@@ -11,6 +11,8 @@ from lit_assistant_mcp.runtime_attach import (
     DESKTOP_RUNTIME_CLOSED_FILENAME,
     _creation_flags,
     _desktop_python_executable,
+    _terminal_python_executable,
+    _visible_terminal_launch_command,
     ensure_desktop_runtime_attached,
     launch_desktop_runtime,
     read_valid_desktop_runtime,
@@ -111,6 +113,7 @@ def test_missing_descriptor_launches_desktop_when_allowed(tmp_path: Path) -> Non
 
     assert attached is None
     launch.assert_called_once()
+    assert launch.call_args.kwargs["terminal_visible"] is False
 
 
 def test_public_source_tree_anchor_can_attach_without_launch(tmp_path: Path) -> None:
@@ -172,10 +175,11 @@ def test_force_launch_ignores_closed_marker(tmp_path: Path) -> None:
 
     assert attached is None
     launch.assert_called_once()
+    assert launch.call_args.kwargs["terminal_visible"] is False
 
 
 def test_launch_desktop_runtime_runs_start_desktop(tmp_path: Path) -> None:
-    """Desktop launch should target start_desktop.py without a terminal wrapper."""
+    """Hidden desktop launch should target start_desktop.py without a terminal wrapper."""
 
     repo_root = _repo_root(tmp_path)
     with patch("lit_assistant_mcp.runtime_attach.subprocess.Popen") as popen:
@@ -190,14 +194,66 @@ def test_launch_desktop_runtime_runs_start_desktop(tmp_path: Path) -> None:
     assert "desktop_autostart" in str(popen.call_args.kwargs["stderr"].name)
 
 
-def test_windows_desktop_autostart_does_not_request_console() -> None:
-    """A visible pywebview window must not imply a visible Windows terminal."""
+def test_launch_desktop_runtime_visible_terminal_uses_powershell_wrapper(tmp_path: Path) -> None:
+    """Explicit launch requests should open a terminal that runs start_desktop.py."""
 
-    with patch("lit_assistant_mcp.runtime_attach.os.name", "nt"):
-        flags = _creation_flags(visible=True)
+    repo_root = _repo_root(tmp_path)
+    with patch("lit_assistant_mcp.runtime_attach.os.name", "nt"), patch(
+        "lit_assistant_mcp.runtime_attach.subprocess.Popen"
+    ) as popen:
+        launch_desktop_runtime(
+            repo_root=repo_root,
+            python_executable=str(repo_root / ".venv-1" / "Scripts" / "python.exe"),
+            env={},
+            terminal_visible=True,
+        )
 
-    assert flags & int(getattr(__import__("subprocess"), "CREATE_NO_WINDOW", 0))
-    assert not flags & int(getattr(__import__("subprocess"), "CREATE_NEW_CONSOLE", 0))
+    command = popen.call_args.args[0]
+    assert command[:6] == ["powershell.exe", "-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+    assert "Set-Location -LiteralPath" in command[-1]
+    assert str(repo_root) in command[-1]
+    assert str(repo_root / "start_desktop.py") in command[-1]
+    assert popen.call_args.kwargs["cwd"] == repo_root
+    assert popen.call_args.kwargs["env"]["LITERATURE_ASSISTANT_REPO_ROOT"] == str(repo_root)
+    assert "stdin" not in popen.call_args.kwargs
+    assert "stdout" not in popen.call_args.kwargs
+    assert "stderr" not in popen.call_args.kwargs
+
+
+def test_windows_hidden_desktop_autostart_does_not_request_console() -> None:
+    """Default MCP autostart must stay terminal-free."""
+
+    with patch("lit_assistant_mcp.runtime_attach.os.name", "nt"), patch(
+        "lit_assistant_mcp.runtime_attach.subprocess.CREATE_NO_WINDOW",
+        0x08000000,
+        create=True,
+    ), patch(
+        "lit_assistant_mcp.runtime_attach.subprocess.CREATE_NEW_CONSOLE",
+        0x00000010,
+        create=True,
+    ):
+        flags = _creation_flags(terminal_visible=False)
+
+    assert flags & 0x08000000
+    assert not flags & 0x00000010
+
+
+def test_windows_visible_terminal_launch_requests_console() -> None:
+    """Explicit launch requests should allocate a Windows console."""
+
+    with patch("lit_assistant_mcp.runtime_attach.os.name", "nt"), patch(
+        "lit_assistant_mcp.runtime_attach.subprocess.CREATE_NO_WINDOW",
+        0x08000000,
+        create=True,
+    ), patch(
+        "lit_assistant_mcp.runtime_attach.subprocess.CREATE_NEW_CONSOLE",
+        0x00000010,
+        create=True,
+    ):
+        flags = _creation_flags(terminal_visible=True)
+
+    assert flags & 0x00000010
+    assert not flags & 0x08000000
 
 
 def test_windows_desktop_autostart_prefers_pythonw(tmp_path: Path) -> None:
@@ -212,3 +268,36 @@ def test_windows_desktop_autostart_prefers_pythonw(tmp_path: Path) -> None:
         executable = _desktop_python_executable(python_exe)
 
     assert executable == str(pythonw_exe)
+
+
+def test_windows_visible_terminal_launch_prefers_python(tmp_path: Path) -> None:
+    """Visible terminal launches must not use pythonw.exe."""
+
+    python_exe = tmp_path / "python.exe"
+    pythonw_exe = tmp_path / "pythonw.exe"
+    python_exe.write_text("", encoding="utf-8")
+    pythonw_exe.write_text("", encoding="utf-8")
+
+    with patch("lit_assistant_mcp.runtime_attach.os.name", "nt"):
+        executable = _terminal_python_executable(pythonw_exe)
+
+    assert executable == str(python_exe)
+
+
+def test_visible_terminal_launch_command_quotes_powershell_paths(tmp_path: Path) -> None:
+    """PowerShell command should preserve repository paths with spaces or quotes."""
+
+    quoted_parent = tmp_path / "repo with ' quote"
+    quoted_parent.mkdir()
+    repo_root = _repo_root(quoted_parent)
+    python_exe = repo_root / ".venv-1" / "Scripts" / "python.exe"
+    with patch("lit_assistant_mcp.runtime_attach.os.name", "nt"):
+        command = _visible_terminal_launch_command(
+            repo_root=repo_root,
+            executable=str(python_exe),
+            start_script=repo_root / "start_desktop.py",
+        )
+
+    assert command[:6] == ["powershell.exe", "-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+    assert "repo with '' quote" in command[-1]
+    assert "start_desktop.py" in command[-1]

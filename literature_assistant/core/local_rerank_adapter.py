@@ -29,6 +29,7 @@ Env knobs:
 """
 from __future__ import annotations
 
+import importlib.util
 import logging
 import os
 from pathlib import Path
@@ -59,7 +60,7 @@ def _detect_default_device() -> str:
 
     Why dynamic default:
         Main pipeline is API-first (SiliconFlow / DashScope rerank), so
-        local rerank only fires as a fallback. When it does fire, picking
+        local rerank only runs when the configured API path is unavailable. When it does fire, picking
         CPU on a GPU box wastes the user's hardware and produces 3+s
         latencies; picking CUDA on a CPU box crashes at model load.
         Auto-detection makes the fallback fast without surprising
@@ -169,6 +170,28 @@ def is_available() -> bool:
     return _allow_download()
 
 
+def _missing_dependency_names() -> list[str]:
+    """Return missing import packages required by in-process local loading."""
+    missing: list[str] = []
+    if importlib.util.find_spec("torch") is None:
+        missing.append("torch")
+    if importlib.util.find_spec("transformers") is None:
+        missing.append("transformers")
+    return missing
+
+
+def _unavailable_reason(model_name: str) -> str:
+    """Explain why in-process local loading cannot be invoked safely."""
+    if _is_disabled():
+        return "LOCAL_RERANK_DISABLED=1 已关闭本机进程加载。"
+    missing = _missing_dependency_names()
+    if missing:
+        return f"缺少 Python 依赖：{', '.join(missing)}。"
+    if not _weights_present(model_name) and not _allow_download():
+        return "模型权重未在缓存中，且未设置 LOCAL_RERANK_ALLOW_DOWNLOAD=1。"
+    return ""
+
+
 def get_status() -> dict[str, Any]:
     """Aggregate status snapshot for UI / settings endpoints.
 
@@ -180,7 +203,7 @@ def get_status() -> dict[str, Any]:
     The returned dict is the contract that frontends should render as a
     status chip / badge. Field semantics:
 
-    - ``available`` — true when local fallback can actually be invoked
+    - ``available`` — true when in-process local loading can actually be invoked
       (weights on disk OR download allowed + libs importable + not
       disabled). Frontend should show a green chip; false → red chip.
     - ``disabled`` — true when ``LOCAL_RERANK_DISABLED=1``. Distinct
@@ -208,8 +231,9 @@ def get_status() -> dict[str, Any]:
     """
     model_name = _model_name()
     device_env_override = os.environ.get("LOCAL_RERANK_DEVICE", "").strip() or None
+    available = is_available()
     return {
-        "available": is_available(),
+        "available": available,
         "disabled": _is_disabled(),
         "weights_present": _weights_present(model_name),
         "allow_download": _allow_download(),
@@ -230,6 +254,7 @@ def get_status() -> dict[str, Any]:
         ),
         "loaded": _LOCAL_RERANKER is not None and _LOCAL_RERANKER_LOADED,
         "hf_cache_dir": str(_hf_cache_dir()),
+        "unavailable_reason": "" if available else _unavailable_reason(model_name),
     }
 
 

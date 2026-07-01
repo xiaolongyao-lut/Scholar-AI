@@ -1754,10 +1754,10 @@ export interface paths {
         };
         /**
          * Get Local Embedding Status
-         * @description Status of the local embedding fallback (model weights / device / availability).
+         * @description Status of in-process local embedding loading (weights / device / availability).
          *
          *     Used by Settings UI to render a chip telling the user whether
-         *     embedding will gracefully fall back to a local SentenceTransformer
+         *     embedding can use a local SentenceTransformer from the backend process
          *     when the configured API embedding fails. Does NOT load weights —
          *     runs in <1 ms on a warm process.
          */
@@ -2976,6 +2976,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/pdf-backend/ocr-config/apply-credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Ocr Credential
+         * @description Apply a saved OCR credential to the remote OCR runtime config.
+         */
+        post: operations["post_api_pdf_backend_ocr_config_apply_credential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/pdf-backend/ocr-engine": {
         parameters: {
             query?: never;
@@ -3144,10 +3164,10 @@ export interface paths {
         };
         /**
          * Get Local Rerank Status
-         * @description Status of the local rerank fallback (model weights / device / availability).
+         * @description Status of in-process local rerank loading (weights / device / availability).
          *
          *     Used by Settings UI to render a chip telling the user whether
-         *     rerank will gracefully fall back to a local model when the
+         *     rerank can use a local model loaded by the backend process when the
          *     configured API rerank fails. Does NOT load weights — runs in <1 ms
          *     on a warm process.
          *
@@ -10985,12 +11005,12 @@ export interface components {
          * CredentialCategory
          * @enum {string}
          */
-        CredentialCategory: "generation" | "embedding" | "rerank";
+        CredentialCategory: "generation" | "embedding" | "rerank" | "ocr";
         /**
          * CredentialProtocol
          * @enum {string}
          */
-        CredentialProtocol: "openai_chat_completions" | "openai_responses" | "anthropic_messages" | "embeddings" | "rerank";
+        CredentialProtocol: "openai_chat_completions" | "openai_responses" | "anthropic_messages" | "embeddings" | "rerank" | "ocr";
         /**
          * CredentialStrategyHint
          * @description Cost/quality tier hints for credential selection.
@@ -14223,15 +14243,15 @@ export interface components {
         };
         /**
          * LocalEmbeddingStatusPayload
-         * @description Snapshot of the local embedding fallback for the Settings UI.
+         * @description Snapshot of in-process local embedding loading for the Settings UI.
          *
          *     Rendered as a status chip / badge next to the Embedding card. Mirrors
          *     ``LocalRerankStatusPayload`` field-by-field so the frontend can reuse
          *     the same chip component for both.
          *
-         *     ``available=true`` means embedding will gracefully fall back to a
-         *     locally-cached SentenceTransformer (default ``BAAI/bge-m3``) when the
-         *     upstream API fails; ``available=false`` means an API outage will
+         *     ``available=true`` means embedding can use a locally cached
+         *     SentenceTransformer (default ``BAAI/bge-m3``) in the backend Python
+         *     process when the upstream API fails; ``available=false`` means an API outage will
          *     propagate as ``EmbeddingAPIError`` to the caller.
          */
         LocalEmbeddingStatusPayload: {
@@ -14253,15 +14273,20 @@ export interface components {
             loaded: boolean;
             /** Model Name */
             model_name: string;
+            /**
+             * Unavailable Reason
+             * @default
+             */
+            unavailable_reason: string;
             /** Weights Present */
             weights_present: boolean;
         };
         /**
          * LocalRerankStatusPayload
-         * @description Snapshot of the local rerank fallback for the Settings UI.
+         * @description Snapshot of in-process local rerank loading for the Settings UI.
          *
          *     Rendered as a status chip / badge. ``available=true`` means the
-         *     local fallback can actually be invoked when the API rerank fails;
+         *     backend Python process can load the local rerank model when the API rerank fails;
          *     ``available=false`` means rerank will degrade to static
          *     hybrid_score sorting on API failure.
          *
@@ -14298,6 +14323,11 @@ export interface components {
             max_length: number;
             /** Model Name */
             model_name: string;
+            /**
+             * Unavailable Reason
+             * @default
+             */
+            unavailable_reason: string;
             /** Weights Present */
             weights_present: boolean;
         };
@@ -15255,6 +15285,31 @@ export interface components {
             top_k: number;
         };
         /**
+         * OcrCredentialApplyRequest
+         * @description Apply a saved OCR RuntimeCredential to remote OCR runtime config.
+         */
+        OcrCredentialApplyRequest: {
+            /**
+             * Allow Insecure Http
+             * @default false
+             */
+            allow_insecure_http: boolean;
+            /**
+             * Allow Remote Upload
+             * @default true
+             */
+            allow_remote_upload: boolean;
+            /** Credential Id */
+            credential_id: string;
+            /** Provider */
+            provider?: string | null;
+            /**
+             * Timeout Seconds
+             * @default 60
+             */
+            timeout_seconds: number;
+        };
+        /**
          * OcrEnginePublicInfo
          * @description Public metadata for one OCR engine.
          */
@@ -15580,8 +15635,18 @@ export interface components {
             env_var_value: string | null;
             /** External Backends Supported */
             external_backends_supported: boolean;
+            /** Feature Flag Enabled */
+            feature_flag_enabled: boolean;
+            /** Feature Flag Name */
+            feature_flag_name: string;
             /** Install Hint */
             install_hint: string;
+            /** Marker Install Hint */
+            marker_install_hint: string;
+            /** Marker Installed */
+            marker_installed: boolean;
+            /** Marker Version */
+            marker_version: string | null;
             /** Ocr Config Source */
             ocr_config_source: string;
             /** Ocr Configured Engine */
@@ -17668,6 +17733,11 @@ export interface components {
             enabled: number;
             /** Generation */
             generation: number;
+            /**
+             * Ocr
+             * @default 0
+             */
+            ocr: number;
             /** Rerank */
             rerank: number;
             /** Total */
@@ -25816,6 +25886,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemorySearchResponsePayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_pdf_backend_ocr_config_apply_credential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OcrCredentialApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OcrEngineSelectionResponse"];
                 };
             };
             /** @description Validation Error */

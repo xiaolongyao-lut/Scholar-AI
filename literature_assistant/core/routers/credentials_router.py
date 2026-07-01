@@ -211,6 +211,7 @@ def _probe_https_endpoint(
     base_url: str,
     api_key: str,
     protocol: str,
+    model: str = "",
 ) -> dict[str, Any]:
     """Backward-compat shim returning the legacy dict shape.
 
@@ -218,7 +219,7 @@ def _probe_https_endpoint(
     this preserves that contract while routing all work through the shared
     `probe_endpoint_reachability` implementation.
     """
-    result = _probe_endpoint_reachability(base_url, api_key, protocol)
+    result = _probe_endpoint_reachability(base_url, api_key, protocol, model)
     out: dict[str, Any] = {
         "probed": True,
         "url_used": result.url_used or base_url,
@@ -235,6 +236,62 @@ def _probe_https_endpoint(
         out["provider_message"] = result.provider_message
     if result.note:
         out["note"] = result.note
+    if result.model:
+        out["model"] = result.model
+    if result.response_model:
+        out["response_model"] = result.response_model
+    if result.finish_reason:
+        out["finish_reason"] = result.finish_reason
+    if result.usage:
+        out["usage"] = result.usage
+    if result.response_preview:
+        out["response_preview"] = result.response_preview
+    if result.capability_verdict:
+        out["capability_verdict"] = result.capability_verdict
+    if result.checks:
+        out["checks"] = result.checks
+    return out
+
+
+def _probe_ocr_endpoint_config(
+    base_url: str,
+    api_key: str,
+    model: str = "",
+    provider: str = "",
+) -> dict[str, Any]:
+    """Return a non-upload OCR credential readiness result.
+
+    OCR providers do not share a safe text-only liveness request. This check
+    validates the saved endpoint and secret shape after the trust gate without
+    sending document or image content to the provider.
+    """
+
+    normalized_url = str(base_url or "").strip()
+    normalized_key = str(api_key or "").strip()
+    normalized_model = str(model or "").strip()
+    normalized_provider = str(provider or "").strip()
+    checks = {
+        "base_url_present": bool(normalized_url),
+        "api_key_present": bool(normalized_key),
+        "model_present": bool(normalized_model),
+    }
+    ok = checks["base_url_present"] and checks["api_key_present"]
+    out: dict[str, Any] = {
+        "probed": False,
+        "url_used": normalized_url,
+        "method": "CONFIG",
+        "ok": ok,
+        "reachable": False,
+        "note": "OCR 凭证已通过信任和配置检查；不会在测试连接时上传图片。",
+        "capability_verdict": "ocr_config_ready" if ok else "ocr_config_incomplete",
+        "checks": checks,
+    }
+    if normalized_model:
+        out["model"] = normalized_model
+    if normalized_provider:
+        out["provider"] = normalized_provider
+    if not ok:
+        out["error"] = "remote OCR requires api_key and base_url configuration"
     return out
 
 
@@ -343,7 +400,11 @@ async def test_credential(
             },
         )
 
-    decision = validate_endpoint(cred.base_url, trust_source=effective_trust)
+    decision = validate_endpoint(
+        cred.base_url,
+        trust_source=effective_trust,
+        skip_dns=True,
+    )
     decision_log = _mask_decision(decision)
 
     if decision.skipped_network:
@@ -365,11 +426,20 @@ async def test_credential(
         }
 
     # Authorization header is constructed only after policy.allowed.
-    probe = _probe_https_endpoint(
-        base_url=cred.base_url,
-        api_key=cred.api_key,
-        protocol=cred.protocol.value,
-    )
+    if cred.protocol.value == CredentialProtocol.OCR.value:
+        probe = _probe_ocr_endpoint_config(
+            base_url=cred.base_url,
+            api_key=cred.api_key,
+            model=cred.model,
+            provider=cred.provider,
+        )
+    else:
+        probe = _probe_https_endpoint(
+            base_url=cred.base_url,
+            api_key=cred.api_key,
+            protocol=cred.protocol.value,
+            model=cred.model,
+        )
 
     return {
         "credential_id": credential_id,

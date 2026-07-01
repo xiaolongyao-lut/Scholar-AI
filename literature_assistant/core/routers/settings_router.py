@@ -68,6 +68,7 @@ class SettingsCredentialsSummaryPayload(BaseModel):
     generation: int = Field(ge=0)
     embedding: int = Field(ge=0)
     rerank: int = Field(ge=0)
+    ocr: int = Field(default=0, ge=0)
 
 
 class SettingsFeatureFlagPayload(BaseModel):
@@ -155,6 +156,7 @@ def _credentials_summary() -> SettingsCredentialsSummaryPayload:
     generation = sum(1 for item in credentials if item.category.value == "generation")
     embedding = sum(1 for item in credentials if item.category.value == "embedding")
     rerank = sum(1 for item in credentials if item.category.value == "rerank")
+    ocr = sum(1 for item in credentials if item.category.value == "ocr")
     enabled = sum(1 for item in credentials if item.enabled)
     return SettingsCredentialsSummaryPayload(
         total=len(credentials),
@@ -162,6 +164,7 @@ def _credentials_summary() -> SettingsCredentialsSummaryPayload:
         generation=generation,
         embedding=embedding,
         rerank=rerank,
+        ocr=ocr,
     )
 
 

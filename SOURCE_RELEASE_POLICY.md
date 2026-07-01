@@ -43,9 +43,13 @@ These paths are acceptable public Git candidates after normal review:
 - Backend and startup metadata: `pyproject.toml`, `requirements-ci.txt`,
   `requirements-pin.txt`, `run_literature_assistant.py`, `sitecustomize.py`,
   `start.py`, `start.bat`, `start_desktop.py`.
-- Public project documents: `README.md`, `CONTRIBUTING.md`,
+- Public project documents: `README.md`, `AGENTS.md`, `CLAUDE.md`,
+  `docs/ai-agent-guide.md`, `CONTRIBUTING.md`,
   `SECURITY.md`, `LICENSE`, `SOURCE_RELEASE_POLICY.md`, and selected
-  user-facing how-to files under `docs/` after scrub review.
+  user-facing how-to files under `docs/` after scrub review. `AGENTS.md` and
+  `CLAUDE.md` must stay public, clone-safe auto-load bootstraps;
+  `docs/ai-agent-guide.md` carries the fuller commands, source layout,
+  verification rules, MCP/toolbox usage, and no personal machine state.
 - Test reproducibility files: `pytest.ini`, `tests/`, selected
   `frontend/**/*.test.ts`, `frontend/**/*.test.tsx`, `frontend/tests/`,
   and `frontend/src/test/` when they contain no private fixtures. Keep
@@ -70,9 +74,12 @@ Never commit these paths or file classes:
 - Runtime state: `workspace_artifacts/`, `workspace_ai/`, `output/`,
   `.app-profile/`, browser profiles, SQLite/DB files, logs, caches, and release
   build outputs.
-- Local agent and planning state: `AGENTS.md`, `AI_WORKSPACE_GUIDE.md`,
-  `CLAUDE.md`, `GEMINI.md`, `MEMORY.md`, `OPEN_THREADS.md`, `.claude/`,
+- Local agent and planning state: `AGENTS.local.md`, `AI_WORKSPACE_GUIDE.md`,
+  `CLAUDE.local.md`, `GEMINI.md`, `MEMORY.md`, `OPEN_THREADS.md`, `.claude/`,
   `.codex/`, `.squad/`, `.kilo/`, `.cursor/`, `.continue/`, and `.opencode/`.
+  Do not commit personal agent memories, local runbooks, machine-specific
+  paths, credentials, or private operator notes through the public `AGENTS.md`,
+  `CLAUDE.md`, or `docs/ai-agent-guide.md`.
 - Internal plans and evidence: `docs/plans/`, long-run runbooks, smoke
   artifacts, evaluation outputs, cost logs, and private review notes.
 - Internal execution prompts and local diagnostics: `tools/`, `workspace_tests/`,
@@ -128,7 +135,11 @@ Before pushing a source-boundary change:
 7. Run `git ls-files -ci --exclude-standard` and fix any tracked ignored file.
 8. Run the release secret scan over newly public paths.
 9. Run the forbidden path scan for release trees or uploaded source assets.
-10. Inspect the tagged tree before publishing a release archive.
+10. If `AGENTS.md`, `CLAUDE.md`, or `docs/ai-agent-guide.md` changes, verify
+    that they explain source-desktop startup, MCP/toolbox usage, rollback
+    placement outside the repo, and final UI acceptance without exposing
+    personal local state.
+11. Inspect the tagged tree before publishing a release archive.
 
 ## Release Rule
 

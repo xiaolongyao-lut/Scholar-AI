@@ -8553,7 +8553,8 @@
         "enum": [
           "generation",
           "embedding",
-          "rerank"
+          "rerank",
+          "ocr"
         ],
         "title": "CredentialCategory",
         "type": "string"
@@ -8564,7 +8565,8 @@
           "openai_responses",
           "anthropic_messages",
           "embeddings",
-          "rerank"
+          "rerank",
+          "ocr"
         ],
         "title": "CredentialProtocol",
         "type": "string"
@@ -15706,7 +15708,7 @@
         "type": "object"
       },
       "LocalEmbeddingStatusPayload": {
-        "description": "Snapshot of the local embedding fallback for the Settings UI.\n\nRendered as a status chip / badge next to the Embedding card. Mirrors\n``LocalRerankStatusPayload`` field-by-field so the frontend can reuse\nthe same chip component for both.\n\n``available=true`` means embedding will gracefully fall back to a\nlocally-cached SentenceTransformer (default ``BAAI/bge-m3``) when the\nupstream API fails; ``available=false`` means an API outage will\npropagate as ``EmbeddingAPIError`` to the caller.",
+        "description": "Snapshot of in-process local embedding loading for the Settings UI.\n\nRendered as a status chip / badge next to the Embedding card. Mirrors\n``LocalRerankStatusPayload`` field-by-field so the frontend can reuse\nthe same chip component for both.\n\n``available=true`` means embedding can use a locally cached\nSentenceTransformer (default ``BAAI/bge-m3``) in the backend Python\nprocess when the upstream API fails; ``available=false`` means an API outage will\npropagate as ``EmbeddingAPIError`` to the caller.",
         "properties": {
           "allow_download": {
             "title": "Allow Download",
@@ -15744,6 +15746,11 @@
             "title": "Model Name",
             "type": "string"
           },
+          "unavailable_reason": {
+            "default": "",
+            "title": "Unavailable Reason",
+            "type": "string"
+          },
           "weights_present": {
             "title": "Weights Present",
             "type": "boolean"
@@ -15765,7 +15772,7 @@
         "type": "object"
       },
       "LocalRerankStatusPayload": {
-        "description": "Snapshot of the local rerank fallback for the Settings UI.\n\nRendered as a status chip / badge. ``available=true`` means the\nlocal fallback can actually be invoked when the API rerank fails;\n``available=false`` means rerank will degrade to static\nhybrid_score sorting on API failure.\n\nFrontend rendering hints (non-binding, just what the UI usually\nneeds):\n  - green chip when available\n  - yellow chip when available=false but weights_present=false and\n    allow_download=true (\"click to download N MB\")\n  - red chip when disabled or weights missing and no download\n  - secondary line: \"GPU (RTX 4060)\" / \"CPU\" — show device + source\n  - tertiary line: model_name + \"Change in Settings → 高级\" link\n\nThe ``loaded`` flag exists for engineers debugging cold-start\nlatency; UI does not need to surface it.",
+        "description": "Snapshot of in-process local rerank loading for the Settings UI.\n\nRendered as a status chip / badge. ``available=true`` means the\nbackend Python process can load the local rerank model when the API rerank fails;\n``available=false`` means rerank will degrade to static\nhybrid_score sorting on API failure.\n\nFrontend rendering hints (non-binding, just what the UI usually\nneeds):\n  - green chip when available\n  - yellow chip when available=false but weights_present=false and\n    allow_download=true (\"click to download N MB\")\n  - red chip when disabled or weights missing and no download\n  - secondary line: \"GPU (RTX 4060)\" / \"CPU\" — show device + source\n  - tertiary line: model_name + \"Change in Settings → 高级\" link\n\nThe ``loaded`` flag exists for engineers debugging cold-start\nlatency; UI does not need to surface it.",
         "properties": {
           "allow_download": {
             "title": "Allow Download",
@@ -15805,6 +15812,11 @@
           },
           "model_name": {
             "title": "Model Name",
+            "type": "string"
+          },
+          "unavailable_reason": {
+            "default": "",
+            "title": "Unavailable Reason",
             "type": "string"
           },
           "weights_present": {
@@ -18056,6 +18068,51 @@
         "title": "MultiProjectSearchRequest",
         "type": "object"
       },
+      "OcrCredentialApplyRequest": {
+        "description": "Apply a saved OCR RuntimeCredential to remote OCR runtime config.",
+        "properties": {
+          "allow_insecure_http": {
+            "default": false,
+            "title": "Allow Insecure Http",
+            "type": "boolean"
+          },
+          "allow_remote_upload": {
+            "default": true,
+            "title": "Allow Remote Upload",
+            "type": "boolean"
+          },
+          "credential_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Credential Id",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "timeout_seconds": {
+            "default": 60,
+            "maximum": 600.0,
+            "minimum": 5.0,
+            "title": "Timeout Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "credential_id"
+        ],
+        "title": "OcrCredentialApplyRequest",
+        "type": "object"
+      },
       "OcrEnginePublicInfo": {
         "description": "Public metadata for one OCR engine.",
         "properties": {
@@ -18737,9 +18794,36 @@
             "title": "External Backends Supported",
             "type": "boolean"
           },
+          "feature_flag_enabled": {
+            "title": "Feature Flag Enabled",
+            "type": "boolean"
+          },
+          "feature_flag_name": {
+            "title": "Feature Flag Name",
+            "type": "string"
+          },
           "install_hint": {
             "title": "Install Hint",
             "type": "string"
+          },
+          "marker_install_hint": {
+            "title": "Marker Install Hint",
+            "type": "string"
+          },
+          "marker_installed": {
+            "title": "Marker Installed",
+            "type": "boolean"
+          },
+          "marker_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marker Version"
           },
           "ocr_config_source": {
             "title": "Ocr Config Source",
@@ -18794,6 +18878,11 @@
           "env_var_value",
           "external_backends_supported",
           "install_hint",
+          "feature_flag_name",
+          "feature_flag_enabled",
+          "marker_installed",
+          "marker_version",
+          "marker_install_hint",
           "ocr_policy",
           "ocr_configured_engine",
           "ocr_selected_engine",
@@ -23440,6 +23529,12 @@
           "generation": {
             "minimum": 0.0,
             "title": "Generation",
+            "type": "integer"
+          },
+          "ocr": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Ocr",
             "type": "integer"
           },
           "rerank": {
@@ -34055,7 +34150,7 @@
     },
     "/api/embedding/local-status": {
       "get": {
-        "description": "Status of the local embedding fallback (model weights / device / availability).\n\nUsed by Settings UI to render a chip telling the user whether\nembedding will gracefully fall back to a local SentenceTransformer\nwhen the configured API embedding fails. Does NOT load weights —\nruns in <1 ms on a warm process.",
+        "description": "Status of in-process local embedding loading (weights / device / availability).\n\nUsed by Settings UI to render a chip telling the user whether\nembedding can use a local SentenceTransformer from the backend process\nwhen the configured API embedding fails. Does NOT load weights —\nruns in <1 ms on a warm process.",
         "operationId": "get_api_embedding_local_status",
         "responses": {
           "200": {
@@ -37070,6 +37165,48 @@
         ]
       }
     },
+    "/api/pdf-backend/ocr-config/apply-credential": {
+      "post": {
+        "description": "Apply a saved OCR credential to the remote OCR runtime config.",
+        "operationId": "post_api_pdf_backend_ocr_config_apply_credential",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OcrCredentialApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OcrEngineSelectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Ocr Credential",
+        "tags": [
+          "PDF Backend"
+        ]
+      }
+    },
     "/api/pdf-backend/ocr-engine": {
       "post": {
         "description": "Persist local OCR policy/engine selection.\n\nSecrets are accepted only as local runtime config values and are redacted\nfrom the response.",
@@ -37398,7 +37535,7 @@
     },
     "/api/rerank/local-status": {
       "get": {
-        "description": "Status of the local rerank fallback (model weights / device / availability).\n\nUsed by Settings UI to render a chip telling the user whether\nrerank will gracefully fall back to a local model when the\nconfigured API rerank fails. Does NOT load weights — runs in <1 ms\non a warm process.\n\nSee ``LocalRerankStatusPayload`` docstring for rendering hints.",
+        "description": "Status of in-process local rerank loading (weights / device / availability).\n\nUsed by Settings UI to render a chip telling the user whether\nrerank can use a local model loaded by the backend process when the\nconfigured API rerank fails. Does NOT load weights — runs in <1 ms\non a warm process.\n\nSee ``LocalRerankStatusPayload`` docstring for rendering hints.",
         "operationId": "get_api_rerank_local_status",
         "responses": {
           "200": {

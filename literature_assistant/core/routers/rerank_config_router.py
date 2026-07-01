@@ -67,10 +67,10 @@ class RerankProbeResult(BaseModel):
 
 
 class LocalRerankStatusPayload(BaseModel):
-    """Snapshot of the local rerank fallback for the Settings UI.
+    """Snapshot of in-process local rerank loading for the Settings UI.
 
     Rendered as a status chip / badge. ``available=true`` means the
-    local fallback can actually be invoked when the API rerank fails;
+    backend Python process can load the local rerank model when the API rerank fails;
     ``available=false`` means rerank will degrade to static
     hybrid_score sorting on API failure.
 
@@ -98,6 +98,7 @@ class LocalRerankStatusPayload(BaseModel):
     batch_size: int
     loaded: bool
     hf_cache_dir: str
+    unavailable_reason: str = ""
 
 
 def _extract_rerank_probe_scores(payload: Any, document_count: int) -> list[float]:
@@ -133,10 +134,10 @@ async def get_rerank_config() -> RerankConfigPayload:
 
 @router.get("/local-status", response_model=LocalRerankStatusPayload)
 async def get_local_rerank_status() -> LocalRerankStatusPayload:
-    """Status of the local rerank fallback (model weights / device / availability).
+    """Status of in-process local rerank loading (weights / device / availability).
 
     Used by Settings UI to render a chip telling the user whether
-    rerank will gracefully fall back to a local model when the
+    rerank can use a local model loaded by the backend process when the
     configured API rerank fails. Does NOT load weights — runs in <1 ms
     on a warm process.
 
@@ -158,6 +159,7 @@ async def get_local_rerank_status() -> LocalRerankStatusPayload:
             batch_size=0,
             loaded=False,
             hf_cache_dir="",
+            unavailable_reason="local_rerank_adapter 模块不可用。",
         )
     return LocalRerankStatusPayload(**get_status())
 

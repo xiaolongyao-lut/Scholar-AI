@@ -71,6 +71,7 @@ def create_mcp_server(
     runtime = runtime_tools or create_default_runtime_tools(
         audit_root=audit_root,
         base_url=os.environ.get("LITERATURE_ASSISTANT_BASE_URL") or None,
+        repo_root=repo_root,
     )
     experimental = experimental_tools or create_default_experimental_tools(
         repo_root=repo_root,
@@ -85,6 +86,7 @@ def create_mcp_server(
         "source.inspect_routes": source.inspect_routes,
         "source.find_references": source.find_references,
         "source.explain_entrypoints": source.explain_entrypoints,
+        "literature.launch_desktop": runtime.launch_desktop,
         "literature.config_status": runtime.config_status,
         "literature.health_check": runtime.health_check,
         "literature.zotero_attachment_health": runtime.zotero_attachment_health,
@@ -175,6 +177,9 @@ def create_mcp_server(
         name="literature-assistant",
         instructions=(
             "Scholar AI (文献助手) local MCP toolbox. "
+            "If the user asks to start/open 文献助手 or Scholar AI, call "
+            "literature.launch_desktop first; it opens a visible terminal for "
+            "the source desktop when no healthy runtime is attached. "
             "On connect: literature.config_status / literature.health_check, "
             "then literature.list_projects to pick a project_id.\n"
             "Tool groups: source.* = read-only source inspection (tools/source.py); "
@@ -322,6 +327,29 @@ def create_mcp_server(
     ) -> dict[str, Any]:
         """Sketch imports reachable from a Python entrypoint."""
         return source.explain_entrypoints(path=path, max_depth=max_depth, max_files=max_files)
+
+    @mcp.tool(
+        name="literature.launch_desktop",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Launch Scholar AI Desktop",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
+    def literature_launch_desktop(
+        initial_path: str | None = None,
+        startup_timeout_sec: int = 60,
+        force_reopen_after_close: bool = True,
+    ) -> dict[str, Any]:
+        """Open or attach to the visible Scholar AI / 文献助手 desktop app."""
+        return runtime.launch_desktop(
+            initial_path=initial_path,
+            startup_timeout_sec=startup_timeout_sec,
+            force_reopen_after_close=force_reopen_after_close,
+        )
 
     @mcp.tool(
         name="literature.config_status",

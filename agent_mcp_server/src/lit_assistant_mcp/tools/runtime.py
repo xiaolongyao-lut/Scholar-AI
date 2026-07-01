@@ -1,6 +1,7 @@
 """Runtime Literature Assistant tools backed by the local HTTP API."""
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any, Protocol
@@ -11,6 +12,7 @@ from ..audit import AuditLog
 from ..behavior_eval import build_behavior_eval_pack
 from ..backend_client import BackendClient
 from ..result import safe_result
+from ..runtime_attach import ensure_desktop_runtime_attached
 
 
 SUPPORTED_SKILL_PACKAGE_IDS = frozenset({"academic-english-discourse"})
@@ -49,15 +51,19 @@ class RuntimeTools:
         self,
         backend: BackendGetClient,
         audit: AuditLog | None = None,
+        repo_root: Path | None = None,
     ) -> None:
         """Create runtime tools.
 
         Args:
             backend: Backend HTTP client. It must not expose credentials.
             audit: Optional audit writer. Tools still return safely when omitted.
+            repo_root: Optional Scholar AI checkout root used by local desktop
+                launch tools. HTTP-only tools do not require it.
         """
         self.backend = backend
         self.audit = audit
+        self.repo_root = repo_root.expanduser().resolve() if repo_root is not None else None
 
     def config_status(self) -> dict[str, Any]:
         """Return Literature Assistant backend health and configuration status."""
@@ -65,6 +71,109 @@ class RuntimeTools:
         backend_result = self.backend.get("/health")
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.config_status", {}, result, started, "/health")
+
+    def launch_desktop(
+        self,
+        initial_path: str | None = None,
+        startup_timeout_sec: int = 60,
+        force_reopen_after_close: bool = True,
+    ) -> dict[str, Any]:
+        """Open or attach to the visible Scholar AI / 文献助手 source desktop app.
+
+        Args:
+            initial_path: Optional root-relative SPA path, for example
+                ``/settings?section=ocr``. Used only for a newly opened window.
+            startup_timeout_sec: Seconds to wait for the desktop runtime
+                descriptor, 5 through 240.
+            force_reopen_after_close: Whether an explicit user launch request
+                should ignore the marker written when the user previously
+                closed the desktop window.
+
+        Returns:
+            A redacted local launch/attach envelope. The tool never closes the
+            app; closing remains the user's normal window-close action.
+        """
+
+        started = time.perf_counter()
+        startup_timeout_sec = self._bounded_int(startup_timeout_sec, "startup_timeout_sec", minimum=5, maximum=240)
+        normalized_initial_path = None
+        if initial_path is not None and str(initial_path).strip():
+            normalized_initial_path = self._bounded_text(str(initial_path), "initial_path", max_chars=500)
+            if not normalized_initial_path.startswith("/") or normalized_initial_path.startswith("//"):
+                raise ValueError("initial_path must be a root-relative path starting with /")
+            if "\\" in normalized_initial_path or "#" in normalized_initial_path:
+                raise ValueError("initial_path must not contain backslashes or fragments")
+        args = {
+            "initial_path": normalized_initial_path,
+            "startup_timeout_sec": startup_timeout_sec,
+            "force_reopen_after_close": bool(force_reopen_after_close),
+        }
+        endpoint = "local:start_desktop.py"
+        if self.repo_root is None:
+            result = safe_result(
+                self._desktop_launch_failure_payload(normalized_initial_path),
+                error=True,
+                error_code="repo_root_unavailable",
+                message="MCP runtime was not created with a Scholar AI repo_root; cannot launch the desktop app.",
+            )
+            return self._finish("literature.launch_desktop", args, result, started, endpoint)
+
+        launch_env = dict(os.environ)
+        launch_env["LITERATURE_ASSISTANT_REPO_ROOT"] = str(self.repo_root)
+        if normalized_initial_path is not None:
+            launch_env["LITERATURE_ASSISTANT_DESKTOP_INITIAL_PATH"] = normalized_initial_path
+        if force_reopen_after_close:
+            launch_env["LITASSIST_MCP_FORCE_DESKTOP_AUTOSTART"] = "1"
+        try:
+            attached = ensure_desktop_runtime_attached(
+                repo_root=self.repo_root,
+                startup_timeout_sec=float(startup_timeout_sec),
+                env=launch_env,
+                launch_when_missing=True,
+                terminal_visible=True,
+            )
+        except Exception as exc:
+            result = safe_result(
+                self._desktop_launch_failure_payload(normalized_initial_path),
+                error=True,
+                error_code="desktop_launch_failed",
+                message=str(exc)[:500] or "Desktop launch failed.",
+            )
+            return self._finish("literature.launch_desktop", args, result, started, endpoint)
+        if attached is None:
+            result = safe_result(
+                self._desktop_launch_failure_payload(normalized_initial_path),
+                error=True,
+                error_code="desktop_launch_timeout",
+                message="The desktop app did not publish a ready runtime descriptor before the timeout.",
+            )
+            return self._finish("literature.launch_desktop", args, result, started, endpoint)
+
+        data = {
+            "schema_version": "scholar-ai-mcp-desktop-launch/v1",
+            "status": "running",
+            "product_name": "Scholar AI",
+            "window_title": "文献助手",
+            "base_url": attached.base_url,
+            "pid": attached.pid,
+            "process_kind": attached.process_kind,
+            "descriptor_file": self._display_path(attached.descriptor_file),
+            "initial_path": normalized_initial_path,
+            "close_behavior": "用户手动关闭文献助手窗口；MCP 不提供自动关闭工具。",
+            "start_command": {
+                "cwd": ".",
+                "powershell": "& .\\.venv-1\\Scripts\\python.exe .\\start_desktop.py",
+                "terminal": "visible",
+            },
+            "terminal_behavior": "explicit MCP launch opens a visible PowerShell terminal; hidden autostart logs stay under workspace_artifacts/runtime_state/desktop_autostart/.",
+            "next_safe_local_actions": [
+                "Use literature.config_status after launch to confirm backend health.",
+                "Use literature.list_projects after health is ok.",
+                "Close the 文献助手 window manually when finished.",
+            ],
+        }
+        result = safe_result(data)
+        return self._finish("literature.launch_desktop", args, result, started, endpoint)
 
     def health_check(self, include_live: bool = False) -> dict[str, Any]:
         """Return passive Scholar AI workflow readiness diagnostics."""
@@ -2028,6 +2137,38 @@ class RuntimeTools:
             }
         return projected
 
+    def _desktop_launch_failure_payload(self, initial_path: str | None) -> dict[str, Any]:
+        """Return bounded launch guidance when the local desktop cannot open."""
+
+        return {
+            "schema_version": "scholar-ai-mcp-desktop-launch/v1",
+            "status": "unavailable",
+            "product_name": "Scholar AI",
+            "window_title": "文献助手",
+            "initial_path": initial_path,
+            "start_command": {
+                "cwd": ".",
+                "powershell": "& .\\.venv-1\\Scripts\\python.exe .\\start_desktop.py",
+                "terminal": "visible",
+            },
+            "close_behavior": "用户手动关闭文献助手窗口；MCP 不提供自动关闭工具。",
+            "next_safe_local_actions": [
+                "Confirm this MCP server was started from the Scholar AI source checkout.",
+                "Run the start_command from the repository root if tool-driven launch is unavailable.",
+                "After launch, call literature.config_status.",
+            ],
+        }
+
+    def _display_path(self, path: Path) -> str:
+        """Return a non-secret path relative to repo_root when possible."""
+
+        if self.repo_root is None:
+            return str(path)
+        try:
+            return path.resolve().relative_to(self.repo_root).as_posix()
+        except ValueError:
+            return str(path)
+
     def _with_runtime_outcome(
         self,
         *,
@@ -2680,7 +2821,8 @@ class RuntimeTools:
 def create_default_runtime_tools(
     audit_root: Path | None = None,
     base_url: str | None = None,
+    repo_root: Path | None = None,
 ) -> RuntimeTools:
     """Create RuntimeTools with the default backend client."""
     audit = AuditLog(audit_root) if audit_root is not None else None
-    return RuntimeTools(backend=BackendClient(base_url=base_url), audit=audit)
+    return RuntimeTools(backend=BackendClient(base_url=base_url), audit=audit, repo_root=repo_root)

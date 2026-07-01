@@ -1,6 +1,6 @@
 # Scholar AI
 
-[English](README.en.md) · [Releases](https://github.com/xiaolongyao-lut/Scholar-AI/releases) · [Claude / Codex 工具箱](docs/claude-codex-toolbox.md) · [科研工作流与 Skills](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) · [快速开始](#快速开始)
+[English](README.en.md) · [完整文档 / 项目页](https://github.com/xiaolongyao-lut/Scholar-AI) · [Releases](https://github.com/xiaolongyao-lut/Scholar-AI/releases) · [Claude / Codex 工具箱](docs/claude-codex-toolbox.md) · [AI Agent Guide](docs/ai-agent-guide.md) · [科研工作流与 Skills](https://github.com/xiaolongyao-lut/scholar-ai-research-toolkit) · [快速开始](#快速开始)
 
 Scholar AI 是一个本地科研工作台，用于管理 PDF 文献、页码级证据、阅读笔记、Wiki 知识和综述写作。桌面端负责资料、配置和任务查看；本地 MCP server 让 Claude / Codex 在用户授权下调用同一套文献工作流。
 
@@ -92,6 +92,8 @@ PDF / Markdown / OCR 材料
 
 ## 快速开始
 
+源码运行时，默认入口是桌面端 `文献助手`，不是单独的 Vite 浏览器页。用户可以自己在终端启动；Claude / Codex 等智能体做前端或交互验证时，也应该打开可见终端并启动同一个源码桌面窗口，除非只是做后端或构建 smoke check。
+
 ### 1. 准备环境
 
 需要：
@@ -124,9 +126,91 @@ cd ..
 .\.venv-1\Scripts\python.exe .\start_desktop.py
 ```
 
-`start_desktop.py` 会在同一个 Python 进程里启动 FastAPI 后端线程和 pywebview 桌面窗口。关闭窗口后进程退出。
+`start_desktop.py` 会在同一个 Python 进程里启动 FastAPI 后端线程和 pywebview 桌面窗口。正常启动后会出现标题为 `文献助手` 的桌面窗口，后端健康检查地址为 `http://127.0.0.1:8000/health`。关闭窗口后进程退出。
 
-### 5. 自检 MCP 工具箱
+如果你让智能体修改或验收前端，请让它使用上面的源码桌面入口；浏览器 `localhost` / Vite 页面只能作为调试辅助，不作为最终桌面体验验收。
+
+### 5. 配置 OCR
+
+OCR 用于扫描版 PDF 和图片型页面。打开桌面端后，进入 **系统设置 → API 配置 → OCR 设置**。
+远程 OCR 的密钥统一放在 **API 凭证 → OCR / 文档解析** 中；OCR 设置页负责选择本地引擎、应用已保存的 OCR 凭证，并保存运行时策略。
+
+`自动选择可用引擎` 不是一个单独脚本，也没有独立路径。后端会按可用性依次尝试：
+
+```text
+paddleocr_gpu -> rapidocr -> windows -> remote_api
+```
+
+如果需要填写 Python 或 PowerShell 路径，先在 **选择引擎** 里选具体引擎，再填写该引擎的路径设置：
+
+| 引擎 | 适用场景 | UI 里怎么配置 |
+|---|---|---|
+| RapidOCR | 本地 CPU OCR，适合普通扫描页 | 选择 `RapidOCR`。不填外部 Python 时使用当前运行环境；也可以填写已安装 `rapidocr` 或 `rapidocr_onnxruntime` 的 `python.exe` 路径。 |
+| Windows OCR | Windows 自带 OCR | 选择 `Windows OCR`。通常不用填路径；只有系统找不到 PowerShell 时再填写 `powershell.exe` 路径。 |
+| PaddleOCR GPU | 已准备好 PaddleOCR / GPU 环境 | 选择 `PaddleOCR GPU`。填写装有 `paddleocr` 和 `paddle` 的外部 Python 路径；必要时指定调用方法 `predict`、`ocr` 或 `__call__`。 |
+| Remote API OCR | 已有外部 OCR 服务 | 先在 **API 凭证 → OCR / 文档解析** 新建凭证，再回到 OCR 设置选择 `Remote API OCR` 并应用该凭证；只有确认可以上传页面图片时再开启上传确认。 |
+
+保存后点 **检查当前引擎**。本地运行时配置默认写入 `workspace_artifacts/runtime_state/ocr_config.json`。也可以用环境变量覆盖：
+
+| 环境变量 | 用途 |
+|---|---|
+| `LITASSIST_OCR_POLICY` | `auto`、`engine` 或 `none` |
+| `LITASSIST_OCR_ENGINE` | 固定引擎名，例如 `rapidocr`、`windows`、`paddleocr_gpu`、`remote_api` |
+| `LITASSIST_OCR_LANG` | OCR 语言标签，例如 `en`、`zh`、`zh-CN` |
+| `LITASSIST_OCR_CONFIG_PATH` | 指定 OCR runtime 配置文件路径 |
+| `LITASSIST_RAPIDOCR_PYTHON` | RapidOCR 外部 Python 路径 |
+| `LITASSIST_PADDLEOCR_PYTHON` | PaddleOCR 外部 Python 路径 |
+
+如果用户下载了其他 OCR 程序，设置页不会自动扫描硬盘并显示它。要让它出现在 UI 中，有两种接法：
+
+| 接法 | UI 里显示什么 |
+|---|---|
+| 接成 Remote API OCR | 在 API 凭证中显示为 `OCR / 文档解析` 凭证，在 OCR 设置中显示远程服务、模型/解析模式、接口路径和上传确认。 |
+| 在后端注册新的 OCR engine | 显示为一个新的 OCR 引擎，后端状态接口返回它的名称、可用性、依赖状态和路径字段。 |
+
+远程 OCR 凭证目前内置这些预设：
+
+| 服务 | 在 API 凭证中怎么填 | 在 OCR 设置中怎么用 |
+|---|---|---|
+| Mistral OCR | 选择 `OCR / 文档解析`，点 `Mistral OCR` 预设；默认 base URL 为 `https://api.mistral.ai/v1`，模型为 `mistral-ocr-latest`。 | 可作为同步页级 OCR 使用，接口路径为 `/ocr`，返回的 `pages[].markdown` 会合并为 OCR 文本。 |
+| MinerU | 选择 `OCR / 文档解析`，点 `MinerU 文档解析` 预设；默认 base URL 为 `https://mineru.net/api`，解析模式可填 `pipeline`、`vlm` 或 `MinerU-HTML`。 | MinerU 是异步整篇文档解析流，不作为逐页 OCR 自动执行；后续接入整篇文档解析入口时会使用这类凭证。 |
+
+### 6. 配置问答、Embedding 和 Rerank 模型
+
+问答模型、embedding 和 rerank 都在桌面端 **系统设置 → API 配置** 或 **系统设置 → 语义路由** 中配置。设置页显示的是“已经保存到后端的服务配置”和“后端能探测到的本机进程加载状态”，不会扫描本机所有模型文件。
+
+| 类型 | 本地部署怎么接 | UI 里怎么显示 |
+|---|---|---|
+| 问答 / 智能研读模型 | 用 Ollama、vLLM、LM Studio 或自建服务暴露 OpenAI-compatible Chat API，例如本地 DeepSeek、Qwen、Llama。 | 在问答模型配置中填写供应商、base URL 和模型名；保存后显示这份配置和连接测试结果。本地服务没有密钥时 API Key 可留空。 |
+| Embedding | 用兼容 embedding API 服务，或让后端 Python 进程直接加载 SentenceTransformer。 | 兼容 API 显示保存的服务地址和模型名；本机进程加载显示后端探测到的模型名、设备、权重缓存目录和环境变量状态。 |
+| Rerank | 用兼容 rerank API 服务，或让后端 Python 进程直接加载本地 rerank 模型。 | 兼容 API 显示保存的服务地址和模型名；本机进程加载显示后端探测到的模型名、设备、权重缓存目录、最大长度和环境变量状态。 |
+
+常见本地问答模型服务：
+
+```text
+Ollama / vLLM / LM Studio / 自建 OpenAI-compatible server
+        -> base URL，例如 http://127.0.0.1:11434/v1
+        -> model，例如 deepseek-r1、qwen2.5、llama3
+        -> API Key，本地服务不需要时留空
+```
+
+Embedding 本机进程加载相关环境变量：
+
+| 环境变量 | 用途 |
+|---|---|
+| `LOCAL_EMBEDDING_MODEL_NAME` | 本机进程加载的 embedding 模型名 |
+| `LOCAL_EMBEDDING_DEVICE` | 指定 `cpu`、`cuda` 等设备；不填则自动探测 |
+| `LOCAL_EMBEDDING_ALLOW_DOWNLOAD` | 是否允许缺少权重时联网下载 |
+
+Rerank 本机进程加载相关环境变量：
+
+| 环境变量 | 用途 |
+|---|---|
+| `LOCAL_RERANK_MODEL_NAME` | 本机进程加载的 rerank 模型名 |
+| `LOCAL_RERANK_DEVICE` | 指定 `cpu`、`cuda` 等设备；不填则自动探测 |
+| `LOCAL_RERANK_ALLOW_DOWNLOAD` | 是否允许缺少权重时联网下载 |
+
+### 7. 自检 MCP 工具箱
 
 ```powershell
 .\agent_mcp_server\bin\lit-assistant-mcp.ps1 -SelfTest
@@ -134,7 +218,7 @@ cd ..
 
 自检前后的工具分组、链路和依赖说明见 [Claude / Codex 工具箱说明](docs/claude-codex-toolbox.md)。
 
-### 6. 配置 Claude / Codex
+### 8. 配置 Claude / Codex
 
 详细配置见 [agent_mcp_server/README.md](agent_mcp_server/README.md)，完整工具链路见 [Claude / Codex 工具箱说明](docs/claude-codex-toolbox.md)。
 

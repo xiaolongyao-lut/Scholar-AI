@@ -11,14 +11,14 @@
 
 # Root-only local instruction and agent configuration files.
 # Leading "/" keeps these rules from hiding product/vendored subdirectories.
-/AGENTS.md
 /AI_WORKSPACE_GUIDE.md
-/CLAUDE.md
 /DEVELOPER_GUIDE.md
 /GEMINI.md
 /MEMORY.md
 /OPEN_THREADS.md
 /skill_sync_bridge.ps1
+/AGENTS.local.md
+/CLAUDE.local.md
 
 # Root-only local agent/editor state.
 /.claude/
@@ -79,6 +79,7 @@
 !/docs/LOCAL_RERANK_MODELS.md
 !/docs/MCP_SECURITY_ISOLATION.md
 !/docs/OPTIONAL_ADDONS.md
+!/docs/ai-agent-guide.md
 !/docs/claude-codex-toolbox.md
 !/docs/claude-codex-toolbox.en.md
 !/docs/rag-evidence-architecture.md

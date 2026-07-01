@@ -7,14 +7,15 @@ import { getApiBaseUrl } from './apiBaseUrl.ts';
 // we generate from OpenAPI).
 // ---------------------------------------------------------------------------
 
-export type CredentialCategory = 'generation' | 'embedding' | 'rerank';
+export type CredentialCategory = 'generation' | 'embedding' | 'rerank' | 'ocr';
 
 export type CredentialProtocol =
   | 'openai_chat_completions'
   | 'openai_responses'
   | 'anthropic_messages'
   | 'embeddings'
-  | 'rerank';
+  | 'rerank'
+  | 'ocr';
 
 export type CredentialStrategyHint =
   | 'low'
@@ -118,6 +119,15 @@ export interface CredentialProbeResult {
   ok?: boolean;
   reachable?: boolean;
   error?: string;
+  provider_message?: string;
+  note?: string;
+  model?: string;
+  response_model?: string;
+  finish_reason?: string;
+  usage?: Record<string, unknown>;
+  response_preview?: string;
+  capability_verdict?: 'scholar_ready' | 'usable_text_response' | 'weak_response' | 'empty_response' | string;
+  checks?: Record<string, boolean>;
 }
 
 export interface CredentialTestResponse {
@@ -136,6 +146,12 @@ export interface AppliedCredentialConfig {
   has_api_key: boolean;
   api_key_masked: string;
   updated_at: string;
+}
+
+export interface AppliedOcrCredentialConfig {
+  saved: boolean;
+  config_path: string;
+  status: unknown;
 }
 
 interface ApiErrorBody {
@@ -266,7 +282,14 @@ export async function testCredential(
 export async function applyCredentialToSubsystem(
   subsystem: CredentialCategory,
   credentialId: string,
-): Promise<AppliedCredentialConfig> {
+): Promise<AppliedCredentialConfig | AppliedOcrCredentialConfig> {
+  if (subsystem === 'ocr') {
+    const resp = await client().post<AppliedOcrCredentialConfig>(
+      '/api/pdf-backend/ocr-config/apply-credential',
+      { credential_id: credentialId },
+    );
+    return resp.data;
+  }
   const pathSubsystem = subsystem === 'generation' ? 'chat' : subsystem;
   const resp = await client().post<AppliedCredentialConfig>(
     `/api/${pathSubsystem}/config/apply-credential`,

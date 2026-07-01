@@ -84,6 +84,7 @@ OFFICIAL_PROVIDER_HOSTS: dict[str, set[str]] = {
     "DashScope": {"dashscope.aliyuncs.com"},
     "Groq": {"api.groq.com"},
     "Mistral": {"api.mistral.ai"},
+    "MinerU": {"mineru.net"},
 }
 
 

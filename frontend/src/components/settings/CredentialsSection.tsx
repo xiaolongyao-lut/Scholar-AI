@@ -72,11 +72,12 @@ const EMPTY_FORM: FormState = {
   notes: '',
 };
 
-const CATEGORY_OPTIONS: CredentialCategory[] = ['generation', 'embedding', 'rerank'];
+const CATEGORY_OPTIONS: CredentialCategory[] = ['generation', 'embedding', 'rerank', 'ocr'];
 const CATEGORY_LABELS: Record<CredentialCategory, string> = {
   generation: '研读和写作',
   embedding: '语义召回',
   rerank: '语义精排',
+  ocr: 'OCR / 文档解析',
 };
 const PROTOCOL_OPTIONS: CredentialProtocol[] = [
   'openai_chat_completions',
@@ -84,6 +85,7 @@ const PROTOCOL_OPTIONS: CredentialProtocol[] = [
   'anthropic_messages',
   'embeddings',
   'rerank',
+  'ocr',
 ];
 const PROTOCOL_LABELS: Record<CredentialProtocol, string> = {
   openai_chat_completions: 'OpenAI Chat Completions',
@@ -91,12 +93,45 @@ const PROTOCOL_LABELS: Record<CredentialProtocol, string> = {
   anthropic_messages: 'Anthropic Messages',
   embeddings: 'Embeddings 向量嵌入',
   rerank: 'Rerank 重排序',
+  ocr: 'OCR API',
 };
-const TRUST_OPTIONS: { value: CredentialTrustSource; label: string }[] = [
-  { value: 'official_provider', label: '官方服务商' },
-  { value: 'env_configured_gateway', label: '环境配置网关' },
-  { value: 'runtime_user_confirmed', label: '本机已确认' },
-  { value: 'runtime_untrusted_custom', label: '本机待确认' },
+interface TrustOption {
+  value: CredentialTrustSource;
+  label: string;
+  summary: string;
+  detail: string;
+  icon: React.ElementType;
+}
+
+const TRUST_OPTIONS: TrustOption[] = [
+  {
+    value: 'runtime_user_confirmed',
+    label: '自定义服务，已确认信任',
+    summary: '本地部署、兼容 API、第三方网关',
+    detail: '你确认这个服务地址可信，允许 Scholar AI 向它测试连接并在调用模型时发送请求。',
+    icon: ShieldCheck,
+  },
+  {
+    value: 'official_provider',
+    label: '官方服务商',
+    summary: 'OpenAI、Anthropic、DeepSeek 等官方域名',
+    detail: '只适合内置官方服务商域名；自定义网关不要选这一项。',
+    icon: ShieldCheck,
+  },
+  {
+    value: 'env_configured_gateway',
+    label: '环境配置网关',
+    summary: '由本机环境或管理员配置的网关',
+    detail: '适合已经在运行环境中维护信任边界的统一代理服务。',
+    icon: ShieldCheck,
+  },
+  {
+    value: 'runtime_untrusted_custom',
+    label: '暂不信任',
+    summary: '先保存，不进行网络探测',
+    detail: '保存后会显示待确认；需要连接测试或调用前再手动确认。',
+    icon: ShieldAlert,
+  },
 ];
 const STRATEGY_OPTIONS: { value: CredentialStrategyHint; label: string; hint: string }[] = [
   { value: 'low', label: '低', hint: '低成本、短问答优先' },
@@ -107,12 +142,41 @@ const STRATEGY_OPTIONS: { value: CredentialStrategyHint; label: string; hint: st
 ];
 const INPUT_CLASS = 'min-w-0 max-w-full w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground transition-colors placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none disabled:opacity-60';
 
+const OCR_PROVIDER_PRESETS: {
+  id: 'mistral' | 'mineru';
+  label: string;
+  provider: string;
+  model: string;
+  base_url: string;
+  notes: string;
+}[] = [
+  {
+    id: 'mistral',
+    label: 'Mistral OCR',
+    provider: 'Mistral',
+    model: 'mistral-ocr-latest',
+    base_url: 'https://api.mistral.ai/v1',
+    notes: 'Mistral 同步 OCR：POST /v1/ocr，返回 pages[].markdown。',
+  },
+  {
+    id: 'mineru',
+    label: 'MinerU 文档解析',
+    provider: 'MinerU',
+    model: 'pipeline',
+    base_url: 'https://mineru.net/api',
+    notes: 'MinerU 精准解析：异步上传/轮询，适合整篇 PDF 文档解析。',
+  },
+];
+
 function defaultProtocolForCategory(category: CredentialCategory): CredentialProtocol {
   if (category === 'embedding') {
     return 'embeddings';
   }
   if (category === 'rerank') {
     return 'rerank';
+  }
+  if (category === 'ocr') {
+    return 'ocr';
   }
   return 'openai_chat_completions';
 }
@@ -160,6 +224,21 @@ export function formatCredentialProbeError(
   value: unknown,
   fallback = '连接失败，请检查服务地址、访问密钥和接口协议。',
 ): string {
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    if (normalized.includes('dns_resolved_to_unsafe_ip')) {
+      return '服务地址解析到代理 fake-IP 或保留地址；若这是你确认可信的本地代理/自定义网关，请选择“自定义服务，已确认信任”。';
+    }
+    if (normalized.includes('untrusted_custom_requires_explicit_trust')) {
+      return '这个自定义服务还没有确认信任，请在凭证表单选择“自定义服务，已确认信任”。';
+    }
+    if (normalized.includes('official_provider_host_mismatch')) {
+      return '当前服务地址不是内置官方域名；自定义网关请选择“自定义服务，已确认信任”。';
+    }
+    if (normalized.includes('model_required_for_scholar_probe')) {
+      return '请先填写模型名称，再测试真实问答能力。';
+    }
+  }
   return sanitizeCredentialVisibleText(value, fallback);
 }
 
@@ -167,6 +246,44 @@ export function formatCredentialCardSecondary(credential: Pick<RuntimeCredential
   const address = credential.base_url.trim() ? '服务地址已填写' : '未填写服务地址';
   const secret = credential.has_api_key ? '访问密钥已保存' : '未保存访问密钥';
   return `${address} · ${secret}`;
+}
+
+function usageNumber(usage: Record<string, unknown> | undefined, key: string): number | null {
+  const value = usage?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+export function formatCredentialProbeSummary(test: CredentialTestResponse | undefined): string | null {
+  const probe = test?.probe;
+  if (!probe) {
+    return null;
+  }
+  if (test.status === 'ok') {
+    const parts: string[] = [];
+    if (probe.capability_verdict === 'scholar_ready') {
+      parts.push('真实问答通过');
+    } else if (probe.capability_verdict === 'usable_text_response') {
+      parts.push('真实问答通过，返回格式需观察');
+    } else {
+      parts.push('连接测试通过');
+    }
+    const responseModel = sanitizeCredentialVisibleText(probe.response_model, '');
+    if (responseModel) {
+      parts.push(`返回模型 ${responseModel}`);
+    }
+    const totalTokens = usageNumber(probe.usage, 'total_tokens');
+    if (totalTokens !== null) {
+      parts.push(`${totalTokens} tokens`);
+    }
+    return parts.join(' · ');
+  }
+  if (test.status === 'probe_failed' && probe.error === 'scholar_probe_response_unusable') {
+    return '模型有响应，但没有完成 Scholar 问答模板。';
+  }
+  if (test.status === 'probe_failed') {
+    return formatCredentialProbeError(probe.provider_message || probe.error || test.reason);
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -665,10 +782,16 @@ function CredentialForm({
   // Subsystem mapping: a credential's category drives which /api/{x}/models/
   // discover backend endpoint we call. Generation → chat;
   // embedding/rerank pass through verbatim.
-  const subsystem: 'chat' | 'embedding' | 'rerank' =
+  const subsystem: 'chat' | 'embedding' | 'rerank' | 'ocr' =
     form.category === 'generation' ? 'chat' : form.category;
+  const modelSubsystem: 'chat' | 'embedding' | 'rerank' =
+    subsystem === 'ocr' ? 'chat' : subsystem;
 
   const handleDiscover = useCallback(async () => {
+    if (subsystem === 'ocr') {
+      setDiscoverError('OCR API 通常不提供模型列表；请按服务商文档填写模型或解析模式。');
+      return;
+    }
     if (!form.base_url.trim()) {
       setDiscoverError('请先填写服务地址');
       return;
@@ -677,7 +800,7 @@ function CredentialForm({
     setDiscoverError(null);
     setDiscovered(null);
     try {
-      const result = await discoverModels(form.base_url, form.api_key, subsystem);
+      const result = await discoverModels(form.base_url, form.api_key, modelSubsystem);
       if (!result.ok) {
         setDiscoverError(formatCredentialProbeError(result.error, '未能获取模型列表，请检查服务配置。'));
         return;
@@ -691,9 +814,20 @@ function CredentialForm({
     } finally {
       setDiscovering(false);
     }
-  }, [form.base_url, form.api_key, subsystem]);
+  }, [form.base_url, form.api_key, modelSubsystem, subsystem]);
 
   const handleTestConnection = useCallback(async () => {
+    if (subsystem === 'ocr') {
+      const hasUrl = form.base_url.trim().length > 0;
+      const hasKey = form.api_key.trim().length > 0 || mode === 'edit';
+      const hasModel = form.model.trim().length > 0;
+      setTestMessage(
+        hasUrl && hasKey
+          ? `✓ OCR 配置可保存${hasModel ? ' · 已填写模型/解析模式' : ''}；保存后可在列表里测试信任状态。`
+          : '✗ 请填写服务地址和访问密钥。',
+      );
+      return;
+    }
     if (!form.base_url.trim()) {
       setTestMessage('请先填写服务地址');
       return;
@@ -707,7 +841,7 @@ function CredentialForm({
       // authenticated GET against the upstream and returns ok/error.
       // Works in both create and edit modes; lets the user verify the
       // endpoint *before* committing the form.
-      const result = await discoverModels(form.base_url, form.api_key, subsystem);
+      const result = await discoverModels(form.base_url, form.api_key, modelSubsystem);
       if (result.ok) {
         const count = result.models.length;
         setTestMessage(
@@ -723,7 +857,7 @@ function CredentialForm({
     } finally {
       setTesting(false);
     }
-  }, [form.base_url, form.api_key, subsystem]);
+  }, [form.base_url, form.api_key, form.model, mode, modelSubsystem, subsystem]);
 
   return (
     <div className="space-y-4">
@@ -752,6 +886,27 @@ function CredentialForm({
             placeholder="服务名称"
             className={INPUT_CLASS}
           />
+          {form.category === 'ocr' ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {OCR_PROVIDER_PRESETS.map(preset => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => onForm({
+                    ...form,
+                    provider: preset.provider,
+                    model: preset.model,
+                    base_url: preset.base_url,
+                    protocol: 'ocr',
+                    notes: form.notes.trim() ? form.notes : preset.notes,
+                  })}
+                  className="rounded border border-outline-variant/60 bg-surface-lowest px-2 py-1 text-[10px] text-foreground/65 transition-colors hover:border-primary/35 hover:text-primary"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </FormField>
         <FormField label="模型" htmlFor={fieldId('model')}>
           <div className="flex min-w-0 gap-1.5">
@@ -866,17 +1021,40 @@ function CredentialForm({
             </button>
           </div>
         </FormField>
-        <FormField label="信任来源" full htmlFor={fieldId('trust')}>
-          <select
-            id={fieldId('trust')}
-            value={form.trust_source}
-            onChange={e => onForm({ ...form, trust_source: e.target.value as CredentialTrustSource })}
-            className={INPUT_CLASS}
-          >
-            {TRUST_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+        <FormField label="服务信任确认" full>
+          <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+            {TRUST_OPTIONS.map(option => {
+              const Icon = option.icon;
+              const selected = form.trust_source === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onForm({ ...form, trust_source: option.value })}
+                  aria-pressed={selected}
+                  className={cn(
+                    'min-w-0 rounded-lg border p-3 text-left transition-colors',
+                    selected
+                      ? 'border-primary/45 bg-primary/10 text-primary'
+                      : 'border-outline-variant/50 bg-surface-high text-foreground/70 hover:border-primary/30 hover:text-foreground',
+                  )}
+                >
+                  <span className="flex min-w-0 items-start gap-2">
+                    <Icon size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    <span className="min-w-0">
+                      <span className="block text-xs font-semibold">{option.label}</span>
+                      <span className="mt-1 block text-[11px] leading-relaxed text-foreground/55">
+                        {option.summary}
+                      </span>
+                      <span className="mt-1 block text-[10px] leading-relaxed text-foreground/40">
+                        {option.detail}
+                      </span>
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </FormField>
         <FormField label="备注" full htmlFor={fieldId('notes')}>
           <input
@@ -999,6 +1177,7 @@ function CredentialListItem({
   onCancelTrust: (() => void) | null;
 }) {
   const statusBadge = useMemo(() => credentialStatusBadge(cred, test), [cred, test]);
+  const probeSummary = useMemo(() => formatCredentialProbeSummary(test), [test]);
   return (
     <div
       className={cn(
@@ -1045,6 +1224,11 @@ function CredentialListItem({
           <p className="mt-2 truncate font-mono text-[10px] text-foreground/40">
             {formatCredentialCardSecondary(cred)}
           </p>
+          {probeSummary ? (
+            <p className="mt-1 truncate font-label text-[10px] text-foreground/55" title={probeSummary}>
+              {probeSummary}
+            </p>
+          ) : null}
           {cred.notes && (
             <p className="mt-1 truncate font-label text-[10px] text-foreground/45">{cred.notes}</p>
           )}
@@ -1132,8 +1316,19 @@ export function credentialStatusBadge(
     return { label: `已拦截 · ${reason}`, cls: 'bg-red-50 text-red-800 dark:bg-red-500/15 dark:text-red-300' };
   }
   if (test?.status === 'probe_failed') {
-    const reason = formatCredentialProbeError(test.probe?.error || test.reason);
+    const reason = test.probe?.error === 'scholar_probe_response_unusable'
+      ? '模型有响应，但没有完成 Scholar 问答模板。'
+      : formatCredentialProbeError(test.probe?.provider_message || test.probe?.error || test.reason);
     return { label: `连接失败 · ${reason}`, cls: 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' };
+  }
+  if (test?.status === 'ok') {
+    if (test.probe?.capability_verdict === 'scholar_ready') {
+      return { label: '测试通过 · Scholar 问答可用', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' };
+    }
+    if (test.probe?.capability_verdict === 'usable_text_response') {
+      return { label: '测试通过 · 返回格式需观察', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' };
+    }
+    return { label: '测试通过', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' };
   }
   if (cred.trust_source === 'runtime_untrusted_custom') {
     return { label: '已拦截 · 待确认', cls: 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' };
