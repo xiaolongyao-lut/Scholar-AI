@@ -201,7 +201,7 @@ function buildPageAttributeSummaries(page: WikiPageDetailModel): PageAttributeSu
   const updatedAt = readFirstScalar(frontmatter, ['updated_at', 'updated_at_iso', 'created_at', 'created_at_iso']);
 
   return [
-    { id: 'title', label: '标题', value: sanitizeWikiVisibleText(title, 'Wiki 页面'), detail: '页面主标题' },
+    { id: 'title', label: '标题', value: sanitizeWikiVisibleText(title, '知识页面'), detail: '页面主标题' },
     { id: 'kind', label: '类型', value: wikiKindLabel(kind), detail: kind ? '已标注类型' : '未标注类型' },
     { id: 'status', label: '状态', value: wikiStatusLabel(status), detail: status ? '已标注状态' : '未标注状态' },
     { id: 'sources', label: '来源', value: `${sourceCount} 项`, detail: '已关联的来源数量' },
@@ -254,7 +254,7 @@ export function WikiPagePreviewPanel({ selectedPath, page, isLoading, error, onR
 
       {error ? (
         <div className="mt-5 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300">
-          {formatWikiError(error, '读取 Wiki 页面预览失败，请稍后重试。')}
+          {formatWikiError(error, '读取页面预览失败，请稍后重试。')}
         </div>
       ) : null}
 
@@ -312,7 +312,7 @@ export function WikiPagePreviewPanel({ selectedPath, page, isLoading, error, onR
                       <Tags size={12} className="text-primary/55" />
                       标签
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2" aria-label="Wiki 页面标签">
+                    <div className="mt-3 flex flex-wrap gap-2" aria-label="页面标签">
                       {pageTags.length > 0 ? pageTags.map((tag) => (
                         <span
                           key={tag}

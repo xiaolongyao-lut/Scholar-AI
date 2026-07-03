@@ -11,6 +11,7 @@ import { getLLMConfig, loadSettings, saveSettings } from '@/services/settingsSto
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import { askChatWithConfig, type ChatHistoryMessage } from '@/services/chatApi';
 import { formatChatVisibleError } from '@/components/chat/chatDisplay';
+import { markdownTableComponents } from '@/components/chat/markdownTableComponents';
 import axios from 'axios';
 import { SessionDrawer } from '@/components/writing/SessionDrawer';
 import type { ResumeSessionResult } from '@/types/runtime';
@@ -670,7 +671,7 @@ export function Workbench() {
                 )}>
                   {msg.role === 'assistant' && !msg.error ? (
                     <div className="prose prose-sm max-w-none break-words font-body text-sm leading-relaxed text-foreground [overflow-wrap:anywhere] prose-headings:my-3 prose-headings:text-foreground prose-p:my-2 prose-p:text-foreground prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-li:text-foreground prose-a:break-all prose-a:text-primary prose-strong:font-semibold prose-strong:text-foreground prose-em:text-foreground/90 prose-code:break-words prose-code:rounded prose-code:bg-foreground/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-[12px] prose-code:text-foreground prose-code:before:content-none prose-code:after:content-none prose-pre:max-w-full prose-pre:overflow-x-auto prose-pre:bg-foreground/10 prose-pre:text-foreground prose-table:block prose-table:max-w-full prose-table:overflow-x-auto">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownTableComponents}>{msg.content}</ReactMarkdown>
                     </div>
                   ) : (
                     <p className="font-body text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>

@@ -546,6 +546,16 @@ interface ChatContextCompressionConfig {
   updated_at: string;
 }
 
+const CHAT_COMPRESSION_TRIGGER_DEFAULT = 24000;
+const CHAT_COMPRESSION_TRIGGER_MIN = 4096;
+const CHAT_COMPRESSION_TRIGGER_MAX = 128000;
+const CHAT_COMPRESSION_TARGET_DEFAULT = 2000;
+const CHAT_COMPRESSION_TARGET_MIN = 512;
+const CHAT_COMPRESSION_TARGET_MAX = 16000;
+const CHAT_COMPRESSION_KEEP_RECENT_DEFAULT = 6;
+const CHAT_COMPRESSION_KEEP_RECENT_MIN = 1;
+const CHAT_COMPRESSION_KEEP_RECENT_MAX = 20;
+
 interface EmbeddingPublicConfig {
   provider: string;
   base_url: string;
@@ -1768,9 +1778,9 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
   const [discoverError, setDiscoverError] = useState('');
   const [compression, setCompression] = useState<ChatContextCompressionConfig>({
     enabled: true,
-    trigger_tokens: 24000,
-    target_tokens: 2000,
-    keep_recent_turns: 6,
+    trigger_tokens: CHAT_COMPRESSION_TRIGGER_DEFAULT,
+    target_tokens: CHAT_COMPRESSION_TARGET_DEFAULT,
+    keep_recent_turns: CHAT_COMPRESSION_KEEP_RECENT_DEFAULT,
     updated_at: '',
   });
   const [compressionStatus, setCompressionStatus] = useState<'idle' | 'saving' | 'saved' | 'fail'>('idle');
@@ -2051,8 +2061,8 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
             <input
               id="chat-compression-trigger"
               type="number"
-              min={512}
-              max={1000000}
+              min={CHAT_COMPRESSION_TRIGGER_MIN}
+              max={CHAT_COMPRESSION_TRIGGER_MAX}
               step={512}
               value={compression.trigger_tokens}
               onChange={event => setCompression(prev => ({ ...prev, trigger_tokens: Number(event.target.value) }))}
@@ -2063,8 +2073,8 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
             <input
               id="chat-compression-target"
               type="number"
-              min={128}
-              max={64000}
+              min={CHAT_COMPRESSION_TARGET_MIN}
+              max={CHAT_COMPRESSION_TARGET_MAX}
               step={128}
               value={compression.target_tokens}
               onChange={event => setCompression(prev => ({ ...prev, target_tokens: Number(event.target.value) }))}
@@ -2075,8 +2085,8 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
             <input
               id="chat-compression-keep"
               type="number"
-              min={1}
-              max={100}
+              min={CHAT_COMPRESSION_KEEP_RECENT_MIN}
+              max={CHAT_COMPRESSION_KEEP_RECENT_MAX}
               value={compression.keep_recent_turns}
               onChange={event => setCompression(prev => ({ ...prev, keep_recent_turns: Number(event.target.value) }))}
               className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 font-mono text-sm text-foreground focus:border-primary/40 focus:outline-none"
@@ -2998,11 +3008,11 @@ function SectionSampling({
     // task_defaults entirely or for any individual task the backend forgot.
     // Keeps the panel usable on older backends + offline / partial responses.
     const FALLBACK_TASK_DEFAULTS: Record<string, TaskDefaults> = {
-      chat: { temperature: 0.7, top_p: 0.9, top_k: 50, max_tokens: 2048 },
-      inspiration: { temperature: 0.85, top_p: 0.95, top_k: 80, max_tokens: 1024 },
-      extraction: { temperature: 0.1, top_p: 0.5, top_k: 20, max_tokens: 4096 },
-      summarization: { temperature: 0.3, top_p: 0.7, top_k: 30, max_tokens: 2048 },
-      rewrite: { temperature: 0.5, top_p: 0.8, top_k: 40, max_tokens: 2048 },
+      chat: { temperature: 0.35, top_p: 0.8, top_k: 40, max_tokens: 1536 },
+      inspiration: { temperature: 0.6, top_p: 0.85, top_k: 40, max_tokens: 1024 },
+      extraction: { temperature: 0.05, top_p: 0.5, top_k: 20, max_tokens: 1536 },
+      summarization: { temperature: 0.2, top_p: 0.75, top_k: 30, max_tokens: 1024 },
+      rewrite: { temperature: 0.35, top_p: 0.8, top_k: 40, max_tokens: 1024 },
     };
     try {
       const data = await getSampling();
@@ -4109,24 +4119,24 @@ const FEATURE_FLAG_DISPLAY_COPY: Record<string, { label?: string; description: s
     description: '用重排服务整理候选证据。',
   },
   analysis_chain_rag: {
-    label: '答复附推理过程',
+    label: '答复附证据摘要',
     description: '回答附结构化推理摘要。',
   },
   analysis_chain_rag_llm: {
-    label: '增强推理说明',
-    description: '生成更完整的推理过程。',
+    label: '增强证据摘要',
+    description: '生成更完整的结构化摘要。',
   },
   analysis_chain_discussion: {
-    label: '多智能体讨论附推理过程',
-    description: '角色发言附推理链。',
+    label: '多智能体讨论附证据摘要',
+    description: '角色发言附结构化摘要。',
   },
   analysis_chain_carryover: {
     label: '承接上一步思路',
     description: '下一轮参考上一步。',
   },
   analysis_chain_ui: {
-    label: '推理过程展开入口',
-    description: '显示推理展开入口。',
+    label: '证据摘要展开入口',
+    description: '显示摘要展开入口。',
   },
   discussion_streaming: {
     label: '讨论实时进度',

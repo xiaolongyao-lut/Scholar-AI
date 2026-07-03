@@ -495,6 +495,9 @@ describe('Settings navigation', () => {
     expect(screen.getByText(/本地部署的 DeepSeek、Qwen、Llama 等模型/)).toBeInTheDocument();
     expect(screen.getByText(/设置页显示保存后的供应商、服务地址和模型名称/)).toBeInTheDocument();
     expect(screen.getByText(/“获取模型”只读取当前服务的模型列表接口/)).toBeInTheDocument();
+    expect(screen.getByLabelText('开始整理的长度')).toHaveAttribute('max', '128000');
+    expect(screen.getByLabelText('整理后的摘要长度')).toHaveAttribute('max', '16000');
+    expect(screen.getByLabelText('最近对话保留轮数')).toHaveAttribute('max', '20');
   });
 
   it('shows visible local embedding and rerank runtime boundaries', async () => {

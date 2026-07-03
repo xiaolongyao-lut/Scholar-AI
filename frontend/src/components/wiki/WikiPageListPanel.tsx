@@ -69,7 +69,7 @@ export function WikiPageListPanel({ pages, isLoading, error, onRefresh, selected
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="font-label text-[11px] uppercase tracking-[0.22em] text-foreground/35">页面</div>
-          <h2 className="mt-2 font-display text-2xl font-semibold text-foreground">Wiki 页面列表</h2>
+          <h2 className="mt-2 font-display text-2xl font-semibold text-foreground">页面列表</h2>
         </div>
 
         <button
@@ -124,14 +124,14 @@ export function WikiPageListPanel({ pages, isLoading, error, onRefresh, selected
 
       {error ? (
         <div className="mt-5 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300">
-          {formatWikiError(error, '读取 Wiki 页面列表失败，请稍后重试。')}
+          {formatWikiError(error, '读取页面列表失败，请稍后重试。')}
         </div>
       ) : null}
 
       <div className="mt-5 space-y-3">
         {isLoading ? (
           <div className="rounded-2xl border border-outline-variant/30 bg-surface-high/60 px-4 py-8 text-center text-sm text-foreground/45">
-            正在读取 Wiki 页面…
+            正在读取页面…
           </div>
         ) : filteredPages.length > 0 ? (
           filteredPages.map((page) => (

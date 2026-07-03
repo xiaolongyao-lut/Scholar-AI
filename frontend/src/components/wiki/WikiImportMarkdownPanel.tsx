@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Copy, ExternalLink, FilePlus2, FolderOpen, RefreshCw, Square } from 'lucide-react';
+import { CheckCircle2, Copy, FilePlus2, FolderOpen, RefreshCw, Square } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { createWikiImportMarkdown } from '@/services/wikiApi';
@@ -27,7 +27,7 @@ function formatImportStatusLabel(result: WikiImportResponseModel | null): string
   if (!result) {
     return '等待导入';
   }
-  return result.dry_run ? '已生成预案' : '已写入待审草稿';
+  return result.dry_run ? '预览完成' : '已写入待确认';
 }
 
 function hasEvidenceLocator(item: WikiImportItemModel): boolean {
@@ -36,9 +36,17 @@ function hasEvidenceLocator(item: WikiImportItemModel): boolean {
 
 function formatImportSpan(item: WikiImportItemModel): string {
   if (item.span_start === null && item.span_end === null) {
-    return 'span 未返回';
+    return '位置已记录';
   }
-  return `span ${item.span_start ?? '?'}-${item.span_end ?? '?'}`;
+  return `原文位置 ${item.span_start ?? '?'}-${item.span_end ?? '?'}`;
+}
+
+function formatImportAction(value: string): string {
+  if (value.startsWith('planned')) return '待写入';
+  if (value === 'created') return '已新增';
+  if (value === 'updated') return '已更新';
+  if (value === 'skipped') return '已跳过';
+  return '已处理';
 }
 
 function buildEvidenceLocatorText(item: WikiImportItemModel): string {
@@ -70,8 +78,8 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
 
   const sourcePaths = useMemo(() => splitSourcePaths(sourcePathsText), [sourcePathsText]);
 
-  const dryRunModeLabel = isDryRun ? '仅生成预案' : '确认写入草稿';
-  const actionLabel = isDryRun ? '运行预览' : '写入待审草稿';
+  const dryRunModeLabel = isDryRun ? '仅预览' : '确认写入';
+  const actionLabel = isDryRun ? '预览' : '写入待确认';
   const submitDisabled = !isLoading && (!isWikiEnabled || sourcePaths.length === 0 || (!isDryRun && !confirmWrite));
 
   const handlePickFiles = useCallback(async () => {
@@ -99,7 +107,7 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
 
   const handleRun = useCallback(async () => {
     if (!isWikiEnabled) {
-      setError('Wiki 未启用。');
+      setError('知识库未启用。');
       return;
     }
     const paths = splitSourcePaths(sourcePathsText);
@@ -108,7 +116,7 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
       return;
     }
     if (!isDryRun && !confirmWrite) {
-      setError('确认写入时必须勾选 confirm_write。');
+      setError('写入前需要勾选确认。');
       return;
     }
 
@@ -135,7 +143,7 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
         return;
       }
       setResult(next);
-      setSourceHint(next.dry_run ? '预览已完成，检查 review queue 后再确认写入。' : '已写入为待审草稿，等待复审队列批准。');
+      setSourceHint(next.dry_run ? '预览已完成，确认后再写入。' : '已写入待确认，稍后可在复审队列处理。');
       if (!next.dry_run) {
         onImported?.();
       }
@@ -167,7 +175,7 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
     }
     const writeText = navigator.clipboard?.writeText;
     if (!writeText) {
-      setError('当前环境不支持剪贴板复制，请手动复制 read_endpoint。');
+      setError('当前环境不支持剪贴板复制。');
       return;
     }
     try {
@@ -190,7 +198,7 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
             <h2 className="font-headline text-base font-semibold">本地 Markdown 导入</h2>
           </div>
           <p className="mt-2 max-w-3xl text-xs leading-6 text-foreground/55">
-            先 dry-run，再确认写入。写入结果会进入 private review queue，且保留 runtime recovery 记录。
+            先预览，再写入待确认。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -223,7 +231,7 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
               value={sourcePathsText}
               onChange={(event) => setSourcePathsText(event.target.value)}
               rows={6}
-              placeholder="C:\\Users\\xiao\\Desktop\\tools\\Modular-Pipeline-Script\\notes\\draft.md"
+              placeholder="选择或粘贴本地 Markdown 文件路径"
               className="mt-1.5 w-full rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm leading-6 text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
             />
           </label>
@@ -261,21 +269,21 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
           <div className="flex flex-wrap items-center gap-3">
             <label className="inline-flex items-center gap-2 text-xs text-foreground/65">
               <input type="checkbox" checked={isDryRun} onChange={(event) => setIsDryRun(event.target.checked)} />
-              先 dry-run 预览
+              先预览
             </label>
             <label className="inline-flex items-center gap-2 text-xs text-foreground/65">
               <input type="checkbox" checked={confirmWrite} onChange={(event) => setConfirmWrite(event.target.checked)} />
-              confirm_write
+              我确认写入
             </label>
             <label className="inline-flex items-center gap-2 text-xs text-foreground/65">
               <input type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} />
-              overwrite
+              覆盖同名页面
             </label>
           </div>
 
           <div className="rounded-md border border-outline-variant/50 bg-surface-high px-3 py-3 text-xs leading-6 text-foreground/55">
             <div className="font-medium text-foreground/70">{dryRunModeLabel}</div>
-            <div className="mt-1">已选 {sourcePaths.length} 个路径 · {reviewQueueCount} 条待审</div>
+            <div className="mt-1">已选 {sourcePaths.length} 个文件 · {reviewQueueCount} 条待确认</div>
             <div className="mt-1">{sourceHint}</div>
           </div>
         </div>
@@ -310,7 +318,7 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
 
           {!isDryRun && !confirmWrite ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300">
-              确认写入时需要勾选 confirm_write。
+              写入前需要勾选确认。
             </div>
           ) : null}
 
@@ -331,50 +339,35 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
                         <span className="truncate">{item.title || formatWikiPageLabel(item.path, item.slug || item.source_path)}</span>
                       </div>
                       <div className="mt-1 text-[11px] text-foreground/45">
-                        {item.source_path} · {item.action} · {item.review_item_id}
+                        {formatWikiPageLabel(item.source_path, '本地文件')} · {formatImportAction(item.action)}
                       </div>
                     </div>
-                    <div className="text-[11px] text-foreground/55">{item.runtime_job_id || '待生成 runtime'}</div>
+                    <div className="text-[11px] text-foreground/55">{item.error ? '需处理' : '已记录'}</div>
                   </div>
                   {item.error ? (
                     <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300">
-                      {item.error}
+                      {formatWikiError(item.error, '这个文件暂时无法导入。')}
                     </div>
                   ) : null}
                   {hasEvidenceLocator(item) ? (
                     <div className="mt-2 rounded-md border border-outline-variant/40 bg-surface-low px-2 py-2">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 space-y-1 text-[11px] leading-5 text-foreground/55">
-                          <div className="font-medium text-foreground/70">证据定位</div>
-                          <div className="truncate" title={item.ref_id}>ref: {item.ref_id}</div>
-                          <div className="truncate" title={item.chunk_id}>chunk: {item.chunk_id}</div>
+                          <div className="font-medium text-foreground/70">引用信息</div>
+                          <div>导入时已保留定位</div>
                           <div>{formatImportSpan(item)}</div>
-                          <div className="truncate" title={item.content_hash}>hash: {item.content_hash.slice(0, 12)}</div>
                         </div>
                         <div className="flex shrink-0 flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={() => void handleCopyEvidenceLocator(item)}
                             className="inline-flex items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-high px-2 py-1 text-[11px] font-medium text-foreground/65 transition-colors hover:border-primary/35 hover:text-primary"
-                            aria-label={`复制证据定位 ${item.chunk_id}`}
+                            aria-label="复制引用信息"
                           >
                             <Copy size={12} />
                             {copiedLocatorId === item.chunk_id ? '已复制' : '复制'}
                           </button>
-                          <a
-                            href={item.read_endpoint}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-high px-2 py-1 text-[11px] font-medium text-foreground/65 transition-colors hover:border-primary/35 hover:text-primary"
-                            aria-label={`打开 bounded read ${item.ref_id}`}
-                          >
-                            <ExternalLink size={12} />
-                            打开
-                          </a>
                         </div>
-                      </div>
-                      <div className="mt-1 truncate text-[11px] text-foreground/40" title={item.read_endpoint}>
-                        {item.read_endpoint}
                       </div>
                     </div>
                   ) : null}

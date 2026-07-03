@@ -45,6 +45,7 @@ export interface EvidenceRefLike {
   bbox?: number[] | null;
   bbox_unit?: PdfBboxUnit | null;
   text?: string | null;
+  quote?: string | null;
   source?: string | null;
   /** Optional opaque id for cross-pane selection. */
   evidence_id?: string | null;
@@ -62,6 +63,11 @@ export interface EvidenceRefLike {
   source_path?: string | null;
   /** Weighted project/wiki fusion score. */
   joint_score?: number | null;
+  /** Extracted figure/table metadata retained for visual SmartRead evidence. */
+  figure_candidate?: string | null;
+  figure_candidate_detail?: Record<string, unknown> | null;
+  /** Project-relative extracted image assets referenced by this evidence. */
+  image_paths?: string[] | null;
   /**
    * 召回路径标签 — 后端给每条 evidence 打的"这条是怎么被选中的"标签
    * (e.g. `sibling` / `dense` / `bm25` / `tolf_text_selector`)。
@@ -89,6 +95,8 @@ interface EvidencePillProps {
   className?: string;
   /** Tooltip override; defaults to evidence.text. */
   title?: string;
+  /** Compact citation label override for inline references such as [1]. */
+  labelOverride?: string;
   /** 是否在 pill 后追加召回路径小 chip (sibling/语义/关键词/深度检索)。
    *  Chat 场景默认开, 其他场景默认关以避免视觉过载。 */
   showSourceLabels?: boolean;
@@ -157,6 +165,7 @@ export function EvidencePill({
   navigateAfterActivate = false,
   className,
   title,
+  labelOverride,
   showSourceLabels = false,
 }: EvidencePillProps) {
   const navigate = useNavigate();
@@ -166,19 +175,27 @@ export function EvidencePill({
       onActivate(evidence);
       if (!navigateAfterActivate) return;
     }
-    if (!evidence.material_id) return;
     const params = new URLSearchParams();
+    const normalizedProjectId = projectId?.trim() ?? '';
+    let materialId = evidence.material_id?.trim() ?? '';
 
     let pageNum =
       typeof evidence.page === 'number' && evidence.page > 0 ? evidence.page : NaN;
     let bboxParam = encodePdfBboxParam(evidence.bbox, evidence.bbox_unit);
 
-    if (!(Number.isFinite(pageNum) && pageNum > 0) && evidence.chunk_id && projectId) {
-      const key = cacheKey(projectId, evidence.chunk_id);
+    if (
+      (!materialId || !(Number.isFinite(pageNum) && pageNum > 0))
+      && evidence.chunk_id
+      && normalizedProjectId
+    ) {
+      const key = cacheKey(normalizedProjectId, evidence.chunk_id);
       let cached: ChunkLocator | null | undefined = locatorCache.get(key);
       if (cached === undefined) {
-        cached = await locateChunk(evidence.chunk_id, projectId);
+        cached = await locateChunk(evidence.chunk_id, normalizedProjectId);
         locatorCache.set(key, cached);
+      }
+      if (!materialId && cached?.material_id) {
+        materialId = cached.material_id;
       }
       if (cached && typeof cached.page === 'number' && cached.page > 0) {
         pageNum = cached.page;
@@ -188,17 +205,18 @@ export function EvidencePill({
       }
     }
 
+    if (!materialId) return;
     if (Number.isFinite(pageNum) && pageNum > 0) params.set('page', String(pageNum));
     params.set('scope', 'paper');
-    params.set('material_id', evidence.material_id);
+    params.set('material_id', materialId);
     params.set('tab', 'reader');
-    if (projectId?.trim()) params.set('project_id', projectId.trim());
+    if (normalizedProjectId) params.set('project_id', normalizedProjectId);
     if (evidence.chunk_id) params.set('chunk', evidence.chunk_id);
     if (bboxParam) params.set('bbox', bboxParam);
     navigate(`/dialog?${params.toString()}`);
   };
 
-  const label = friendlyLabel(evidence);
+  const label = labelOverride?.trim() || friendlyLabel(evidence);
   // B2 (0.1.8.2): kind-aware icon + tooltip suffix so users can tell local
   // literature from external web/MCP sources at a glance.
   const sourceType = evidence.source_type ?? 'project';

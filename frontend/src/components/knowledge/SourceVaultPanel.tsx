@@ -4,7 +4,6 @@ import {
   Database,
   FileText,
   FolderKanban,
-  Hash,
   RefreshCw,
   Search,
 } from 'lucide-react';
@@ -28,20 +27,14 @@ function formatBytes(value: number): string {
   return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
 }
 
-function shortHash(value: string): string {
-  const trimmed = value.trim();
-  return trimmed.length > 16 ? `${trimmed.slice(0, 12)}…` : trimmed;
-}
-
-function shortRef(value: string): string {
-  const trimmed = value.trim();
-  return trimmed.length > 22 ? `${trimmed.slice(0, 18)}…` : trimmed;
-}
-
 function formatSourceStatus(value: SourceVaultSource['storage_status']): string {
   if (value === 'stored') return '已存储';
   if (value === 'referenced') return '仅引用';
   return '缺失';
+}
+
+function formatSearchMode(enabled: boolean | undefined): string {
+  return enabled ? '已启用' : '基础检索';
 }
 
 function ErrorNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
@@ -99,10 +92,6 @@ function SourceCard({
           {formatSourceStatus(source.storage_status)}
         </span>
       </div>
-      <div className="mt-2 flex min-w-0 items-center gap-1.5 text-[11px] text-foreground/45">
-        <Hash size={12} className="shrink-0" />
-        <span className="truncate">{shortHash(source.source_hash)}</span>
-      </div>
     </button>
   );
 }
@@ -129,35 +118,19 @@ function SourceDetail({ source }: { source: SourceVaultSource | null }) {
       </div>
 
       <dl className="mt-4 grid gap-2 text-xs">
-        <div className="rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2">
-          <dt className="text-foreground/45">来源 ID</dt>
-          <dd className="mt-1 break-all font-mono text-[11px] text-foreground/75">{source.source_id}</dd>
-        </div>
-        <div className="rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2">
-          <dt className="text-foreground/45">内容哈希</dt>
-          <dd className="mt-1 break-all font-mono text-[11px] text-foreground/75">{source.source_hash}</dd>
-        </div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
           <div className="rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2">
-            <dt className="text-foreground/45">解析器</dt>
-            <dd className="mt-1 truncate text-foreground/75">{source.parser_version}</dd>
+            <dt className="text-foreground/45">状态</dt>
+            <dd className="mt-1 truncate text-foreground/75">{formatSourceStatus(source.storage_status)}</dd>
           </div>
           <div className="rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2">
-            <dt className="text-foreground/45">分块器</dt>
-            <dd className="mt-1 truncate text-foreground/75">{source.chunker_version}</dd>
+            <dt className="text-foreground/45">大小</dt>
+            <dd className="mt-1 truncate text-foreground/75">{formatBytes(source.file_size)}</dd>
           </div>
         </div>
         <div className="rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2">
-          <dt className="text-foreground/45">项目链接</dt>
-          <dd className="mt-2 flex flex-wrap gap-1.5">
-            {source.project_ids.length > 0 ? source.project_ids.map((projectId) => (
-              <span key={projectId} className="rounded border border-outline-variant/50 bg-surface-lowest px-2 py-0.5 text-[11px] text-foreground/65">
-                {projectId}
-              </span>
-            )) : (
-              <span className="text-foreground/40">暂无项目链接</span>
-            )}
-          </dd>
+          <dt className="text-foreground/45">关联项目</dt>
+          <dd className="mt-1 text-foreground/75">{source.project_ids.length} 个</dd>
         </div>
       </dl>
     </aside>
@@ -280,7 +253,7 @@ export function SourceVaultPanel() {
             </div>
             <div className="rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2">
               <div className="text-[11px] text-foreground/45">全文索引</div>
-              <div className="mt-1 text-sm font-semibold text-foreground">{overview?.fts_enabled ? 'FTS5' : 'LIKE'}</div>
+              <div className="mt-1 text-sm font-semibold text-foreground">{formatSearchMode(overview?.fts_enabled)}</div>
             </div>
           </div>
         </div>
@@ -339,7 +312,7 @@ export function SourceVaultPanel() {
                   <div className="mt-1 line-clamp-2 text-xs leading-5 text-foreground/55">{result.summary}</div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className="mr-auto text-[10px] text-foreground/40">
-                      {shortRef(result.ref_id)} · {result.chunk_id} · #{result.chunk_index}
+                      片段 #{result.chunk_index}
                     </span>
                     <button
                       type="button"

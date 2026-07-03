@@ -233,7 +233,7 @@ export function GraphDebugPanel({ graph, isLoading, error, onRefresh }: GraphDeb
 
       {error ? (
         <div className="mt-5 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300">
-          {formatWikiError(error, '读取 Wiki 图谱失败，请稍后重试。')}
+          {formatWikiError(error, '读取知识图谱失败，请稍后重试。')}
         </div>
       ) : null}
 
@@ -343,7 +343,7 @@ export function GraphDebugPanel({ graph, isLoading, error, onRefresh }: GraphDeb
         </>
       ) : (
         <div className="mt-5 rounded-md border border-outline-variant/50 bg-surface-low px-4 py-8 text-center text-sm text-foreground/45">
-          {isLoading ? '正在读取 Wiki 图谱…' : '当前图谱还没有结构化节点或关系。'}
+          {isLoading ? '正在读取知识图谱…' : '当前图谱还没有结构化节点或关系。'}
         </div>
       )}
     </section>

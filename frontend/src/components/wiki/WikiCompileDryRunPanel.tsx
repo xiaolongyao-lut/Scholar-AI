@@ -1,4 +1,4 @@
-import { AlertTriangle, FilePlus2, RefreshCw, ShieldCheck, Square, TerminalSquare } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FilePlus2, RefreshCw, ShieldCheck, Square } from 'lucide-react';
 import { useState } from 'react';
 
 import type {
@@ -24,24 +24,6 @@ interface WikiCompileDryRunPanelProps {
   onStop: () => void;
   onCreateManual: (input: WikiManualPageInputModel) => void;
   onStopManual: () => void;
-}
-
-function formatPricingSource(value: string | undefined): string {
-  switch (value) {
-    case 'configured':
-    case 'manual':
-    case 'settings':
-      return '已配置';
-    case 'catalog':
-    case 'model_catalog':
-      return '内置价格表';
-    case 'not_configured':
-    case undefined:
-    case '':
-      return '未配置';
-    default:
-      return '自定义配置';
-  }
 }
 
 const MANUAL_KIND_OPTIONS: Array<{ value: WikiManualPageKind; label: string }> = [
@@ -80,10 +62,6 @@ export function WikiCompileDryRunPanel({
   const [manualKind, setManualKind] = useState<WikiManualPageKind>('concept');
   const [manualStatus, setManualStatus] = useState<WikiManualPageStatus>('draft');
   const [manualBody, setManualBody] = useState('');
-  const budget = result?.budget_summary ?? null;
-  const formattedCost = budget
-    ? `${budget.currency} ${budget.estimated_cost_usd.toFixed(6)}`
-    : 'USD 0.000000';
 
   const handleRun = () => {
     onRun({
@@ -102,16 +80,16 @@ export function WikiCompileDryRunPanel({
     });
   };
 
-  const compileActionLabel = allowWrite ? '写入 Wiki 页面' : '生成编译预案';
+  const compileActionLabel = allowWrite ? '写入知识页' : '预览沉淀';
 
   return (
     <section className="rounded-lg border border-outline-variant/60 bg-surface-lowest p-4 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-label text-[11px] tracking-[0.16em] text-foreground/35">编译与手动沉淀</span>
+            <span className="font-label text-[11px] tracking-[0.16em] text-foreground/35">沉淀</span>
           </div>
-          <h2 className="mt-1 font-headline text-base font-semibold text-foreground">Wiki 知识写入</h2>
+          <h2 className="mt-1 font-headline text-base font-semibold text-foreground">知识写入</h2>
         </div>
 
         <button
@@ -130,26 +108,26 @@ export function WikiCompileDryRunPanel({
           <div className="rounded-md border border-outline-variant/50 bg-surface-low p-4">
             <div className="flex items-center gap-2 text-foreground">
               <ShieldCheck size={16} className="text-primary/65" />
-              <h3 className="font-headline text-sm font-semibold">来源编译</h3>
+              <h3 className="font-headline text-sm font-semibold">从来源沉淀</h3>
             </div>
 
             <div className="mt-4 space-y-3">
               <label className="block text-xs text-foreground/55">
-                <span className="font-label text-[11px] text-foreground/45">来源 ID（可选）</span>
+                <span className="font-label text-[11px] text-foreground/45">限定来源（可选）</span>
                 <input
                   value={sourceId}
                   onChange={(event) => setSourceId(event.target.value)}
-                  placeholder="source_id"
+                  placeholder="留空表示全部来源"
                   className="mt-1.5 w-full rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
                 />
               </label>
 
               <label className="block text-xs text-foreground/55">
-                <span className="font-label text-[11px] text-foreground/45">项目 ID（可选）</span>
+                <span className="font-label text-[11px] text-foreground/45">限定项目（可选）</span>
                 <input
                   value={projectId}
                   onChange={(event) => setProjectId(event.target.value)}
-                  placeholder="project_id"
+                  placeholder="留空表示全部项目"
                   className="mt-1.5 w-full rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
                 />
               </label>
@@ -161,12 +139,12 @@ export function WikiCompileDryRunPanel({
                   onChange={(event) => setAllowWrite(event.target.checked)}
                   className="mt-0.5"
                 />
-                <span>直接写入 Wiki 页面</span>
+                <span>直接写入知识页</span>
               </label>
 
               {!isWikiEnabled ? (
                 <div className="rounded-md border border-amber-200/80 bg-amber-50 px-3 py-3 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300">
-                  Wiki 未启用。
+                  知识库未启用。
                 </div>
               ) : null}
 
@@ -191,7 +169,7 @@ export function WikiCompileDryRunPanel({
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-2.5 py-1.5 text-[11px] font-medium text-foreground/65 transition-colors hover:border-primary/35 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isManualLoading ? <Square size={12} /> : <FilePlus2 size={12} />}
-                {isManualLoading ? '停止' : '沉淀为 Wiki'}
+                {isManualLoading ? '停止' : '沉淀'}
               </button>
             </div>
 
@@ -248,7 +226,7 @@ export function WikiCompileDryRunPanel({
             ) : null}
             {manualResult ? (
               <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300">
-                已写入 Wiki：{manualResult.slug}
+                已写入：{formatWikiPageLabel(manualResult.slug, '新页面')}
               </div>
             ) : null}
           </div>
@@ -256,48 +234,31 @@ export function WikiCompileDryRunPanel({
 
         <div className="rounded-md border border-slate-800/70 bg-slate-950/85 p-4 text-slate-100 shadow-inner">
           <div className="flex items-center gap-2 text-slate-100">
-            <TerminalSquare size={16} className="text-emerald-300" />
-            <h3 className="font-headline text-sm font-semibold">编译结果</h3>
+            <CheckCircle2 size={16} className="text-emerald-300" />
+            <h3 className="font-headline text-sm font-semibold">结果</h3>
           </div>
 
           {error ? (
             <div className="mt-4 rounded-md border border-red-400/30 bg-red-500/10 px-3 py-3 text-sm text-red-100">
-              {formatWikiError(error, '生成编译预案失败，请稍后重试。')}
+              {formatWikiError(error, '生成预览失败，请稍后重试。')}
             </div>
           ) : null}
 
           {isLoading ? (
             <div className="mt-4 rounded-md border border-slate-800 bg-slate-900/70 px-3 py-8 text-center text-sm text-slate-300">
-              正在处理 Wiki 编译…
+              正在生成…
             </div>
           ) : result ? (
             <>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <ResultMetric label="计划页面" value={result.planned_paths.length} />
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <ResultMetric label="页面" value={result.planned_paths.length} />
                 <ResultMetric label={result.dry_run ? '将更新' : '已写入'} value={result.dry_run ? result.written_paths.length : result.created + result.updated} />
-                <ResultMetric label="模型用量" value={budget?.total_tokens ?? 0} />
-                <ResultMetric label="预算" value={formattedCost} compact />
                 <ResultMetric label="告警" value={result.warnings.length} />
               </div>
 
               <div className="mt-4 space-y-4">
                 <div>
-                  <div className="text-[10px] tracking-[0.18em] text-slate-400">预算估算</div>
-                  <div className="mt-2 grid gap-2 rounded-md border border-slate-800 bg-slate-900/70 px-3 py-3 text-xs leading-6 text-slate-300 sm:grid-cols-2">
-                    <div>输入用量：<span className="font-mono text-slate-100">{budget?.input_tokens ?? 0}</span></div>
-                    <div>输出用量：<span className="font-mono text-slate-100">{budget?.output_tokens ?? 0}</span></div>
-                    <div>价格来源：<span className="text-slate-100">{formatPricingSource(budget?.pricing_source)}</span></div>
-                    <div>价格配置：<span className="font-mono text-slate-100">{budget?.pricing_configured ? '已配置' : '未配置'}</span></div>
-                  </div>
-                  {!budget?.pricing_configured ? (
-                    <div className="mt-2 rounded-md border border-slate-800 bg-slate-900/70 px-3 py-2 text-xs leading-5 text-slate-400">
-                      未配置模型价格。
-                    </div>
-                  ) : null}
-                </div>
-
-                <div>
-                  <div className="text-[10px] tracking-[0.18em] text-slate-400">计划页面</div>
+                  <div className="text-[10px] tracking-[0.18em] text-slate-400">页面</div>
                   {result.planned_paths.length ? (
                     <ul className="mt-2 space-y-2 text-xs text-slate-200">
                       {result.planned_paths.map((path, index) => (
@@ -308,7 +269,7 @@ export function WikiCompileDryRunPanel({
                     </ul>
                   ) : (
                     <div className="mt-2 rounded-md border border-slate-800 bg-slate-900/70 px-3 py-3 text-xs text-slate-400">
-                      暂无计划页面。
+                      暂无页面。
                     </div>
                   )}
                 </div>
@@ -336,7 +297,7 @@ export function WikiCompileDryRunPanel({
             </>
           ) : (
             <div className="mt-4 rounded-md border border-slate-800 bg-slate-900/70 px-3 py-8 text-center text-sm text-slate-400">
-              还没有生成编译预案。
+              还没有生成预览。
             </div>
           )}
         </div>

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { getWikiReview, searchWiki, WikiApiError } from '@/services/wikiApi';
 import { searchSourceVaultChunks } from '@/services/sourceVaultApi';
 import type { WikiReviewItemModel, WikiSearchEvidenceRefModel } from '@/types/wiki';
+import { formatWikiError, formatWikiPageLabel, sanitizeWikiVisibleText } from '@/components/wiki/wikiDisplay';
 
 export interface RecallPanelContext {
   /** 当前论文 / 阅读上下文，用于「来自当前论文」检索。 */
@@ -59,9 +60,9 @@ const INITIAL_STATE: Omit<RecallState, 'query'> = {
 };
 
 function formatError(err: unknown, fallback: string): string {
-  if (err instanceof WikiApiError) return err.message;
+  if (err instanceof WikiApiError) return formatWikiError(err.message, fallback);
   if (err instanceof Error) {
-    return err.message === 'Failed to fetch' ? '后端不可达。' : err.message;
+    return err.message === 'Failed to fetch' ? '后端不可达。' : formatWikiError(err.message, fallback);
   }
   return fallback;
 }
@@ -223,7 +224,7 @@ export function RecallPanel({
         <RecallSection
           icon={<FileText size={13} className="text-primary/70" />}
           title="相关沉淀"
-          emptyText={state.wikiError ? state.wikiError : state.query.trim() ? '没有匹配的已沉淀页面。' : '输入关键词后查看 Wiki 已沉淀页面。'}
+          emptyText={state.wikiError ? state.wikiError : state.query.trim() ? '没有匹配的已沉淀页面。' : '输入关键词后查看已沉淀页面。'}
           loading={state.isLoadingWiki}
         >
           {state.wikiResults.map((ref, index) => {
@@ -237,7 +238,7 @@ export function RecallPanel({
                 className="min-w-0 rounded-md border border-outline-variant/50 bg-surface-low px-2.5 py-1.5 text-left transition-colors hover:border-primary/30 hover:bg-surface-high disabled:cursor-default disabled:opacity-70"
               >
                 <div className="truncate text-xs font-medium text-foreground">
-                  {ref.title || pagePath || 'Wiki 页面'}
+                  {sanitizeWikiVisibleText(ref.title, formatWikiPageLabel(pagePath))}
                 </div>
                 {ref.snippet ? (
                   <div className="mt-0.5 line-clamp-2 text-[11px] leading-5 text-foreground/55">

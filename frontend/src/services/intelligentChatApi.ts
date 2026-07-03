@@ -20,6 +20,9 @@ export interface ContextChunk {
   source_hint?: string | null;
   bbox?: number[] | null;
   bbox_unit?: PdfBboxUnit | null;
+  figure_candidate?: string | null;
+  figure_candidate_detail?: Record<string, unknown> | null;
+  image_paths?: string[];
 }
 
 export interface ContextMetadata {
@@ -46,6 +49,9 @@ export interface EvidenceReference {
   source_title?: string | null;
   source_path?: string | null;
   joint_score?: number | null;
+  figure_candidate?: string | null;
+  figure_candidate_detail?: Record<string, unknown> | null;
+  image_paths?: string[];
 }
 
 export interface CurrentPdfContext {
@@ -128,6 +134,7 @@ export interface IntelligentChatResponse {
   tokens_used: TokenUsage;
   tier_used: ContextTier;
   context_metadata?: ContextMetadata;
+  retrieval_diagnostics?: SmartReadRetrievalDiagnostics | null;
   evidence_refs?: EvidenceReference[];
   actual_sampling_params?: {
     temperature: number;
@@ -139,6 +146,44 @@ export interface IntelligentChatResponse {
   mcp_run?: Record<string, unknown> | null;
 }
 
+export interface SmartReadGatewayDiagnostics {
+  dense_hit_count?: number;
+  lexical_hit_count?: number;
+  visual_hit_count?: number;
+  candidate_count?: number;
+  dense_enabled?: boolean;
+  material_balancing_enabled?: boolean;
+  chroma_status?: string;
+  fts_status?: string;
+  fallback_reasons?: string[];
+  gate_status_counts?: Record<string, number>;
+}
+
+export interface SmartReadTolfDiagnostics {
+  status?: string;
+  candidate_count?: number;
+  input_count?: number;
+  graph_node_count?: number;
+  graph_edge_count?: number;
+  gate_after_count?: number;
+  activation_min?: number | null;
+  activation_max?: number | null;
+  activation_mean?: number | null;
+  top_final_rank_score?: number | null;
+  rank_contribution_keys?: string[];
+  fallback_reason?: string | null;
+}
+
+export interface SmartReadRetrievalDiagnostics {
+  retrieval_method?: string;
+  embedding_status?: string | null;
+  rerank_status?: string | null;
+  lexical_only?: boolean;
+  fallback_reasons?: string[];
+  gateway?: SmartReadGatewayDiagnostics | null;
+  tolf?: SmartReadTolfDiagnostics | null;
+}
+
 export type IntelligentChatStreamEvent =
   | {
       event: 'metadata';
@@ -148,6 +193,7 @@ export type IntelligentChatStreamEvent =
       context_metadata?: ContextMetadata | null;
       evidence_refs?: EvidenceReference[];
       actual_sampling_params?: IntelligentChatResponse['actual_sampling_params'] | null;
+      retrieval_diagnostics?: SmartReadRetrievalDiagnostics | null;
     }
   | {
       event: 'text_delta';

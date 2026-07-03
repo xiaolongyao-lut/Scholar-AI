@@ -3,6 +3,7 @@ import type {
   ArtifactType,
   CreateJobRequest,
   JobStatusDetail,
+  JobStatus,
   WritingArtifact,
   WritingEvent,
   WritingJob,
@@ -12,6 +13,11 @@ import type {
 const DEFAULT_POLL_INTERVAL_MS = 1200;
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const TERMINAL_EVENT_STATUS: Partial<Record<string, JobStatus>> = {
+  job_completed: 'completed',
+  job_failed: 'failed',
+  job_cancelled: 'cancelled',
+};
 
 /**
  * Sanitize a free-form backend event payload field into a short, single-line
@@ -105,6 +111,46 @@ function isTerminal(status: string | null | undefined): boolean {
   return TERMINAL_STATUSES.has(String(status ?? ''));
 }
 
+function terminalStatusFromEvent(event: WritingEvent | null): JobStatus | null {
+  if (!event || typeof event.event_type !== 'string') return null;
+  return TERMINAL_EVENT_STATUS[event.event_type] ?? null;
+}
+
+function readEventPayloadString(event: WritingEvent | null, keys: string[]): string | null {
+  if (!event || typeof event.data !== 'object' || event.data === null || Array.isArray(event.data)) {
+    return null;
+  }
+  const payload = event.data as Record<string, unknown>;
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim().slice(0, 500);
+    }
+  }
+  return null;
+}
+
+function statusWithTerminalEvent(status: JobStatusDetail, latestEvent: WritingEvent | null): JobStatusDetail {
+  const terminalStatus = terminalStatusFromEvent(latestEvent);
+  if (!terminalStatus) return status;
+
+  const eventError = readEventPayloadString(latestEvent, ['error', 'message', 'detail']);
+  if (isTerminal(status.status)) {
+    return {
+      ...status,
+      error: status.error || eventError || null,
+    };
+  }
+
+  return {
+    ...status,
+    status: terminalStatus,
+    error: terminalStatus === 'failed'
+      ? eventError || status.error || '任务失败。'
+      : status.error || eventError || null,
+  };
+}
+
 export async function ensureBackgroundRuntimeSession({
   title,
   metadata = {},
@@ -178,11 +224,16 @@ export async function waitForRuntimeJobTerminalState(
       if (typeof snapshot.latest_sequence === 'number') {
         afterSequence = snapshot.latest_sequence;
       }
+      status = statusWithTerminalEvent(status, latestEvent);
     } catch {
       // Snapshot endpoint may be missing on older backends — fall back to
       // status-only polling. The user still gets a stable bubble, just no
       // per-phase label.
       status = await client.getJobStatus(jobId);
+    }
+
+    if (isTerminal(status.status)) {
+      return status;
     }
 
     if (onProgress) {
@@ -198,9 +249,6 @@ export async function waitForRuntimeJobTerminalState(
       }
     }
 
-    if (isTerminal(status.status)) {
-      return status;
-    }
     await Promise.race([
       sleep(pollIntervalMs),
       new Promise<void>((_, reject) => {

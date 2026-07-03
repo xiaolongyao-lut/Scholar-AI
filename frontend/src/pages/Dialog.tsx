@@ -6,7 +6,6 @@ import {
   BookOpen,
   FolderKanban,
   GitFork,
-  Globe2,
   FileText,
   Loader2,
   MessageCircle,
@@ -35,6 +34,7 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { formatChatVisibleError, sanitizeChatVisibleText } from '@/components/chat/chatDisplay';
 import type { ChatAttachment, ChatInputSubmitPayload } from '@/components/chat/ChatInput';
 import type {
+  ChatRelatedFigure,
   ChatJointRecallDiagnostics,
   ChatMessageData,
   ChatMessageDiagnostics,
@@ -52,13 +52,6 @@ import { getAnnotations, type Highlight, type Note as AnnotationNote } from '@/s
 import { smartReadDialogScope, useSmartRead } from '@/contexts/SmartReadContext';
 import { usePdfTabs } from '@/contexts/PdfTabsContext';
 import {
-  artifactContentRecord,
-  findLatestArtifact,
-  runBackgroundJob,
-} from '@/services/backgroundJobRunner';
-import { getWritingRuntimeClient } from '@/services/runtimeClient';
-import type { WritingJob } from '@/types/runtime';
-import {
   listChatSessions,
   deleteChatSession,
   bulkDeleteChatSessions,
@@ -67,9 +60,11 @@ import {
   forkChatHistoryConversation,
   resumeChatSession,
   searchChatHistory,
+  streamIntelligentChatMessage,
   type ContextTier,
   type CurrentPdfContext,
   type IntelligentChatResponse,
+  type IntelligentChatStreamEvent,
   type ChatSessionSummary,
   type ChatHistorySearchResult,
   type ChatResumeMessage,
@@ -79,7 +74,7 @@ import { backendTierForCostTier, loadSmartReadCostTier } from '@/services/smartR
 import { useWriting } from '@/contexts/WritingContext';
 import { useProjectReasoningBiasState } from '@/hooks/useProjectReasoningBiasState';
 import { getWritingBackendService } from '@/services/writingBackend';
-import type { ProjectChunkResource, WritingMaterialResource, WritingProject } from '@/types/resources';
+import type { FigureTableCandidateResource, ProjectChunkResource, WritingMaterialResource, WritingProject } from '@/types/resources';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import {
   encodePdfBboxParam,
@@ -116,7 +111,6 @@ const DIALOG_CONTEXT_MIN_WIDTH = 320;
 const DIALOG_CONTEXT_MAX_WIDTH = 560;
 const DIALOG_MAIN_MIN_WIDTH = 420;
 const dialogAbortControllers = new Map<string, AbortController>();
-const dialogActiveJobsByScope = new Map<string, string>();
 const dialogRequestStartedAtByScope = new Map<string, number>();
 
 interface ChatMessage {
@@ -138,7 +132,7 @@ type ChatState = 'ready' | 'responding' | 'error' | 'unavailable';
 type HistoryState = 'idle' | 'loading' | 'error';
 type SearchState = 'idle' | 'loading' | 'error';
 type HistoryMode = 'recent' | 'archived';
-type DialogContextScope = 'paper' | 'project' | 'workspace';
+type DialogContextScope = 'paper' | 'project';
 type DialogWorkbenchMode = 'chat' | 'discussion';
 type DialogCenterTab = 'chat' | 'discussion' | 'reader';
 type DialogContextRailTab = 'chat' | 'discussion' | 'paper' | 'project' | 'graph' | 'notes';
@@ -381,6 +375,11 @@ function readRecordStringArray(record: Record<string, unknown>, key: string): st
   return strings.length > 0 ? strings : undefined;
 }
 
+function readRecordBoolean(record: Record<string, unknown>, key: string): boolean | undefined {
+  const value = record[key];
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 function coerceContextMetadata(value: unknown): IntelligentChatResponse['context_metadata'] | undefined {
   if (!isRecord(value) || !Array.isArray(value.chunks)) return undefined;
   const chunks = value.chunks.flatMap((chunk, index) => {
@@ -445,6 +444,9 @@ function coerceEvidenceRefs(value: unknown): IntelligentChatResponse['evidence_r
       source_title: sourceTitle,
       source_path: readRecordStringOrNull(item, 'source_path'),
       joint_score: readRecordNonNegativeNumber(item, 'joint_score') ?? null,
+      figure_candidate: readRecordStringOrNull(item, 'figure_candidate'),
+      figure_candidate_detail: isRecord(item.figure_candidate_detail) ? item.figure_candidate_detail : null,
+      image_paths: readRecordStringArray(item, 'image_paths'),
     }];
   });
   return refs.length > 0 ? refs : undefined;
@@ -510,12 +512,66 @@ function coerceQrelsStatus(value: unknown): ChatRetrievalQrelsStatus | undefined
   return Object.values(qrelsStatus).some((item) => item !== undefined) ? qrelsStatus : undefined;
 }
 
+function coerceGatewayStatusCounts(value: unknown): Record<string, number> | undefined {
+  if (!isRecord(value)) return undefined;
+  const entries = Object.entries(value).flatMap(([key, rawValue]) => {
+    if (typeof rawValue !== 'number' || !Number.isFinite(rawValue) || rawValue < 0) return [];
+    return [[key, Math.trunc(rawValue)] as const];
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function coerceGatewayDiagnostics(value: unknown): ChatRetrievalDiagnostics['gateway'] | undefined {
+  if (!isRecord(value)) return undefined;
+  const diagnostics = {
+    dense_hit_count: readRecordNonNegativeNumber(value, 'dense_hit_count'),
+    lexical_hit_count: readRecordNonNegativeNumber(value, 'lexical_hit_count'),
+    visual_hit_count: readRecordNonNegativeNumber(value, 'visual_hit_count'),
+    candidate_count: readRecordNonNegativeNumber(value, 'candidate_count'),
+    dense_enabled: readRecordBoolean(value, 'dense_enabled'),
+    material_balancing_enabled: readRecordBoolean(value, 'material_balancing_enabled'),
+    chroma_status: readRecordString(value, 'chroma_status'),
+    fts_status: readRecordString(value, 'fts_status'),
+    fallback_reasons: readRecordStringArray(value, 'fallback_reasons')?.slice(0, 8),
+    gate_status_counts: coerceGatewayStatusCounts(value.gate_status_counts),
+  };
+  return Object.values(diagnostics).some((item) => item !== undefined) ? diagnostics : undefined;
+}
+
+function coerceNullableNonNegativeNumber(record: Record<string, unknown>, key: string): number | null | undefined {
+  if (record[key] === null) return null;
+  return readRecordNonNegativeNumber(record, key);
+}
+
+function coerceTolfDiagnostics(value: unknown): ChatRetrievalDiagnostics['tolf'] | undefined {
+  if (!isRecord(value)) return undefined;
+  const diagnostics = {
+    status: readRecordString(value, 'status'),
+    candidate_count: readRecordNonNegativeNumber(value, 'candidate_count'),
+    input_count: readRecordNonNegativeNumber(value, 'input_count'),
+    graph_node_count: readRecordNonNegativeNumber(value, 'graph_node_count'),
+    graph_edge_count: readRecordNonNegativeNumber(value, 'graph_edge_count'),
+    gate_after_count: readRecordNonNegativeNumber(value, 'gate_after_count'),
+    activation_min: coerceNullableNonNegativeNumber(value, 'activation_min'),
+    activation_max: coerceNullableNonNegativeNumber(value, 'activation_max'),
+    activation_mean: coerceNullableNonNegativeNumber(value, 'activation_mean'),
+    top_final_rank_score: coerceNullableNonNegativeNumber(value, 'top_final_rank_score'),
+    rank_contribution_keys: readRecordStringArray(value, 'rank_contribution_keys')?.slice(0, 8),
+    fallback_reason: readRecordStringOrNull(value, 'fallback_reason'),
+  };
+  return Object.values(diagnostics).some((item) => item !== undefined) ? diagnostics : undefined;
+}
+
 function coerceRetrievalDiagnostics(value: unknown): ChatRetrievalDiagnostics | undefined {
   if (!isRecord(value)) return undefined;
   const diagnostics: ChatRetrievalDiagnostics = {
     retrieval_method: readRecordString(value, 'retrieval_method'),
     embedding_status: readRecordString(value, 'embedding_status'),
     rerank_status: readRecordString(value, 'rerank_status'),
+    lexical_only: readRecordBoolean(value, 'lexical_only'),
+    fallback_reasons: readRecordStringArray(value, 'fallback_reasons')?.slice(0, 8),
+    gateway: coerceGatewayDiagnostics(value.gateway),
+    tolf: coerceTolfDiagnostics(value.tolf),
     qrels_status: coerceQrelsStatus(value.qrels_status),
     joint_recall: coerceJointRecallDiagnostics(value.joint_recall),
   };
@@ -577,6 +633,234 @@ function buildSmartReadDiagnostics(
     retrievalDiagnostics: patch.retrievalDiagnostics,
     timestamp: new Date(),
     insufficientContext: patch.insufficientContext,
+  });
+}
+
+type DialogStreamMetadata = Extract<IntelligentChatStreamEvent, { event: 'metadata' }>;
+type DialogStreamUsage = Extract<IntelligentChatStreamEvent, { event: 'usage' }>;
+
+function buildSmartReadDiagnosticsFromStream(input: {
+  metadata: DialogStreamMetadata | null;
+  usage: DialogStreamUsage | null;
+  doneTokens?: TokenUsage;
+  fallbackTier: ContextTier;
+  content: string;
+}): ChatMessageDiagnostics | undefined {
+  const payload: Record<string, unknown> = {
+    tier_used: input.metadata?.tier_used ?? input.fallbackTier,
+    context_metadata: input.metadata?.context_metadata ?? undefined,
+    evidence_refs: input.metadata?.evidence_refs ?? undefined,
+    actual_sampling_params: input.metadata?.actual_sampling_params ?? undefined,
+    tokens_used: input.doneTokens ?? input.usage?.usage ?? undefined,
+    retrieval_diagnostics: input.metadata?.retrieval_diagnostics ?? undefined,
+  };
+  const patch = coerceSmartReadResponsePatch(payload, input.fallbackTier);
+  return buildSmartReadDiagnostics({
+    ...patch,
+    content: input.content,
+  });
+}
+
+function evidenceRefsFromDialogStreamMetadata(metadata: DialogStreamMetadata | null): EvidenceRefLike[] | undefined {
+  if (!metadata) return undefined;
+  return metadata.evidence_refs as EvidenceRefLike[] | undefined;
+}
+
+function shouldLoadRelatedFigures(query: string): boolean {
+  return /(?:外观|图片|图像|图表|焊缝|形貌|表面|截面|显微|宏观|照片|figure|fig\.|image|picture|appearance|morphology|surface|cross[-\s]?section|micrograph|macrograph|sem|om)/i.test(query);
+}
+
+function isAppearanceFigureQuery(query: string): boolean {
+  return /(?:外观|宏观|照片|表面成形|焊缝成形|正面成形|背面成形|appearance|macrograph|macroscopic|photo|surface\s+appearance|weld\s+appearance)/i.test(query);
+}
+
+function isRealFigureAssetSource(source: string | null | undefined): boolean {
+  const value = String(source ?? '').trim();
+  return value === 'pdf_embedded_image'
+    || value === 'chunk_asset'
+    || value === 'chunk_image'
+    || value === 'chunk_image_paths'
+    || value === 'chunk_raw_image'
+    || value === 'chunk_figure_asset'
+    || value === 'chunk_figure_image_paths'
+    || value === 'chunk_raw_embedded_image'
+    || value.endsWith('_chunk_asset')
+    || value.endsWith('_chunk_image')
+    || value.endsWith('_chunk_image_paths')
+    || value.endsWith('_chunk_raw_image')
+    || value.endsWith('_chunk_figure_asset')
+    || value.endsWith('_chunk_figure_image_paths')
+    || value.endsWith('_chunk_raw_embedded_image');
+}
+
+function toDialogRelatedFigures(
+  candidates: FigureTableCandidateResource[],
+  query: string,
+  materialId?: string,
+): ChatRelatedFigure[] {
+  const normalizedMaterialId = String(materialId ?? '').trim();
+  const appearanceQuery = isAppearanceFigureQuery(query);
+  const scored = candidates
+    .filter((candidate) => {
+      if (normalizedMaterialId && String(candidate.material_id ?? '').trim() !== normalizedMaterialId) {
+        return false;
+      }
+      if (candidate.kind !== 'figure' && candidate.kind !== 'table') return false;
+      if (!candidate.asset_path || !isRealFigureAssetSource(candidate.source)) return false;
+      if (appearanceQuery && candidate.kind !== 'figure') return false;
+      return true;
+    })
+    .map((candidate) => {
+      const text = `${candidate.label ?? ''} ${candidate.caption ?? ''} ${candidate.material_title ?? ''}`.toLowerCase();
+      const appearanceScore = /(?:appearance|macrograph|macroscopic|photo|surface|weld bead|weld seam|face|root|外观|宏观|照片|表面成形|焊缝成形|正面|背面|焊缝表面)/i.test(text) ? 12 : 0;
+      const characterizationPenalty = appearanceQuery && /(?:microstructure|morphology|sem|ebsd|eds|ct|pore|porosity|cross[-\s]?section|显微|微观|形貌|孔|气孔|截面|断口|组织|表征)/i.test(text) ? -10 : 0;
+      const score =
+        (candidate.source === 'pdf_embedded_image' ? 10 : 8) +
+        (candidate.kind === 'figure' ? 4 : 0) +
+        (/(?:weld|seam|appearance|surface|macro|焊缝|外观|表面|宏观)/i.test(text) ? 6 : 0) +
+        appearanceScore +
+        characterizationPenalty;
+      return { candidate, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const seen = new Set<string>();
+  const figures: ChatRelatedFigure[] = [];
+  for (const { candidate } of scored) {
+    const id = String(candidate.id ?? `${candidate.material_id}:${candidate.chunk_id}:${candidate.label}`).trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    figures.push({
+      id,
+      kind: candidate.kind === 'table' ? 'table' : 'figure',
+      label: String(candidate.label ?? (candidate.kind === 'table' ? '表格候选' : '图像候选')),
+      caption: String(candidate.caption ?? ''),
+      material_id: String(candidate.material_id ?? ''),
+      material_title: candidate.material_title ?? null,
+      page: typeof candidate.page === 'number' && Number.isFinite(candidate.page) ? candidate.page : null,
+      chunk_id: candidate.chunk_id ?? null,
+      asset_path: candidate.asset_path ?? null,
+      source: candidate.source ?? null,
+    });
+    if (figures.length >= 6) break;
+  }
+  return figures;
+}
+
+function relatedFigureQueryForAssistant(messages: ChatMessageData[], assistantIndex: number): string | null {
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === 'user') {
+      const query = message.content.trim();
+      return query && shouldLoadRelatedFigures(query) ? query : null;
+    }
+  }
+  return null;
+}
+
+function relatedFigureMaterialHint(message: ChatMessageData): string | undefined {
+  const materialId = message.evidence?.find((ref) => typeof ref.material_id === 'string' && ref.material_id.trim())
+    ?.material_id;
+  return materialId?.trim() || undefined;
+}
+
+function readEvidenceFigureDetailString(
+  ref: EvidenceRefLike,
+  key: string,
+): string | null {
+  const detail = ref.figure_candidate_detail;
+  if (!detail || typeof detail !== 'object' || Array.isArray(detail)) return null;
+  const value = detail[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function evidenceRefPageNumber(ref: EvidenceRefLike): number | null {
+  if (typeof ref.page === 'number' && Number.isFinite(ref.page) && ref.page > 0) {
+    return ref.page;
+  }
+  return null;
+}
+
+function relatedFiguresFromEvidenceRefs(
+  evidenceRefs: EvidenceRefLike[] | undefined,
+): ChatRelatedFigure[] {
+  if (!evidenceRefs || evidenceRefs.length === 0) return [];
+  const figures: ChatRelatedFigure[] = [];
+  const seen = new Set<string>();
+  for (const ref of evidenceRefs) {
+    const imagePaths = Array.isArray(ref.image_paths)
+      ? ref.image_paths.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      : [];
+    for (const imagePath of imagePaths) {
+      const key = imagePath.trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const label =
+        readEvidenceFigureDetailString(ref, 'figure_id')
+        ?? ref.figure_candidate
+        ?? `图像证据 ${figures.length + 1}`;
+      const caption =
+        readEvidenceFigureDetailString(ref, 'caption')
+        ?? ref.text
+        ?? ref.quote
+        ?? label;
+      figures.push({
+        id: `${ref.chunk_id ?? 'evidence'}:${key}`,
+        kind: 'figure',
+        label,
+        caption,
+        material_id: String(ref.material_id ?? ''),
+        material_title: ref.source_title ?? ref.source ?? null,
+        page: evidenceRefPageNumber(ref),
+        chunk_id: ref.chunk_id ?? null,
+        asset_path: key,
+        source: 'chunk_image_paths',
+      });
+      if (figures.length >= 6) return figures;
+    }
+  }
+  return figures;
+}
+
+async function restoreDialogRelatedFigures(
+  messages: ChatMessageData[],
+  projectId: string | null,
+): Promise<ChatMessageData[]> {
+  const normalizedProjectId = String(projectId ?? '').trim();
+  if (!normalizedProjectId || messages.length === 0) return messages;
+
+  const targetIndexes = messages.flatMap((message, index): number[] => {
+    if (message.role !== 'assistant' || message.relatedFigures?.length) return [];
+    return relatedFigureQueryForAssistant(messages, index) ? [index] : [];
+  });
+  if (targetIndexes.length === 0) return messages;
+
+  const evidenceMappedMessages = messages.map((message, index) => {
+    if (!targetIndexes.includes(index) || message.relatedFigures?.length) return message;
+    const figures = relatedFiguresFromEvidenceRefs(message.evidence);
+    return figures.length > 0 ? { ...message, relatedFigures: figures } : message;
+  });
+  const remainingTargetIndexes = targetIndexes.filter((index) => !evidenceMappedMessages[index]?.relatedFigures?.length);
+  if (remainingTargetIndexes.length === 0) return evidenceMappedMessages;
+
+  let candidates: FigureTableCandidateResource[];
+  try {
+    candidates = await getWritingBackendService().listFigureTableCandidates(
+      normalizedProjectId,
+      24,
+      { pixelOnly: true, renderPdfFallback: false },
+    );
+  } catch {
+    return messages;
+  }
+  if (candidates.length === 0) return evidenceMappedMessages;
+
+  return evidenceMappedMessages.map((message, index) => {
+    if (!remainingTargetIndexes.includes(index)) return message;
+    const query = relatedFigureQueryForAssistant(messages, index);
+    if (!query) return message;
+    const figures = toDialogRelatedFigures(candidates, query, relatedFigureMaterialHint(message));
+    return figures.length > 0 ? { ...message, relatedFigures: figures } : message;
   });
 }
 
@@ -733,7 +1017,7 @@ function normalizeDialogContextScope(
 ): DialogContextScope {
   const normalized = String(value ?? '').trim().toLowerCase();
   if ((normalized === 'paper' || normalized === 'material') && materialId) return 'paper';
-  if (normalized === 'workspace' || normalized === 'all') return 'workspace';
+  if (normalized === 'workspace' || normalized === 'all') return 'project';
   if (normalized === 'project') return 'project';
   return materialId ? 'paper' : 'project';
 }
@@ -779,20 +1063,18 @@ function writeDiscussionLaunchState(value: DiscussionLaunchState): void {
 }
 
 function buildDialogSmartReadScope(
-  contextScope: DialogContextScope,
+  _contextScope: DialogContextScope,
   projectId: string,
   _materialId: string,
 ): string {
-  if (contextScope === 'workspace') return smartReadDialogScope('workspace');
   return smartReadDialogScope(projectId || 'default');
 }
 
 function buildDialogStorageScope(
-  contextScope: DialogContextScope,
+  _contextScope: DialogContextScope,
   projectId: string,
   _materialId: string,
 ): string {
-  if (contextScope === 'workspace') return 'workspace';
   return projectId || 'default';
 }
 
@@ -1220,6 +1502,13 @@ function buildDialogDiagnostics(message: ChatMessage): ChatMessageDiagnostics | 
         source: chunk.source,
         content: chunk.content,
         relevance_score: chunk.relevance_score,
+        chunk_id: chunk.chunk_id,
+        material_id: chunk.material_id,
+        title: chunk.title,
+        section_title: chunk.section_title,
+        page: chunk.page,
+        source_labels: chunk.source_labels,
+        source_hint: chunk.source_hint,
       })),
     };
   }
@@ -1566,6 +1855,12 @@ export function Dialog() {
   const urlReaderPage = normalizeDialogReaderPage(searchParams.get('page'));
   const urlReaderChunkId = normalizeMaterialId(searchParams.get('chunk'));
   const urlReaderBbox = parsePdfBboxSearchParam(searchParams.get('bbox'));
+  const urlReaderTargetKey = [
+    pinnedMaterialId,
+    searchParams.get('page') ?? '',
+    searchParams.get('bbox') ?? '',
+    searchParams.get('chunk') ?? '',
+  ].join(':');
   const effectiveReaderPage = embeddedReaderTarget.page
     ?? embeddedReaderPage
     ?? urlReaderPage
@@ -1589,7 +1884,7 @@ export function Dialog() {
   const readerInCenter = readerTabAvailable;
   const projectMaterialCount = projectMaterials.length;
   const annotationNoteCount = annotationNotes.length;
-  const requestProjectId = dialogContextScope === 'workspace' ? undefined : effectiveProjectId || undefined;
+  const requestProjectId = effectiveProjectId || undefined;
   const requestMaterialId = dialogContextScope === 'paper' && pinnedMaterialId ? pinnedMaterialId : undefined;
   const activeMaterialLabel = useMemo(
     () => sanitizeChatVisibleText(pinnedMaterialTitle || pinnedMaterialId, '当前文献', { maxLength: 64 }),
@@ -1612,12 +1907,12 @@ export function Dialog() {
   );
   const conversationMessagesRef = useRef<ChatMessageData[]>(conversationMessages);
   const activeAbortControllerRef = useRef<AbortController | null>(null);
-  const activeJobIdRef = useRef<string | null>(dialogActiveJobsByScope.get(smartReadScope) ?? null);
   const isMountedRef = useRef(true);
   const restoringSessionIdRef = useRef<string | null>(null);
   const taskCenterNavigationPendingRef = useRef(false);
   const dialogShellRef = useRef<HTMLDivElement | null>(null);
   const previousPinnedMaterialIdRef = useRef('');
+  const previousUrlReaderTargetKeyRef = useRef<string | null>(null);
   const projectReasoningBias = useProjectReasoningBiasState(activeProjectId);
   const defaultProjectBiasEnabled = projectReasoningBias.isEnabledForSurface('chat_generation');
   const [projectBiasEnabled, setProjectBiasEnabled] = useState(defaultProjectBiasEnabled);
@@ -1830,6 +2125,13 @@ export function Dialog() {
   }, [pinnedLooksLikePdf, pinnedMaterialId, urlCenterTab]);
 
   useEffect(() => {
+    const previousKey = previousUrlReaderTargetKeyRef.current;
+    previousUrlReaderTargetKeyRef.current = urlReaderTargetKey;
+    if (previousKey === null || previousKey === urlReaderTargetKey) return;
+    setEmbeddedReaderPage(null);
+  }, [urlReaderTargetKey]);
+
+  useEffect(() => {
     if (!pinnedMaterialId || !pinnedLooksLikePdf) return;
     openPdfTab(
       {
@@ -2034,9 +2336,12 @@ export function Dialog() {
     setHistoryErrorMessage(null);
     try {
       const response = await resumeChatSession({ session_id: normalizedSessionId, limit: 100 });
-      const restoredMessages = response.messages.map(toChatMessage).map(mapDialogMessageToChatData);
       const targetProjectId = normalizeProjectId(response.project_id ?? sessionHint?.project_id);
       const targetProjectForScope = targetProjectId || effectiveProjectId;
+      const restoredMessages = await restoreDialogRelatedFigures(
+        response.messages.map(toChatMessage).map(mapDialogMessageToChatData),
+        targetProjectForScope,
+      );
       const targetScope = smartReadDialogScope(targetProjectForScope || 'default');
       const targetRailTab = sessionHint && isDiscussionSession(sessionHint) ? 'discussion' : 'chat';
       writeDialogContextSearchParams('project', targetProjectForScope, targetRailTab);
@@ -2169,10 +2474,6 @@ export function Dialog() {
 
   const handleStopGeneration = () => {
     const activeController = activeAbortControllerRef.current ?? dialogAbortControllers.get(smartReadScope);
-    const activeJobId = activeJobIdRef.current ?? dialogActiveJobsByScope.get(smartReadScope);
-    if (activeJobId) {
-      void getWritingRuntimeClient().cancelJob(activeJobId).catch(() => undefined);
-    }
     if (activeController) {
       activeController.abort();
       return;
@@ -2279,13 +2580,6 @@ export function Dialog() {
     setErrorMessage(null);
     setIsUnavailable(false);
 
-    const cleanUpActiveJob = () => {
-      if (dialogActiveJobsByScope.get(smartReadScope) === activeJobIdRef.current) {
-        dialogActiveJobsByScope.delete(smartReadScope);
-      }
-      activeJobIdRef.current = null;
-    };
-
     try {
       const abortController = new AbortController();
       activeAbortControllerRef.current = abortController;
@@ -2305,85 +2599,143 @@ export function Dialog() {
       if (selectionForRequest) {
         setCurrentPdfSelection(null);
       }
-      const jobResult = await runBackgroundJob({
-        sessionTitle: '智能研读',
-        sessionMetadata: {
-          source: 'dialog_smart_read',
-          project_id: effectiveProjectId || undefined,
-          material_id: pinnedMaterialId || undefined,
-          current_pdf_context: currentPdfContext,
-          scope: dialogContextScope,
-        },
-        request: {
-          kind: 'smart_read',
-          input_text: query,
-          session_id: existingSessionId,
-          metadata: {
-            chat_session_id: existingSessionId,
-            project_id: requestProjectId,
-            material_id: requestMaterialId,
-            tier: backendTierForCostTier(selectedTier),
-            mode: UNIFIED_DIALOG_MODE,
-            current_pdf_context: currentPdfContext,
-            images: images.length > 0 ? images : undefined,
-            project_reasoning_bias_enabled: defaultProjectBiasEnabled ? projectBiasEnabled : undefined,
-          },
-          tags: ['dialog', 'smart-read'],
-        },
-        timeoutMs: DIALOG_REQUEST_TIMEOUT_MS,
-        signal: abortController.signal,
-        onJobCreated: (job: WritingJob) => {
-          activeJobIdRef.current = job.job_id;
-          dialogActiveJobsByScope.set(smartReadScope, job.job_id);
-          updateAssistantMessage({
-            content: `AI 正在后台研读，任务已进入任务中心。\n\n任务编号：${job.job_id}`,
-            status: 'streaming',
-          });
-        },
-        // B12 (2026-06-13): show backend phase label so the user sees real
-        // progress ("TOLF 检索 → Rerank → 分析链 → 生成") instead of staring at
-        // a stale "AI 思考中" for 2 minutes. Only updates content when the
-        // phase label is present to avoid noisy re-renders.
-        onProgress: (tick) => {
-          if (!isMountedRef.current) return;
-          if (!tick.label) return;
-          const percentSuffix = (typeof tick.percent === 'number' && Number.isFinite(tick.percent))
-            ? `  ${Math.round(tick.percent)}%`
-            : '';
-          updateAssistantMessage({
-            content: `AI 正在研读：${tick.label}${percentSuffix}`,
-            status: 'streaming',
-          });
-        },
-      });
-      if (!isMountedRef.current) {
-        return;
-      }
-      if (jobResult.status.status !== 'completed') {
-        throw new Error(jobResult.status.error || '智能研读任务未完成。');
-      }
+      let metadata: DialogStreamMetadata | null = null;
+      let usage: DialogStreamUsage | null = null;
+      let analysisChain: ChatMessageData['analysis_chain'] = null;
+      let streamedContent = '';
+      let nextSessionId = existingSessionId;
+      let doneTokens: TokenUsage | undefined;
+      const fallbackTier = backendTierForCostTier(selectedTier);
 
-      const content = artifactContentRecord(findLatestArtifact(jobResult.artifacts, 'transformed_text'));
-      const response = typeof content.response === 'string'
-        ? content.response
-        : typeof content.text === 'string'
-          ? content.text
-          : '';
-      const nextSessionId = resolveDialogSmartReadChatSessionId(content, existingSessionId);
-      const diagnostics = coerceSmartReadResponsePatch(content, backendTierForCostTier(selectedTier));
-      const finalContent = response || '回答已生成，但未找到可显示的结果。';
-      const finalDiagnostics = buildSmartReadDiagnostics({
-        ...diagnostics,
+      updateAssistantMessage({
+        content: '正在检索项目材料并准备生成回答…',
+        status: 'streaming',
+      });
+
+      await streamIntelligentChatMessage(
+        {
+          query,
+          session_id: existingSessionId,
+          project_id: requestProjectId,
+          material_id: requestMaterialId,
+          tier: fallbackTier,
+          mode: UNIFIED_DIALOG_MODE,
+          current_pdf_context: currentPdfContext,
+          images: images.length > 0 ? images : undefined,
+          project_reasoning_bias_enabled: defaultProjectBiasEnabled ? projectBiasEnabled : undefined,
+        },
+        {
+          signal: abortController.signal,
+          onEvent: (event) => {
+            if (!isMountedRef.current) return;
+            if (event.event === 'metadata') {
+              metadata = event;
+              nextSessionId = event.session_id || nextSessionId;
+              const nextDiagnostics = buildSmartReadDiagnosticsFromStream({
+                metadata,
+                usage,
+                doneTokens,
+                fallbackTier,
+                content: streamedContent,
+              });
+              updateAssistantMessage({
+                content: streamedContent || `已找到 ${event.context_chunks_used} 个参考片段，正在生成回答…`,
+                status: 'streaming',
+                evidence: event.evidence_refs as EvidenceRefLike[] | undefined,
+                metadata: nextDiagnostics ? { diagnostics: nextDiagnostics } : undefined,
+              });
+              return;
+            }
+            if (event.event === 'usage') {
+              usage = event;
+              const nextDiagnostics = buildSmartReadDiagnosticsFromStream({
+                metadata,
+                usage,
+                doneTokens,
+                fallbackTier,
+                content: streamedContent,
+              });
+              updateAssistantMessage({
+                metadata: nextDiagnostics ? { diagnostics: nextDiagnostics } : undefined,
+              });
+              return;
+            }
+            if (event.event === 'analysis_chain_done') {
+              analysisChain = event.analysis_chain;
+              nextSessionId = event.session_id || nextSessionId;
+              updateAssistantMessage({ analysis_chain: analysisChain });
+              return;
+            }
+            if (event.event === 'text_delta') {
+              streamedContent += event.delta;
+              updateAssistantMessage({
+                content: streamedContent,
+                status: 'streaming',
+              });
+              return;
+            }
+            if (event.event === 'done') {
+              nextSessionId = event.session_id || nextSessionId;
+              doneTokens = event.tokens_used;
+              streamedContent = event.response ?? streamedContent;
+              return;
+            }
+            if (event.event === 'error') {
+              throw new Error(event.error);
+            }
+          },
+        },
+      );
+
+      const finalContent = streamedContent || '回答已生成，但未找到可显示的结果。';
+      const finalDiagnostics = buildSmartReadDiagnosticsFromStream({
+        metadata,
+        usage,
+        doneTokens,
+        fallbackTier,
         content: finalContent,
       });
+      const finalEvidence = evidenceRefsFromDialogStreamMetadata(metadata);
+      let relatedFigures: ChatRelatedFigure[] | undefined;
+      const evidenceFigures = relatedFiguresFromEvidenceRefs(finalEvidence);
+      if (evidenceFigures.length > 0) {
+        relatedFigures = evidenceFigures;
+      }
+      if (requestProjectId && shouldLoadRelatedFigures(query)) {
+        try {
+          const candidates = await getWritingBackendService().listFigureTableCandidates(
+            requestProjectId,
+            24,
+            { pixelOnly: true, renderPdfFallback: false },
+          );
+          const figures = toDialogRelatedFigures(candidates, query, requestMaterialId);
+          if (!relatedFigures || relatedFigures.length < 3) {
+            const seenAssets = new Set((relatedFigures ?? []).map((figure) => figure.asset_path).filter(Boolean));
+            const merged = [
+              ...(relatedFigures ?? []),
+              ...figures.filter((figure) => {
+                const assetPath = figure.asset_path ?? '';
+                if (!assetPath || seenAssets.has(assetPath)) return false;
+                seenAssets.add(assetPath);
+                return true;
+              }),
+            ].slice(0, 6);
+            relatedFigures = merged.length > 0 ? merged : undefined;
+          }
+        } catch {
+          relatedFigures = relatedFigures && relatedFigures.length > 0 ? relatedFigures : undefined;
+        }
+      }
       const finalAssistant = updateAssistantMessage({
         content: finalContent,
         status: 'done',
         metadata: finalDiagnostics ? { diagnostics: finalDiagnostics } : undefined,
-        evidence: diagnostics.evidenceRefs as EvidenceRefLike[] | undefined,
+        evidence: finalEvidence,
+        ...(analysisChain ? { analysis_chain: analysisChain } : {}),
+        ...(relatedFigures ? { relatedFigures } : {}),
       });
 
-      if (nextSessionId && nextSessionId !== sessionId) {
+      if (isMountedRef.current && nextSessionId && nextSessionId !== sessionId) {
         setSessionId(nextSessionId);
       }
       setConversation(
@@ -2391,8 +2743,10 @@ export function Dialog() {
         replaceOrAppendChatData(conversationMessagesRef.current, finalAssistant),
         { sessionId: nextSessionId },
       );
-      setIsUnavailable(false);
-      setChatState('ready');
+      if (isMountedRef.current) {
+        setIsUnavailable(false);
+        setChatState('ready');
+      }
     } catch (error) {
       if (isAbortError(error)) {
         if (!isMountedRef.current) {
@@ -2405,23 +2759,21 @@ export function Dialog() {
         setChatState('ready');
         return;
       }
-      if (!isMountedRef.current) {
-        return;
-      }
       const errorMsg = getChatErrorMessage(error);
       updateAssistantMessage({
         content: `回答失败：${errorMsg}`,
         status: 'error',
       });
-      if (isUnavailableError(error)) {
-        setIsUnavailable(true);
-        setChatState('unavailable');
-      } else {
-        setErrorMessage(errorMsg);
-        setChatState('error');
+      if (isMountedRef.current) {
+        if (isUnavailableError(error)) {
+          setIsUnavailable(true);
+          setChatState('unavailable');
+        } else {
+          setErrorMessage(errorMsg);
+          setChatState('error');
+        }
       }
     } finally {
-      cleanUpActiveJob();
       if (dialogAbortControllers.get(smartReadScope) === activeAbortControllerRef.current) {
         dialogAbortControllers.delete(smartReadScope);
       }
@@ -2469,9 +2821,6 @@ export function Dialog() {
   const emptyHint = useMemo(() => {
     if (dialogContextScope === 'paper' && pinnedMaterialId) {
       return `当前对话优先围绕「${activeMaterialLabel}」检索和回答。`;
-    }
-    if (dialogContextScope === 'workspace') {
-      return '当前对话不限定单篇文献，会按全局可用材料和工具上下文回答。';
     }
     return UNIFIED_EMPTY_HINT;
   }, [activeMaterialLabel, dialogContextScope, pinnedMaterialId]);
@@ -2599,7 +2948,7 @@ export function Dialog() {
     nextParams.delete('chunk');
     nextParams.delete('bbox');
     nextParams.delete('tab');
-    nextParams.set('scope', effectiveProjectId ? 'project' : 'workspace');
+    nextParams.set('scope', 'project');
     setSearchParams(nextParams, { replace: true });
     setContextRailTab('project');
     setCenterTab('chat');
@@ -2752,11 +3101,10 @@ export function Dialog() {
 
   const composerContext = (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="inline-grid grid-cols-3 rounded-md border border-outline-variant/60 bg-surface-lowest p-1">
+      <div className="inline-grid grid-cols-2 rounded-md border border-outline-variant/60 bg-surface-lowest p-1">
         {([
           { id: 'paper', label: '本文献', icon: BookOpen, disabled: !pinnedMaterialId },
           { id: 'project', label: '项目文献', icon: FolderKanban, disabled: false },
-          { id: 'workspace', label: '全项目', icon: Globe2, disabled: false },
         ] as const).map((option) => {
           const Icon = option.icon;
           const selected = dialogContextScope === option.id;
@@ -2904,7 +3252,7 @@ export function Dialog() {
           <ErrorBoundary fallbackTitle="PDF 阅读器暂时无法显示">
             <Suspense fallback={<PdfReaderFallback />}>
               <PdfReaderShell
-                key={`${pinnedMaterialId}:${embeddedReaderTarget.nonce}:${searchParams.get('page') ?? ''}:${searchParams.get('bbox') ?? ''}`}
+                key={`${pinnedMaterialId}:${embeddedReaderTarget.nonce}:${searchParams.get('page') ?? ''}:${searchParams.get('bbox') ?? ''}:${searchParams.get('chunk') ?? ''}`}
                 url={pinnedPdfUrl}
                 materialId={pinnedMaterialId}
                 initialPage={effectiveReaderPage ?? undefined}

@@ -170,6 +170,7 @@ htmlcov/
 !/frontend/src/components/wiki/wikiDisplay.test.ts
 !/frontend/src/components/knowledge/KnowledgePackagesPanel.test.tsx
 !/frontend/src/services/agentWorkspaceApi.test.ts
+!/frontend/src/services/backgroundJobRunner.test.ts
 !/frontend/src/services/wikiApi.test.ts
 !/frontend/src/services/knowledgeApi.test.tsx
 !/frontend/src/pages/Jobs.test.tsx

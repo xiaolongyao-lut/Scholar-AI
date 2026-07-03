@@ -78,7 +78,7 @@ export function AnalysisChainPanel({
       >
         <span className="flex items-center gap-1.5 font-medium">
           {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          {title || t('analysis_chain.section_label') || '推理过程（证据化摘要）'}
+          {title || t('analysis_chain.section_label') || '证据化推理摘要'}
         </span>
         <span className="text-[10px] text-foreground/40">
           {isExpanded ? t('analysis_chain.collapse') : t('analysis_chain.expand')}

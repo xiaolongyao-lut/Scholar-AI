@@ -6,7 +6,6 @@ import {
   Layers3,
   Library,
   Search,
-  Sparkles,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
@@ -16,7 +15,6 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { EvidenceGraphWorkbench } from '@/components/knowledge/EvidenceGraphWorkbench';
 import { CaptureToInboxButton } from '@/components/knowledge/CaptureToInboxButton';
 import { InsightPoolPanel } from '@/components/knowledge/InsightPoolPanel';
-import { KnowledgePackagesPanel } from '@/components/knowledge/KnowledgePackagesPanel';
 import { KnowledgeLibraryPanel } from '@/components/knowledge/KnowledgeLibraryPanel';
 import { SourceVaultPanel } from '@/components/knowledge/SourceVaultPanel';
 import { cn } from '@/lib/utils';
@@ -66,7 +64,7 @@ const WORKBENCH_SECTIONS: WorkbenchSection[] = [
     label: '已沉淀',
     legacyLabel: '知识库',
     detail: '已确认页面',
-    advancedDetail: 'Wiki 编译页',
+    advancedDetail: '沉淀页面',
     icon: <Library size={16} />,
     primary: true,
   },
@@ -141,7 +139,7 @@ export function KnowledgeDeposits() {
         <PageHeader
           icon={<Layers3 size={18} />}
           title="知识沉淀"
-          subtitle="记录、复审、沉淀、召回。"
+          subtitle="复审后再沉淀。"
           className="mb-3"
         />
 
@@ -170,10 +168,6 @@ export function KnowledgeDeposits() {
             <Search size={13} />
             写作时检索
           </button>
-          <div className="ml-auto flex flex-wrap items-center gap-1.5 text-[11px] text-foreground/55">
-            <Sparkles size={12} className="text-primary/70" />
-            <span>默认进待确认</span>
-          </div>
         </div>
 
         <div
@@ -219,9 +213,9 @@ export function KnowledgeDeposits() {
           <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-[11px] text-foreground/60 marker:hidden">
             <span className="inline-flex items-center gap-1.5">
               <ChevronDown size={12} className={cn('transition-transform', advancedOpen ? 'rotate-0' : '-rotate-90')} />
-              高级 / 诊断
+              更多
             </span>
-            <span className="text-foreground/40">来源、图谱、诊断、导出</span>
+            <span className="text-foreground/40">来源与关联</span>
           </summary>
           <div
             role="tablist"
@@ -266,9 +260,6 @@ export function KnowledgeDeposits() {
         aria-label="知识沉淀当前区段"
         className="min-h-0 flex-1 overflow-auto px-4 py-5 sm:px-6"
       >
-        <div className="mx-auto mb-4 max-w-7xl">
-          <KnowledgePackagesPanel />
-        </div>
         <div
           id={`knowledge-workbench-panel-${activeSection.id}`}
           role="tabpanel"

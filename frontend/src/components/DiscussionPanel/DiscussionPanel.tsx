@@ -1931,7 +1931,7 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({
                           aria-controls={`discussion-analysis-chain-${traceDomId}`}
                           className="rounded-md border border-outline-variant/70 bg-surface/35 px-2 py-1 text-[10px] font-medium text-foreground/55 transition-colors hover:bg-surface hover:text-foreground"
                         >
-                          {traceExpanded ? '收起推理过程' : '查看推理过程'}
+                          {traceExpanded ? '收起摘要' : '查看摘要'}
                         </button>
                       </div>
                     )}
@@ -1945,7 +1945,7 @@ export const DiscussionPanel: React.FC<DiscussionPanelProps> = ({
                             chain={analysisChain}
                             expanded
                             onExpandedChange={(next) => setExpandedTraceKey(next ? traceKey : null)}
-                            title="推理过程（证据化摘要）"
+                            title="证据化推理摘要"
                             className="mt-2"
                           />
                         )}

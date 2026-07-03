@@ -210,6 +210,39 @@ describe('EvidencePill', () => {
     });
   });
 
+  it('uses locator material_id when a persisted evidence ref only carries chunk_id', async () => {
+    locateChunkMock.mockResolvedValueOnce({
+      material_id: 'm-located',
+      chunk_id: 'c-located',
+      page: 4,
+      chunk_index: 2,
+      bbox: [0.1, 0.2, 0.3, 0.4],
+    });
+    render(
+      <MemoryRouter>
+        <EvidencePill
+          evidence={{ source: 'src', chunk_id: 'c-located' }}
+          projectId="p1"
+        />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('button'));
+    await waitFor(() => {
+      const url = screen.getByTestId('location').textContent ?? '';
+      const parsed = parseLocationUrl(url);
+      expect(parsed.pathname).toBe('/dialog');
+      expect(parsed.searchParams.get('scope')).toBe('paper');
+      expect(parsed.searchParams.get('material_id')).toBe('m-located');
+      expect(parsed.searchParams.get('tab')).toBe('reader');
+      expect(parsed.searchParams.get('project_id')).toBe('p1');
+      expect(parsed.searchParams.get('page')).toBe('4');
+      expect(parsed.searchParams.get('chunk')).toBe('c-located');
+      expect(parsed.searchParams.get('bbox')).toBe('0.1,0.2,0.3,0.4');
+    });
+    expect(locateChunkMock).toHaveBeenCalledWith('c-located', 'p1');
+  });
+
   it('shares locator cache across instances with same (projectId, chunk_id)', async () => {
     locateChunkMock.mockResolvedValueOnce({ page: 9 });
     render(

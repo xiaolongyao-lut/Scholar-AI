@@ -780,6 +780,17 @@
       "AgentBridgeResourcePayload": {
         "description": "Bounded resource payload returned to external agents.",
         "properties": {
+          "chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Id"
+          },
           "content": {
             "title": "Content",
             "type": "string"
@@ -795,9 +806,39 @@
             ],
             "title": "Cursor"
           },
+          "figure_candidate_detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure Candidate Detail"
+          },
+          "image_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Image Paths",
+            "type": "array"
+          },
           "kind": {
             "title": "Kind",
             "type": "string"
+          },
+          "material_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Id"
           },
           "max_chars": {
             "maximum": 20000.0,
@@ -821,6 +862,17 @@
             ],
             "title": "Next Cursor"
           },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
           "project_id": {
             "anyOf": [
               {
@@ -835,6 +887,28 @@
           "ref_id": {
             "title": "Ref Id",
             "type": "string"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "source_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Title"
           },
           "title": {
             "anyOf": [
@@ -5474,22 +5548,22 @@
           },
           "keep_recent_turns": {
             "default": 6,
-            "maximum": 100.0,
+            "maximum": 20.0,
             "minimum": 1.0,
             "title": "Keep Recent Turns",
             "type": "integer"
           },
           "target_tokens": {
             "default": 2000,
-            "maximum": 64000.0,
-            "minimum": 128.0,
+            "maximum": 16000.0,
+            "minimum": 512.0,
             "title": "Target Tokens",
             "type": "integer"
           },
           "trigger_tokens": {
             "default": 24000,
-            "maximum": 1000000.0,
-            "minimum": 512.0,
+            "maximum": 128000.0,
+            "minimum": 4096.0,
             "title": "Trigger Tokens",
             "type": "integer"
           },
@@ -6551,7 +6625,7 @@
         "type": "object"
       },
       "ChunkSearchRefMetadataPayload": {
-        "description": "Whitelisted provenance metadata for token-bounded chunk refs.\n\nArgs:\n    material_id: Material that owns the matched chunk.\n    title: Human-readable source title when available.\n    page: One-based page number when the chunk store records it.\n    chunk_type: Optional chunk classifier from the extraction pipeline.\n    source_relative_path: Project-local source-file path when persisted.\n    locator: Optional compact locator payload suitable for reader jumps.\n    source_labels: Retrieval/source labels attached by the pipeline.\n    figure_candidate: Optional figure/table candidate id linked to the chunk.",
+        "description": "Whitelisted provenance metadata for token-bounded chunk refs.\n\nArgs:\n    material_id: Material that owns the matched chunk.\n    title: Human-readable source title when available.\n    page: One-based page number when the chunk store records it.\n    chunk_type: Optional chunk classifier from the extraction pipeline.\n    source_relative_path: Project-local source-file path when persisted.\n    locator: Optional compact locator payload suitable for reader jumps.\n    source_labels: Retrieval/source labels attached by the pipeline.\n    figure_candidate: Optional figure/table candidate id linked to the chunk.\n    figure_candidate_detail: Bounded figure/table metadata that lets UI and\n        MCP clients inspect real chunk image evidence without reading the\n        whole chunk body.\n    image_paths: Project-relative chunk image assets already produced by\n        ingestion; never generated by this response model.",
         "properties": {
           "chunk_type": {
             "anyOf": [
@@ -6575,6 +6649,26 @@
               }
             ],
             "title": "Figure Candidate"
+          },
+          "figure_candidate_detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure Candidate Detail"
+          },
+          "image_paths": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Image Paths",
+            "type": "array"
           },
           "locator": {
             "anyOf": [
@@ -7683,6 +7777,38 @@
             "title": "Content",
             "type": "string"
           },
+          "figure_candidate": {
+            "anyOf": [
+              {
+                "maxLength": 260,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure Candidate"
+          },
+          "figure_candidate_detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure Candidate Detail"
+          },
+          "image_paths": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Image Paths",
+            "type": "array"
+          },
           "index": {
             "minimum": 1.0,
             "title": "Index",
@@ -7724,6 +7850,18 @@
               }
             ],
             "title": "Relevance Score"
+          },
+          "retrieval_gateway_diagnostics": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Gateway Diagnostics"
           },
           "section_title": {
             "anyOf": [
@@ -7769,6 +7907,54 @@
               }
             ],
             "title": "Title"
+          },
+          "tolf_activation_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tolf Activation Score"
+          },
+          "tolf_diagnostics": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tolf Diagnostics"
+          },
+          "tolf_final_rank_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tolf Final Rank Score"
+          },
+          "tolf_rank_contributions": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tolf Rank Contributions"
           }
         },
         "required": [
@@ -11233,8 +11419,212 @@
         "title": "EvidencePackBuildResponse",
         "type": "object"
       },
+      "EvidencePackIntegrityCheckPayload": {
+        "description": "One evidence-pack integrity check suitable for API and MCP output.",
+        "properties": {
+          "check_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Check Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "recommendation": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Recommendation",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "none",
+              "note",
+              "warn",
+              "block"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "warning",
+              "blocked",
+              "unresolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check_id",
+          "status",
+          "severity",
+          "reason"
+        ],
+        "title": "EvidencePackIntegrityCheckPayload",
+        "type": "object"
+      },
+      "EvidencePackIntegrityGateRequest": {
+        "description": "Request to validate one query-scoped evidence pack before agent use.\n\nArgs:\n    project_id: Project whose evidence pack is being checked.\n    query: Optional retrieval/user query used to detect visual-evidence\n        requirements without exposing private reasoning.\n    evidence_pack_ref: Optional stable pack id returned by the builder.\n    evidence_refs: Bounded refs from ``/api/evidence-pack/build``.\n    retrieval_diagnostics: Optional diagnostics copied from the builder.",
+        "properties": {
+          "evidence_pack_ref": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Pack Ref"
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidencePackReferencePayload"
+            },
+            "maxItems": 50,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "project_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "query": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Query",
+            "type": "string"
+          },
+          "retrieval_diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceRetrievalDiagnosticsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "title": "EvidencePackIntegrityGateRequest",
+        "type": "object"
+      },
+      "EvidencePackIntegrityGateResponse": {
+        "description": "Evidence-pack-level integrity gate for retrieval and citation use.\n\nArgs:\n    schema_version: Versioned additive contract for agent callers.\n    project_id: Project checked.\n    evidence_pack_ref: Optional evidence pack id checked.\n    query: Query used for visual-intent detection.\n    status: Aggregate gate status. ``blocked`` means the current pack\n        should not be used as evidence without repair or another retrieval.\n    visual_intent: Bounded query classification for image/appearance needs.\n    summary: Counts and coverage facts used to explain the decision.\n    checks: Individual gate checks.\n    sample_refs: Bounded top refs with titles, pages, scores, and image flags.\n    next_actions: Local follow-up actions for agents or UI.\n    provenance: Read-only source routes and policy notes.",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/EvidencePackIntegrityCheckPayload"
+            },
+            "maxItems": 16,
+            "title": "Checks",
+            "type": "array"
+          },
+          "evidence_pack_ref": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Pack Ref"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "project_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "query": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Query",
+            "type": "string"
+          },
+          "sample_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 12,
+            "title": "Sample Refs",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "scholar_ai_evidence_pack_integrity_gate_v1",
+            "default": "scholar_ai_evidence_pack_integrity_gate_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "warning",
+              "blocked",
+              "unresolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "visual_intent": {
+            "additionalProperties": true,
+            "title": "Visual Intent",
+            "type": "object"
+          }
+        },
+        "required": [
+          "generated_at",
+          "project_id",
+          "status"
+        ],
+        "title": "EvidencePackIntegrityGateResponse",
+        "type": "object"
+      },
       "EvidencePackReferencePayload": {
-        "description": "MCP-safe evidence ref derived from a backend search ref.\n\nArgs:\n    project_id: Project that owns the chunk ref.\n    source_type: Evidence source family; non-project refs are bounded\n        resources and are not copied into project chunks.\n    ref_id: Agent bridge resource id in ``kind:id`` form.\n    read_endpoint: Bounded reader endpoint with explicit project scope.\n    chunk_id: Stable chunk identifier in the project chunk store.\n    material_id: Material that owns the chunk.\n    page: One-based source page when persisted in metadata.\n    locator: Optional compact locator that can jump back to a material,\n        page, and bbox without exposing source text.\n    lexical_score: Score from the local lexical retrieval path.\n    rerank_score: Optional rerank score; ``None`` when rerank did not run.\n    citation_anchor: Stable local citation anchor for draft traceability.\n    figure_candidate: Optional future figure/table candidate id.\n    source_labels: Retrieval/source labels used to explain provenance.\n    summary: Bounded summary safe for model context.\n    suitable_for_body: Whether the ref is safe to cite in body prose.\n    source_title: Optional display title for non-project resources.\n    source_path: Optional bounded source path for non-project resources.\n    joint_score: Optional fused project/wiki score from weighted RRF.",
+        "description": "MCP-safe evidence ref derived from a backend search ref.\n\nArgs:\n    project_id: Project that owns the chunk ref.\n    source_type: Evidence source family; non-project refs are bounded\n        resources and are not copied into project chunks.\n    ref_id: Agent bridge resource id in ``kind:id`` form.\n    read_endpoint: Bounded reader endpoint with explicit project scope.\n    chunk_id: Stable chunk identifier in the project chunk store.\n    material_id: Material that owns the chunk.\n    page: One-based source page when persisted in metadata.\n    locator: Optional compact locator that can jump back to a material,\n        page, and bbox without exposing source text.\n    lexical_score: Score from the local lexical retrieval path.\n    rerank_score: Optional rerank score; ``None`` when rerank did not run.\n    citation_anchor: Stable local citation anchor for draft traceability.\n    figure_candidate: Optional future figure/table candidate id.\n    figure_candidate_detail: Bounded figure/table metadata linked to the\n        ref, including real chunk image asset paths when ingestion produced\n        them.\n    image_paths: Project-relative chunk image assets available for visual\n        evidence review.\n    source_labels: Retrieval/source labels used to explain provenance.\n    summary: Bounded summary safe for model context.\n    suitable_for_body: Whether the ref is safe to cite in body prose.\n    source_title: Optional display title for non-project resources.\n    source_path: Optional bounded source path for non-project resources.\n    joint_score: Optional fused project/wiki score from weighted RRF.",
         "properties": {
           "chunk_id": {
             "minLength": 1,
@@ -11258,6 +11648,26 @@
               }
             ],
             "title": "Figure Candidate"
+          },
+          "figure_candidate_detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure Candidate Detail"
+          },
+          "image_paths": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Image Paths",
+            "type": "array"
           },
           "joint_score": {
             "anyOf": [
@@ -11667,6 +12077,38 @@
           "chunk_id": {
             "title": "Chunk Id",
             "type": "string"
+          },
+          "figure_candidate": {
+            "anyOf": [
+              {
+                "maxLength": 260,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure Candidate"
+          },
+          "figure_candidate_detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure Candidate Detail"
+          },
+          "image_paths": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Image Paths",
+            "type": "array"
           },
           "label": {
             "default": "context",
@@ -13939,6 +14381,16 @@
           "response": {
             "title": "Response",
             "type": "string"
+          },
+          "retrieval_diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SmartReadRetrievalDiagnosticsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "session_id": {
             "title": "Session Id",
@@ -25194,6 +25646,251 @@
         "title": "SkillUninstallResponse",
         "type": "object"
       },
+      "SmartReadGatewayDiagnosticsPayload": {
+        "description": "Bounded Gateway retrieval diagnostics safe for the answer surface.",
+        "properties": {
+          "candidate_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "chroma_status": {
+            "default": "unavailable",
+            "maxLength": 64,
+            "title": "Chroma Status",
+            "type": "string"
+          },
+          "dense_enabled": {
+            "default": false,
+            "title": "Dense Enabled",
+            "type": "boolean"
+          },
+          "dense_hit_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Dense Hit Count",
+            "type": "integer"
+          },
+          "fallback_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Fallback Reasons",
+            "type": "array"
+          },
+          "fts_status": {
+            "default": "unavailable",
+            "maxLength": 64,
+            "title": "Fts Status",
+            "type": "string"
+          },
+          "gate_status_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Gate Status Counts",
+            "type": "object"
+          },
+          "lexical_hit_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Lexical Hit Count",
+            "type": "integer"
+          },
+          "material_balancing_enabled": {
+            "default": false,
+            "title": "Material Balancing Enabled",
+            "type": "boolean"
+          },
+          "visual_hit_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Visual Hit Count",
+            "type": "integer"
+          }
+        },
+        "title": "SmartReadGatewayDiagnosticsPayload",
+        "type": "object"
+      },
+      "SmartReadRetrievalDiagnosticsPayload": {
+        "description": "User-visible retrieval health for SmartRead answers.\n\nThe payload intentionally exposes status labels and counts only. Hashes,\nlocal paths, provider secrets, and raw index keys stay out of the UI\ncontract.",
+        "properties": {
+          "embedding_status": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Status"
+          },
+          "fallback_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Fallback Reasons",
+            "type": "array"
+          },
+          "gateway": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SmartReadGatewayDiagnosticsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lexical_only": {
+            "default": false,
+            "title": "Lexical Only",
+            "type": "boolean"
+          },
+          "rerank_status": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerank Status"
+          },
+          "retrieval_method": {
+            "default": "unknown",
+            "maxLength": 64,
+            "title": "Retrieval Method",
+            "type": "string"
+          },
+          "tolf": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SmartReadTolfDiagnosticsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "SmartReadRetrievalDiagnosticsPayload",
+        "type": "object"
+      },
+      "SmartReadTolfDiagnosticsPayload": {
+        "description": "Bounded TOLF graph and ranking diagnostics safe for the answer surface.",
+        "properties": {
+          "activation_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activation Max"
+          },
+          "activation_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activation Mean"
+          },
+          "activation_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activation Min"
+          },
+          "candidate_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "maxLength": 96,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
+          },
+          "gate_after_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Gate After Count",
+            "type": "integer"
+          },
+          "graph_edge_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Graph Edge Count",
+            "type": "integer"
+          },
+          "graph_node_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Graph Node Count",
+            "type": "integer"
+          },
+          "input_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Input Count",
+            "type": "integer"
+          },
+          "rank_contribution_keys": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Rank Contribution Keys",
+            "type": "array"
+          },
+          "status": {
+            "default": "unavailable",
+            "maxLength": 64,
+            "title": "Status",
+            "type": "string"
+          },
+          "top_final_rank_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Final Rank Score"
+          }
+        },
+        "title": "SmartReadTolfDiagnosticsPayload",
+        "type": "object"
+      },
       "SourceFolderRefPayload": {
         "description": "Privacy-safe project source-folder binding metadata.\n\nThe backend stores the real local path for guarded scans, but public\nclients should use this shape when they only need to show binding state.",
         "properties": {
@@ -34296,6 +34993,48 @@
         ]
       }
     },
+    "/api/evidence-pack/integrity-gate": {
+      "post": {
+        "description": "Validate a supplied evidence pack instead of workflow/export readiness.",
+        "operationId": "post_api_evidence_pack_integrity_gate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidencePackIntegrityGateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePackIntegrityGateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Build Evidence Pack Integrity Gate",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
     "/api/evidence_refs": {
       "get": {
         "description": "Get evidence references with optional source_labels filtering.\n\nSupports filtering by project_id, material_id, and source_labels.",
@@ -39599,6 +40338,25 @@
               "title": "Render Pdf Fallback",
               "type": "boolean"
             }
+          },
+          {
+            "description": "Optional query used to rank figure/table candidates",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional query used to rank figure/table candidates",
+              "title": "Query"
+            }
           }
         ],
         "responses": {
@@ -43691,6 +44449,25 @@
               "description": "Allow PDF page/crop rendering when chunk assets are missing",
               "title": "Render Pdf Fallback",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "Optional query used to rank figure/table candidates",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional query used to rank figure/table candidates",
+              "title": "Query"
             }
           }
         ],

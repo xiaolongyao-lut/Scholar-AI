@@ -170,7 +170,7 @@ function DetailDrawer({ node }: { node: EvidenceGraphNode | null }) {
   if (!node) {
     return (
       <aside className="rounded-lg border border-outline-variant/60 bg-surface-lowest p-4 text-sm text-foreground/45">
-        选择节点查看可信状态、证据锚点和来源标识。
+        选择节点查看可信状态和证据数量。
       </aside>
     );
   }
@@ -187,10 +187,6 @@ function DetailDrawer({ node }: { node: EvidenceGraphNode | null }) {
         </div>
       </div>
       <dl className="mt-4 grid gap-2 text-xs">
-        <div className="rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2">
-          <dt className="text-foreground/45">节点 ID</dt>
-          <dd className="mt-1 break-all font-mono text-[11px] text-foreground/75">{node.id}</dd>
-        </div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
           <div className="rounded-md border border-outline-variant/45 bg-surface-low px-3 py-2">
             <dt className="text-foreground/45">置信度</dt>
@@ -207,10 +203,9 @@ function DetailDrawer({ node }: { node: EvidenceGraphNode | null }) {
             <dd className="mt-2 space-y-1.5">
               {node.provenance_refs.slice(0, 4).map((ref, index) => (
                 <div key={`${node.id}-ref-${index}`} className="rounded border border-outline-variant/40 bg-surface-lowest px-2 py-1.5 text-[11px] text-foreground/65">
-                  <div className="truncate">{ref.material_id ?? ref.source_id ?? ref.source_vault_id ?? '未命名来源'}</div>
+                  <div className="truncate">来源 {index + 1}</div>
                   <div className="mt-0.5 truncate text-foreground/40">
-                    {ref.chunk_id ?? ref.source_vault_chunk_id ?? '无 chunk'}
-                    {ref.page ? ` · p.${ref.page}` : ''}
+                    {ref.page ? `p.${ref.page}` : '已保留证据定位'}
                   </div>
                 </div>
               ))}
@@ -331,7 +326,7 @@ export function EvidenceGraphWorkbench() {
 
           <div className="mt-4 grid gap-2 lg:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)_auto]">
             <label className="grid gap-1 text-[11px] text-foreground/55">
-              <span>Scope</span>
+              <span>范围</span>
               <select
                 value={scopeKind}
                 onChange={(event) => setScopeKind(event.target.value as EvidenceGraphScopeKind)}
@@ -343,23 +338,23 @@ export function EvidenceGraphWorkbench() {
               </select>
             </label>
             <label className="grid gap-1 text-[11px] text-foreground/55">
-              <span>Ref</span>
+              <span>对象</span>
               <input
                 type="text"
                 value={scopeRef}
                 onChange={(event) => setScopeRef(event.target.value)}
                 className="h-9 rounded-md border border-outline-variant/50 bg-surface-high px-3 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
-                placeholder="scope id"
+                placeholder="留空查看全部"
               />
             </label>
             <label className="grid gap-1 text-[11px] text-foreground/55">
-              <span>Session</span>
+              <span>会话</span>
               <input
                 type="text"
                 value={sessionId}
                 onChange={(event) => setSessionId(event.target.value)}
                 className="h-9 rounded-md border border-outline-variant/50 bg-surface-high px-3 text-sm text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
-                placeholder="session"
+                placeholder="可选"
               />
             </label>
             <button

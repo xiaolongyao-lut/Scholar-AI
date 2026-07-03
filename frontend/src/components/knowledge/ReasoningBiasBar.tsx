@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Loader2, Save, Sparkles } from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, Save, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type {
   ProjectReasoningBiasOptimizeResponse,
@@ -44,9 +44,11 @@ function scopeSummary(scopes: ProjectReasoningBiasScopes): string {
 }
 
 export function ReasoningBiasBar({ projectId }: ReasoningBiasBarProps) {
+  const panelId = useId();
   const [payload, setPayload] = useState<ProjectReasoningBiasPayload>(() => emptyProjectReasoningBias());
   const [draft, setDraft] = useState('');
   const [scopes, setScopes] = useState<ProjectReasoningBiasScopes>(() => emptyProjectReasoningBias().scopes);
+  const [expanded, setExpanded] = useState(false);
   const [status, setStatus] = useState<BiasStatus>('idle');
   const [message, setMessage] = useState('');
   const [optimizerOpen, setOptimizerOpen] = useState(false);
@@ -97,6 +99,7 @@ export function ReasoningBiasBar({ projectId }: ReasoningBiasBarProps) {
   const charCount = draft.length;
   const overSoftLimit = charCount > 3800;
   const canSubmit = Boolean(projectId) && status !== 'saving' && status !== 'loading' && charCount <= 4000;
+  const biasPreview = draft.trim() || '未填写';
   const statusText = useMemo(() => {
     if (status === 'loading') return '加载中';
     if (status === 'saving') return '保存中';
@@ -185,11 +188,22 @@ export function ReasoningBiasBar({ projectId }: ReasoningBiasBarProps) {
   }
 
   return (
-    <section className="mb-3 rounded-md border border-outline-variant/60 bg-surface-lowest p-3">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-start">
-        <div className="min-w-0 flex-1">
-          <div className="mb-1.5 flex flex-wrap items-center gap-2">
-            <h2 className="text-xs font-semibold text-foreground">项目思维偏置</h2>
+    <section className="mb-2 overflow-hidden rounded-md border border-outline-variant/60 bg-surface-lowest">
+      <button
+        type="button"
+        aria-label={expanded ? '收起项目思维偏置' : '展开项目思维偏置'}
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-low focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <ChevronDown
+          size={14}
+          className={cn('shrink-0 text-foreground/45 transition-transform', expanded && 'rotate-180')}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="font-label text-xs font-semibold text-foreground">项目思维偏置</span>
             <span className="rounded-sm bg-surface-low px-1.5 py-0.5 text-[10px] text-foreground/55">
               {scopeSummary(scopes)}
             </span>
@@ -202,63 +216,74 @@ export function ReasoningBiasBar({ projectId }: ReasoningBiasBarProps) {
               {status === 'error' ? <AlertTriangle size={11} /> : <CheckCircle2 size={11} />}
               {statusText}
             </span>
+          </span>
+          {!expanded ? (
+            <span className="mt-0.5 block truncate text-[11px] text-foreground/45">{biasPreview}</span>
+          ) : null}
+        </span>
+      </button>
+
+      {expanded ? (
+        <div id={panelId} className="border-t border-outline-variant/30 p-3">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start">
+            <div className="min-w-0 flex-1">
+              <textarea
+                value={draft}
+                aria-label="项目思维偏置输入"
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  setStatus('idle');
+                }}
+                maxLength={4000}
+                rows={2}
+                placeholder="写下本项目希望 AI 优先关注的研究偏好、证据边界、反证要求或下一步动作。"
+                className="min-h-[66px] w-full resize-y rounded-md border border-outline-variant/60 bg-surface-low px-3 py-2 text-xs leading-5 text-foreground placeholder:text-foreground/35 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/20"
+              />
+              <div className="mt-1 flex flex-wrap items-center justify-end gap-2 text-[10px] text-foreground/45">
+                <span className={cn(overSoftLimit && 'text-amber-600 dark:text-amber-300')}>
+                  {charCount} / 4000
+                </span>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center gap-2 xl:w-[320px] xl:justify-end">
+              <ProjectBiasSurfaceToggle
+                enabled={draft.trim().length > 0}
+                label={draft.trim().length > 0 ? '本页 AI 默认受影响' : '本页 AI 未启用'}
+              />
+              <button
+                type="button"
+                disabled={!projectId || optimizerLoading || status === 'loading'}
+                onClick={() => void handleOptimize()}
+                className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-low px-2.5 py-1 text-xs font-medium text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50"
+              >
+                {optimizerLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                AI 优化
+              </button>
+              <button
+                type="button"
+                disabled={!canSubmit || !dirty}
+                onClick={() => void handleSave()}
+                className="inline-flex min-h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {status === 'saving' ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                保存
+              </button>
+            </div>
           </div>
-          <textarea
-            value={draft}
-            aria-label="项目思维偏置输入"
-            onChange={(event) => {
-              setDraft(event.target.value);
-              setStatus('idle');
-            }}
-            maxLength={4000}
-            rows={2}
-            placeholder="写下本项目希望 AI 优先关注的研究偏好、证据边界、反证要求或下一步动作。"
-            className="min-h-[66px] w-full resize-y rounded-md border border-outline-variant/60 bg-surface-low px-3 py-2 text-xs leading-5 text-foreground placeholder:text-foreground/35 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/20"
-          />
-          <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[10px] text-foreground/45">
-            <span>偏置作为低优先级项目偏好参与本页 AI 功能，不会自动生成参考文献目录。</span>
-            <span className={cn(overSoftLimit && 'text-amber-600 dark:text-amber-300')}>
-              {charCount} / 4000
-            </span>
+
+          <div className="mt-3">
+            <ReasoningBiasScopePopover
+              scopes={scopes}
+              onChange={(nextScopes) => {
+                setScopes(nextScopes);
+                setStatus('idle');
+              }}
+              disabled={status === 'loading'}
+            />
           </div>
         </div>
-
-        <div className="flex shrink-0 flex-wrap items-center gap-2 xl:w-[320px] xl:justify-end">
-          <ProjectBiasSurfaceToggle
-            enabled={draft.trim().length > 0}
-            label={draft.trim().length > 0 ? '本页 AI 默认受影响' : '本页 AI 未启用'}
-          />
-          <button
-            type="button"
-            disabled={!projectId || optimizerLoading || status === 'loading'}
-            onClick={() => void handleOptimize()}
-            className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-low px-2.5 py-1 text-xs font-medium text-foreground/70 transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50"
-          >
-            {optimizerLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-            AI 优化
-          </button>
-          <button
-            type="button"
-            disabled={!canSubmit || !dirty}
-            onClick={() => void handleSave()}
-            className="inline-flex min-h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-          >
-            {status === 'saving' ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-            保存
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-3">
-        <ReasoningBiasScopePopover
-          scopes={scopes}
-          onChange={(nextScopes) => {
-            setScopes(nextScopes);
-            setStatus('idle');
-          }}
-          disabled={status === 'loading'}
-        />
-      </div>
+      ) : null}
 
       <ReasoningBiasOptimizerDialog
         open={optimizerOpen}

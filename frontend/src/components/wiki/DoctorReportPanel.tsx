@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, RefreshCw, ShieldAlert, Wrench } from 'luc
 
 import { cn } from '@/lib/utils';
 import type { DoctorSeverity, WikiDoctorCheckModel, WikiDoctorModel } from '@/types/wiki';
+import { sanitizeWikiVisibleText } from './wikiDisplay';
 
 interface DoctorReportPanelProps {
   doctor: WikiDoctorModel | null;
@@ -67,7 +68,7 @@ function formatMetricValue(value: unknown): string {
 
 function formatDoctorWarning(warning: string): string {
   if (warning.includes('Wiki integration is disabled')) {
-    return 'Wiki 集成尚未启用。';
+    return '知识库尚未启用。';
   }
   return formatDoctorMessage(warning);
 }
@@ -82,7 +83,7 @@ function formatDoctorMessage(message: string): string {
   }
   const workspaceMatch = text.match(/^Wiki workspace is present with (\d+) markdown pages?\.$/);
   if (workspaceMatch) {
-    return `Wiki 工作区可用，当前有 ${workspaceMatch[1]} 个页面。`;
+    return `知识库可用，当前有 ${workspaceMatch[1]} 个页面。`;
   }
   if (text === 'Wiki source registry database is missing.') {
     return '来源注册表还没有初始化。';
@@ -107,9 +108,9 @@ function formatDoctorMessage(message: string): string {
     return '初始化来源和分块注册表。';
   }
   if (text === 'Rebuild wiki FTS query index.') {
-    return '重建 Wiki 检索索引。';
+    return '重建检索索引。';
   }
-  return text;
+  return sanitizeWikiVisibleText(text, '诊断信息已记录。');
 }
 
 function severityLabel(status: DoctorSeverity): string {
@@ -249,7 +250,7 @@ export function DoctorReportPanel({ doctor, isLoading, error, onRefresh }: Docto
                         {check.actions.map((action) => (
                           <div key={`${check.id}-${action.command}`}>
                             <div className="text-xs leading-5 text-foreground/65">{formatDoctorMessage(action.description)}</div>
-                            <div className="mt-1 break-all text-[11px] leading-5 text-foreground/40">修复入口：{action.command}</div>
+                            <div className="mt-1 text-[11px] leading-5 text-foreground/40">修复入口已记录。</div>
                             <div className="mt-1 text-[10px] font-label uppercase tracking-[0.16em] text-primary/70">
                               {action.safe_auto_repair ? '可自动修复' : '需手动处理'}
                             </div>
@@ -273,7 +274,7 @@ export function DoctorReportPanel({ doctor, isLoading, error, onRefresh }: Docto
 
       {isLoading ? (
         <div className="mt-5 rounded-2xl border border-outline-variant/30 bg-surface-high/60 px-4 py-8 text-center text-sm text-foreground/45">
-          正在读取 Wiki 诊断…
+          正在读取诊断…
         </div>
       ) : null}
     </section>

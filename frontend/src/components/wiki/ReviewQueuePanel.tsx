@@ -30,6 +30,9 @@ function kindLabel(kind: string): string {
     claim: '断言',
     synthesis: '综合页',
     concept: '概念',
+    draft: '草稿',
+    final: '确认知识',
+    review: '待确认',
     source: '来源',
     note: '笔记',
   };
@@ -39,7 +42,10 @@ function kindLabel(kind: string): string {
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
     all: '全部',
+    draft: '草稿',
+    final: '确认知识',
     pending: '待审核',
+    review: '待确认',
     approved: '已通过',
     rejected: '已退回',
   };
@@ -146,9 +152,6 @@ export function ReviewQueuePanel({ items, isLoading, error, onRefresh }: ReviewQ
                   <p className="mt-2 text-sm leading-6 text-foreground/65">
                     {sanitizeWikiVisibleText(item.summary, '复审摘要已隐藏，避免显示内部路径或系统字段。')}
                   </p>
-                  <div className="mt-2 text-[11px] leading-5 text-foreground/45">
-                    页面：{formatWikiPageLabel(item.page_path)}
-                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">

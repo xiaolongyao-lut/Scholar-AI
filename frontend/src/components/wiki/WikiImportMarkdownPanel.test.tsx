@@ -20,7 +20,7 @@ describe('WikiImportMarkdownPanel', () => {
     Reflect.deleteProperty(window, 'pywebview');
   });
 
-  it('keeps write mode blocked until confirm_write is checked', async () => {
+  it('keeps write mode blocked until the user confirms writing', async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText },
@@ -32,13 +32,13 @@ describe('WikiImportMarkdownPanel', () => {
     expect(screen.getByText('本地 Markdown 导入')).toBeInTheDocument();
     const input = screen.getByLabelText('Markdown 路径');
     fireEvent.change(input, { target: { value: 'C:\\temp\\draft.md' } });
-    fireEvent.click(screen.getByLabelText('先 dry-run 预览'));
+    fireEvent.click(screen.getByLabelText('先预览'));
 
-    expect(screen.getByRole('button', { name: '写入待审草稿' })).toBeDisabled();
-    expect(screen.getByText('确认写入时需要勾选 confirm_write。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '写入待确认' })).toBeDisabled();
+    expect(screen.getByText('写入前需要勾选确认。')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText('confirm_write'));
-    expect(screen.getByRole('button', { name: '写入待审草稿' })).not.toBeDisabled();
+    fireEvent.click(screen.getByLabelText('我确认写入'));
+    expect(screen.getByRole('button', { name: '写入待确认' })).not.toBeDisabled();
 
     vi.mocked(createWikiImportMarkdown).mockResolvedValue({
       enabled: true,
@@ -75,22 +75,19 @@ describe('WikiImportMarkdownPanel', () => {
       warnings: [],
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '写入待审草稿' }));
+    fireEvent.click(screen.getByRole('button', { name: '写入待确认' }));
 
-    await waitFor(() => expect(screen.getByText('已写入待审草稿')).toBeInTheDocument());
-    expect(screen.getByText('证据定位')).toBeInTheDocument();
-    expect(screen.getByText('ref: wiki:synthesis/synthesis-draft-note.md')).toBeInTheDocument();
-    expect(screen.getByText('chunk: wiki:synthesis/synthesis-draft-note.md#chunk-0')).toBeInTheDocument();
-    expect(screen.getByText('/api/agent-bridge/resource/wiki:synthesis/synthesis-draft-note.md')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '打开 bounded read wiki:synthesis/synthesis-draft-note.md' })).toHaveAttribute(
-      'href',
-      '/api/agent-bridge/resource/wiki:synthesis/synthesis-draft-note.md',
-    );
+    await waitFor(() => expect(screen.getByText('已写入待确认')).toBeInTheDocument());
+    expect(screen.getByText('引用信息')).toBeInTheDocument();
+    expect(screen.getByText('导入时已保留定位')).toBeInTheDocument();
+    expect(screen.queryByText('ref: wiki:synthesis/synthesis-draft-note.md')).not.toBeInTheDocument();
+    expect(screen.queryByText('chunk: wiki:synthesis/synthesis-draft-note.md#chunk-0')).not.toBeInTheDocument();
+    expect(screen.queryByText('/api/agent-bridge/resource/wiki:synthesis/synthesis-draft-note.md')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '复制证据定位 wiki:synthesis/synthesis-draft-note.md#chunk-0' }));
+    fireEvent.click(screen.getByRole('button', { name: '复制引用信息' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining('ref_id=wiki:synthesis/synthesis-draft-note.md')));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('chunk_id=wiki:synthesis/synthesis-draft-note.md#chunk-0'));
-    expect(screen.getByRole('button', { name: '复制证据定位 wiki:synthesis/synthesis-draft-note.md#chunk-0' })).toHaveTextContent('已复制');
+    expect(screen.getByRole('button', { name: '复制引用信息' })).toHaveTextContent('已复制');
     expect(vi.mocked(createWikiImportMarkdown)).toHaveBeenCalledWith(
       {
         source_paths: ['C:\\temp\\draft.md'],

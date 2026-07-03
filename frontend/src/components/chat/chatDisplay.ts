@@ -2,11 +2,13 @@ const GENERIC_CHAT_ERROR = '生成失败，请检查配置或稍后重试。';
 const CREDENTIAL_CHAT_ERROR = '访问凭证不可用，请在 API 配置中检查后重试。';
 const MODEL_CHAT_ERROR = '模型或服务地址不可用，请检查供应商、服务地址和模型是否匹配。';
 const NETWORK_CHAT_ERROR = '请求超时或网络不可用，请稍后重试。';
+const TOOL_CALL_UNSUPPORTED_CHAT_ERROR = '当前 API 代理不支持工具调用，请在设置中测试工具调用能力，或改用普通问答链路。';
 
 const SECRET_WORD_PATTERN = /\b(api[\s_-]*key|authorization|bearer|token|secret|password|credential)\b/i;
 const MODEL_NOT_FOUND_PATTERN = /\b(invalidendpointormodel\.notfound|model_not_found|model or endpoint|model.+not found)\b/i;
 const NETWORK_ERROR_PATTERN = /\b(timeout|timed out|network error|econnaborted|err_network|failed to fetch)\b/i;
 const STATUS_ERROR_PATTERN = /\b(status code|http)\s*(4\d\d|5\d\d)\b/i;
+const TOOL_CALL_UNSUPPORTED_PATTERN = /\b(tool|function)\s*calling\b.*\bnot\s+supported\b|\bnot\s+support(?:ed)?\b.*\b(tool|function)\s*calling\b/i;
 const ROUTE_OR_URL_PATTERN = /\bhttps?:\/\/\S+|(?:^|[\s"'([{])\/(?:api|inspiration|mcp|chat|agent|settings|resources|runtime)\S*/i;
 const WINDOWS_PATH_PATTERN = /\b[A-Za-z]:\\[^\s"'<>]+|\\\\[^\s"'<>]+/;
 const JSONISH_PATTERN = /[{[][^{}\[\]\n]{0,600}["'][^{}\[\]\n]{0,600}:[^{}\[\]\n]{0,600}[}\]]/;
@@ -94,6 +96,7 @@ export function formatChatVisibleError(error: unknown, options: ChatVisibleError
   if (NETWORK_ERROR_PATTERN.test(message)) return NETWORK_CHAT_ERROR;
   if (SECRET_WORD_PATTERN.test(message)) return CREDENTIAL_CHAT_ERROR;
   if (MODEL_NOT_FOUND_PATTERN.test(message)) return MODEL_CHAT_ERROR;
+  if (TOOL_CALL_UNSUPPORTED_PATTERN.test(message)) return TOOL_CALL_UNSUPPORTED_CHAT_ERROR;
   if (STATUS_ERROR_PATTERN.test(message)) return fallback;
   if (containsTechnicalDetail(message)) return fallback;
   const visible = readVisibleString(message);

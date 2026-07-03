@@ -2,7 +2,7 @@ import { AlertTriangle, CheckCircle2, Database, FileText, GitBranch, RefreshCw, 
 
 import { cn } from '@/lib/utils';
 import type { WikiStatusModel } from '@/types/wiki';
-import { formatWikiError, formatWikiWarning } from './wikiDisplay';
+import { formatWikiError, formatWikiPageLabel, formatWikiWarning } from './wikiDisplay';
 
 interface WikiStatusCardProps {
   status: WikiStatusModel | null;
@@ -41,7 +41,7 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-label text-[11px] uppercase tracking-[0.24em] text-foreground/35">Wiki 状态</span>
+            <span className="font-label text-[11px] uppercase tracking-[0.24em] text-foreground/35">知识库状态</span>
             <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-label', enabledTone)}>
               {status?.enabled ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
               {status?.enabled ? '已启用' : '未启用'}
@@ -57,7 +57,7 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
               </span>
             ) : null}
           </div>
-          <h2 className="font-display text-2xl font-semibold text-foreground">Wiki 状态总览</h2>
+          <h2 className="font-display text-2xl font-semibold text-foreground">状态总览</h2>
         </div>
 
         <button
@@ -73,7 +73,7 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
 
       {error ? (
         <div className="mt-5 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-700/40 dark:bg-red-500/15 dark:text-red-300">
-          {formatWikiError(error, '读取 Wiki 状态失败，请稍后重试。')}
+          {formatWikiError(error, '读取知识库状态失败，请稍后重试。')}
         </div>
       ) : null}
 
@@ -142,7 +142,7 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
               </div>
             )) : (
               <div className="rounded-xl border border-outline-variant/30 bg-surface-high/70 px-3 py-6 text-center text-sm text-foreground/45">
-                {isLoading ? '正在加载 Wiki 状态…' : '状态尚未加载'}
+                {isLoading ? '正在加载知识库状态…' : '状态尚未加载'}
               </div>
             )}
           </div>
@@ -152,7 +152,7 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
       {integrity ? (
         <div
           role="status"
-          aria-label="Wiki 来源完整性"
+          aria-label="知识库来源完整性"
           className={cn(
             'mt-5 rounded-2xl border px-4 py-4',
             integrity.blocking
@@ -295,7 +295,7 @@ function buildManifestDriftRows(status: WikiStatusModel): Array<{
 }
 
 function formatManifestPageSample(page: WikiStatusModel['manifest_drilldown']['missing_pages'][number]): string {
-  return page.redacted ? '已隐藏路径' : page.page_path;
+  return page.redacted ? '已隐藏路径' : formatWikiPageLabel(page.page_path);
 }
 
 function buildIntegritySummary(status: WikiStatusModel): {
@@ -355,10 +355,10 @@ function wikiIntegrityContextLabel(enabled: boolean, status: string, blocking: b
     return '未启用';
   }
   if (status === 'aligned') {
-    return '允许 Wiki 引用';
+    return '允许引用';
   }
   if (blocking) {
-    return '阻断 Wiki 引用';
+    return '暂不引用';
   }
   if (status === 'empty_no_index') {
     return '暂无可用索引';
@@ -374,5 +374,5 @@ function shortDigest(value: string): string {
   if (!normalized || normalized === 'unknown' || normalized === 'none') {
     return '未记录';
   }
-  return normalized.slice(0, 12);
+  return '已记录';
 }

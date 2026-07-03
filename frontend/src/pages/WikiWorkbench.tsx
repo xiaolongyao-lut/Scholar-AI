@@ -14,7 +14,7 @@ import { ReviewQueuePanel } from '@/components/wiki/ReviewQueuePanel';
 import { WikiPageListPanel } from '@/components/wiki/WikiPageListPanel';
 import { WikiStatusCard } from '@/components/wiki/WikiStatusCard';
 import { PageHeader } from '@/components/common/PageHeader';
-import { formatWikiError } from '@/components/wiki/wikiDisplay';
+import { formatWikiError, formatWikiPageLabel, sanitizeWikiVisibleText } from '@/components/wiki/wikiDisplay';
 import { buildSettingsSectionPath } from '@/pages/settingsSections';
 import {
   getWikiDoctor,
@@ -128,7 +128,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
     try {
       setStatus(await getWikiStatus());
     } catch (err: unknown) {
-      setStatusError(formatPanelError(err, 'Wiki 状态'));
+      setStatusError(formatPanelError(err, '知识库状态'));
     } finally {
       setIsStatusLoading(false);
     }
@@ -140,7 +140,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
     try {
       setPageList(await getWikiPages());
     } catch (err: unknown) {
-      setPagesError(formatPanelError(err, 'Wiki 页面列表'));
+      setPagesError(formatPanelError(err, '知识页列表'));
     } finally {
       setIsPagesLoading(false);
     }
@@ -152,7 +152,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
     try {
       setDoctor(await getWikiDoctor());
     } catch (err: unknown) {
-      setDoctorError(formatPanelError(err, 'Wiki 诊断'));
+      setDoctorError(formatPanelError(err, '知识库诊断'));
     } finally {
       setIsDoctorLoading(false);
     }
@@ -164,7 +164,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
     try {
       setReview(await getWikiReview());
     } catch (err: unknown) {
-      setReviewError(formatPanelError(err, 'Wiki 复审队列'));
+      setReviewError(formatPanelError(err, '复审队列'));
     } finally {
       setIsReviewLoading(false);
     }
@@ -176,7 +176,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
     try {
       setGraph(await getWikiGraph());
     } catch (err: unknown) {
-      setGraphError(formatPanelError(err, 'Wiki 图谱'));
+      setGraphError(formatPanelError(err, '知识图谱'));
     } finally {
       setIsGraphLoading(false);
     }
@@ -202,7 +202,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
       setPageDetail(await getWikiPageDetail(pagePath));
     } catch (err: unknown) {
       setPageDetail(null);
-      setPageDetailError(formatPanelError(err, 'Wiki 页面预览'));
+      setPageDetailError(formatPanelError(err, '知识页预览'));
     } finally {
       setIsPageDetailLoading(false);
     }
@@ -241,7 +241,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
       if (isAbortError(err) || abortController.signal.aborted) {
         return;
       }
-      setCompileError(formatPanelError(err, 'Wiki 编译'));
+      setCompileError(formatPanelError(err, '知识写入'));
     } finally {
       if (compileAbortRef.current === abortController) {
         compileAbortRef.current = null;
@@ -281,7 +281,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
       if (isAbortError(err) || abortController.signal.aborted) {
         return;
       }
-      setManualCreateError(formatPanelError(err, 'Wiki 手动录入'));
+      setManualCreateError(formatPanelError(err, '手动录入'));
     } finally {
       if (manualCreateAbortRef.current === abortController) {
         manualCreateAbortRef.current = null;
@@ -323,7 +323,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
         return;
       }
       setSearchResult(null);
-      setSearchError(formatPanelError(err, 'Wiki 搜索'));
+      setSearchError(formatPanelError(err, '知识检索'));
     } finally {
       if (searchAbortRef.current === abortController) {
         searchAbortRef.current = null;
@@ -359,7 +359,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
         return;
       }
       setExportResult(null);
-      setExportError(formatPanelError(err, 'Wiki 导出'));
+      setExportError(formatPanelError(err, '页面导出'));
     } finally {
       if (exportAbortRef.current === abortController) {
         exportAbortRef.current = null;
@@ -420,15 +420,15 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
 
   const headline = useMemo(() => {
     if (!status) {
-      return '正在加载 Wiki 状态…';
+      return '正在加载知识库状态…';
     }
     if (!status.enabled) {
-      return 'Wiki 当前未启用';
+      return '知识库当前未启用';
     }
     if (status.stale) {
-      return 'Wiki 已启用，索引需要重新生成';
+      return '知识库已启用，索引需要重新生成';
     }
-    return 'Wiki 已启用，索引为最新';
+    return '知识库已启用，索引为最新';
   }, [status]);
   const isProbeLoading = isStatusLoading || isPagesLoading || isDoctorLoading || isReviewLoading || isGraphLoading || isGraphPayloadLoading;
   const handleProbeWiki = useCallback(() => {
@@ -791,7 +791,7 @@ function WikiKnowledgeLayerCard({
             <ShieldCheck size={18} />
           </div>
           <div className="min-w-0">
-            <h2 className="font-headline text-base font-semibold text-foreground">Wiki 知识层</h2>
+            <h2 className="font-headline text-base font-semibold text-foreground">知识库状态</h2>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -848,7 +848,7 @@ function WikiKnowledgeLayerCard({
           <div className="flex items-start gap-2">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
             <div>
-              <p>Wiki 未启用。</p>
+              <p>知识库未启用。</p>
             </div>
           </div>
         </div>
@@ -882,7 +882,7 @@ function WikiSearchPanel({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 flex-1">
           <label className="font-label text-[11px] font-medium text-foreground/65" htmlFor="wiki-search-query">
-            Wiki 检索
+            知识检索
           </label>
           <div className="mt-1 flex min-w-0 gap-2">
             <input
@@ -944,7 +944,7 @@ function WikiSearchPanel({
               >
                 <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                   <FileText size={14} className="shrink-0 text-primary/70" />
-                  <span className="truncate">{ref.title || pagePath || 'Wiki 页面'}</span>
+                  <span className="truncate">{sanitizeWikiVisibleText(ref.title, formatWikiPageLabel(pagePath))}</span>
                 </div>
                 <div className="mt-1 line-clamp-2 text-xs leading-5 text-foreground/55">
                   {ref.snippet || pagePath}
@@ -1068,7 +1068,7 @@ function EmbeddedWikiSimpleView({
           <div className="flex items-start gap-2">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
             <div className="space-y-1">
-              <p>Wiki 未启用。</p>
+              <p>知识库未启用。</p>
               <button
                 type="button"
                 onClick={onOpenSettings}
@@ -1086,7 +1086,7 @@ function EmbeddedWikiSimpleView({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0 flex-1">
             <label className="font-label text-[11px] font-medium text-foreground/65" htmlFor="wiki-embedded-search">
-              Wiki 检索
+              知识检索
             </label>
             <div className="mt-1 flex min-w-0 gap-2">
               <input
@@ -1156,7 +1156,7 @@ function EmbeddedWikiSimpleView({
                 >
                   <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                     <FileText size={14} className="shrink-0 text-primary/70" />
-                    <span className="truncate">{ref.title || pagePath || 'Wiki 页面'}</span>
+                    <span className="truncate">{ref.title || pagePath || '知识页面'}</span>
                   </div>
                   <div className="mt-1 line-clamp-2 text-xs leading-5 text-foreground/55">
                     {ref.snippet || pagePath}
@@ -1215,9 +1215,9 @@ function EmbeddedWikiSimpleView({
         <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-2 text-[11px] text-foreground/60 marker:hidden">
           <span className="inline-flex items-center gap-1.5">
             <ChevronDown size={12} className={cn('transition-transform', advancedOpen ? 'rotate-0' : '-rotate-90')} />
-            高级 / 诊断
+            更多工具
           </span>
-          <span className="text-foreground/40">状态、图谱、诊断、导出</span>
+          <span className="text-foreground/40">状态、图谱、导入、导出</span>
         </summary>
         <div className="flex flex-col gap-4 px-4 pb-4 pt-2">
           {children}
@@ -1239,7 +1239,7 @@ interface SimpleCaptureFormProps {
 
 /**
  * 轻量「记一下」表单，把 createWikiManualPage 拆出来在 embedded 顶部直接用。
- * 当前后端会创建待确认 Wiki 草稿，并同步进入 ReviewQueue。
+ * 当前后端会创建待确认草稿，并同步进入复审队列。
  */
 function SimpleCaptureForm({
   isManualLoading,
@@ -1321,7 +1321,7 @@ function SimpleCaptureForm({
 
       {!isWikiEnabled ? (
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-500/15 dark:text-amber-300">
-          Wiki 未启用。
+          知识库未启用。
         </div>
       ) : null}
 
@@ -1333,7 +1333,7 @@ function SimpleCaptureForm({
 
       {manualResult ? (
         <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300">
-          已保存为待确认草稿：{manualResult.slug || manualResult.message || '新页面'}。
+          已保存为待确认：{formatWikiPageLabel(manualResult.slug || manualResult.message, '新页面')}。
         </div>
       ) : null}
 
@@ -1350,7 +1350,7 @@ function SimpleCaptureForm({
           className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isManualLoading ? <Square size={13} /> : <FilePlus2 size={13} />}
-          {isManualLoading ? '停止' : '保存待确认草稿'}
+          {isManualLoading ? '停止' : '保存待确认'}
         </button>
       </div>
     </section>

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -42,6 +42,7 @@ vi.mock('@/services/runtimeClient', () => ({
 const mockedGetWritingRuntimeClient = vi.mocked(getWritingRuntimeClient);
 
 type RuntimeClient = ReturnType<typeof getWritingRuntimeClient>;
+type RuntimeJobList = Awaited<ReturnType<RuntimeClient['listJobs']>>;
 
 function runtimeClientWithJobs(jobs: Awaited<ReturnType<RuntimeClient['listJobs']>>): RuntimeClient {
   return {
@@ -50,6 +51,7 @@ function runtimeClientWithJobs(jobs: Awaited<ReturnType<RuntimeClient['listJobs'
     resumeJob: vi.fn(),
     cancelJob: vi.fn(),
     startJob: vi.fn(),
+    deleteJob: vi.fn(),
   } as unknown as RuntimeClient;
 }
 
@@ -158,5 +160,94 @@ describe('Jobs', () => {
     });
     const requestedUrl = fetchSpy.mock.calls[0]?.[0];
     expect(String(requestedUrl)).toMatch(/\/api\/linter\/tasks\/list$/);
+  });
+
+  it('keeps large task batches inside a dedicated scroll list', async () => {
+    const manyJobs: RuntimeJobList = Array.from({ length: 36 }, (_, index) => ({
+      job_id: `runtime_job_${index}`,
+      kind: 'smart_read',
+      action_id: `研读任务 ${index + 1}`,
+      skill_id: null,
+      session_id: 's',
+      status: index % 3 === 0 ? 'started' : 'completed',
+      input_text: `批量任务 ${index + 1}`,
+      created_at: '2026-05-29T01:00:00.000Z',
+      started_at: '2026-05-29T01:00:01.000Z',
+      completed_at: index % 3 === 0 ? null : '2026-05-29T01:00:03.000Z',
+      error: null,
+    }));
+    mockedGetWritingRuntimeClient.mockReturnValue(runtimeClientWithJobs(manyJobs));
+
+    renderJobs();
+
+    const list = await screen.findByTestId('jobs-scroll-list');
+
+    expect(within(list).getAllByRole('listitem')).toHaveLength(36);
+    expect(screen.getByTestId('jobs-list-panel')).toHaveClass('min-h-0', 'flex-1', 'overflow-hidden');
+    expect(list).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto');
+  });
+
+  it('bulk-cancels selected runtime jobs without calling linter task ids', async () => {
+    const client = runtimeClientWithJobs([
+      {
+        job_id: 'runtime_running_1',
+        kind: 'skill_action',
+        action_id: 'a',
+        skill_id: null,
+        session_id: 's',
+        status: 'started',
+        input_text: '整理引用',
+        created_at: '2026-05-29T01:00:00.000Z',
+        started_at: '2026-05-29T01:00:01.000Z',
+        completed_at: null,
+        error: null,
+      },
+      {
+        job_id: 'runtime_running_2',
+        kind: 'prompt_action',
+        action_id: 'b',
+        skill_id: null,
+        session_id: 's',
+        status: 'queued',
+        input_text: '生成摘要',
+        created_at: '2026-05-29T01:01:00.000Z',
+        started_at: null,
+        completed_at: null,
+        error: null,
+      },
+    ]);
+    mockedGetWritingRuntimeClient.mockReturnValue(client);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([
+      {
+        task_id: 'linter_frontend_1',
+        status: 'running',
+        progress: {
+          current: 3,
+          total: 10,
+          message: '已检查 3/10 条文献',
+        },
+        error: null,
+        created_at: '2026-06-15T16:00:00.000Z',
+      },
+    ]), {
+      headers: { 'Content-Type': 'application/json' },
+      status: 200,
+    })) as unknown as typeof fetch);
+
+    renderJobs();
+
+    await waitFor(() => {
+      expect(screen.getByText('技能任务 · 整理引用')).toBeInTheDocument();
+      expect(screen.getByText('元数据检查')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('选择当前筛选中的任务'));
+    fireEvent.click(screen.getByRole('button', { name: '取消 2' }));
+
+    await waitFor(() => {
+      expect(client.cancelJob).toHaveBeenCalledWith('runtime_running_1');
+      expect(client.cancelJob).toHaveBeenCalledWith('runtime_running_2');
+    });
+    expect(client.cancelJob).not.toHaveBeenCalledWith('linter_frontend_1');
   });
 });
