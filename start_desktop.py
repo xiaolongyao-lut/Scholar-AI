@@ -31,6 +31,8 @@ from literature_assistant.bootstrap import configure_runtime_paths
 
 configure_runtime_paths()
 
+from literature_assistant.core.terminal_output import terminal_print
+
 ROOT = Path(__file__).resolve().parent
 VENV_PYTHON = ROOT / ".venv-1" / "Scripts" / "python.exe"
 FRONTEND_ROOT = ROOT / "frontend"
@@ -102,7 +104,7 @@ def _load_dotenv_into_environ(env_path: Path) -> int:
 
 _DOTENV_LOADED_KEYS = _load_dotenv_into_environ(ROOT / ".env")
 if _DOTENV_LOADED_KEYS:
-    print(f"[启动器] .env 已加载 {_DOTENV_LOADED_KEYS} 项 (shell 已存在的 key 不覆盖)")
+    terminal_print("启动器", f".env 已加载 {_DOTENV_LOADED_KEYS} 项 (shell 已存在的 key 不覆盖)", level="ok")
 
 DEFAULT_PORT = 8000
 WINDOW_TITLE = "文献助手"
@@ -154,7 +156,7 @@ def _show_startup_error(title: str, message: str) -> None:
         raise ValueError("title must be non-empty")
     if not isinstance(message, str) or not message.strip():
         raise ValueError("message must be non-empty")
-    print(f"[启动器] {title}: {message}")
+    terminal_print("启动器", f"{title}: {message}", level="error")
     if sys.platform != "win32":
         return
     try:
@@ -621,22 +623,22 @@ def _clear_stale_browser_cache(profile_root: Path, cache_version: str) -> None:
         try:
             _remove_profile_cache_dir(cache_dir, profile_root)
         except OSError as exc:
-            print(f"[启动器] 浏览器缓存清理跳过: {cache_dir.name}: {exc}")
+            terminal_print("启动器", f"浏览器缓存清理跳过: {cache_dir.name}: {exc}", level="warn")
 
     profile_root.mkdir(parents=True, exist_ok=True)
     marker.write_text(normalized_version, encoding="utf-8")
 
 
 def _build_frontend() -> bool:
-    print("[启动器] 前端构建已过期或不存在，正在编译...")
+    terminal_print("启动器", "前端构建已过期或不存在，正在编译...", level="progress")
     frontend_dir = FRONTEND_ROOT
     if not (frontend_dir / "package.json").exists():
-        print("[启动器] 前端构建失败: 找不到 frontend/package.json")
+        terminal_print("启动器", "前端构建失败: 找不到 frontend/package.json", level="error")
         return False
     npm_name = "npm.cmd" if sys.platform == "win32" else "npm"
     npm_path = shutil.which(npm_name) or shutil.which("npm")
     if not npm_path:
-        print("[启动器] 前端构建失败: 找不到 npm，请先安装 Node.js")
+        terminal_print("启动器", "前端构建失败: 找不到 npm，请先安装 Node.js", level="error")
         return False
     result = subprocess.run(
         [npm_path, "run", "build"],
@@ -648,9 +650,9 @@ def _build_frontend() -> bool:
         check=False,
     )
     if result.returncode != 0:
-        print(f"[启动器] 前端构建失败:\n{result.stderr[-500:]}")
+        terminal_print("启动器", f"前端构建失败:\n{result.stderr[-500:]}", level="error")
         return False
-    print("[启动器] 前端构建完成")
+    terminal_print("启动器", "前端构建完成", level="ok")
     return True
 
 
@@ -788,7 +790,11 @@ class NativeApi:
         """
         import webview
 
-        result = webview.windows[0].create_file_dialog(webview.FOLDER_DIALOG)
+        file_dialog = getattr(webview, "FileDialog", None)
+        folder_dialog = getattr(file_dialog, "FOLDER", None) if file_dialog is not None else None
+        if folder_dialog is None:
+            folder_dialog = getattr(webview, "FOLDER_DIALOG")
+        result = webview.windows[0].create_file_dialog(folder_dialog)
         return _first_dialog_path(result)
 
     def save_bytes(self, default_name: str, content_base64: str) -> str | None:
@@ -857,14 +863,14 @@ class NativeApi:
 
 def main() -> None:
     if not _acquire_desktop_single_instance():
-        print("[启动器] 已有文献助手桌面实例在运行，本次启动退出")
+        terminal_print("启动器", "已有文献助手桌面实例在运行，本次启动退出", level="warn")
         return
 
     dpi_aware = _enable_windows_dpi_awareness()
     import webview
 
     if dpi_aware:
-        print("[启动器] Windows DPI awareness 已启用")
+        terminal_print("启动器", "Windows DPI awareness 已启用", level="ok")
 
     # Parse port override
     port = DEFAULT_PORT
@@ -876,19 +882,19 @@ def main() -> None:
     requested_port = port
     if not _port_available(port):
         port = _find_free_port()
-        print(f"[启动器] 端口 {requested_port} 已被占用，使用 {port}")
+        terminal_print("启动器", f"端口 {requested_port} 已被占用，使用 {port}", level="warn")
 
     # Check / build frontend
     if not _frontend_build_is_current():
         if not _build_frontend():
-            print("[启动器] 无法启动：前端构建失败")
+            terminal_print("启动器", "无法启动：前端构建失败", level="error")
             _show_startup_error("启动失败", "前端构建失败，请检查 Node.js/npm 和 frontend 构建日志。")
             sys.exit(1)
-    print("[启动器] 前端已就绪")
+    terminal_print("启动器", "前端已就绪", level="ok")
     try:
         _clear_stale_browser_cache(DESKTOP_PROFILE_ROOT, _frontend_cache_version())
     except (OSError, RuntimeError, ValueError) as cache_exc:
-        print(f"[启动器] 浏览器缓存刷新跳过: {cache_exc}")
+        terminal_print("启动器", f"浏览器缓存刷新跳过: {cache_exc}", level="warn")
 
     # Start uvicorn in daemon thread (IN-PROCESS — single process)
     host = "127.0.0.1"
@@ -917,7 +923,7 @@ def main() -> None:
             )
         )
     except Exception as _port_exc:
-        print(f"[启动器] 运行时描述符写入失败（忽略）: {_port_exc}")
+        terminal_print("启动器", f"运行时描述符写入失败（忽略）: {_port_exc}", level="warn")
 
     def _run_server():
         import uvicorn
@@ -926,10 +932,10 @@ def main() -> None:
 
     server_thread = threading.Thread(target=_run_server, daemon=True)
     server_thread.start()
-    print(f"[启动器] 后端启动中 ({host}:{port})...")
+    terminal_print("启动器", f"后端启动中 ({host}:{port})...", level="progress")
 
     if not _wait_for_http(host, port, timeout=30):
-        print("[启动器] 后端未在 30 秒内就绪，启动失败")
+        terminal_print("启动器", "后端未在 30 秒内就绪，启动失败", level="error")
         _show_startup_error("启动失败", "后端未在 30 秒内就绪，请检查 runtime_state/logs/backend.log。")
         sys.exit(1)
 
@@ -940,19 +946,19 @@ def main() -> None:
             os.environ.get("LITERATURE_ASSISTANT_DESKTOP_INITIAL_PATH"),
         )
     except ValueError as initial_path_exc:
-        print(f"[启动器] 初始路径无效，已回退首页: {initial_path_exc}")
+        terminal_print("启动器", f"初始路径无效，已回退首页: {initial_path_exc}", level="warn")
         url = base_url
     try:
         from literature_assistant.core.runtime_descriptor import refresh_desktop_runtime_descriptor
 
         refresh_desktop_runtime_descriptor(ready=True)
     except Exception as _descriptor_exc:
-        print(f"[启动器] 运行时描述符刷新失败（忽略）: {_descriptor_exc}")
-    print(f"[启动器] 后端就绪: {base_url}")
-    print(f"[启动器] LITERATURE_ASSISTANT_BASE_URL={base_url}")
+        terminal_print("启动器", f"运行时描述符刷新失败（忽略）: {_descriptor_exc}", level="warn")
+    terminal_print("启动器", f"后端就绪: {base_url}", level="ok")
+    terminal_print("启动器", f"LITERATURE_ASSISTANT_BASE_URL={base_url}", level="accent")
     if url != base_url:
-        print(f"[启动器] 桌面初始路径: {url}")
-    print("[启动器] 如果智能体找不到文献助手端口，请把上一行完整贴给智能体")
+        terminal_print("启动器", f"桌面初始路径: {url}", level="accent")
+    terminal_print("启动器", "如果智能体找不到文献助手端口，请把上一行完整贴给智能体", level="warn")
 
     # Open pywebview native window (blocks main thread)
     api = NativeApi()
@@ -968,16 +974,16 @@ def main() -> None:
     if geometry.x is not None and geometry.y is not None:
         window_kwargs["x"] = geometry.x
         window_kwargs["y"] = geometry.y
-        print(f"[启动器] 桌面窗口位置: {geometry.width}x{geometry.height}+{geometry.x}+{geometry.y}")
+        terminal_print("启动器", f"桌面窗口位置: {geometry.width}x{geometry.height}+{geometry.x}+{geometry.y}", level="ok")
     else:
-        print(f"[启动器] 桌面窗口尺寸: {geometry.width}x{geometry.height}")
+        terminal_print("启动器", f"桌面窗口尺寸: {geometry.width}x{geometry.height}", level="ok")
     window = webview.create_window(
         WINDOW_TITLE, url=url,
         **window_kwargs,
     )
     if window is not None:
         window.events.before_show += _apply_windows_titlebar_colors
-    print("[启动器] 桌面窗口已打开，关闭窗口将退出程序")
+    terminal_print("启动器", "桌面窗口已打开，关闭窗口将退出程序", level="ok")
     try:
         webview.start(
             func=_install_reload_hotkeys if window is not None else None,
@@ -999,7 +1005,7 @@ def main() -> None:
             pass
 
     # Window closed → daemon threads auto-terminate with process exit
-    print("[启动器] 窗口已关闭，退出")
+    terminal_print("启动器", "窗口已关闭，退出", level="ok")
 
 
 if __name__ == "__main__":

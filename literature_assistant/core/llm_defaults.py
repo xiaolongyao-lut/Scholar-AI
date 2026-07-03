@@ -4,11 +4,11 @@ import os
 from typing import Any
 
 TASK_DEFAULTS: dict[str, dict[str, float | int]] = {
-    "chat": {"temperature": 0.7, "top_p": 0.9, "top_k": 50, "max_tokens": 2048},
-    "inspiration": {"temperature": 0.85, "top_p": 0.95, "top_k": 80, "max_tokens": 1024},
-    "extraction": {"temperature": 0.1, "top_p": 0.5, "top_k": 20, "max_tokens": 4096},
-    "summarization": {"temperature": 0.3, "top_p": 0.7, "top_k": 30, "max_tokens": 2048},
-    "rewrite": {"temperature": 0.5, "top_p": 0.8, "top_k": 40, "max_tokens": 2048},
+    "chat": {"temperature": 0.35, "top_p": 0.8, "top_k": 40, "max_tokens": 1536},
+    "inspiration": {"temperature": 0.6, "top_p": 0.85, "top_k": 40, "max_tokens": 1024},
+    "extraction": {"temperature": 0.05, "top_p": 0.5, "top_k": 20, "max_tokens": 1536},
+    "summarization": {"temperature": 0.2, "top_p": 0.75, "top_k": 30, "max_tokens": 1024},
+    "rewrite": {"temperature": 0.35, "top_p": 0.8, "top_k": 40, "max_tokens": 1024},
 }
 
 TASK_ALIASES = {

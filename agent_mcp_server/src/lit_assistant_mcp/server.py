@@ -1008,6 +1008,7 @@ def create_mcp_server(
         limit: int = 20,
         pixel_only: bool = False,
         render_pdf_fallback: bool = True,
+        query: str | None = None,
     ) -> dict[str, Any]:
         """List backend-derived figure/table candidates."""
         return runtime.figures_candidates(
@@ -1015,6 +1016,7 @@ def create_mcp_server(
             limit=limit,
             pixel_only=pixel_only,
             render_pdf_fallback=render_pdf_fallback,
+            query=query,
         )
 
     @mcp.tool(
@@ -1549,13 +1551,21 @@ def create_mcp_server(
         session_id: str | None = None,
         job_id: str | None = None,
         project_id: str | None = None,
+        query: str | None = None,
+        evidence_pack_ref: str | None = None,
+        evidence_refs: list[dict[str, Any]] | None = None,
+        retrieval_diagnostics: dict[str, Any] | None = None,
         limit: int = 500,
     ) -> dict[str, Any]:
-        """Read the runtime evidence integrity gate projection."""
+        """Read runtime or query-scoped evidence integrity diagnostics."""
         return runtime.evidence_integrity_gate(
             session_id=session_id,
             job_id=job_id,
             project_id=project_id,
+            query=query,
+            evidence_pack_ref=evidence_pack_ref,
+            evidence_refs=evidence_refs,
+            retrieval_diagnostics=retrieval_diagnostics,
             limit=limit,
         )
 

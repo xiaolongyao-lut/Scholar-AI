@@ -77,6 +77,9 @@ class TOLFConfig:
     activation_threshold: float = 0.6 # 实体激活阈值 τ_a (优化后 0.6)
     pruning_threshold: float = 0.45   # 边剪枝阈值 (论文 0.45)
     k_hop: int = 3                    # 最大传播跳数
+    graph_node_budget: int = 60        # TOLF 入图节点预算
+    graph_edge_top_k: int = 4          # 每个节点最多保留的近邻边
+    graph_adaptive_quantile: float = 0.75  # 相似度自适应阈值分位数
 
     # --- 证据门控 ---
     evidence_threshold: float = 0.40  # 证据质量阈值 τ_e (优化后 0.40)
@@ -94,9 +97,11 @@ class FishResult:
     chunk_id: str
     activation_score: float  # a(u)
     evidence_score: float    # e(u)
-    aspect_weights: Dict[str, float]  # {K: α, S: β, R: γ, V: δ}
-    point_type: str          # 来自 scoring_engine 的分类
-    in_convex_hull: bool     # MAQ 凸包过滤结果
+    final_rank_score: float = 0.0
+    rank_contributions: Dict[str, float] = field(default_factory=dict)
+    aspect_weights: Dict[str, float] = field(default_factory=dict)  # {K: α, S: β, R: γ, V: δ}
+    point_type: str = ""     # 来自 scoring_engine 的分类
+    in_convex_hull: bool = False  # MAQ 凸包过滤结果
     content: str = ""
 
 
@@ -398,6 +403,81 @@ class SpreadingActivationEngine:
     def __init__(self, config: TOLFConfig):
         self.config = config
 
+    def _validate_graph_inputs(
+        self,
+        chunks: List[Dict[str, Any]],
+        embeddings: np.ndarray,
+    ) -> None:
+        """Validate graph inputs before derived NetworkX state is built."""
+        if not isinstance(chunks, list):
+            raise TypeError("chunks must be a list of dictionaries")
+        if not isinstance(embeddings, np.ndarray):
+            raise TypeError("embeddings must be a numpy.ndarray")
+        if embeddings.ndim != 2:
+            raise ValueError("embeddings must be a two-dimensional matrix")
+        if len(chunks) != int(embeddings.shape[0]):
+            raise ValueError("chunks length must match embeddings row count")
+        if self.config.graph_node_budget <= 0:
+            raise ValueError("graph_node_budget must be positive")
+        if self.config.graph_edge_top_k <= 0:
+            raise ValueError("graph_edge_top_k must be positive")
+        if not 0.0 <= self.config.graph_adaptive_quantile <= 1.0:
+            raise ValueError("graph_adaptive_quantile must be between 0 and 1")
+
+    @staticmethod
+    def _chunk_id(chunk: Dict[str, Any], index: int) -> str:
+        cid = str(chunk.get("id") or chunk.get("chunk_id") or f"chunk_{index}").strip()
+        if not cid:
+            raise ValueError("chunk id must be non-empty")
+        return cid
+
+    @staticmethod
+    def _edge_provenance(
+        left: Dict[str, Any],
+        right: Dict[str, Any],
+        similarity: float,
+    ) -> Dict[str, Any]:
+        """Return bounded edge provenance for downstream diagnostics."""
+        left_type = str(left.get("chunk_type") or left.get("point_type") or "").lower()
+        right_type = str(right.get("chunk_type") or right.get("point_type") or "").lower()
+        left_material = str(left.get("material_id") or "").strip()
+        right_material = str(right.get("material_id") or "").strip()
+
+        edge_type = "semantic"
+        edge_reason = "cosine_similarity_top_k"
+        source_field = "embedding"
+
+        if left_material and left_material == right_material:
+            edge_type = "same_material"
+            edge_reason = "same_material_semantic_neighbor"
+            source_field = "material_id+embedding"
+        if "figure" in left_type or "figure" in right_type or left.get("image_paths") or right.get("image_paths"):
+            edge_type = "figure_reference"
+            edge_reason = "figure_or_image_neighbor"
+            source_field = "chunk_type+image_paths+embedding"
+        elif "table" in left_type or "table" in right_type or left.get("table_csv") or right.get("table_csv"):
+            edge_type = "table_reference"
+            edge_reason = "table_neighbor"
+            source_field = "chunk_type+table_csv+embedding"
+        elif left_material and left_material == right_material:
+            try:
+                left_page = int(left.get("page"))
+                right_page = int(right.get("page"))
+            except (TypeError, ValueError):
+                left_page = -1
+                right_page = -10
+            if abs(left_page - right_page) <= 1 and left_page > 0 and right_page > 0:
+                edge_type = "citation_context"
+                edge_reason = "same_material_nearby_page"
+                source_field = "material_id+page+embedding"
+
+        return {
+            "edge_type": edge_type,
+            "edge_reason": edge_reason,
+            "source_field": source_field,
+            "confidence": round(float(max(0.0, min(1.0, similarity))), 4),
+        }
+
     def build_literature_graph(
         self,
         chunks: List[Dict[str, Any]],
@@ -418,38 +498,70 @@ class SpreadingActivationEngine:
         Returns:
             NetworkX 图
         """
+        self._validate_graph_inputs(chunks, embeddings)
         G = nx.Graph()
-        n = len(chunks)
+        n = min(len(chunks), self.config.graph_node_budget)
+        if n == 0:
+            return G
+        graph_chunks = chunks[:n]
+        graph_embeddings = embeddings[:n]
 
         # 添加节点
-        for i, chunk in enumerate(chunks):
+        node_ids = [self._chunk_id(chunk, i) for i, chunk in enumerate(graph_chunks)]
+        for i, chunk in enumerate(graph_chunks):
             G.add_node(
-                chunk.get("id", str(i)),
+                node_ids[i],
                 content=chunk.get("content", ""),
                 point_type=chunk.get("point_type", ""),
                 embedding_idx=i,
             )
 
         # 归一化 embedding 计算余弦相似度矩阵
-        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        norms = np.linalg.norm(graph_embeddings, axis=1, keepdims=True)
         norms = np.maximum(norms, 1e-10)
-        normalized = embeddings / norms
+        normalized = graph_embeddings / norms
 
-        # 计算上三角相似度矩阵（避免全量 n^2）
-        node_ids = [chunk.get("id", str(i)) for i, chunk in enumerate(chunks)]
-
+        candidate_edges: List[Tuple[float, int, int]] = []
         for i in range(n):
-            # 只计算 i 与后续节点的相似度
-            if i + 1 < n:
-                sims = normalized[i] @ normalized[i + 1:].T
-                for j_offset, sim in enumerate(sims):
-                    if sim >= similarity_threshold:
-                        j = i + 1 + j_offset
-                        G.add_edge(
-                            node_ids[i],
-                            node_ids[j],
-                            similarity=float(sim),
-                        )
+            if i + 1 >= n:
+                continue
+            sims = normalized[i] @ normalized[i + 1:].T
+            for j_offset, sim in enumerate(sims):
+                candidate_edges.append((float(sim), i, i + 1 + j_offset))
+
+        if not candidate_edges:
+            logger.info("构建文献图: %d 节点, %d 边", G.number_of_nodes(), 0)
+            return G
+
+        finite_sims = np.array([edge[0] for edge in candidate_edges], dtype=np.float32)
+        adaptive_threshold = max(
+            float(similarity_threshold),
+            float(self.config.pruning_threshold),
+            float(np.quantile(finite_sims, self.config.graph_adaptive_quantile)),
+        )
+        candidate_edges.sort(key=lambda item: item[0], reverse=True)
+
+        degree_by_index = {i: 0 for i in range(n)}
+        edge_budget = max(1, (n * self.config.graph_edge_top_k) // 2)
+        for sim, i, j in candidate_edges:
+            if G.number_of_edges() >= edge_budget:
+                break
+            if sim < adaptive_threshold:
+                continue
+            if degree_by_index[i] >= self.config.graph_edge_top_k:
+                continue
+            if degree_by_index[j] >= self.config.graph_edge_top_k:
+                continue
+            provenance = self._edge_provenance(graph_chunks[i], graph_chunks[j], sim)
+            G.add_edge(
+                node_ids[i],
+                node_ids[j],
+                similarity=float(sim),
+                adaptive_threshold=round(float(adaptive_threshold), 4),
+                **provenance,
+            )
+            degree_by_index[i] += 1
+            degree_by_index[j] += 1
 
         logger.info(
             "构建文献图: %d 节点, %d 边", G.number_of_nodes(), G.number_of_edges()
@@ -589,6 +701,65 @@ class EvidenceGate:
     def __init__(self, config: TOLFConfig):
         self.config = config
 
+    @staticmethod
+    def _locator_quality(chunk: Dict[str, Any]) -> float:
+        """Return a bounded locator score so unlocatable chunks cannot dominate."""
+        score = 0.0
+        try:
+            page = int(chunk.get("page"))
+        except (TypeError, ValueError):
+            page = 0
+        if page > 0:
+            score += 0.45
+        bbox = chunk.get("bbox")
+        if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+            try:
+                if all(math.isfinite(float(v)) for v in bbox):
+                    score += 0.35
+            except (TypeError, ValueError):
+                pass
+        locator_quality = str(chunk.get("locator_quality") or "").strip().lower()
+        if locator_quality in {"high", "good", "bbox", "page_bbox", "exact"}:
+            score += 0.20
+        elif locator_quality in {"page", "medium", "partial"}:
+            score += 0.10
+        return round(min(1.0, score), 4)
+
+    @staticmethod
+    def _lexical_exact_score(chunk: Dict[str, Any], query_tokens: Optional[set[str]]) -> float:
+        """Return query overlap ratio for exact lexical seat protection."""
+        if not query_tokens:
+            return 0.0
+        content = str(chunk.get("content") or "").lower()
+        if not content:
+            return 0.0
+        hits = sum(1 for token in query_tokens if token and token in content)
+        return round(min(1.0, hits / max(1, len(query_tokens))), 4)
+
+    def compute_rank_contributions(
+        self,
+        chunk: Dict[str, Any],
+        *,
+        activation_score: float,
+        evidence_score: float,
+        query_tokens: Optional[set[str]] = None,
+    ) -> Dict[str, float]:
+        """Compute feature contributions used by Phase 4 final ranking."""
+        dense = round(max(0.0, min(1.0, activation_score)) * 0.45, 4)
+        lexical_exact = round(self._lexical_exact_score(chunk, query_tokens) * 0.20, 4)
+        locator_quality = round(self._locator_quality(chunk) * 0.15, 4)
+        tolf_evidence = round(max(0.0, min(1.0, evidence_score)) * 0.20, 4)
+        diversity_penalty = 0.0
+        if locator_quality <= 0.0:
+            diversity_penalty = 0.08
+        return {
+            "dense": dense,
+            "lexical_exact": lexical_exact,
+            "locator_quality": locator_quality,
+            "tolf_evidence": tolf_evidence,
+            "diversity_penalty": diversity_penalty,
+        }
+
     def compute_evidence_score(self, chunk: Dict[str, Any], query_tokens: Optional[set[str]] = None) -> float:
         """
         计算单个 chunk 的证据质量 e(u)。
@@ -665,11 +836,27 @@ class EvidenceGate:
             cid = chunk.get("id", "")
             a_score = activation_scores.get(cid, 0.0)
             e_score = self.compute_evidence_score(chunk, query_tokens=query_tokens)
+            rank_contributions = self.compute_rank_contributions(
+                chunk,
+                activation_score=a_score,
+                evidence_score=e_score,
+                query_tokens=query_tokens,
+            )
+            final_rank_score = round(
+                rank_contributions["dense"]
+                + rank_contributions["lexical_exact"]
+                + rank_contributions["locator_quality"]
+                + rank_contributions["tolf_evidence"]
+                - rank_contributions["diversity_penalty"],
+                4,
+            )
 
             fish = FishResult(
                 chunk_id=cid,
                 activation_score=a_score,
                 evidence_score=e_score,
+                final_rank_score=final_rank_score,
+                rank_contributions=rank_contributions,
                 aspect_weights={},
                 point_type=chunk.get("point_type", ""),
                 in_convex_hull=chunk.get("in_convex_hull", False),
@@ -680,7 +867,7 @@ class EvidenceGate:
                e_score > self.config.evidence_threshold:
                 results.append(fish)
 
-        results.sort(key=lambda r: r.activation_score, reverse=True)
+        results.sort(key=lambda r: (r.final_rank_score, r.activation_score), reverse=True)
         logger.info(
             "证据门控: %d/%d chunks 通过 (τ_a=%.2f, τ_e=%.2f)",
             len(results), len(chunks),
@@ -710,6 +897,7 @@ class TOLFEngine:
         self.maq = MAQWeightEngine(self.config)
         self.diffusion = SpreadingActivationEngine(self.config)
         self.gate = EvidenceGate(self.config)
+        self.last_run_diagnostics: Dict[str, Any] = {}
 
     def generate_aspect_queries(self, goal: str) -> Dict[str, str]:
         """
@@ -828,6 +1016,13 @@ class TOLFEngine:
         """
         n_chunks = len(chunks)
         if n_chunks == 0:
+            self.last_run_diagnostics = {
+                "status": "empty",
+                "input_count": 0,
+                "graph_node_count": 0,
+                "graph_edge_count": 0,
+                "gate_after_count": 0,
+            }
             return []
 
         chunk_ids = [c.get("id", str(i)) for i, c in enumerate(chunks)]
@@ -880,6 +1075,17 @@ class TOLFEngine:
         # --- Step 4: 证据门控（含 lexical grounding）---
         query_tokens = set(_TOKEN_RE.findall(goal.lower()))
         results = self.gate.gate(activation_scores, chunks, query_tokens=query_tokens)
+        activation_values = [float(value) for value in activation_scores.values()]
+        self.last_run_diagnostics = {
+            "status": "active",
+            "input_count": n_chunks,
+            "graph_node_count": int(G.number_of_nodes()),
+            "graph_edge_count": int(G.number_of_edges()),
+            "gate_after_count": len(results),
+            "activation_min": round(min(activation_values), 4) if activation_values else None,
+            "activation_max": round(max(activation_values), 4) if activation_values else None,
+            "activation_mean": round(float(np.mean(activation_values)), 4) if activation_values else None,
+        }
 
         # 填入 aspect_weights
         for r in results:

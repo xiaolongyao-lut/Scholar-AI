@@ -16,7 +16,7 @@ import re
 import threading
 import time
 import uuid
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -43,13 +43,22 @@ from project_paths import (
     project_data_path,
     runtime_state_path,
 )
-from model_config_store import chat_context_compression_store, chat_store
+from llm_defaults import resolve_llm_params
+from model_config_store import (
+    CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT,
+    CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
+    CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
+    chat_context_compression_store,
+    chat_store,
+    normalize_chat_context_compression_settings,
+)
 from pre_llm_call_hooks import (
     PreLlmCallContext,
     PreLlmCallImage,
     run_pre_llm_call_hooks,
 )
 from runtime_env import env_value
+from sampling_storage import load_user_sampling
 from chat.pipeline import (
     apply_session_auto_compression,
     append_session_turns,
@@ -80,7 +89,7 @@ from routers.chat_router import (
 from models.analysis_chain import AnalysisChainPayload
 from routers.llm_cost_router import _read_cost_aggregate
 from routers.resources_router import load_project_chunks_for_rag, search_project_chunks_for_query
-from tolf_text_selector import select_tolf_context_chunks
+from tolf_text_selector import _expand_query_with_bridge_terms, select_tolf_context_chunks
 from writing_resources import get_writing_resource_store
 
 
@@ -132,6 +141,87 @@ _CURRENT_PDF_CONTEXT_MAX_CHARS = 1800
 _CURRENT_PDF_CONTEXT_LABEL = "current_pdf_context"
 _CURRENT_PDF_SELECTION_LABEL = "current_pdf_selection"
 _CURRENT_PDF_POSITION_LABEL = "current_pdf_position"
+_PROJECT_IDENTIFIER_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9_-])[A-Za-z][A-Za-z0-9_-]{2,}(?![A-Za-z0-9_-])"
+)
+_VISUAL_INTENT_RE = re.compile(
+    r"(?:"
+    r"外观|图片|图像|图\s*\d*|形貌|表面|截面|焊缝|照片|显微|sem|"
+    r"image|figure|fig\.?|photo|picture|appearance|morpholog|surface|cross[-\s]?section|"
+    r"micrograph|weld\s+seam|macrograph"
+    r")",
+    re.IGNORECASE,
+)
+_VISUAL_EVIDENCE_TERMS = (
+    "appearance",
+    "morphology",
+    "surface",
+    "weld seam",
+    "welded joint",
+    "cross-section",
+    "cross section",
+    "macrostructure",
+    "microstructure",
+    "micrograph",
+    "macrograph",
+    "sem",
+    "porosity",
+    "defect",
+    "外观",
+    "形貌",
+    "表面",
+    "焊缝",
+    "截面",
+    "显微",
+    "孔隙",
+    "缺陷",
+)
+_LASER_WELD_TERMS = (
+    "laser welding",
+    "laser weld",
+    "laser",
+    "welding",
+    "weld",
+    "激光焊接",
+    "激光",
+    "焊接",
+    "焊缝",
+)
+_NON_LASER_WELD_TERMS = (
+    "electron beam",
+    "electron-beam",
+    "tig welding",
+    "tig weld",
+    "friction stir",
+    "arc welding",
+    "电子束",
+    "tig",
+    "搅拌摩擦",
+)
+_APPEARANCE_IMAGE_QUERY_TERMS = (
+    "appearance",
+    "photo",
+    "picture",
+    "macrograph",
+    "外观",
+    "照片",
+    "图片",
+)
+_APPEARANCE_FIGURE_TERMS = (
+    "appearance",
+    "macrograph",
+    "macrostructure",
+    "weld surface",
+    "surface morphology",
+    "cross section",
+    "cross-section",
+)
+_MICROSTRUCTURE_ONLY_TERMS = (
+    "sem",
+    "micrograph",
+    "microstructure",
+    "fracture surface",
+)
 
 
 class TokenUsagePayload(BaseModel):
@@ -179,6 +269,14 @@ class ContextChunkPayload(PdfAnchorFields):
     page: int | str | None = None
     source_labels: list[str] = Field(default_factory=list)
     source_hint: str | None = None
+    figure_candidate: str | None = Field(default=None, max_length=260)
+    figure_candidate_detail: dict[str, Any] | None = None
+    image_paths: list[str] = Field(default_factory=list, max_length=8)
+    retrieval_gateway_diagnostics: dict[str, Any] | None = Field(default=None, exclude=True)
+    tolf_diagnostics: dict[str, Any] | None = Field(default=None, exclude=True)
+    tolf_activation_score: float | None = Field(default=None, exclude=True)
+    tolf_final_rank_score: float | None = Field(default=None, exclude=True)
+    tolf_rank_contributions: dict[str, float] | None = Field(default=None, exclude=True)
 
 
 class ContextMetadataPayload(BaseModel):
@@ -186,6 +284,55 @@ class ContextMetadataPayload(BaseModel):
 
     chunks: list[ContextChunkPayload] = Field(default_factory=list)
     truncated: bool = False
+
+
+class SmartReadGatewayDiagnosticsPayload(BaseModel):
+    """Bounded Gateway retrieval diagnostics safe for the answer surface."""
+
+    dense_hit_count: int = Field(0, ge=0)
+    lexical_hit_count: int = Field(0, ge=0)
+    visual_hit_count: int = Field(0, ge=0)
+    candidate_count: int = Field(0, ge=0)
+    dense_enabled: bool = False
+    material_balancing_enabled: bool = False
+    chroma_status: str = Field("unavailable", max_length=64)
+    fts_status: str = Field("unavailable", max_length=64)
+    fallback_reasons: list[str] = Field(default_factory=list, max_length=8)
+    gate_status_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class SmartReadTolfDiagnosticsPayload(BaseModel):
+    """Bounded TOLF graph and ranking diagnostics safe for the answer surface."""
+
+    status: str = Field("unavailable", max_length=64)
+    candidate_count: int = Field(0, ge=0)
+    input_count: int = Field(0, ge=0)
+    graph_node_count: int = Field(0, ge=0)
+    graph_edge_count: int = Field(0, ge=0)
+    gate_after_count: int = Field(0, ge=0)
+    activation_min: float | None = None
+    activation_max: float | None = None
+    activation_mean: float | None = None
+    top_final_rank_score: float | None = None
+    rank_contribution_keys: list[str] = Field(default_factory=list, max_length=8)
+    fallback_reason: str | None = Field(default=None, max_length=96)
+
+
+class SmartReadRetrievalDiagnosticsPayload(BaseModel):
+    """User-visible retrieval health for SmartRead answers.
+
+    The payload intentionally exposes status labels and counts only. Hashes,
+    local paths, provider secrets, and raw index keys stay out of the UI
+    contract.
+    """
+
+    retrieval_method: str = Field("unknown", max_length=64)
+    embedding_status: str | None = Field(default=None, max_length=64)
+    rerank_status: str | None = Field(default=None, max_length=64)
+    lexical_only: bool = False
+    fallback_reasons: list[str] = Field(default_factory=list, max_length=8)
+    gateway: SmartReadGatewayDiagnosticsPayload | None = None
+    tolf: SmartReadTolfDiagnosticsPayload | None = None
 
 
 class EvidenceReferencePayload(PdfAnchorFields):
@@ -203,6 +350,9 @@ class EvidenceReferencePayload(PdfAnchorFields):
     source_hint: str | None = None
     rank: int | None = None
     query_overlap_tokens: list[str] = Field(default_factory=list)
+    figure_candidate: str | None = Field(default=None, max_length=260)
+    figure_candidate_detail: dict[str, Any] | None = None
+    image_paths: list[str] = Field(default_factory=list, max_length=8)
     # B2 (0.1.8.2): visually distinguish local literature evidence (RAG chunks)
     # from external web search / MCP tool results so the user can tell at a
     # glance where each citation came from. Default 'local' preserves
@@ -408,6 +558,7 @@ class IntelligentChatResponse(BaseModel):
     tier_used: ContextTier
     context_metadata: ContextMetadataPayload | None = None
     actual_sampling_params: SamplingParamsPayload | None = None
+    retrieval_diagnostics: SmartReadRetrievalDiagnosticsPayload | None = None
     evidence_refs: list[EvidenceReferencePayload] = Field(default_factory=list)
     analysis_chain: AnalysisChainPayload | None = Field(
         default=None,
@@ -686,6 +837,281 @@ def _hybrid_retrieval_enabled() -> bool:
         val = os.getenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED")
         return _truthy(val) if val else False
     return is_enabled("hybrid_retrieval")
+
+
+def _expand_project_retrieval_query(query: str) -> str:
+    """Return a bridge-expanded query for local project retrieval.
+
+    Args:
+        query: Raw user question. Empty or non-string-like values resolve to an
+            empty string and are rejected by downstream retrieval guards.
+
+    Returns:
+        The original query plus CJK bridge terms when the runtime lexicon
+        matches. On lexicon failure, returns the original query so SmartRead
+        still has a deterministic retrieval path.
+    """
+
+    normalized = str(query or "").strip()
+    if not normalized:
+        return ""
+    try:
+        expanded, _bridge_terms = _expand_query_with_bridge_terms(normalized)
+    except (RuntimeError, TypeError, ValueError):
+        return normalized
+    return str(expanded or normalized).strip() or normalized
+
+
+def _query_identifier_tokens(query: str) -> tuple[str, ...]:
+    """Return material-like identifier tokens that should anchor retrieval.
+
+    Args:
+        query: Raw or bridge-expanded retrieval query.
+
+    Returns:
+        Lower-cased alphanumeric tokens containing both letters and digits.
+        These tokens represent material grades, alloy names, or dataset labels
+        that must not be drowned out by broad topical matches.
+    """
+
+    normalized = str(query or "").lower()
+    tokens: list[str] = []
+    for token in _PROJECT_IDENTIFIER_TOKEN_RE.findall(normalized):
+        if not any(ch.isalpha() for ch in token) or not any(ch.isdigit() for ch in token):
+            continue
+        if token not in tokens:
+            tokens.append(token)
+    return tuple(tokens)
+
+
+def _prioritize_query_identifier_matches(
+    query: str,
+    results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Stable-sort retrieval hits so explicit material identifiers win.
+
+    Args:
+        query: User query or expanded retrieval query.
+        results: Candidate chunk dictionaries in rank order.
+
+    Returns:
+        A new ranked list. If no material-like identifiers are present, the
+        input order is preserved.
+    """
+
+    if not isinstance(results, list) or not results:
+        return results
+    identifiers = _query_identifier_tokens(query)
+    if not identifiers:
+        return results
+
+    def match_count(item: dict[str, Any]) -> int:
+        haystack = " ".join(
+            str(item.get(field) or "")
+            for field in ("title", "source", "content", "raw_content", "summary")
+        ).lower()
+        return sum(1 for token in identifiers if token in haystack)
+
+    indexed = list(enumerate(results))
+    indexed.sort(key=lambda pair: (match_count(pair[1]), -pair[0]), reverse=True)
+    return [item for _index, item in indexed]
+
+
+def _visual_evidence_query_enabled(query: str) -> bool:
+    """Return whether a query asks for inspectable figure/image evidence."""
+
+    normalized = str(query or "").strip()
+    if not normalized:
+        return False
+    return bool(_VISUAL_INTENT_RE.search(normalized))
+
+
+def _appearance_image_query_enabled(query: str) -> bool:
+    """Return whether the user is asking for visual appearance/photo evidence."""
+
+    normalized = str(query or "").strip().lower()
+    if not normalized:
+        return False
+    return any(term in normalized for term in _APPEARANCE_IMAGE_QUERY_TERMS)
+
+
+def _chunk_text_for_ranking(chunk: Mapping[str, Any]) -> str:
+    """Return bounded chunk text used only for local ranking heuristics."""
+
+    if not isinstance(chunk, Mapping):
+        raise TypeError("chunk must be a mapping")
+    parts = [
+        chunk.get("title"),
+        chunk.get("source"),
+        chunk.get("content"),
+        chunk.get("raw_content"),
+        chunk.get("summary"),
+    ]
+    return " ".join(str(part or "") for part in parts).lower()[:6000]
+
+
+def _has_image_asset_paths(chunk: Mapping[str, Any]) -> bool:
+    """Return whether a chunk carries project-relative extracted image assets."""
+
+    if not isinstance(chunk, Mapping):
+        raise TypeError("chunk must be a mapping")
+    value = chunk.get("image_paths")
+    return isinstance(value, list) and any(isinstance(item, str) and item.strip() for item in value)
+
+
+def _visual_evidence_score(query: str, chunk: Mapping[str, Any]) -> float:
+    """Score a real image-bearing chunk for visual-evidence questions.
+
+    Args:
+        query: User query, preferably after bridge-term expansion.
+        chunk: Project chunk dictionary from the chunk store.
+
+    Returns:
+        Positive score for chunks with real image assets and visual/welding
+        textual evidence. Returns 0 for chunks that should not be used as
+        visual evidence.
+    """
+
+    if not isinstance(query, str):
+        raise TypeError("query must be a string")
+    if not isinstance(chunk, Mapping):
+        raise TypeError("chunk must be a mapping")
+    if not _has_image_asset_paths(chunk):
+        return 0.0
+
+    haystack = _chunk_text_for_ranking(chunk)
+    if not haystack:
+        return 0.0
+
+    visual_hits = sum(1 for term in _VISUAL_EVIDENCE_TERMS if term in haystack)
+    if visual_hits <= 0:
+        return 0.0
+
+    score = 1.0
+    if str(chunk.get("chunk_type") or "").lower() == "figure_caption":
+        score += 3.0
+    identifiers = _query_identifier_tokens(query)
+    score += 2.5 * sum(1 for token in identifiers if token in haystack)
+    score += 1.25 * visual_hits
+    score += 1.0 * sum(1 for term in _LASER_WELD_TERMS if term in haystack)
+
+    query_lower = query.lower()
+    if _appearance_image_query_enabled(query):
+        score += 2.0 * sum(1 for term in _APPEARANCE_FIGURE_TERMS if term in haystack)
+        micro_only_hits = sum(1 for term in _MICROSTRUCTURE_ONLY_TERMS if term in haystack)
+        appearance_hits = sum(1 for term in _APPEARANCE_FIGURE_TERMS if term in haystack)
+        if micro_only_hits and not appearance_hits:
+            score -= 2.0 * micro_only_hits
+    if "laser" in query_lower or "激光" in query_lower:
+        score -= 2.5 * sum(1 for term in _NON_LASER_WELD_TERMS if term in haystack)
+        if "laser" not in haystack and "激光" not in haystack:
+            score -= 1.5
+    if identifiers and not any(token in haystack for token in identifiers):
+        score -= 2.0
+
+    return max(score, 0.0)
+
+
+def _merge_visual_evidence_chunks(
+    query: str,
+    selected: list[dict[str, Any]],
+    chunk_pool: Sequence[Mapping[str, Any]],
+    *,
+    total_cap: int,
+) -> list[dict[str, Any]]:
+    """Blend real image-bearing chunks into visual SmartRead queries.
+
+    Args:
+        query: User query or bridge-expanded query.
+        selected: Already-ranked context chunks.
+        chunk_pool: Full project chunk pool used to find image evidence.
+        total_cap: Maximum number of chunks allowed after blending.
+
+    Returns:
+        Ranked context candidates where visual requests retain textual anchors
+        while surfacing inspectable extracted image assets.
+    """
+
+    if not isinstance(total_cap, int) or total_cap <= 0:
+        raise ValueError("total_cap must be a positive integer")
+    if not _visual_evidence_query_enabled(query) or not selected or not chunk_pool:
+        return selected[:total_cap]
+
+    ranked: list[tuple[float, int, dict[str, Any]]] = []
+    ranked_ids: set[str] = set()
+    ranked_image_keys: set[str] = set()
+    for index, raw_chunk in enumerate(chunk_pool):
+        if not isinstance(raw_chunk, Mapping):
+            continue
+        score = _visual_evidence_score(query, raw_chunk)
+        if score <= 0.0:
+            continue
+        chunk = dict(raw_chunk)
+        chunk_id = str(chunk.get("chunk_id") or chunk.get("id") or "").strip()
+        if not chunk_id or chunk_id in ranked_ids:
+            continue
+        image_key = "|".join(
+            item.strip()
+            for item in chunk.get("image_paths", [])
+            if isinstance(item, str) and item.strip()
+        )
+        if image_key and image_key in ranked_image_keys:
+            continue
+        ranked_ids.add(chunk_id)
+        if image_key:
+            ranked_image_keys.add(image_key)
+        chunk["visual_evidence_score"] = round(score, 4)
+        ranked.append((score, -index, chunk))
+    if not ranked:
+        return selected[:total_cap]
+
+    ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    desired_visual_count = min(2, max(1, total_cap - 1))
+    anchor_cap = max(1, total_cap - desired_visual_count)
+    anchors: list[dict[str, Any]] = []
+    for chunk in selected:
+        if not isinstance(chunk, dict) or _has_image_asset_paths(chunk):
+            continue
+        anchors.append(chunk)
+        if len(anchors) >= anchor_cap:
+            break
+    if len(anchors) < anchor_cap:
+        for chunk in selected:
+            if not isinstance(chunk, dict):
+                continue
+            chunk_id = str(chunk.get("chunk_id") or chunk.get("id") or "").strip()
+            if any(str(anchor.get("chunk_id") or anchor.get("id") or "").strip() == chunk_id for anchor in anchors):
+                continue
+            anchors.append(chunk)
+            if len(anchors) >= anchor_cap:
+                break
+    leading_anchor_count = min(len(anchors), max(1, min(anchor_cap, 3)))
+    seen_ids = {
+        str(item.get("chunk_id") or item.get("id") or "").strip()
+        for item in anchors[:leading_anchor_count]
+        if isinstance(item, dict)
+    }
+
+    merged = list(anchors[:leading_anchor_count])
+    for _score, _order, chunk in ranked:
+        chunk_id = str(chunk.get("chunk_id") or chunk.get("id") or "").strip()
+        if chunk_id in seen_ids:
+            continue
+        merged.append(chunk)
+        seen_ids.add(chunk_id)
+        if len(merged) >= total_cap:
+            break
+
+    if len(merged) < total_cap:
+        for chunk in [*anchors[leading_anchor_count:], *selected]:
+            chunk_id = str(chunk.get("chunk_id") or chunk.get("id") or "").strip()
+            if chunk_id in seen_ids:
+                continue
+            merged.append(chunk)
+            seen_ids.add(chunk_id)
+            if len(merged) >= total_cap:
+                break
+    return merged[:total_cap]
 
 
 def _structured_sibling_inclusion_enabled() -> bool:
@@ -1063,6 +1489,96 @@ def _extract_source_labels(chunk: dict[str, Any], fallback: str) -> list[str]:
     return extract_source_labels(chunk, fallback)
 
 
+def _extract_image_paths(chunk: dict[str, Any]) -> list[str]:
+    """Return bounded project-relative image assets linked to a chunk."""
+
+    try:
+        from routers.resources_router.endpoints_search_upload import _chunk_image_paths
+
+        return _chunk_image_paths(chunk)
+    except (ImportError, RuntimeError, TypeError, ValueError):
+        pass
+
+    raw_paths = chunk.get("image_paths")
+    if not isinstance(raw_paths, list):
+        return []
+    paths: list[str] = []
+    for item in raw_paths:
+        if not isinstance(item, str):
+            continue
+        normalized = item.strip().replace("\\", "/")
+        if not normalized or normalized.startswith(("http://", "https://", "file:")):
+            continue
+        if normalized not in paths:
+            paths.append(normalized[:260])
+        if len(paths) >= 8:
+            break
+    return paths
+
+
+def _extract_figure_candidate_detail(chunk: dict[str, Any]) -> dict[str, Any] | None:
+    """Return small figure/table metadata without raw OCR blocks."""
+
+    raw = chunk.get("figure_candidate_detail")
+    if not isinstance(raw, dict):
+        material_id = _clean_optional_text(chunk.get("material_id"))
+        chunk_id = _clean_optional_text(chunk.get("chunk_id"))
+        if not material_id or not chunk_id:
+            return None
+        try:
+            from routers.resources_router.endpoints_search_upload import _chunk_figure_candidate_detail
+
+            raw = _chunk_figure_candidate_detail(
+                chunk,
+                material_id=material_id,
+                chunk_id=chunk_id,
+            )
+        except (ImportError, RuntimeError, TypeError, ValueError):
+            raw = None
+        if not isinstance(raw, dict):
+            return None
+    allowed = {
+        "id",
+        "kind",
+        "figure_id",
+        "label",
+        "caption",
+        "material_id",
+        "material_title",
+        "page",
+        "chunk_id",
+        "chunk_index",
+        "bbox",
+        "bbox_unit",
+        "image_paths",
+        "asset_path",
+        "source",
+    }
+    detail: dict[str, Any] = {}
+    for key in allowed:
+        value = raw.get(key)
+        if value is None:
+            continue
+        if key == "image_paths":
+            image_paths = _extract_image_paths({"image_paths": value})
+            if image_paths:
+                detail[key] = image_paths[:4]
+            continue
+        if key == "bbox":
+            bbox = coerce_pdf_bbox(value)
+            if bbox is not None:
+                detail[key] = bbox
+            continue
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned:
+                detail[key] = cleaned[:320]
+            continue
+        if isinstance(value, int | float) and not isinstance(value, bool):
+            detail[key] = value
+    return detail or None
+
+
 def _chunk_text(text: str, *, chunk_chars: int = 1200) -> list[str]:
     paragraphs = [part.strip() for part in re.split(r"\n\s*\n", text) if part.strip()]
     chunks: list[str] = []
@@ -1139,21 +1655,34 @@ async def _build_project_context_chunks(
     """
     max_chunks, max_chars = _TIER_LIMITS[tier]
     cleaned_material_id = (material_id or "").strip() or None
+    retrieval_query = _expand_project_retrieval_query(query)
+    visual_candidate_pool: Sequence[Mapping[str, Any]] = []
 
     hybrid_on = _hybrid_retrieval_enabled()
 
     async def _rag_search(top_k: int) -> list[dict[str, Any]]:
         """Dispatch between hybrid_search (async) and legacy keyword (sync)."""
+        legacy_hits = search_project_chunks_for_query(
+            project_id=project_id,
+            query=retrieval_query or query,
+            top_k=top_k,
+        )
         if hybrid_on:
             hits = await _hybrid_search_project(
-                project_id, query, top_k=top_k, boost_keywords=boost_keywords
+                project_id,
+                retrieval_query or query,
+                top_k=top_k,
+                boost_keywords=boost_keywords,
             )
+            if hits and legacy_hits:
+                return _prioritize_query_identifier_matches(
+                    retrieval_query or query,
+                    _rrf_merge(hits, legacy_hits),
+                )[:top_k]
             if hits:
-                return hits
+                return _prioritize_query_identifier_matches(retrieval_query or query, hits)[:top_k]
             # Hybrid failed (no chunks / import / API): fall back to legacy.
-        return search_project_chunks_for_query(
-            project_id=project_id, query=query, top_k=top_k
-        )
+        return _prioritize_query_identifier_matches(retrieval_query or query, legacy_hits)[:top_k]
 
     if cleaned_material_id:
         # Material-scoped path: load the project's chunks, keep only those
@@ -1162,6 +1691,7 @@ async def _build_project_context_chunks(
         # disabling broader RAG entirely (other material chunks can still
         # be appended below if room remains).
         all_chunks = load_project_chunks_for_rag(project_id)
+        visual_candidate_pool = all_chunks or []
         material_chunks = [
             c for c in (all_chunks or [])
             if str(c.get("material_id") or "").strip() == cleaned_material_id
@@ -1174,10 +1704,11 @@ async def _build_project_context_chunks(
         # TOLF needs full corpus — it has its own cosine prefilter internally.
         # Keyword-search top-k is too small for SA-RAG diffusion to work.
         all_chunks = load_project_chunks_for_rag(project_id)
+        visual_candidate_pool = all_chunks or []
         if all_chunks:
             try:
                 tolfs = select_tolf_context_chunks(
-                    query, all_chunks,
+                    retrieval_query or query, all_chunks,
                     top_k=max_chunks,
                     max_candidates=_positive_int_env("INTELLIGENT_CHAT_TOLF_CONTEXT_CANDIDATES", 45),
                     boost_keywords=boost_keywords,
@@ -1194,15 +1725,27 @@ async def _build_project_context_chunks(
                     rag_hits = []
                 merged = _rrf_merge(tolfs, rag_hits)
                 if merged:
-                    results = merged[:max_chunks]
+                    results = _prioritize_query_identifier_matches(
+                        retrieval_query or query,
+                        merged,
+                    )[:max_chunks]
                 elif tolfs:
-                    results = tolfs
+                    results = _prioritize_query_identifier_matches(
+                        retrieval_query or query,
+                        tolfs,
+                    )[:max_chunks]
                 elif rag_hits:
-                    results = rag_hits
+                    results = _prioritize_query_identifier_matches(
+                        retrieval_query or query,
+                        rag_hits,
+                    )[:max_chunks]
                 else:
                     results = []
             elif tolfs:
-                results = tolfs
+                results = _prioritize_query_identifier_matches(
+                    retrieval_query or query,
+                    tolfs,
+                )[:max_chunks]
             else:
                 results = await _rag_search(max_chunks)
         else:
@@ -1231,6 +1774,19 @@ async def _build_project_context_chunks(
                 results = merge_with_siblings(
                     results, siblings, total_cap=max_chunks
                 )
+    if results and _visual_evidence_query_enabled(retrieval_query or query):
+        if not visual_candidate_pool:
+            try:
+                visual_candidate_pool = load_project_chunks_for_rag(project_id) or []
+            except (RuntimeError, TypeError, ValueError):
+                visual_candidate_pool = []
+        if visual_candidate_pool:
+            results = _merge_visual_evidence_chunks(
+                retrieval_query or query,
+                results,
+                visual_candidate_pool,
+                total_cap=max_chunks,
+            )
     chunks: list[ContextChunkPayload] = []
     used_chars = 0
     truncated = False
@@ -1306,6 +1862,38 @@ async def _build_project_context_chunks(
                 page=result.get("page") if isinstance(result.get("page"), int | str) else None,
                 source_labels=_extract_source_labels(result, "project_chunks"),
                 source_hint=_clean_optional_text(result.get("source_hint")),
+                figure_candidate=_clean_optional_text(result.get("figure_candidate")),
+                figure_candidate_detail=_extract_figure_candidate_detail(result),
+                image_paths=_extract_image_paths(result),
+                retrieval_gateway_diagnostics=(
+                    dict(result.get("retrieval_gateway_diagnostics"))
+                    if isinstance(result.get("retrieval_gateway_diagnostics"), Mapping)
+                    else None
+                ),
+                tolf_diagnostics=(
+                    dict(result.get("tolf_diagnostics"))
+                    if isinstance(result.get("tolf_diagnostics"), Mapping)
+                    else None
+                ),
+                tolf_activation_score=(
+                    float(result.get("tolf_activation_score"))
+                    if isinstance(result.get("tolf_activation_score"), int | float)
+                    else None
+                ),
+                tolf_final_rank_score=(
+                    float(result.get("tolf_final_rank_score"))
+                    if isinstance(result.get("tolf_final_rank_score"), int | float)
+                    else None
+                ),
+                tolf_rank_contributions=(
+                    {
+                        str(key): float(value)
+                        for key, value in result.get("tolf_rank_contributions").items()
+                        if isinstance(key, str) and isinstance(value, int | float)
+                    }
+                    if isinstance(result.get("tolf_rank_contributions"), Mapping)
+                    else None
+                ),
                 bbox=bbox,
                 bbox_unit=bbox_unit if bbox is not None else None,
             )
@@ -1315,6 +1903,171 @@ async def _build_project_context_chunks(
     if len(results) > len(chunks):
         truncated = True
     return chunks, truncated
+
+
+def _bounded_diagnostic_label(value: object, *, fallback: str = "unknown", max_length: int = 64) -> str:
+    """Return a UI-safe status token without paths, JSON, or credentials."""
+
+    raw = str(value or "").strip()
+    if not raw:
+        return fallback
+    cleaned = re.sub(r"[^A-Za-z0-9_.:-]+", "_", raw)[:max_length].strip("_")
+    return cleaned or fallback
+
+
+def _bounded_diagnostic_reasons(values: object, *, max_items: int = 8) -> list[str]:
+    """Return a bounded list of fallback reason tokens."""
+
+    if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
+        return []
+    reasons: list[str] = []
+    for item in values:
+        reason = _bounded_diagnostic_label(item, fallback="", max_length=96)
+        if reason and reason not in reasons:
+            reasons.append(reason)
+        if len(reasons) >= max_items:
+            break
+    return reasons
+
+
+def _safe_non_negative_int(value: object) -> int:
+    """Coerce finite numeric diagnostics to a non-negative integer."""
+
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int | float) and value >= 0:
+        return int(value)
+    return 0
+
+
+def _safe_float(value: object) -> float | None:
+    """Coerce finite numeric diagnostics to a rounded float."""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        numeric = float(value)
+        if numeric == numeric and numeric not in (float("inf"), float("-inf")):
+            return round(numeric, 4)
+    return None
+
+
+def _smart_read_gateway_diagnostics(
+    chunks: list[ContextChunkPayload],
+) -> SmartReadGatewayDiagnosticsPayload | None:
+    """Aggregate Gateway diagnostics carried internally by selected chunks."""
+
+    raw: Mapping[str, Any] | None = None
+    for chunk in chunks:
+        if isinstance(chunk.retrieval_gateway_diagnostics, Mapping):
+            raw = chunk.retrieval_gateway_diagnostics
+            break
+    if raw is None:
+        return None
+    gate_counts: dict[str, int] = {}
+    raw_gate_counts = raw.get("gate_status_counts")
+    if isinstance(raw_gate_counts, Mapping):
+        for key, value in raw_gate_counts.items():
+            label = _bounded_diagnostic_label(key, fallback="", max_length=48)
+            if label:
+                gate_counts[label] = _safe_non_negative_int(value)
+    return SmartReadGatewayDiagnosticsPayload(
+        dense_hit_count=_safe_non_negative_int(raw.get("dense_hit_count")),
+        lexical_hit_count=_safe_non_negative_int(raw.get("lexical_hit_count")),
+        visual_hit_count=_safe_non_negative_int(raw.get("visual_hit_count")),
+        candidate_count=_safe_non_negative_int(raw.get("candidate_count")),
+        dense_enabled=raw.get("dense_enabled") is True,
+        material_balancing_enabled=raw.get("material_balancing_enabled") is True,
+        chroma_status=_bounded_diagnostic_label(raw.get("chroma_status"), fallback="unavailable"),
+        fts_status=_bounded_diagnostic_label(raw.get("fts_status"), fallback="unavailable"),
+        fallback_reasons=_bounded_diagnostic_reasons(raw.get("fallback_reasons")),
+        gate_status_counts=gate_counts,
+    )
+
+
+def _smart_read_tolf_diagnostics(
+    chunks: list[ContextChunkPayload],
+) -> SmartReadTolfDiagnosticsPayload | None:
+    """Aggregate TOLF graph diagnostics carried internally by selected chunks."""
+
+    raw: Mapping[str, Any] | None = None
+    rank_keys: list[str] = []
+    top_final_rank: float | None = None
+    for chunk in chunks:
+        if isinstance(chunk.tolf_diagnostics, Mapping) and raw is None:
+            raw = chunk.tolf_diagnostics
+        if isinstance(chunk.tolf_rank_contributions, Mapping):
+            for key in chunk.tolf_rank_contributions:
+                label = _bounded_diagnostic_label(key, fallback="", max_length=48)
+                if label and label not in rank_keys:
+                    rank_keys.append(label)
+        if chunk.tolf_final_rank_score is not None:
+            candidate_rank = _safe_float(chunk.tolf_final_rank_score)
+            if candidate_rank is not None:
+                top_final_rank = candidate_rank if top_final_rank is None else max(top_final_rank, candidate_rank)
+    if raw is None and not rank_keys and top_final_rank is None:
+        return None
+    return SmartReadTolfDiagnosticsPayload(
+        status=_bounded_diagnostic_label(raw.get("status") if raw else None, fallback="active"),
+        candidate_count=_safe_non_negative_int(raw.get("candidate_count") if raw else None),
+        input_count=_safe_non_negative_int(raw.get("input_count") if raw else None),
+        graph_node_count=_safe_non_negative_int(raw.get("graph_node_count") if raw else None),
+        graph_edge_count=_safe_non_negative_int(raw.get("graph_edge_count") if raw else None),
+        gate_after_count=_safe_non_negative_int(raw.get("gate_after_count") if raw else None),
+        activation_min=_safe_float(raw.get("activation_min") if raw else None),
+        activation_max=_safe_float(raw.get("activation_max") if raw else None),
+        activation_mean=_safe_float(raw.get("activation_mean") if raw else None),
+        top_final_rank_score=top_final_rank,
+        rank_contribution_keys=rank_keys[:8],
+        fallback_reason=(
+            _bounded_diagnostic_label(raw.get("fallback_reason"), fallback="", max_length=96)
+            if raw and raw.get("fallback_reason") is not None
+            else None
+        ),
+    )
+
+
+def _build_smart_read_retrieval_diagnostics(
+    chunks: list[ContextChunkPayload],
+    *,
+    project_id: str | None,
+    retrieval_attempted: bool,
+) -> SmartReadRetrievalDiagnosticsPayload | None:
+    """Build bounded retrieval diagnostics for SmartRead answer surfaces."""
+
+    if not retrieval_attempted:
+        return None
+    gateway = _smart_read_gateway_diagnostics(chunks)
+    tolf = _smart_read_tolf_diagnostics(chunks)
+    fallback_reasons: list[str] = []
+    if gateway is not None:
+        fallback_reasons.extend(gateway.fallback_reasons)
+    if tolf is not None and tolf.fallback_reason:
+        fallback_reasons.append(tolf.fallback_reason)
+    if project_id and not chunks:
+        fallback_reasons.append("no_context_chunks")
+    fallback_reasons = list(dict.fromkeys(fallback_reasons))[:8]
+    lexical_only = bool(gateway and not gateway.dense_enabled and gateway.lexical_hit_count > 0)
+    if tolf is not None:
+        retrieval_method = "tolf_gateway_fusion" if gateway is not None else "tolf"
+    elif gateway is not None:
+        retrieval_method = "retrieval_gateway"
+    elif chunks:
+        retrieval_method = "legacy_project_retrieval" if project_id else "local_source_retrieval"
+    else:
+        retrieval_method = "none"
+    embedding_status = None
+    if gateway is not None:
+        embedding_status = "dense_enabled" if gateway.dense_enabled else "lexical_only"
+    return SmartReadRetrievalDiagnosticsPayload(
+        retrieval_method=retrieval_method,
+        embedding_status=embedding_status,
+        rerank_status="not_reported",
+        lexical_only=lexical_only,
+        fallback_reasons=fallback_reasons,
+        gateway=gateway,
+        tolf=tolf,
+    )
 
 
 def _build_context_strings(chunks: list[ContextChunkPayload]) -> list[str]:
@@ -1414,6 +2167,9 @@ def _context_chunks_from_evidence_refs(refs: list[EvidenceReferencePayload], tie
                 page=ref.page,
                 source_labels=ref.source_labels,
                 source_hint=ref.source_hint,
+                figure_candidate=ref.figure_candidate,
+                figure_candidate_detail=ref.figure_candidate_detail,
+                image_paths=ref.image_paths,
                 bbox=ref.bbox,
                 bbox_unit=ref.bbox_unit,
             )
@@ -1548,6 +2304,48 @@ def _int_setting(name: str, default: int) -> int:
         return default
 
 
+def _coerce_chat_sampling_override(key: str, raw: Any) -> float | int | None:
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        value: float | int = int(text) if key in {"top_k", "max_tokens"} else float(text)
+        resolved = resolve_llm_params("chat", {key: value})
+    except (TypeError, ValueError):
+        return None
+    return int(resolved[key]) if key in {"top_k", "max_tokens"} else float(resolved[key])
+
+
+def _chat_sampling_file_overrides() -> dict[str, float | int]:
+    loaded = load_user_sampling() or {}
+    overrides = loaded.get("chat", {})
+    if not isinstance(overrides, dict):
+        return {}
+    sanitized: dict[str, float | int] = {}
+    for key in ("temperature", "top_p", "top_k", "max_tokens"):
+        value = _coerce_chat_sampling_override(key, overrides.get(key))
+        if value is not None:
+            sanitized[key] = value
+    return sanitized
+
+
+def _chat_sampling_env_overrides() -> dict[str, float | int]:
+    env_keys = {
+        "temperature": "CHAT_TEMPERATURE",
+        "top_p": "CHAT_TOP_P",
+        "top_k": "CHAT_TOP_K",
+        "max_tokens": "CHAT_MAX_TOKENS",
+    }
+    overrides: dict[str, float | int] = {}
+    for key, env_name in env_keys.items():
+        value = _coerce_chat_sampling_override(key, env_value(env_name))
+        if value is not None:
+            overrides[key] = value
+    return overrides
+
+
 def _load_default_llm_config() -> LLMConfig:
     """Resolve Dialog's default LLM from runtime override and repo-local env.
 
@@ -1582,15 +2380,19 @@ def _load_default_llm_config() -> LLMConfig:
     if not base_url or not model:
         raise HTTPException(status_code=503, detail="No chat LLM is configured")
 
+    sampling_overrides = _chat_sampling_file_overrides()
+    sampling_overrides.update(_chat_sampling_env_overrides())
+    sampling = resolve_llm_params("chat", sampling_overrides or None)
+
     return LLMConfig(
         provider=override_provider or env_provider,
         api_key=override_api_key or env_api_key,
         model=model,
         base_url=base_url,
-        temperature=_float_setting("CHAT_TEMPERATURE", 0.7),
-        top_p=_float_setting("CHAT_TOP_P", 0.9),
-        top_k=_int_setting("CHAT_TOP_K", 50),
-        max_tokens=_int_setting("CHAT_MAX_TOKENS", 2048),
+        temperature=float(sampling["temperature"]),
+        top_p=float(sampling["top_p"]),
+        top_k=int(sampling["top_k"]),
+        max_tokens=int(sampling["max_tokens"]),
         system_prompt=env_value("CHAT_SYSTEM_PROMPT", default="") or "",
     )
 
@@ -1753,6 +2555,21 @@ def _load_skill_tool_schemas() -> list[dict[str, Any]] | None:
         return None
 
 
+def _should_offer_legacy_skill_tools(
+    *,
+    mcp_server_ids: list[str] | None,
+    use_local_literature_tools: bool,
+) -> bool:
+    """Return whether SmartRead may advertise legacy skill function schemas.
+
+    Plain chat-compatible providers often reject any `tools` field. Keep the
+    legacy skill surface behind an explicit tool-use request so ordinary
+    SmartRead turns stay compatible with chat-only proxies.
+    """
+
+    return bool(use_local_literature_tools) or mcp_server_ids is not None
+
+
 def _execute_skill_tool_calls(tool_calls: list[dict[str, Any]]) -> list[str]:
     """Execute skills requested by LLM tool_calls, return result strings."""
     results: list[str] = []
@@ -1798,7 +2615,14 @@ async def _call_llm_answer(
         raise TypeError("context must be a list of strings")
 
     llm = _load_default_llm_config()
-    tool_schemas = _load_skill_tool_schemas()
+    tool_schemas = (
+        _load_skill_tool_schemas()
+        if _should_offer_legacy_skill_tools(
+            mcp_server_ids=mcp_server_ids,
+            use_local_literature_tools=use_local_literature_tools,
+        )
+        else None
+    )
     response = await chat_ask(
         ChatRequest(
             query=query,
@@ -2388,6 +3212,8 @@ def _persist_turns(
             "tokens_used": response.tokens_used.model_dump(),
             "evidence_refs": [ref.model_dump() for ref in response.evidence_refs],
         }
+        if response.retrieval_diagnostics is not None:
+            assistant_turn["retrieval_diagnostics"] = response.retrieval_diagnostics.model_dump()
         if response.analysis_chain is not None:
             assistant_turn["analysis_chain"] = response.analysis_chain.model_dump()
         if mode == ChatMode.INSPIRATION and inspiration_context is not None:
@@ -2410,12 +3236,16 @@ def _persist_turns(
 
 
 def _compression_policy() -> dict[str, int | bool]:
-    settings = chat_context_compression_store.get_settings()
+    settings = normalize_chat_context_compression_settings(
+        chat_context_compression_store.get_settings()
+    )
     return {
         "enabled": bool(settings.get("enabled", True)),
-        "trigger_tokens": int(settings.get("trigger_tokens") or 24_000),
-        "target_tokens": int(settings.get("target_tokens") or 2_000),
-        "keep_recent_turns": int(settings.get("keep_recent_turns") or 6),
+        "trigger_tokens": int(settings.get("trigger_tokens") or CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT),
+        "target_tokens": int(settings.get("target_tokens") or CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT),
+        "keep_recent_turns": int(
+            settings.get("keep_recent_turns") or CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT
+        ),
     }
 
 
@@ -2582,6 +3412,7 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
         truncated = False
         evidence_refs: list[EvidenceReferencePayload] = []
         context_metadata = ContextMetadataPayload(chunks=[], truncated=False)
+        retrieval_diagnostics: SmartReadRetrievalDiagnosticsPayload | None = None
 
         try:
             default_llm = _load_default_llm_config()
@@ -2614,6 +3445,11 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
                     )
                     sampling = rag_sampling or sampling
                     context_metadata = ContextMetadataPayload(chunks=chunks, truncated=truncated)
+                    retrieval_diagnostics = _build_smart_read_retrieval_diagnostics(
+                        chunks,
+                        project_id=project_id,
+                        retrieval_attempted=True,
+                    )
                     answer_parts.append(rag_answer)
                     yield _sse_data(
                         {
@@ -2624,6 +3460,9 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
                             "context_metadata": context_metadata.model_dump(),
                             "evidence_refs": [ref.model_dump() for ref in evidence_refs],
                             "actual_sampling_params": sampling.model_dump() if sampling else None,
+                            "retrieval_diagnostics": (
+                                retrieval_diagnostics.model_dump() if retrieval_diagnostics is not None else None
+                            ),
                         }
                     )
                     if rag_answer:
@@ -2654,6 +3493,7 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
                         tier_used=req.tier,
                         context_metadata=context_metadata,
                         actual_sampling_params=sampling,
+                        retrieval_diagnostics=retrieval_diagnostics,
                         evidence_refs=evidence_refs,
                         analysis_chain=analysis_chain,
                     )
@@ -2691,6 +3531,11 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
                     evidence_refs = _build_evidence_refs_from_context_chunks(chunks)
 
                 context_metadata = ContextMetadataPayload(chunks=chunks, truncated=truncated)
+                retrieval_diagnostics = _build_smart_read_retrieval_diagnostics(
+                    chunks,
+                    project_id=project_id,
+                    retrieval_attempted=True,
+                )
                 inspiration_extras: list[str] = []
                 if effective_mode == ChatMode.INSPIRATION and req.inspiration_context is not None:
                     spark = req.inspiration_context
@@ -2729,6 +3574,9 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
                             "context_metadata": ContextMetadataPayload(chunks=[], truncated=False).model_dump(),
                             "evidence_refs": [],
                             "actual_sampling_params": sampling.model_dump() if sampling else None,
+                            "retrieval_diagnostics": (
+                                retrieval_diagnostics.model_dump() if retrieval_diagnostics is not None else None
+                            ),
                         }
                     )
                     yield _sse_data({"event": "text_delta", "delta": empty_answer})
@@ -2757,7 +3605,8 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
                         tier_used=req.tier,
                         context_metadata=ContextMetadataPayload(chunks=[], truncated=False),
                         evidence_refs=[],
-                    actual_sampling_params=sampling,
+                        actual_sampling_params=sampling,
+                        retrieval_diagnostics=retrieval_diagnostics,
                         analysis_chain=analysis_chain,
                     )
                     _persist_turns(
@@ -2779,6 +3628,9 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
                     "context_metadata": context_metadata.model_dump(),
                     "evidence_refs": [ref.model_dump() for ref in evidence_refs],
                     "actual_sampling_params": sampling.model_dump() if sampling else None,
+                    "retrieval_diagnostics": (
+                        retrieval_diagnostics.model_dump() if retrieval_diagnostics is not None else None
+                    ),
                 }
             )
             lower_response = await lower_chat_stream(
@@ -2827,6 +3679,7 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
                 tier_used=req.tier,
                 context_metadata=context_metadata,
                 actual_sampling_params=sampling,
+                retrieval_diagnostics=retrieval_diagnostics,
                 evidence_refs=evidence_refs,
                 analysis_chain=analysis_chain,
             )
@@ -3002,6 +3855,11 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
         evidence_refs = _build_evidence_refs_from_context_chunks(chunks)
 
     context_metadata = ContextMetadataPayload(chunks=chunks, truncated=truncated)
+    retrieval_diagnostics = _build_smart_read_retrieval_diagnostics(
+        chunks,
+        project_id=project_id,
+        retrieval_attempted=True,
+    )
 
     # INSPIRATION mode reuses the LITERATURE_QA retrieval
     # path; only difference is the structured inspiration_context payload
@@ -3051,6 +3909,7 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
             context_metadata=ContextMetadataPayload(chunks=[], truncated=False),
             evidence_refs=[],
             actual_sampling_params=ragworkflow_sampling,
+            retrieval_diagnostics=retrieval_diagnostics,
             analysis_chain=analysis_chain,
         )
         _persist_turns(
@@ -3096,6 +3955,7 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
         tier_used=req.tier,
         context_metadata=context_metadata,
         actual_sampling_params=sampling,
+        retrieval_diagnostics=retrieval_diagnostics,
         evidence_refs=evidence_refs,
         analysis_chain=analysis_chain,
         mcp_run=mcp_run,

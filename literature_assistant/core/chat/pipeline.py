@@ -89,6 +89,9 @@ class ContextChunkLike(Protocol):
     source_labels: list[str]
     page: int | str | None
     source_hint: str | None
+    figure_candidate: str | None
+    figure_candidate_detail: Mapping[str, object] | None
+    image_paths: list[str]
 
 
 class EvidenceReferenceRecord(TypedDict):
@@ -109,6 +112,9 @@ class EvidenceReferenceRecord(TypedDict):
     source_kind: EvidenceSourceKind
     bbox: NotRequired[list[float]]
     bbox_unit: NotRequired[str | None]
+    figure_candidate: NotRequired[str | None]
+    figure_candidate_detail: NotRequired[Mapping[str, object] | None]
+    image_paths: NotRequired[list[str]]
 
 
 class SessionSummaryRecord(TypedDict):
@@ -501,6 +507,17 @@ def render_context_strings(chunks: Sequence[ContextChunkLike]) -> list[str]:
             meta_parts.append(f"section={chunk.section_title}")
         if chunk.page is not None:
             meta_parts.append(f"page={chunk.page}")
+        if chunk.figure_candidate:
+            meta_parts.append(f"figure_candidate={chunk.figure_candidate}")
+        if chunk.image_paths:
+            meta_parts.append("image_paths=" + ", ".join(chunk.image_paths[:4]))
+        if chunk.figure_candidate_detail:
+            detail_json = json.dumps(
+                dict(chunk.figure_candidate_detail),
+                ensure_ascii=False,
+                sort_keys=True,
+            )[:600]
+            meta_parts.append(f"figure_detail={detail_json}")
         context_strings.append(f"[{chunk.index}] {'; '.join(meta_parts)}\n{chunk.content}")
     return context_strings
 
@@ -577,6 +594,68 @@ def _coerce_overlap_tokens(value: object) -> list[str]:
     return [str(token) for token in value if isinstance(token, str) and token.strip()]
 
 
+def _coerce_image_paths(value: object, *, limit: int = 8) -> list[str]:
+    """Return bounded relative image asset paths safe for response metadata."""
+
+    if not isinstance(limit, int) or limit < 1:
+        raise ValueError("limit must be a positive integer")
+    if not isinstance(value, list):
+        return []
+    paths: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        normalized = item.strip().replace("\\", "/")
+        if not normalized or normalized.startswith(("http://", "https://", "file:")):
+            continue
+        if normalized not in paths:
+            paths.append(normalized[:260])
+        if len(paths) >= limit:
+            break
+    return paths
+
+
+def _coerce_figure_detail(value: object) -> Mapping[str, object] | None:
+    """Return a small JSON-like figure detail mapping without raw text blocks."""
+
+    if not isinstance(value, Mapping):
+        return None
+    allowed_keys = {
+        "figure_id",
+        "label",
+        "caption",
+        "page",
+        "bbox",
+        "bbox_unit",
+        "image_paths",
+        "asset_path",
+        "source",
+    }
+    detail: dict[str, object] = {}
+    for key in allowed_keys:
+        raw = value.get(key)
+        if raw is None:
+            continue
+        if key == "image_paths":
+            coerced_paths = _coerce_image_paths(raw, limit=4)
+            if coerced_paths:
+                detail[key] = coerced_paths
+            continue
+        if key == "bbox":
+            bbox = _coerce_optional_bbox(raw)
+            if bbox is not None:
+                detail[key] = bbox
+            continue
+        if isinstance(raw, str):
+            cleaned = raw.strip()
+            if cleaned:
+                detail[key] = cleaned[:320]
+            continue
+        if isinstance(raw, int | float) and not isinstance(raw, bool):
+            detail[key] = raw
+    return detail or None
+
+
 def _source_mapping(source: object) -> Mapping[str, object]:
     if isinstance(source, Mapping):
         return source
@@ -592,6 +671,9 @@ def _source_mapping(source: object) -> Mapping[str, object]:
         "source_hint": getattr(source, "source_hint", None),
         "bbox": getattr(source, "bbox", None),
         "bbox_unit": getattr(source, "bbox_unit", None),
+        "figure_candidate": getattr(source, "figure_candidate", None),
+        "figure_candidate_detail": getattr(source, "figure_candidate_detail", None),
+        "image_paths": getattr(source, "image_paths", None),
     }
 
 
@@ -682,6 +764,15 @@ def build_evidence_reference_record(
     if bbox is not None:
         record["bbox"] = bbox
         record["bbox_unit"] = _coerce_optional_bbox_unit(raw.get("bbox_unit")) or "normalized_ratio"
+    figure_candidate = clean_optional_text(raw.get("figure_candidate"))
+    if figure_candidate is not None:
+        record["figure_candidate"] = figure_candidate[:260]
+    figure_detail = _coerce_figure_detail(raw.get("figure_candidate_detail"))
+    if figure_detail is not None:
+        record["figure_candidate_detail"] = figure_detail
+    image_paths = _coerce_image_paths(raw.get("image_paths"))
+    if image_paths:
+        record["image_paths"] = image_paths
     return record
 
 

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from llm_defaults import MODEL_MAX_TOKENS, TASK_DEFAULTS
 from sampling_storage import load_user_sampling, save_user_sampling
 
-DEFAULTS_VERSION = "2026-04-21"
+DEFAULTS_VERSION = "2026-07-02"
 
 router = APIRouter(prefix="/sampling", tags=["Sampling"])
 

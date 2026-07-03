@@ -407,6 +407,7 @@ def _build_resource_ingest_executor(job):
             progress=94,
             data={
                 "indexed": int(payload.get("indexed") or 0),
+                "skipped": int(payload.get("skipped") or 0),
                 "failed": int(payload.get("failed") or 0),
                 "total_chunks": int(payload.get("total_chunks") or 0),
             },

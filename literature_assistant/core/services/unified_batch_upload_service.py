@@ -47,7 +47,20 @@ class UploadedSourceFile(Protocol):
 PersistUploadFn = Callable[[str, str, UploadFile], Any]
 LoadDocStoreFn = Callable[[str], dict[str, dict[str, Any]]]
 SaveDocStoreFn = Callable[[str, dict[str, dict[str, Any]]], None]
-ExtractPayloadFn = Callable[[str, Path], ExtractedDocumentPayload]
+class ExtractPayloadFn(Protocol):
+    """Callable shape for document extraction with optional project context."""
+
+    def __call__(
+        self,
+        filename: str,
+        source_path: Path,
+        *,
+        project_id: str | None = None,
+    ) -> ExtractedDocumentPayload:
+        """Return extracted content and optional structured blocks."""
+        ...
+
+
 TruncateContentFn = Callable[[str], str]
 EnsureExtractedTextFn = Callable[[str, str], str]
 WriteMaterialFn = Callable[..., dict[str, Any]]
@@ -326,6 +339,7 @@ class UnifiedBatchUploadService:
             self._extract_sources_sync,
             selected_sources,
             max_workers,
+            normalized_project_id,
         )
         successful_files = 0
         failed_files = initial_failed_files
@@ -418,10 +432,32 @@ class UnifiedBatchUploadService:
             markdown_full=payload.markdown_full,
         )
 
+    def _extract_payload_with_project_context(
+        self,
+        filename: str,
+        source_path: Path,
+        project_id: str | None,
+    ) -> ExtractedDocumentPayload:
+        """Call the extractor with project context when the injected callable supports it."""
+
+        normalized_project_id = str(project_id or "").strip()
+        if normalized_project_id:
+            try:
+                return self.extract_payload(
+                    filename,
+                    source_path,
+                    project_id=normalized_project_id,
+                )
+            except TypeError as exc:
+                if "project_id" not in str(exc):
+                    raise
+        return self.extract_payload(filename, source_path)
+
     def _extract_sources_sync(
         self,
         sources: list[BatchSource],
         max_workers: int | None,
+        project_id: str | None = None,
     ) -> dict[Path, ExtractedDocumentPayload | Exception]:
         if not sources:
             return {}
@@ -438,6 +474,21 @@ class UnifiedBatchUploadService:
                         results[source.source_path] = parsed
                     else:
                         text, blocks, markdown_full = parsed
+                        if blocks is None and str(project_id or "").strip():
+                            try:
+                                visual_payload = self._extract_payload_with_project_context(
+                                    source.display_name,
+                                    source.source_path,
+                                    project_id,
+                                )
+                                blocks = visual_payload.blocks
+                                markdown_full = markdown_full or visual_payload.markdown_full
+                            except Exception as exc:  # noqa: BLE001
+                                logger.warning(
+                                    "pdf_visual_batch_supplement_failed file=%s err=%s",
+                                    source.display_name,
+                                    exc,
+                                )
                         payload = ExtractedDocumentPayload(
                             content=text,
                             blocks=blocks,
@@ -456,9 +507,10 @@ class UnifiedBatchUploadService:
             if source.source_path in results:
                 continue
             try:
-                results[source.source_path] = self.extract_payload(
+                results[source.source_path] = self._extract_payload_with_project_context(
                     source.display_name,
                     source.source_path,
+                    project_id,
                 )
             except Exception as exc:  # noqa: BLE001
                 results[source.source_path] = exc

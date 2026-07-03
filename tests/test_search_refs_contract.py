@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from starlette.routing import Match
 from urllib.parse import urlsplit
@@ -111,6 +113,153 @@ def _write_chunk_fixture(project_id: str, *, content: str | None = None) -> None
     )
 
 
+def _write_pdf(path: Path) -> None:
+    """Create a tiny local PDF-like fixture for metadata-only scan tests."""
+
+    path.write_bytes(b"%PDF-1.4\nfixture\n%%EOF")
+
+
+def test_scan_dedupe_key_collapses_translation_outputs() -> None:
+    """mono/dual translated PDFs should share the original paper key."""
+
+    original = "Biffi - Laser weldability of AlSi10Mg.pdf"
+    mono = "Biffi - Laser weldability of AlSi10Mg.no_watermark.zh-CN.mono.pdf"
+    dual = "Biffi - Laser weldability of AlSi10Mg.no_watermark.zh-CN.dual.pdf"
+
+    assert resources_router._build_scan_dedupe_key(original) == resources_router._build_scan_dedupe_key(mono)
+    assert resources_router._build_scan_dedupe_key(original) == resources_router._build_scan_dedupe_key(dual)
+    assert resources_router._is_translated_scan_derivative(mono) is True
+    assert resources_router._is_translated_scan_derivative(dual) is True
+    assert resources_router._is_translated_scan_derivative(original) is False
+
+
+def test_collect_pending_scan_candidates_skips_translation_and_copy_duplicates(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """Folder scan should only queue the original paper among generated copies."""
+
+    source_folder = tmp_path / "papers"
+    source_folder.mkdir()
+    _write_pdf(source_folder / "Sun - Application of adjustable ring mode laser.pdf")
+    _write_pdf(source_folder / "Sun - Application of adjustable ring mode laser (1).pdf")
+    _write_pdf(source_folder / "Sun - Application of adjustable ring mode laser.no_watermark.zh-CN.mono.pdf")
+    _write_pdf(source_folder / "Sun - Application of adjustable ring mode laser.no_watermark.zh-CN.dual.pdf")
+
+    monkeypatch.setattr(resources_router, "_load_doc_store", lambda _project_id: {})
+
+    payload = resources_router._collect_pending_scan_candidates("proj-scan-dedupe", source_folder)
+
+    assert [item["relative_posix"] for item in payload["pending"]] == [
+        "Sun - Application of adjustable ring mode laser.pdf"
+    ]
+    skipped_by_title = {item["title"]: item for item in payload["skipped_results"]}
+    assert skipped_by_title[
+        "Sun - Application of adjustable ring mode laser.no_watermark.zh-CN.mono.pdf"
+    ]["decision"] == "translated_duplicate"
+    assert skipped_by_title[
+        "Sun - Application of adjustable ring mode laser.no_watermark.zh-CN.dual.pdf"
+    ]["decision"] == "translated_duplicate"
+    assert skipped_by_title[
+        "Sun - Application of adjustable ring mode laser (1).pdf"
+    ]["decision"] == "scan_duplicate"
+
+
+def test_collect_pending_scan_candidates_skips_obvious_non_literature_pdf(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """High-signal non-paper artifacts should not enter literature indexing."""
+
+    source_folder = tmp_path / "papers"
+    source_folder.mkdir()
+    _write_pdf(source_folder / "TheBlessedDark_English_PnP_W_Cutlines.pdf")
+
+    monkeypatch.setattr(resources_router, "_load_doc_store", lambda _project_id: {})
+
+    payload = resources_router._collect_pending_scan_candidates("proj-scan-dedupe", source_folder)
+
+    assert payload["pending"] == []
+    assert payload["skipped_results"] == [
+        {
+            "title": "TheBlessedDark_English_PnP_W_Cutlines.pdf",
+            "status": "skipped",
+            "reason": "疑似非论文 PDF（文件名含 PnP/cutlines 等制图标记）",
+            "decision": "non_literature_artifact",
+            "dedupe_key": "pdf:theblesseddark english pnp w cutlines",
+        }
+    ]
+
+
+def test_batch_upload_skips_translated_and_non_literature_pdfs() -> None:
+    """Upload path should apply the same source-admission rules as folder scan."""
+
+    client = _client()
+    project = _create_project(client, title="Upload Dedupe Project")
+
+    response = client.post(
+        "/resources/upload/batch",
+        data={"project_id": project["project_id"]},
+        files=[
+            (
+                "files",
+                (
+                    "Biffi - Laser weldability of AlSi10Mg.no_watermark.zh-CN.mono.pdf",
+                    b"not parsed because skipped",
+                    "application/pdf",
+                ),
+            ),
+            (
+                "files",
+                (
+                    "TheBlessedDark_English_PnP_W_Cutlines.pdf",
+                    b"not parsed because skipped",
+                    "application/pdf",
+                ),
+            ),
+        ],
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["successful_files"] == 0
+    assert payload["skipped_files"] == 2
+    assert payload["failed_files"] == 0
+    assert [item["decision"] for item in payload["results"]] == [
+        "translated_duplicate",
+        "non_literature_artifact",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_single_upload_skips_normalized_duplicate_before_persist(monkeypatch: Any) -> None:
+    """Duplicate filename variants should be blocked before source persistence."""
+
+    class _Upload:
+        filename = "Sun - Application of adjustable ring mode laser (1).pdf"
+
+    monkeypatch.setattr(
+        resources_router,
+        "_load_doc_store",
+        lambda _project_id: {
+            "mat-existing": {
+                "title": "Sun - Application of adjustable ring mode laser.pdf",
+                "source_relative_path": "Sun - Application of adjustable ring mode laser.pdf",
+            }
+        },
+    )
+
+    async def _fail_persist(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("duplicate upload should not be persisted")
+
+    monkeypatch.setattr(resources_router, "_persist_upload_to_source_file", _fail_persist)
+
+    result = await resources_router._ingest_uploaded_document("proj-upload-dedupe", _Upload(), store=object())
+
+    assert result["status"] == "skipped"
+    assert result["decision"] == "scan_duplicate"
+
+
 def test_search_refs_returns_refs_without_full_chunk_fields(monkeypatch: Any) -> None:
     """GET search-refs must return only the MCP ref contract."""
 
@@ -189,8 +338,10 @@ def test_search_refs_returns_refs_without_full_chunk_fields(monkeypatch: Any) ->
         "locator",
         "source_labels",
         "figure_candidate",
+        "figure_candidate_detail",
+        "image_paths",
     }
-    assert ref["metadata"] == {
+    assert ref["metadata"] | {"figure_candidate_detail": None} == {
         "material_id": "mat_alpha",
         "title": "Transformer Attention Review",
         "page": 7,
@@ -206,13 +357,181 @@ def test_search_refs_returns_refs_without_full_chunk_fields(monkeypatch: Any) ->
         },
         "source_labels": ["bm25", "dense"],
         "figure_candidate": "figure:attention-1",
+        "figure_candidate_detail": None,
+        "image_paths": [],
     }
+    detail = ref["metadata"]["figure_candidate_detail"]
+    assert detail["id"] == "figure:attention-1"
+    assert detail["kind"] == "figure"
+    assert detail["material_id"] == "mat_alpha"
+    assert detail["chunk_id"] == "chunk_alpha_1"
+    assert detail["page"] == 7
+    assert detail["chunk_index"] == 2
+    assert detail["source"] == "chunk_metadata"
     serialized = str(payload)
     assert "content" not in ref
     assert "abstract" not in serialized
     assert "SHOULD_NOT_LEAK" not in serialized
     assert "ocr" not in serialized.lower()
     assert "private_note" not in serialized
+
+
+def test_search_refs_blends_pixel_backed_visual_refs_for_appearance_query() -> None:
+    """Visual queries should not lose real chunk image assets behind text hits."""
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    text_chunks = [
+        {
+            "chunk_id": f"text_hit_{index}",
+            "material_id": f"mat_text_{index}",
+            "title": f"AlSi10Mg laser welding process paper {index}",
+            "content": "AlSi10Mg laser welding process parameters and porosity suppression.",
+            "page": index + 1,
+            "chunk_index": index,
+            "bbox": [0.1, 0.1, 0.2, 0.2],
+        }
+        for index in range(5)
+    ]
+    resources_router._save_chunk_store(  # type: ignore[attr-defined]
+        project_id,
+        {
+            **{f"mat_text_{index}": [chunk] for index, chunk in enumerate(text_chunks)},
+            "mat_page_list": [
+                {
+                    "chunk_id": "visual_page_list_1",
+                    "material_id": "mat_page_list",
+                    "title": "Ping AlSi10Mg laser welding figure list",
+                    "content": "Figure 7. Weld upper surface appearance and bead formation results.",
+                    "raw_content": "Figure 7. Weld upper surface appearance and bead formation results.",
+                    "page": 3,
+                    "chunk_index": 12,
+                    "chunk_type": "figure_caption",
+                    "bbox": [0.0, 0.0, 1.0, 1.0],
+                    "image_paths": [
+                        "figure_assets/extracted/Ping/p0003_page_list.png",
+                    ],
+                }
+            ],
+            "mat_cross": [
+                {
+                    "chunk_id": "visual_cross_section_1",
+                    "material_id": "mat_cross",
+                    "title": "Ping AlSi10Mg laser welding cross-section figures",
+                    "content": "Figure 6. Weld cross-section morphology and penetration depth.",
+                    "raw_content": "Figure 6. Weld cross-section morphology and penetration depth.",
+                    "page": 9,
+                    "chunk_index": 67,
+                    "chunk_type": "figure_caption",
+                    "bbox": [0.1, 0.2, 0.7, 0.4],
+                    "image_paths": [
+                        "figure_assets/extracted/Ping/p0009_img001.jpeg",
+                    ],
+                }
+            ],
+            "mat_visual": [
+                {
+                    "chunk_id": "visual_surface_1",
+                    "material_id": "mat_visual",
+                    "title": "Ping AlSi10Mg laser welding appearance figures",
+                    "content": "Figure 7. Weld upper surface appearance and bead formation results.",
+                    "raw_content": "Figure 7. Weld upper surface appearance and bead formation results.",
+                    "page": 10,
+                    "chunk_index": 68,
+                    "chunk_type": "figure_caption",
+                    "bbox": [0.1, 0.2, 0.7, 0.4],
+                    "image_paths": [
+                        "figure_assets/extracted/Ping/p0010_img001.jpeg",
+                    ],
+                }
+            ],
+        },
+    )
+
+    response = client.get(
+        "/resources/chunks/search-refs",
+        params={"project_id": project_id, "query": "AlSi10Mg 外观 上表面 图片", "top_k": 4},
+    )
+
+    assert response.status_code == 200
+    refs = response.json()["refs"]
+    visual_refs = [ref for ref in refs if ref["metadata"]["image_paths"]]
+    assert visual_refs[0]["chunk_id"] == "visual_surface_1"
+    assert "visual_page_list_1" not in {ref["chunk_id"] for ref in visual_refs}
+    assert visual_refs[0]["metadata"]["source_labels"] == ["visual_image_asset"]
+    assert visual_refs[0]["metadata"]["figure_candidate_detail"]["asset_path"] == (
+        "figure_assets/extracted/Ping/p0010_img001.jpeg"
+    )
+
+
+def test_search_refs_blends_project_figure_asset_files_without_mutating_chunks() -> None:
+    """Derived project figure assets should enter visual refs without editing truth."""
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    chunk_store = {
+        "mat_surface": [
+            {
+                "chunk_id": "surface_asset_chunk",
+                "material_id": "mat_surface",
+                "title": "AlSi10Mg surface appearance figure",
+                "content": "Figure 7 shows surface appearance, morphology, and weld bead formation.",
+                "page": 10,
+                "chunk_index": 4,
+                "chunk_type": "figure_caption",
+                "bbox": [0.12, 0.18, 0.48, 0.36],
+            }
+        ],
+        "mat_text": [
+            {
+                "chunk_id": f"text_only_{index}",
+                "material_id": "mat_text",
+                "title": f"AlSi10Mg process parameters {index}",
+                "content": "AlSi10Mg laser welding process parameters and porosity control.",
+                "page": index + 1,
+                "chunk_index": index,
+            }
+            for index in range(4)
+        ],
+    }
+    resources_router._save_chunk_store(project_id, chunk_store)  # type: ignore[attr-defined]
+    asset_path = resources_router.project_data_path(  # type: ignore[attr-defined]
+        project_id,
+        "figure_assets",
+        "mat_surface",
+        "surface_asset_chunk-Figure7-deadbeef.jpg",
+    )
+    asset_path.parent.mkdir(parents=True, exist_ok=True)
+    asset_path.write_bytes(b"derived project figure asset")
+
+    response = client.get(
+        "/resources/chunks/search-refs",
+        params={
+            "project_id": project_id,
+            "query": "surface appearance morphology figure image",
+            "top_k": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    refs_by_chunk = {ref["chunk_id"]: ref for ref in payload["refs"]}
+    ref = refs_by_chunk["surface_asset_chunk"]
+    assert ref["metadata"]["image_paths"] == [
+        "figure_assets/mat_surface/surface_asset_chunk-Figure7-deadbeef.jpg"
+    ]
+    assert ref["metadata"]["figure_candidate_detail"]["source"] == "project_figure_asset"
+    assert ref["metadata"]["figure_candidate_detail"]["asset_path"] == (
+        "figure_assets/mat_surface/surface_asset_chunk-Figure7-deadbeef.jpg"
+    )
+    assert "visual_project_figure_asset" in ref["metadata"]["source_labels"]
+    assert "visual_image_asset" in ref["metadata"]["source_labels"]
+
+    persisted = resources_router._load_chunk_store(project_id)  # type: ignore[attr-defined]
+    assert "image_paths" not in persisted["mat_surface"][0]
+    assert "asset_path" not in persisted["mat_surface"][0]
 
 
 def test_search_refs_rejects_write_or_full_content_flags() -> None:

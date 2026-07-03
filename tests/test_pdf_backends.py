@@ -10,18 +10,22 @@ contract break and should fail this test.
 
 from __future__ import annotations
 
+import io
 import sys
 import types
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 import pytest
+from PIL import Image
 
 # Ensure the core path is importable for direct module access.
 _CORE = str(Path(__file__).resolve().parents[1] / "literature_assistant" / "core")
 if _CORE not in sys.path:
     sys.path.insert(0, _CORE)
 
+from routers.resources_router import _document_extraction as document_extraction  # noqa: E402
 from pdf_backends import (  # noqa: E402
     ENV_VAR,
     StructuredBlock,
@@ -177,6 +181,170 @@ def test_pymupdf_backend_fallback_to_pypdf2_when_pymupdf_missing(
     assert text == "fallback-pypdf2-page-1\n\nfallback-pypdf2-page-1"
     assert blocks is None
     assert md is None
+
+
+class _FakeRect:
+    """Minimal page rectangle shape consumed by bbox normalization."""
+
+    def __init__(self, width: float, height: float) -> None:
+        self.width = width
+        self.height = height
+
+
+class _FakePage:
+    """Minimal PyMuPDF page test double with configurable raw blocks."""
+
+    rect = _FakeRect(500.0, 500.0)
+
+    def __init__(self, image_bytes: bytes, image_ext: str) -> None:
+        self._blocks = [
+            {
+                "type": 1,
+                "bbox": [40.0, 40.0, 260.0, 200.0],
+                "image": image_bytes,
+                "ext": image_ext,
+            },
+            _fake_text_block([40.0, 220.0, 260.0, 250.0], "Fig. 1 Weld surface morphology"),
+        ]
+
+    def get_text(self, _mode: str, *, sort: bool = False) -> dict[str, Any]:
+        return {"blocks": list(self._blocks)}
+
+
+class _FakePageWithBlocks:
+    """Minimal PyMuPDF page test double with caller-supplied blocks."""
+
+    rect = _FakeRect(600.0, 800.0)
+
+    def __init__(self, blocks: list[dict[str, Any]]) -> None:
+        self._blocks = blocks
+
+    def get_text(self, _mode: str, *, sort: bool = False) -> dict[str, Any]:
+        return {"blocks": list(self._blocks)}
+
+
+class _FakeDocument:
+    """Context-manager document test double returned by pymupdf.open."""
+
+    def __init__(self, page: _FakePage) -> None:
+        self._page = page
+
+    def __enter__(self) -> "_FakeDocument":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def __iter__(self) -> Any:
+        return iter([self._page])
+
+
+def _image_bytes(format_name: str) -> bytes:
+    """Return small valid raster bytes in the requested Pillow format."""
+
+    output = io.BytesIO()
+    Image.new("RGB", (120, 80), (80, 120, 180)).save(output, format=format_name)
+    return output.getvalue()
+
+
+def _fake_text_block(bbox: list[float], text: str) -> dict[str, Any]:
+    """Return a PyMuPDF-like text block fixture."""
+
+    return {
+        "type": 0,
+        "bbox": bbox,
+        "lines": [
+            {
+                "spans": [
+                    {"text": text},
+                ]
+            }
+        ],
+    }
+
+
+def _fake_image_block(bbox: list[float], image_bytes: bytes, ext: str = "jpeg") -> dict[str, Any]:
+    """Return a PyMuPDF-like image block fixture."""
+
+    return {
+        "type": 1,
+        "bbox": bbox,
+        "image": image_bytes,
+        "ext": ext,
+    }
+
+
+def test_pymupdf_visual_asset_transcodes_browser_unsafe_ext_to_png(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Browser-unsafe embedded PDF images must not be stored behind fake .png names."""
+
+    fake_pymupdf = types.ModuleType("pymupdf")
+    fake_pymupdf.open = lambda _path: _FakeDocument(_FakePage(_image_bytes("BMP"), "bmp"))
+    monkeypatch.setitem(sys.modules, "pymupdf", fake_pymupdf)
+
+    source_pdf = tmp_path / "paper.pdf"
+    source_pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    project_data_root = tmp_path / "project"
+
+    blocks = document_extraction._extract_pymupdf_visual_blocks(
+        "paper.pdf",
+        source_pdf,
+        project_data_root=project_data_root,
+    )
+
+    assert blocks is not None
+    image_paths = [path for block in blocks for path in block.image_paths]
+    assert len(image_paths) == 1
+    assert image_paths[0].endswith(".png")
+    output_path = project_data_root / image_paths[0]
+    assert output_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    with Image.open(output_path) as image:
+        assert image.format == "PNG"
+
+
+def test_pymupdf_visual_asset_does_not_bind_body_fig_mentions_to_distant_images(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Narrative paragraphs mentioning a figure must not steal unrelated assets."""
+
+    image_bytes = _image_bytes("JPEG")
+    blocks_fixture = [
+        _fake_image_block([40.0, 80.0, 280.0, 190.0], image_bytes),
+        _fake_text_block([100.0, 205.0, 230.0, 215.0], "Fig. 2. Configuration of tensile samples."),
+        _fake_text_block(
+            [40.0, 270.0, 290.0, 360.0],
+            "Fig. 3 presents the weld surface morphologies of the 1#-4# sample. "
+            "The weld widths and defects are discussed in the text.",
+        ),
+        _fake_image_block([100.0, 500.0, 500.0, 725.0], image_bytes),
+        _fake_text_block([205.0, 735.0, 390.0, 745.0], "Fig. 3. Weld morphology: (a) 1#; (b) 2#."),
+    ]
+    fake_pymupdf = types.ModuleType("pymupdf")
+    fake_pymupdf.open = lambda _path: _FakeDocument(_FakePageWithBlocks(blocks_fixture))
+    monkeypatch.setitem(sys.modules, "pymupdf", fake_pymupdf)
+
+    source_pdf = tmp_path / "paper.pdf"
+    source_pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    project_data_root = tmp_path / "project"
+
+    blocks = document_extraction._extract_pymupdf_visual_blocks(
+        "paper.pdf",
+        source_pdf,
+        project_data_root=project_data_root,
+    )
+
+    assert blocks is not None
+    fig_3_body = next(block for block in blocks if block.markdown.startswith("Fig. 3 presents"))
+    fig_3_caption = next(block for block in blocks if block.markdown.startswith("Fig. 3. Weld morphology"))
+    assert fig_3_body.block_type == "Text"
+    assert fig_3_body.image_paths == []
+    assert fig_3_caption.block_type == "FigureCaption"
+    assert len(fig_3_caption.image_paths) == 1
+    assert fig_3_caption.image_paths[0].endswith("/p0001_img002.jpeg")
+    assert (project_data_root / fig_3_caption.image_paths[0]).is_file()
 
 
 # --------------------------------------------------------------------- #

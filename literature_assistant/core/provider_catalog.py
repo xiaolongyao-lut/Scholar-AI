@@ -52,6 +52,15 @@ MODEL_CATALOG: list[ProviderInfo] = [
         ],
     ),
     ProviderInfo(
+        provider="NVIDIA",
+        display_name="NVIDIA NIM（免费 API）",
+        default_base_url="https://integrate.api.nvidia.com/v1",
+        auth_tip="使用 NVIDIA API Catalog / Hosted NIM 的 API Key。DeepSeek V4 Flash 走 OpenAI 兼容 Chat Completions。",
+        models=[
+            ModelInfo(id="deepseek-ai/deepseek-v4-flash", name="DeepSeek V4 Flash", provider="NVIDIA", default_base_url="https://integrate.api.nvidia.com/v1", context_window=1000000, description="NVIDIA Hosted NIM 免费层可用的 DeepSeek V4 Flash；默认关闭深度 reasoning 以提高 Scholar AI 响应速度"),
+        ],
+    ),
+    ProviderInfo(
         provider="OpenAI",
         display_name="OpenAI",
         default_base_url="https://api.openai.com",

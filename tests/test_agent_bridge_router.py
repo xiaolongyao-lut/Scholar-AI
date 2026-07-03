@@ -520,7 +520,7 @@ def test_agent_bridge_resource_reader_reads_persisted_search_ref_chunk(monkeypat
                     "chunk_id": "mat_1_custom_chunk",
                     "material_id": "mat_1",
                     "title": "Search Ref Source",
-                    "content": "AlSi10Mg porosity and fatigue evidence.",
+                    "content": "AlSi10Mg porosity and fatigue evidence. Fig. 2 shows the weld surface morphology.",
                     "summary": "AlSi10Mg porosity summary.",
                     "abstract": "SHOULD_NOT_LEAK_ABSTRACT",
                     "ocr_text": "SHOULD_NOT_LEAK_OCR",
@@ -528,6 +528,8 @@ def test_agent_bridge_resource_reader_reads_persisted_search_ref_chunk(monkeypat
                     "page": 3,
                     "chunk_type": "body",
                     "source_relative_path": "papers/search-ref.pdf",
+                    "figure_candidate": "figure:search-ref-surface",
+                    "image_paths": ["figure_assets/extracted/search-ref/p0003_img002.png"],
                     "locator": {
                         "material_id": "mat_1",
                         "chunk_id": "mat_1_custom_chunk",
@@ -555,6 +557,19 @@ def test_agent_bridge_resource_reader_reads_persisted_search_ref_chunk(monkeypat
     assert payload["metadata"]["page"] == 3
     assert payload["metadata"]["chunk_type"] == "body"
     assert payload["metadata"]["source_relative_path"] == "papers/search-ref.pdf"
+    assert payload["image_paths"] == ["figure_assets/extracted/search-ref/p0003_img002.png"]
+    assert payload["metadata"]["image_paths"] == ["figure_assets/extracted/search-ref/p0003_img002.png"]
+    assert payload["figure_candidate_detail"]["id"] == "figure:search-ref-surface"
+    assert payload["figure_candidate_detail"]["label"] == "图 2"
+    assert payload["figure_candidate_detail"]["page"] == 3
+    assert payload["figure_candidate_detail"]["chunk_id"] == "mat_1_custom_chunk"
+    assert payload["figure_candidate_detail"]["asset_path"] == "figure_assets/extracted/search-ref/p0003_img002.png"
+    assert payload["metadata"]["figure_candidate_detail"]["asset_path"] == "figure_assets/extracted/search-ref/p0003_img002.png"
+    assert payload["source_title"] == "Search Ref Source"
+    assert payload["source_path"] == "papers/search-ref.pdf"
+    assert payload["material_id"] == "mat_1"
+    assert payload["chunk_id"] == "mat_1_custom_chunk"
+    assert payload["page"] == 3
     assert payload["metadata"]["locator"] == {
         "material_id": "mat_1",
         "chunk_id": "mat_1_custom_chunk",
@@ -566,6 +581,106 @@ def test_agent_bridge_resource_reader_reads_persisted_search_ref_chunk(monkeypat
     assert "ocr" not in serialized.lower()
     assert "private_note" not in serialized
     assert "SHOULD_NOT_LEAK" not in serialized
+
+
+def test_agent_bridge_resource_reader_preserves_custom_chunk_id_after_ensure(monkeypatch: Any) -> None:
+    """Bounded chunk reads must not rewrite evidence-pack ref identities."""
+
+    _isolated_runtime(monkeypatch)
+    client = _client(monkeypatch)
+
+    import routers.resources_router as resources_router
+
+    project_id = "proj_custom_chunk_identity"
+    resources_router._save_doc_store(  # type: ignore[attr-defined]
+        project_id,
+        {
+            "mat_1": {
+                "title": "Custom Chunk Identity.pdf",
+                "content": "Doc-store content should not force a new chunk id.",
+                "source_relative_path": "papers/custom-chunk-identity.pdf",
+            }
+        },
+    )
+    resources_router._save_chunk_store(  # type: ignore[attr-defined]
+        project_id,
+        {
+            "mat_1": [
+                {
+                    "chunk_id": "alsi10mg_defects_chunk_0",
+                    "material_id": "mat_1",
+                    "title": "Custom Chunk Identity",
+                    "content": "AlSi10Mg lack-of-fusion pores remain readable through the original ref.",
+                    "page": 4,
+                    "chunk_type": "body",
+                    "source_relative_path": "papers/custom-chunk-identity.pdf",
+                }
+            ]
+        },
+    )
+
+    response = client.get(
+        "/api/agent-bridge/resource/chunk:alsi10mg_defects_chunk_0",
+        headers=_capability_headers(),
+        params={"project_id": project_id, "max_chars": 200},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ref_id"] == "chunk:alsi10mg_defects_chunk_0"
+    assert payload["chunk_id"] == "alsi10mg_defects_chunk_0"
+    assert payload["metadata"]["chunk_id"] == "alsi10mg_defects_chunk_0"
+    assert "lack-of-fusion pores" in payload["content"]
+
+
+def test_agent_bridge_resource_reader_uses_doc_store_source_when_chunk_lacks_it(monkeypatch: Any) -> None:
+    """Legacy chunks should remain traceable through doc-store source metadata."""
+
+    _isolated_runtime(monkeypatch)
+    client = _client(monkeypatch)
+
+    import routers.resources_router as resources_router
+
+    project_id = "proj_resource_doc_store_source"
+    resources_router._save_doc_store(  # type: ignore[attr-defined]
+        project_id,
+        {
+            "mat_legacy": {
+                "title": "Doc Store Source Paper.pdf",
+                "content": "Legacy doc content",
+                "source_relative_path": "1220/Doc Store Source Paper.pdf",
+            }
+        },
+    )
+    resources_router._save_chunk_store(  # type: ignore[attr-defined]
+        project_id,
+        {
+            "mat_legacy": [
+                {
+                    "chunk_id": "mat_legacy_chunk_7",
+                    "material_id": "mat_legacy",
+                    "content": "Legacy chunk without embedded source path.",
+                    "page": 9,
+                    "chunk_type": "body",
+                }
+            ]
+        },
+    )
+
+    response = client.get(
+        "/api/agent-bridge/resource/chunk:mat_legacy_chunk_7",
+        headers=_capability_headers(),
+        params={"project_id": project_id, "max_chars": 120},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source_title"] == "Doc Store Source Paper.pdf"
+    assert payload["source_path"] == "1220/Doc Store Source Paper.pdf"
+    assert payload["metadata"]["source_relative_path"] == "1220/Doc Store Source Paper.pdf"
+    assert payload["material_id"] == "mat_legacy"
+    assert payload["chunk_id"] == "mat_legacy_chunk_7"
+    assert payload["page"] == 9
 
 
 def test_agent_bridge_resource_reader_reads_wiki_page_ref(monkeypatch: Any, tmp_path: Path) -> None:

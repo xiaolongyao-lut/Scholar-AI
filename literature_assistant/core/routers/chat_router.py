@@ -42,6 +42,10 @@ from provider_capabilities import ProviderToolCapabilityError
 from runtime_env import env_value
 from routers import chat_mcp_integration
 from provider_endpoint_policy import TrustSource, validate_endpoint
+from provider_payload_compat import (
+    apply_openai_chat_payload_compat,
+    provider_http_timeout_s,
+)
 from provider_catalog import (
     MODEL_CATALOG,
     SUPPORTED_PROVIDERS,
@@ -320,6 +324,9 @@ def _detect_provider_from_url(base_url: str) -> str | None:
     # SiliconFlow
     if "siliconflow.cn" in u:
         return "siliconflow"
+    # NVIDIA Hosted NIM API Catalog
+    if "integrate.api.nvidia.com" in u:
+        return "nvidia"
     # Groq
     if "groq.com" in u:
         return "groq"
@@ -362,6 +369,7 @@ def _resolve_api_key(provider: str, provided_key: str | None) -> str:
         "mistral": ("MISTRAL_API_KEY",),
         "perplexity": ("PERPLEXITY_API_KEY",),
         "minimax": ("MINIMAX_API_KEY",),
+        "nvidia": ("NVIDIA_API_KEY", "NIM_API_KEY"),
     }
 
     for env_name in env_map.get(provider_key, ()): 
@@ -807,8 +815,13 @@ def _build_chat_request(
         "top_p": llm.top_p,
         "max_tokens": llm.max_tokens,
     }
-    if llm.top_k:
-        payload["extra_body"] = {"top_k": llm.top_k}
+    apply_openai_chat_payload_compat(
+        payload,
+        provider=llm.provider,
+        base_url=llm.base_url,
+        model=resolved_model,
+        top_k=llm.top_k,
+    )
     if response_format:
         payload["response_format"] = response_format
     if tools:
@@ -1016,7 +1029,12 @@ async def _post_chat_with_retry(
     Extracted from the chat_ask inline retry loop so the MCP tool-use
     runner can re-issue rounds without duplicating the retry policy.
     """
-    timeout_s = float(os.getenv("LLM_HTTP_TIMEOUT", "180"))
+    timeout_s = provider_http_timeout_s(
+        provider="",
+        base_url=url,
+        model=telemetry_model,
+        default_s=float(os.getenv("LLM_HTTP_TIMEOUT", "180")),
+    )
     max_retries = max(0, int(os.getenv("LLM_HTTP_RETRIES", "2")))
     backoff_base = float(os.getenv("LLM_HTTP_BACKOFF_BASE", "1.5"))
     retryable_statuses = {408, 409, 425, 429, 500, 502, 503, 504, 529}
@@ -1415,7 +1433,12 @@ async def chat_stream(req: ChatStreamRequest) -> StreamingResponse:
     # Third-party Claude proxies frequently buffer the full response and time out at ~120s.
     # Bump default to 180s and allow override via LLM_HTTP_STREAM_TIMEOUT.
     # Mid-stream retry is intentionally NOT done (would replay tokens already sent to the client).
-    stream_timeout_s = float(os.getenv("LLM_HTTP_STREAM_TIMEOUT", "180"))
+    stream_timeout_s = provider_http_timeout_s(
+        provider=llm.provider,
+        base_url=llm.base_url,
+        model=telemetry_model,
+        default_s=float(os.getenv("LLM_HTTP_STREAM_TIMEOUT", "180")),
+    )
 
     async def event_generator():
         started_at = time.perf_counter()

@@ -212,6 +212,7 @@ def _probe_https_endpoint(
     api_key: str,
     protocol: str,
     model: str = "",
+    provider: str = "",
 ) -> dict[str, Any]:
     """Backward-compat shim returning the legacy dict shape.
 
@@ -219,7 +220,13 @@ def _probe_https_endpoint(
     this preserves that contract while routing all work through the shared
     `probe_endpoint_reachability` implementation.
     """
-    result = _probe_endpoint_reachability(base_url, api_key, protocol, model)
+    result = _probe_endpoint_reachability(
+        base_url,
+        api_key,
+        protocol,
+        model,
+        provider=provider,
+    )
     out: dict[str, Any] = {
         "probed": True,
         "url_used": result.url_used or base_url,
@@ -439,6 +446,7 @@ async def test_credential(
             api_key=cred.api_key,
             protocol=cred.protocol.value,
             model=cred.model,
+            provider=cred.provider,
         )
 
     return {

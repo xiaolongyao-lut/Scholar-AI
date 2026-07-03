@@ -226,6 +226,14 @@ def _lexical_grounded_fallback(
         chunk["score"] = score
         chunk["tolf_activation_score"] = score
         chunk["tolf_evidence_score"] = round(float(evidence_score), 4)
+        chunk["tolf_final_rank_score"] = score
+        chunk["tolf_rank_contributions"] = {
+            "dense": 0.0,
+            "lexical_exact": round(float(overlap_score), 4),
+            "locator_quality": 0.0,
+            "tolf_evidence": round(float(evidence_score), 4),
+            "diversity_penalty": 0.0,
+        }
         chunk["tolf_point_type"] = str(chunk.get("point_type") or "discussion")
         chunk["tolf_rank"] = rank
         chunk["query_overlap_tokens"] = query_overlap
@@ -294,12 +302,16 @@ def select_tolf_context_chunks(
         umap_n_neighbors=2,
         log_small_corpus_fallback=False,
     )
-    fish_results = TOLFEngine(config).run(
+    engine = TOLFEngine(config)
+    fish_results = engine.run(
         goal=expanded_query,
         chunks=[dict(c) for c in candidates],
         embeddings=chunk_embs,
         aspect_query_embeddings=aspect_embs,
     )
+    run_diagnostics = dict(engine.last_run_diagnostics)
+    run_diagnostics.setdefault("status", "active")
+    run_diagnostics["candidate_count"] = len(candidates)
 
     by_chunk_id = {str(c["chunk_id"]): c for c in candidates}
     selected: list[dict[str, Any]] = []
@@ -311,8 +323,11 @@ def select_tolf_context_chunks(
         updated["score"] = round(float(fish.activation_score), 4)
         updated["tolf_activation_score"] = round(float(fish.activation_score), 4)
         updated["tolf_evidence_score"] = round(float(fish.evidence_score), 4)
+        updated["tolf_final_rank_score"] = round(float(fish.final_rank_score), 4)
+        updated["tolf_rank_contributions"] = dict(fish.rank_contributions)
         updated["tolf_point_type"] = fish.point_type
         updated["tolf_rank"] = rank
+        updated["tolf_diagnostics"] = run_diagnostics
         q_overlap = _overlap_tokens(expanded_query, str(updated.get("content") or ""))
         b_overlap = _bridge_overlap_tokens(expanded_query, str(updated.get("content") or ""))
         updated["query_overlap_tokens"] = q_overlap
@@ -324,6 +339,12 @@ def select_tolf_context_chunks(
         selected.append(updated)
 
     if not selected:
+        fallback_diagnostics = {
+            **run_diagnostics,
+            "status": "fallback",
+            "fallback_reason": "tolf_gate_no_bridge_grounded_results",
+            "gate_after_count": int(run_diagnostics.get("gate_after_count") or 0),
+        }
         selected = _lexical_grounded_fallback(
             expanded_query,
             candidates,
@@ -331,6 +352,8 @@ def select_tolf_context_chunks(
             config=config,
             require_bridge_overlap=require_bridge_overlap,
         )
+        for item in selected:
+            item["tolf_diagnostics"] = fallback_diagnostics
 
     for new_rank, item in enumerate(selected[:top_k], start=1):
         item["tolf_rank"] = new_rank

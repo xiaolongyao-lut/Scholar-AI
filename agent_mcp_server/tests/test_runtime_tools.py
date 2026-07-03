@@ -387,6 +387,25 @@ def test_search_refs_uses_pure_read_refs_endpoint(tools: RuntimeTools, backend: 
     assert "include_content" not in str(backend.calls[-1])
 
 
+def test_search_refs_adds_conventional_total_field(tools: RuntimeTools, backend: FakeBackend) -> None:
+    """MCP callers should not need to special-case total_refs."""
+
+    backend.set_json(
+        "/resources/chunks/search-refs",
+        {
+            "project_id": "project-1",
+            "query": "laser welding",
+            "total_refs": 2,
+            "refs": [{"ref_id": "chunk:mat_1_chunk_0"}],
+        },
+    )
+
+    result = tools.search_refs("project-1", "laser welding", top_k=5)
+
+    assert result["data"]["total_refs"] == 2
+    assert result["data"]["total"] == 2
+
+
 def test_academic_english_status_uses_knowledge_endpoint(tools: RuntimeTools, backend: FakeBackend) -> None:
     """academic_english_status must read the backend manifest/status endpoint."""
 
@@ -1488,7 +1507,13 @@ def test_figures_candidates_uses_writing_alias_endpoint(
     backend: FakeBackend,
 ) -> None:
     """figures_candidates should read the writing route without creating jobs."""
-    tools.figures_candidates("project-1", limit=9, pixel_only=True, render_pdf_fallback=False)
+    tools.figures_candidates(
+        "project-1",
+        limit=9,
+        pixel_only=True,
+        render_pdf_fallback=False,
+        query="AlSi10Mg 外观 图片",
+    )
 
     assert backend.calls[-1] == (
         "json",
@@ -1498,6 +1523,7 @@ def test_figures_candidates_uses_writing_alias_endpoint(
             "limit": 9,
             "pixel_only": True,
             "render_pdf_fallback": False,
+            "query": "AlSi10Mg 外观 图片",
         },
     )
 
@@ -2006,7 +2032,13 @@ def test_visual_candidates_uses_backend_endpoint(
     backend: FakeBackend,
 ) -> None:
     """Runtime helper asks backend to prepare figure/table candidates."""
-    tools.list_figure_table_candidates("project-1", limit=9, pixel_only=True, render_pdf_fallback=False)
+    tools.list_figure_table_candidates(
+        "project-1",
+        limit=9,
+        pixel_only=True,
+        render_pdf_fallback=False,
+        query="AlSi10Mg 外观 图片",
+    )
 
     assert backend.calls[-1] == (
         "json",
@@ -2016,6 +2048,7 @@ def test_visual_candidates_uses_backend_endpoint(
             "limit": 9,
             "pixel_only": True,
             "render_pdf_fallback": False,
+            "query": "AlSi10Mg 外观 图片",
         },
     )
 
@@ -2613,6 +2646,119 @@ def test_evidence_integrity_gate_reads_runtime_projection(
             "session_id": "session-1",
             "job_id": "job-1",
             "project_id": "project-1",
+        },
+    )
+
+
+def test_evidence_integrity_gate_can_validate_supplied_evidence_pack(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Query-scoped evidence refs should use the evidence-pack gate endpoint."""
+
+    backend.set_json(
+        "/api/evidence-pack/integrity-gate",
+        {
+            "schema_version": "scholar_ai_evidence_pack_integrity_gate_v1",
+            "generated_at": "2026-07-02T00:00:00+00:00",
+            "project_id": "project-visual",
+            "evidence_pack_ref": "evidence_pack:visual",
+            "query": "AlSi10Mg 外观 图片",
+            "status": "passed",
+            "visual_intent": {
+                "requires_image_evidence": True,
+                "categories": ["appearance", "image"],
+                "matched_terms": ["外观", "图片"],
+            },
+            "summary": {
+                "evidence_ref_count": 1,
+                "image_ref_count": 1,
+                "whole_page_image_ref_count": 0,
+            },
+            "checks": [
+                {
+                    "check_id": "visual_image_evidence",
+                    "status": "passed",
+                    "severity": "none",
+                    "reason": "The visual query has at least one pixel-backed evidence ref.",
+                    "recommendation": "",
+                    "metadata": {"image_ref_count": 1},
+                }
+            ],
+            "sample_refs": [
+                {
+                    "ref_id": "chunk:visual",
+                    "source_title": "Visual paper",
+                    "page": 7,
+                    "has_image": True,
+                }
+            ],
+            "next_actions": ["Read the top evidence refs."],
+            "provenance": {
+                "derived_from": ["/api/evidence-pack/integrity-gate"],
+                "read_only": True,
+            },
+        },
+    )
+
+    result = tools.evidence_integrity_gate(
+        project_id=" project-visual ",
+        query=" AlSi10Mg 外观 图片 ",
+        evidence_pack_ref=" evidence_pack:visual ",
+        evidence_refs=[
+            {
+                "project_id": "project-visual",
+                "source_type": "project",
+                "ref_id": "chunk:visual",
+                "read_endpoint": "/api/agent-bridge/resource/chunk:visual?project_id=project-visual",
+                "chunk_id": "visual",
+                "material_id": "mat_visual",
+                "page": 7,
+                "lexical_score": 3.0,
+                "citation_anchor": "mat_visual_visual",
+                "summary": "Weld surface appearance figure.",
+                "source_title": "Visual paper",
+                "image_paths": ["figure_assets/extracted/visual/p0007_img001.png"],
+            }
+        ],
+        retrieval_diagnostics={"retrieval_method": "lexical", "rerank_status": "unavailable"},
+        limit=25,
+    )
+
+    assert result["is_error"] is False
+    assert result["data"]["schema_version"] == "scholar_ai_evidence_pack_integrity_gate_v1"
+    assert result["data"]["status"] == "passed"
+    assert result["data"]["summary"]["image_ref_count"] == 1
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/evidence-pack/integrity-gate",
+        {
+            "params": None,
+            "payload": {
+                "project_id": "project-visual",
+                "query": "AlSi10Mg 外观 图片",
+                "evidence_refs": [
+                    {
+                        "project_id": "project-visual",
+                        "source_type": "project",
+                        "ref_id": "chunk:visual",
+                        "read_endpoint": "/api/agent-bridge/resource/chunk:visual?project_id=project-visual",
+                        "chunk_id": "visual",
+                        "material_id": "mat_visual",
+                        "page": 7,
+                        "lexical_score": 3.0,
+                        "citation_anchor": "mat_visual_visual",
+                        "summary": "Weld surface appearance figure.",
+                        "source_title": "Visual paper",
+                        "image_paths": ["figure_assets/extracted/visual/p0007_img001.png"],
+                    }
+                ],
+                "evidence_pack_ref": "evidence_pack:visual",
+                "retrieval_diagnostics": {
+                    "retrieval_method": "lexical",
+                    "rerank_status": "unavailable",
+                },
+            },
         },
     )
 
@@ -3474,6 +3620,43 @@ def test_agent_resource_read_uses_bounded_reader(
         "/api/agent-bridge/resource/chunk:mat_1_chunk_0",
         {"max_chars": 500, "project_id": "project-1", "cursor": "100"},
     )
+
+
+def test_agent_resource_read_projects_metadata_provenance(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """External agents should see source provenance without digging through metadata."""
+
+    backend.set_json(
+        "/api/agent-bridge/resource/chunk:mat_1_chunk_0",
+        {
+            "ref_id": "chunk:mat_1_chunk_0",
+            "kind": "chunk",
+            "project_id": "project-1",
+            "title": "Readable Source Paper.pdf",
+            "content": "bounded evidence",
+            "metadata": {
+                "material_id": "mat_1",
+                "chunk_id": "mat_1_chunk_0",
+                "page": 4,
+                "source_relative_path": "papers/readable-source.pdf",
+            },
+            "truncated": False,
+            "cursor": "0",
+            "next_cursor": None,
+            "max_chars": 500,
+            "total_chars": 16,
+        },
+    )
+
+    result = tools.agent_resource_read("chunk:mat_1_chunk_0", project_id="project-1", max_chars=500)
+
+    assert result["data"]["source_title"] == "Readable Source Paper.pdf"
+    assert result["data"]["source_path"] == "papers/readable-source.pdf"
+    assert result["data"]["material_id"] == "mat_1"
+    assert result["data"]["chunk_id"] == "mat_1_chunk_0"
+    assert result["data"]["page"] == 4
 
 
 def test_agent_resource_read_accepts_wiki_refs(

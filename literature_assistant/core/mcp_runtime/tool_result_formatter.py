@@ -230,6 +230,8 @@ def _compact_refs_payload(payload: Any) -> dict[str, Any] | None:
     data = payload.get("data")
     if not isinstance(data, dict):
         return None
+    if "data" in data and isinstance(data.get("data"), dict):
+        data = data["data"]
     raw_refs = data.get("evidence_refs")
     if not isinstance(raw_refs, list):
         raw_refs = data.get("refs")
@@ -242,7 +244,7 @@ def _compact_refs_payload(payload: Any) -> dict[str, Any] | None:
     ]
     if not refs:
         return None
-    summary: dict[str, Any] = {"refs": refs}
+    summary: dict[str, Any] = {}
     for field_name in (
         "evidence_pack_ref",
         "project_id",
@@ -257,6 +259,7 @@ def _compact_refs_payload(payload: Any) -> dict[str, Any] | None:
             bounded = _bounded_value(data.get(field_name), max_chars=280)
             if bounded is not None and bounded != "":
                 summary[field_name] = bounded
+    summary["refs"] = refs
     return summary
 
 
@@ -426,7 +429,6 @@ def _prepend_compact_tool_summary(flat: str) -> str:
     compact_text = json.dumps(
         {"compact_tool_result": compact},
         ensure_ascii=False,
-        sort_keys=True,
     )
     return f"{compact_text}\n{flat}"
 

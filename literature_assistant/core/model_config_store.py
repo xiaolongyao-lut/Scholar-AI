@@ -26,7 +26,7 @@ import tempfile
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from _atomic_io import CrossProcessFileLock
 from credential_store import CredentialSecretBackend, _select_secret_backend
@@ -339,6 +339,83 @@ _CHAT_CONTEXT_COMPRESSION_FIELDS = frozenset({
     "target_tokens",
     "keep_recent_turns",
 })
+CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT = 24_000
+CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT = 2_000
+CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT = 6
+CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN = 4_096
+CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX = 128_000
+CHAT_CONTEXT_COMPRESSION_TARGET_MIN = 512
+CHAT_CONTEXT_COMPRESSION_TARGET_MAX = 16_000
+CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MIN = 1
+CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MAX = 20
+
+
+def _coerce_bounded_int(
+    value: Any,
+    *,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    if not isinstance(default, int) or default < minimum or default > maximum:
+        raise ValueError("default must be an integer inside the accepted range")
+    try:
+        coerced = int(value)
+    except (TypeError, ValueError):
+        return default
+    if coerced < minimum or coerced > maximum:
+        return default
+    return coerced
+
+
+def normalize_chat_context_compression_settings(
+    settings: Mapping[str, Any] | None,
+) -> dict[str, bool | int | str]:
+    """Return bounded SmartRead compression settings for UI and runtime use.
+
+    Args:
+        settings: Raw JSON settings loaded from runtime state. Values outside
+            the current local/open-model-friendly range are treated as legacy
+            residue and replaced with conservative defaults.
+
+    Returns:
+        A public settings payload with booleans, bounded integers, and an
+        optional ``updated_at`` marker.
+    """
+
+    raw: Mapping[str, Any] = settings or {}
+    trigger_tokens = _coerce_bounded_int(
+        raw.get("trigger_tokens"),
+        default=CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
+        minimum=CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN,
+        maximum=CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX,
+    )
+    target_tokens = _coerce_bounded_int(
+        raw.get("target_tokens"),
+        default=CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
+        minimum=CHAT_CONTEXT_COMPRESSION_TARGET_MIN,
+        maximum=CHAT_CONTEXT_COMPRESSION_TARGET_MAX,
+    )
+    if target_tokens >= trigger_tokens:
+        target_tokens = min(
+            CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
+            max(CHAT_CONTEXT_COMPRESSION_TARGET_MIN, trigger_tokens // 4),
+        )
+    keep_recent_turns = _coerce_bounded_int(
+        raw.get("keep_recent_turns"),
+        default=CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT,
+        minimum=CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MIN,
+        maximum=CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MAX,
+    )
+    return {
+        "enabled": bool(raw.get("enabled", True)),
+        "trigger_tokens": trigger_tokens,
+        "target_tokens": target_tokens,
+        "keep_recent_turns": keep_recent_turns,
+        "updated_at": _coerce_string(raw.get("updated_at")) or "",
+    }
+
+
 chat_context_compression_store = SettingsStore(
     "chat_context_compression",
     _CHAT_CONTEXT_COMPRESSION_FIELDS,
@@ -352,4 +429,14 @@ __all__ = [
     "rerank_store",
     "discussion_defaults_store",
     "chat_context_compression_store",
+    "CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT",
+    "CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT",
+    "CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT",
+    "CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN",
+    "CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX",
+    "CHAT_CONTEXT_COMPRESSION_TARGET_MIN",
+    "CHAT_CONTEXT_COMPRESSION_TARGET_MAX",
+    "CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MIN",
+    "CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MAX",
+    "normalize_chat_context_compression_settings",
 ]

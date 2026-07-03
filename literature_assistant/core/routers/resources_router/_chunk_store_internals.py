@@ -15,9 +15,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from chunk_index_backfill_ledger import (
+    CHUNK_INDEX_BACKFILL_LEDGER_SCHEMA_VERSION,
+    ChunkIndexBackfillLedgerEntry,
+    ledger_status_counts,
+    linter_entries_for_store,
+    make_chunk_index_backfill_entry,
+    merge_chunk_index_backfill_ledger_entries,
+    transition_entries_for_material,
+    utc_now_iso,
+)
+from chunk_evidence_linter import ChunkEvidenceUnitLinter
+from chunk_hashing import CHUNK_HASH_VERSION, compute_chunk_store_version, with_chunk_hashes
 from chunk_size_guard import hard_max_chars, hard_max_tokens, inspect_chunk
 
 import routers.resources_router as _rr
+
+from chunk_fts_index import CHUNK_FTS_INDEX_SCHEMA_VERSION, rebuild_chunk_fts_index
 
 
 def _get_doc_store_path(project_id: str) -> Path:
@@ -88,6 +102,14 @@ def _chunk_store_dir(project_id: str) -> Path:
 
 def _chunk_quarantine_dir(project_id: str) -> Path:
     return _chunk_store_dir(project_id) / "_quarantine"
+
+
+def _chunk_index_backfill_ledger_path(project_id: str) -> Path:
+    return _chunk_store_dir(project_id) / "index_backfill_ledger.jsonl"
+
+
+def _chunk_fts_index_path(project_id: str) -> Path:
+    return _chunk_store_dir(project_id) / "chunk_lexical_fts.sqlite3"
 
 
 def _sanitize_chunk_filename_stem(value: str) -> str:
@@ -207,6 +229,195 @@ def _write_material_jsonl_atomic(path: Path, chunks: list[dict[str, Any]]) -> No
     _atomic_write_text(path, lines + ("\n" if lines else ""))
 
 
+def _read_chunk_index_backfill_ledger(project_id: str) -> list[dict[str, Any]]:
+    """Return existing derived-index ledger entries for state preservation."""
+
+    path = _chunk_index_backfill_ledger_path(project_id)
+    entries: list[dict[str, Any]] = []
+    if not path.exists():
+        return entries
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(entry, dict):
+                    entries.append(entry)
+    except OSError:
+        return []
+    return entries
+
+
+def _write_chunk_index_backfill_ledger(
+    project_id: str,
+    entries: list[ChunkIndexBackfillLedgerEntry],
+) -> None:
+    """Persist the derived-index ledger without mutating chunk truth rows."""
+
+    path = _chunk_index_backfill_ledger_path(project_id)
+    lines = "\n".join(json.dumps(entry, ensure_ascii=False, sort_keys=True) for entry in entries)
+    _atomic_write_text(path, lines + ("\n" if lines else ""))
+
+
+def _chunk_index_backfill_manifest_payload(
+    project_id: str,
+    entries: list[ChunkIndexBackfillLedgerEntry],
+) -> dict[str, Any]:
+    """Return manifest fields for the current derived-index ledger snapshot."""
+
+    return {
+        "index_backfill_ledger_schema_version": CHUNK_INDEX_BACKFILL_LEDGER_SCHEMA_VERSION,
+        "index_backfill_ledger_relative_path": _chunk_index_backfill_ledger_path(project_id).name,
+        "index_backfill_ledger_entry_count": len(entries),
+        "index_backfill_ledger_status_counts": ledger_status_counts(entries),
+    }
+
+
+def _with_chunk_hashes_for_store(material_id: str, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return chunk copies with truth-hash fields populated when possible.
+
+    Legacy stores can contain partially malformed rows. Invalid rows are kept
+    untouched so a save operation does not become a destructive migration.
+    """
+
+    if not isinstance(material_id, str) or not material_id.strip():
+        raise ValueError("material_id must be a non-empty string")
+
+    migrated: list[dict[str, Any]] = []
+    for chunk in chunks:
+        if not isinstance(chunk, dict):
+            continue
+        try:
+            migrated.append(with_chunk_hashes(chunk, material_id_hint=material_id, overwrite=True))
+        except (TypeError, ValueError):
+            migrated.append(dict(chunk))
+    return migrated
+
+
+def _chunk_store_version_payload(store: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    """Return manifest fields for the current content-derived store version."""
+
+    try:
+        chunk_store_version = compute_chunk_store_version(store)
+    except (TypeError, ValueError):
+        return {
+            "chunk_hash_version": CHUNK_HASH_VERSION,
+            "chunk_store_version": None,
+            "chunk_store_version_status": "unavailable",
+        }
+    return {
+        "chunk_hash_version": CHUNK_HASH_VERSION,
+        "chunk_store_version": chunk_store_version,
+        "chunk_store_version_status": "valid",
+    }
+
+
+def _chunk_fts_index_manifest_payload(
+    *,
+    project_id: str,
+    store: dict[str, list[dict[str, Any]]],
+    chunk_store_version: str | None,
+    chunk_store_version_status: str,
+) -> dict[str, Any]:
+    """Return manifest fields for the rebuildable SQLite FTS5 index."""
+
+    base = {
+        "fts_index_schema_version": CHUNK_FTS_INDEX_SCHEMA_VERSION,
+        "fts_index_relative_path": _chunk_fts_index_path(project_id).name,
+    }
+    if chunk_store_version_status != "valid" or not chunk_store_version:
+        return {
+            **base,
+            "fts_index_status": "skipped",
+            "fts_index_fallback_reason": "chunk_store_version_unavailable",
+            "fts_index_chunk_store_version": None,
+            "fts_index_indexed_count": 0,
+            "fts_index_skipped_count": 0,
+        }
+    try:
+        report = rebuild_chunk_fts_index(
+            db_path=_chunk_fts_index_path(project_id),
+            project_id=project_id,
+            store=store,
+            chunk_store_version=chunk_store_version,
+        )
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return {
+            **base,
+            "fts_index_status": "unavailable",
+            "fts_index_fallback_reason": "fts_index_rebuild_failed",
+            "fts_index_chunk_store_version": chunk_store_version,
+            "fts_index_indexed_count": 0,
+            "fts_index_skipped_count": 0,
+        }
+    return {
+        **base,
+        "fts_index_status": "valid",
+        "fts_index_fallback_reason": "",
+        "fts_index_chunk_store_version": report.chunk_store_version,
+        "fts_index_indexed_count": report.indexed_count,
+        "fts_index_skipped_count": report.skipped_count,
+    }
+
+
+def _chunk_store_linter_payload(store: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    """Return bounded linter manifest fields without mutating chunks."""
+
+    chunks: list[dict[str, Any]] = []
+    for material_chunks in store.values():
+        chunks.extend(dict(chunk) for chunk in material_chunks if isinstance(chunk, dict))
+    try:
+        report = ChunkEvidenceUnitLinter().lint_chunks(chunks)
+    except (TypeError, ValueError) as exc:
+        return {
+            "linter_schema_version": "scholar-ai-chunk-evidence-linter/v1",
+            "linter_status": "unavailable",
+            "linter_error": str(exc)[:240],
+        }
+
+    issue_counts: dict[str, int] = {}
+    for issue in report.issues:
+        issue_counts[issue.code] = issue_counts.get(issue.code, 0) + 1
+    linter_status = "passed"
+    if not report.passed:
+        linter_status = "failed"
+    elif report.warning_count:
+        linter_status = "warning"
+    return {
+        "linter_schema_version": report.schema_version,
+        "linter_status": linter_status,
+        "linter_error_count": report.error_count,
+        "linter_warning_count": report.warning_count,
+        "linter_issue_counts": dict(sorted(issue_counts.items())),
+        "linter_sample_issues": [issue.to_dict() for issue in report.issues[:20]],
+    }
+
+
+def _load_previous_material_chunks(
+    project_dir: Path,
+    old_materials: dict[str, dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Return previous accepted chunks keyed by material id for transition checks."""
+
+    previous: dict[str, list[dict[str, Any]]] = {}
+    for material_id, entry in old_materials.items():
+        if not isinstance(entry, dict):
+            continue
+        relative_path = str(entry.get("relative_path") or entry.get("file") or "")
+        if not relative_path:
+            continue
+        relative_parts = Path(relative_path).parts
+        if "_quarantine" in relative_parts:
+            continue
+        previous[material_id] = _read_material_jsonl(project_dir / relative_path)
+    return previous
+
+
 def _load_manifest(project_dir: Path) -> dict[str, Any]:
     manifest_path = project_dir / "manifest.json"
     if not manifest_path.exists():
@@ -322,13 +533,38 @@ def _save_chunk_store_unlocked(project_id: str, store: dict[str, list[dict[str, 
 
     old_manifest = _load_manifest(project_dir)
     old_materials: dict[str, dict[str, Any]] = old_manifest.get("materials", {}) or {}
+    previous_store = _load_previous_material_chunks(project_dir, old_materials)
     new_materials: dict[str, dict[str, Any]] = {}
+    accepted_store: dict[str, list[dict[str, Any]]] = {}
+    ledger_entries: list[ChunkIndexBackfillLedgerEntry] = []
+    ledger_timestamp = utc_now_iso()
     used_filenames: set[str] = set()
 
     for material_id, chunks in store.items():
-        chunks_list, quarantined_chunks = _partition_quarantined_chunks(project_id, material_id, list(chunks or []))
+        chunks_with_hashes = _with_chunk_hashes_for_store(material_id, list(chunks or []))
+        chunks_list, quarantined_chunks = _partition_quarantined_chunks(project_id, material_id, chunks_with_hashes)
+        for chunk in quarantined_chunks:
+            ledger_entries.append(
+                make_chunk_index_backfill_entry(
+                    project_id=project_id,
+                    material_id=material_id,
+                    chunk=chunk,
+                    status="quarantined",
+                    reason="oversize_quarantined",
+                    timestamp=ledger_timestamp,
+                )
+            )
         if not chunks_list and quarantined_chunks:
             continue
+        ledger_entries.extend(
+            transition_entries_for_material(
+                project_id=project_id,
+                material_id=material_id,
+                previous_chunks=previous_store.get(material_id, []),
+                current_chunks=chunks_list,
+                timestamp=ledger_timestamp,
+            )
+        )
         chunk_hash = _hash_chunks(chunks_list)
         file_name = _material_filename(material_id, chunks_list)
         # Defensive: collision (extremely unlikely with md5[:8]) — extend.
@@ -358,6 +594,28 @@ def _save_chunk_store_unlocked(project_id: str, store: dict[str, list[dict[str, 
             "sha256": chunk_hash,
             "total_chunks": len(chunks_list),
         }
+        accepted_store[material_id] = chunks_list
+
+    try:
+        linter_report = ChunkEvidenceUnitLinter().lint_chunks(
+            [dict(chunk) for material_chunks in accepted_store.values() for chunk in material_chunks if isinstance(chunk, dict)]
+        )
+        ledger_entries.extend(
+            linter_entries_for_store(
+                project_id=project_id,
+                store=accepted_store,
+                report=linter_report,
+                timestamp=ledger_timestamp,
+            )
+        )
+    except (TypeError, ValueError):
+        pass
+    ledger_entries = merge_chunk_index_backfill_ledger_entries(
+        existing_entries=_read_chunk_index_backfill_ledger(project_id),
+        current_entries=ledger_entries,
+        timestamp=ledger_timestamp,
+    )
+    _write_chunk_index_backfill_ledger(project_id, ledger_entries)
 
     # Clean up orphan files (materials removed from store, or renamed).
     keep_files = {entry["relative_path"] for entry in new_materials.values()}
@@ -372,7 +630,20 @@ def _save_chunk_store_unlocked(project_id: str, store: dict[str, list[dict[str, 
             except OSError:
                 pass
 
-    manifest_payload = {"version": 2, "materials": new_materials}
+    chunk_store_version_fields = _chunk_store_version_payload(accepted_store)
+    manifest_payload = {
+        "version": 2,
+        "materials": new_materials,
+        **chunk_store_version_fields,
+        **_chunk_store_linter_payload(accepted_store),
+        **_chunk_index_backfill_manifest_payload(project_id, ledger_entries),
+        **_chunk_fts_index_manifest_payload(
+            project_id=project_id,
+            store=accepted_store,
+            chunk_store_version=chunk_store_version_fields.get("chunk_store_version"),
+            chunk_store_version_status=str(chunk_store_version_fields.get("chunk_store_version_status") or ""),
+        ),
+    }
     _atomic_write_text(
         project_dir / "manifest.json",
         json.dumps(manifest_payload, ensure_ascii=False, indent=2),

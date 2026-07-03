@@ -8,6 +8,7 @@ affecting the live endpoint behaviour.
 
 import asyncio
 import inspect
+from collections import Counter
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -45,6 +46,13 @@ from routers.resources_router.path_guard import (
 )
 
 
+_SCAN_DECISION_LABELS = {
+    "translated_duplicate": "翻译副本",
+    "scan_duplicate": "重复文献",
+    "non_literature_artifact": "非论文PDF",
+}
+
+
 def _coerce_runtime_job_bool(value: Any) -> bool:
     """Coerce common query truthy values for scan-folder job submission."""
 
@@ -52,6 +60,75 @@ def _coerce_runtime_job_bool(value: Any) -> bool:
         return value
     text = str(value or "").strip().lower()
     return text in {"1", "true", "yes", "on", "job", "async"}
+
+
+def _scan_skip_summary(results: list[dict[str, Any]]) -> dict[str, int]:
+    """Count stable skip decisions for terminal and runtime summaries."""
+
+    counts: Counter[str] = Counter()
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("status") or "") != "skipped":
+            continue
+        decision = str(item.get("decision") or item.get("reason") or "skipped").strip()
+        counts[decision or "skipped"] += 1
+    return dict(sorted(counts.items(), key=lambda pair: (-pair[1], pair[0])))
+
+
+def _format_scan_skip_summary(summary: dict[str, int]) -> str:
+    """Format skip decisions as a bounded human-readable terminal fragment."""
+
+    if not summary:
+        return "无"
+    parts: list[str] = []
+    for decision, count in summary.items():
+        label = _SCAN_DECISION_LABELS.get(decision, decision)
+        parts.append(f"{label}={count}")
+    return ", ".join(parts)
+
+
+def _sample_scan_skips(results: list[dict[str, Any]], limit: int = 3) -> list[str]:
+    """Return a small set of skipped filenames for terminal diagnostics."""
+
+    if not isinstance(limit, int) or limit < 1:
+        raise ValueError("limit must be a positive integer")
+    samples: list[str] = []
+    for item in results:
+        if not isinstance(item, dict) or str(item.get("status") or "") != "skipped":
+            continue
+        title = str(item.get("title") or "").strip()
+        if title:
+            samples.append(title)
+        if len(samples) >= limit:
+            break
+    return samples
+
+
+def _log_scan_folder_human_summary(payload: dict[str, Any]) -> None:
+    """Emit terminal-friendly scan status lines for desktop operators."""
+
+    project_id = str(payload.get("project_id") or "")
+    folder = str(payload.get("folder") or "")
+    timing = payload.get("timing_ms") if isinstance(payload.get("timing_ms"), dict) else {}
+    total_ms = int(timing.get("total") or 0) if isinstance(timing, dict) else 0
+    status = "成功" if int(payload.get("failed") or 0) == 0 else "有失败"
+    _rr.logger.info(
+        "[文献导入] %s: 项目=%s 文件=%d 入库=%d 跳过=%d 失败=%d 切块=%d 用时=%.2fs",
+        status,
+        project_id,
+        int(payload.get("total_files") or 0),
+        int(payload.get("indexed") or 0),
+        int(payload.get("skipped") or 0),
+        int(payload.get("failed") or 0),
+        int(payload.get("total_chunks") or 0),
+        total_ms / 1000.0,
+    )
+    _rr.logger.info("[文献导入] 路径: %s", folder)
+    _rr.logger.info("[文献导入] 跳过原因: %s", _format_scan_skip_summary(dict(payload.get("skip_summary") or {})))
+    samples = payload.get("skip_samples")
+    if isinstance(samples, list) and samples:
+        _rr.logger.info("[文献导入] 跳过样例: %s", " | ".join(str(item) for item in samples[:3]))
 
 
 # =========================================================================
@@ -482,6 +559,8 @@ def _run_scan_folder_payload(
     existing_fingerprints = candidate_payload["existing_fingerprints"]
     skipped_results = list(candidate_payload["skipped_results"])
     failed_results = list(candidate_payload["failed_results"])
+    skip_summary = _scan_skip_summary(skipped_results)
+    skip_samples = _sample_scan_skips(skipped_results)
 
     _rr.logger.info(
         "scan_folder.collect project=%s total=%d pending=%d skipped=%d failed=%d collect_ms=%.1f folder=%s",
@@ -492,6 +571,15 @@ def _run_scan_folder_payload(
         len(failed_results),
         collect_ms,
         folder_path,
+    )
+    _rr.logger.info(
+        "[文献导入] 计划: 项目=%s 总文件=%d 待入库=%d 已跳过=%d 已失败=%d 跳过原因=%s",
+        project_id,
+        len(candidates),
+        len(pending_candidates),
+        len(skipped_results),
+        len(failed_results),
+        _format_scan_skip_summary(skip_summary),
     )
 
     t_zotero = perf_counter()
@@ -529,7 +617,7 @@ def _run_scan_folder_payload(
     skipped = len(skipped_results)
     failed = len(failed_results) + int(ingest_payload["failed"])
 
-    return {
+    payload = {
         "project_id": project_id,
         "folder": str(folder_path),
         "scan_mode": str(ingest_payload["scan_mode"]),
@@ -541,6 +629,8 @@ def _run_scan_folder_payload(
         "skipped": skipped,
         "failed": failed,
         "total_chunks": int(ingest_payload["total_chunks"]),
+        "skip_summary": skip_summary,
+        "skip_samples": skip_samples,
         "timing_ms": {
             "total": int(total_ms),
             "collect": int(collect_ms),
@@ -550,6 +640,8 @@ def _run_scan_folder_payload(
         "results": results,
         **({"runtime_job_id": runtime_job_id} if runtime_job_id else {}),
     }
+    _log_scan_folder_human_summary(payload)
+    return payload
 
 
 async def _start_scan_folder_runtime_job(
@@ -627,6 +719,7 @@ async def _start_scan_folder_runtime_job(
             progress=94,
             data={
                 "indexed": int(payload.get("indexed") or 0),
+                "skipped": int(payload.get("skipped") or 0),
                 "failed": int(payload.get("failed") or 0),
                 "total_chunks": int(payload.get("total_chunks") or 0),
             },

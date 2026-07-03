@@ -41,6 +41,7 @@ from project_paths import (
     desktop_runtime_file_path,
 )
 from runtime_descriptor import delete_desktop_runtime_descriptor, refresh_desktop_runtime_descriptor
+from terminal_output import install_color_console_formatter, terminal_print
 
 # Import configuration and models
 from datetime_utils import to_iso_z
@@ -156,6 +157,7 @@ def _install_sensitive_log_filter() -> None:
 
 
 logging.basicConfig(level=_LOG_LEVEL, format=_LOG_FORMAT)
+install_color_console_formatter(_LOG_FORMAT)
 _install_sensitive_log_filter()
 
 if os.environ.get("LITASSIST_DISABLE_FILE_LOG") != "1":
@@ -480,9 +482,9 @@ async def _lifespan(app: FastAPI):
         duplicates = [(m, p, n) for (m, p), n in seen.items() if n > 1]
         if duplicates:
             for method, path, count in duplicates:
-                print(f"[route-audit] DUPLICATE ({count}x) {method} {path}")
+                terminal_print("route-audit", f"DUPLICATE ({count}x) {method} {path}", level="error")
         else:
-            print(f"[route-audit] {len(seen)} unique (method, path) routes; no duplicates")
+            terminal_print("route-audit", f"{len(seen)} unique (method, path) routes; no duplicates", level="ok")
 
     # 0.1.8.1 port-bridge: write the live port to a well-known file so the
     # dev frontend's vite proxy can target it even when the user passes

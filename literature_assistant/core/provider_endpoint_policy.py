@@ -82,6 +82,7 @@ OFFICIAL_PROVIDER_HOSTS: dict[str, set[str]] = {
     "OpenRouter": {"openrouter.ai"},
     "SiliconFlow": {"api.siliconflow.cn"},
     "DashScope": {"dashscope.aliyuncs.com"},
+    "NVIDIA": {"integrate.api.nvidia.com"},
     "Groq": {"api.groq.com"},
     "Mistral": {"api.mistral.ai"},
     "MinerU": {"mineru.net"},

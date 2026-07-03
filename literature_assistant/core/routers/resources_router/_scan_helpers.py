@@ -11,10 +11,17 @@ import concurrent.futures as futures
 import os
 import re
 import sqlite3
+import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ._document_extraction import _extract_document_content, _truncate_document_content
+from ._document_extraction import (
+    ExtractedDocumentPayload,
+    _extract_document_content,
+    _extract_document_payload_from_path,
+    _truncate_document_content,
+)
 from ._search_helpers import _tokenize_search_text
 
 
@@ -26,6 +33,10 @@ __all__ = [
     "_resolve_scan_workers",
     "_iter_scan_batches",
     "_extract_scan_candidate_content",
+    "_extract_scan_candidate_payload",
+    "_build_scan_dedupe_key",
+    "_is_translated_scan_derivative",
+    "_is_probable_non_literature_scan_artifact",
     "_score_pending_candidate_for_query",
     "_select_query_pending_candidates",
     "_normalize_project_title_for_cleanup",
@@ -33,9 +44,33 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True)
+class ScanCandidateExtraction:
+    """Result shape for source-folder scan extraction."""
+
+    content: str | None
+    error_reason: str | None
+    blocks: list[Any] | None = None
+    markdown_full: str | None = None
+
+
 # Set of file extensions and skip directories used by scan helpers.
 _SCAN_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md", ".bib", ".ipynb"}
 _SCAN_SKIP_DIRS = {".scholarai", ".git", "node_modules", "__pycache__"}
+_TRANSLATION_SUFFIX_RE = re.compile(
+    r"(?i)(?:[\s._-]*(?:"
+    r"no[\s_-]?watermark|watermark|translated|translation|zh(?:[\s_-]?cn)?|cn|"
+    r"mono|dual|single|bilingual|双语|单语|中文|原文|原文材料"
+    r"))+$"
+)
+_COPY_SUFFIX_RE = re.compile(r"(?i)(?:[\s._-]*(?:copy|副本|\(\d+\)|（\d+）))+$")
+_TRANSLATION_MARKER_RE = re.compile(
+    r"(?i)(?:^|[\s._-])(?:zh(?:[\s_-]?cn)?|no[\s_-]?watermark|translated|translation|中文|双语|单语)(?:$|[\s._-])"
+)
+_TRANSLATION_MODE_RE = re.compile(r"(?i)(?:^|[\s._-])(?:mono|dual|single|bilingual|双语|单语)(?:$|[\s._-])")
+_NON_LITERATURE_ARTIFACT_RE = re.compile(
+    r"(?i)(?:^|[\s._-])(?:pnp|print[\s_-]?and[\s_-]?play|cutlines?|cut[\s_-]?lines?|rulebook|character[\s_-]?sheet)(?:$|[\s._-])"
+)
 
 
 def _iter_scan_files(root: Path) -> list[Path]:
@@ -56,6 +91,73 @@ def _build_source_fingerprint(root: Path, path: Path) -> str:
     rel = path.resolve().relative_to(root.resolve()).as_posix()
     stat = path.stat()
     return f"{rel}|{stat.st_size}|{int(stat.st_mtime_ns)}"
+
+
+def _build_scan_dedupe_key(relative_path: str | Path) -> str:
+    """Return a conservative source-title key for scan-stage duplicate filtering.
+
+    Args:
+        relative_path: Project-folder-relative path or display filename.
+
+    Returns:
+        A normalized key that collapses Scholar AI translation derivatives such
+        as ``.no_watermark.zh-CN.mono`` onto their original PDF title.
+    """
+
+    if relative_path is None:
+        raise TypeError("relative_path must not be None")
+    raw = str(relative_path).strip()
+    if not raw:
+        raise ValueError("relative_path must be non-empty")
+
+    path = Path(raw.replace("\\", "/"))
+    suffix = path.suffix.lower().lstrip(".") or "file"
+    stem = unicodedata.normalize("NFKC", path.stem).strip().lower()
+    previous = ""
+    while stem and stem != previous:
+        previous = stem
+        stem = _TRANSLATION_SUFFIX_RE.sub("", stem).strip()
+        stem = _COPY_SUFFIX_RE.sub("", stem).strip()
+    stem = re.sub(r"[\s._-]+", " ", stem).strip()
+    stem = re.sub(r"\s+", " ", stem)
+    return f"{suffix}:{stem or path.stem.lower()}"
+
+
+def _is_translated_scan_derivative(relative_path: str | Path) -> bool:
+    """Return True when a scan candidate is a generated mono/dual translation.
+
+    Args:
+        relative_path: Project-folder-relative path or display filename.
+
+    Returns:
+        True for filename patterns produced by the PDF translation workflow.
+    """
+
+    raw = str(relative_path or "").strip()
+    if not raw:
+        return False
+    stem = unicodedata.normalize("NFKC", Path(raw.replace("\\", "/")).stem).strip()
+    return bool(_TRANSLATION_MARKER_RE.search(stem) and _TRANSLATION_MODE_RE.search(stem))
+
+
+def _is_probable_non_literature_scan_artifact(relative_path: str | Path) -> bool:
+    """Return True for obvious local artifacts that should not become papers.
+
+    Args:
+        relative_path: Project-folder-relative path or display filename.
+
+    Returns:
+        True only for high-signal non-paper filename patterns.
+    """
+
+    raw = str(relative_path or "").strip()
+    if not raw:
+        return False
+    path = Path(raw.replace("\\", "/"))
+    if path.suffix.lower() != ".pdf":
+        return False
+    normalized = unicodedata.normalize("NFKC", path.stem).strip()
+    return bool(_NON_LITERATURE_ARTIFACT_RE.search(normalized))
 
 
 def _extract_zotero_item_key(relative_path: Path) -> str | None:
@@ -140,21 +242,50 @@ def _iter_scan_batches(items: list[dict[str, Any]], batch_size: int) -> list[lis
     return [items[idx: idx + batch_size] for idx in range(0, len(items), batch_size)]
 
 
+def _extract_scan_candidate_payload(
+    file_path: Path,
+    *,
+    project_id: str | None = None,
+) -> ScanCandidateExtraction:
+    """Extract candidate payload for scan-folder ingestion.
+
+    Returns:
+        Full extraction payload on success, or a user-safe error reason.
+    """
+    try:
+        if file_path.suffix.lower() == ".pdf":
+            payload = _extract_document_payload_from_path(
+                file_path.name,
+                file_path,
+                project_id=project_id,
+            )
+        else:
+            payload = ExtractedDocumentPayload(
+                content=_extract_document_content(file_path.name, file_path.read_bytes())
+            )
+        content = _truncate_document_content(payload.content)
+        normalized = str(content or "").strip()
+        if not normalized or _is_extraction_failure_placeholder(normalized):
+            return ScanCandidateExtraction(content=None, error_reason="无法提取文本")
+        return ScanCandidateExtraction(
+            content=content,
+            error_reason=None,
+            blocks=payload.blocks,
+            markdown_full=payload.markdown_full,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return ScanCandidateExtraction(content=None, error_reason=str(exc))
+
+
 def _extract_scan_candidate_content(file_path: Path) -> tuple[str | None, str | None]:
     """Extract candidate text for scan-folder ingestion.
 
     Returns:
         (content, None) on success, or (None, reason) on failure.
     """
-    try:
-        raw = file_path.read_bytes()
-        content = _truncate_document_content(_extract_document_content(file_path.name, raw))
-        normalized = str(content or "").strip()
-        if not normalized or _is_extraction_failure_placeholder(normalized):
-            return None, "无法提取文本"
-        return content, None
-    except Exception as exc:  # noqa: BLE001
-        return None, str(exc)
+
+    result = _extract_scan_candidate_payload(file_path)
+    return result.content, result.error_reason
 
 
 
@@ -227,4 +358,3 @@ def _is_extraction_failure_placeholder(content: str) -> bool:
             "[未知格式文件:",
         )
     )
-

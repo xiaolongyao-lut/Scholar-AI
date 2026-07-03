@@ -34,6 +34,7 @@ from typing import Any
 import httpx
 
 from provider_endpoint_policy import TrustSource, validate_endpoint
+from provider_payload_compat import apply_openai_chat_payload_compat, provider_http_timeout_s
 
 logger = logging.getLogger(__name__)
 
@@ -222,10 +223,19 @@ def _chat_probe_url(base_url: str, protocol: str) -> str | None:
     suffix = _PROBE_CHAT_PATHS.get((protocol or "").lower())
     if suffix is None:
         return None
-    return f"{base_url.rstrip('/')}{suffix}"
+    trimmed = base_url.strip().rstrip("/")
+    if trimmed.endswith(suffix):
+        return trimmed
+    return f"{trimmed}{suffix}"
 
 
-def _chat_probe_payload(protocol: str, model: str) -> dict[str, Any] | None:
+def _chat_probe_payload(
+    protocol: str,
+    model: str,
+    *,
+    provider: str = "",
+    base_url: str = "",
+) -> dict[str, Any] | None:
     """Build a real-model Scholar readiness prompt for chat-style protocols.
 
     Args:
@@ -258,7 +268,7 @@ def _chat_probe_payload(protocol: str, model: str) -> dict[str, Any] | None:
             "temperature": 0,
         }
     if proto == "openai_chat_completions":
-        return {
+        payload = {
             "model": normalized_model,
             "messages": [
                 {"role": "system", "content": _SCHOLAR_PROBE_SYSTEM_PROMPT},
@@ -267,6 +277,14 @@ def _chat_probe_payload(protocol: str, model: str) -> dict[str, Any] | None:
             "max_tokens": 180,
             "temperature": 0,
         }
+        apply_openai_chat_payload_compat(
+            payload,
+            provider=provider,
+            base_url=base_url,
+            model=normalized_model,
+            top_k=None,
+        )
+        return payload
     return None
 
 
@@ -403,6 +421,7 @@ def probe_endpoint_reachability(
     protocol: str,
     model: str = "",
     *,
+    provider: str = "",
     timeout_s: float = 8.0,
 ) -> ProbeResult:
     """Try to reach an OpenAI/Anthropic-compatible endpoint with auth.
@@ -420,6 +439,12 @@ def probe_endpoint_reachability(
     """
     base_url = (base_url or "").strip()
     normalized_model = (model or "").strip()
+    timeout_s = provider_http_timeout_s(
+        provider=provider,
+        base_url=base_url,
+        model=normalized_model,
+        default_s=timeout_s,
+    )
     headers = {**_build_auth_headers(api_key, protocol),
                "Content-Type": "application/json",
                "User-Agent": "literature-assistant-provider-probe/1.0"}
@@ -443,7 +468,12 @@ def probe_endpoint_reachability(
                 return result
 
             # 2. Try a real Scholar prompt for NewAPI/OpenAI-compatible gateways.
-            chat_payload = _chat_probe_payload(protocol, normalized_model)
+            chat_payload = _chat_probe_payload(
+                protocol,
+                normalized_model,
+                provider=provider,
+                base_url=base_url,
+            )
             if chat_url and not chat_payload:
                 result.method = "POST"
                 result.url_used = chat_url
@@ -535,7 +565,7 @@ def _build_models_url(base_url: str) -> str:
     trimmed = base_url.strip().rstrip("/")
     if not trimmed:
         return ""
-    if trimmed.endswith("/v1/chat/completions"):
+    if trimmed.endswith("/chat/completions"):
         trimmed = trimmed[: -len("/chat/completions")]
     if trimmed.endswith("/v1"):
         return f"{trimmed}/models"
@@ -634,25 +664,43 @@ async def discover_models(
         )
 
 
-def _ordinary_chat_probe_payload(model: str) -> dict[str, Any]:
+def _ordinary_chat_probe_payload(
+    model: str,
+    *,
+    provider: str = "",
+    base_url: str = "",
+) -> dict[str, Any]:
     """Return a real-model one-token chat payload for capability probes."""
 
     if not isinstance(model, str) or not model.strip():
         raise ValueError("model must be a non-empty string")
-    return {
+    payload = {
         "model": model.strip(),
         "messages": [{"role": "user", "content": "Reply with ok."}],
         "max_tokens": 8,
         "temperature": 0,
     }
+    apply_openai_chat_payload_compat(
+        payload,
+        provider=provider,
+        base_url=base_url,
+        model=model.strip(),
+        top_k=None,
+    )
+    return payload
 
 
-def _forced_tool_choice_probe_payload(model: str) -> dict[str, Any]:
+def _forced_tool_choice_probe_payload(
+    model: str,
+    *,
+    provider: str = "",
+    base_url: str = "",
+) -> dict[str, Any]:
     """Return an OpenAI-compatible forced function-call probe payload."""
 
     if not isinstance(model, str) or not model.strip():
         raise ValueError("model must be a non-empty string")
-    return {
+    payload = {
         "model": model.strip(),
         "messages": [
             {
@@ -687,6 +735,14 @@ def _forced_tool_choice_probe_payload(model: str) -> dict[str, Any]:
         "max_tokens": 32,
         "temperature": 0,
     }
+    apply_openai_chat_payload_compat(
+        payload,
+        provider=provider,
+        base_url=base_url,
+        model=model.strip(),
+        top_k=None,
+    )
+    return payload
 
 
 def _json_object_response(response: httpx.Response) -> dict[str, Any] | None:
@@ -750,6 +806,7 @@ def probe_openai_tool_calling_capability(
     api_key: str,
     model: str,
     *,
+    provider: str = "",
     protocol: str = "openai_chat_completions",
     timeout_s: float = 10.0,
 ) -> ToolCallingProbeResult:
@@ -770,6 +827,12 @@ def probe_openai_tool_calling_capability(
     normalized_base = (base_url or "").strip()
     normalized_model = (model or "").strip()
     normalized_protocol = (protocol or "").strip().lower()
+    timeout_s = provider_http_timeout_s(
+        provider=provider,
+        base_url=normalized_base,
+        model=normalized_model,
+        default_s=timeout_s,
+    )
     result = ToolCallingProbeResult(
         ok=False,
         protocol=normalized_protocol or protocol,
@@ -824,7 +887,11 @@ def probe_openai_tool_calling_capability(
 
             chat_response = client.post(
                 result.chat_url,
-                json=_ordinary_chat_probe_payload(normalized_model),
+                json=_ordinary_chat_probe_payload(
+                    normalized_model,
+                    provider=provider,
+                    base_url=normalized_base,
+                ),
                 headers=headers,
             )
             result.status_code = chat_response.status_code
@@ -842,7 +909,11 @@ def probe_openai_tool_calling_capability(
 
             tool_response = client.post(
                 result.chat_url,
-                json=_forced_tool_choice_probe_payload(normalized_model),
+                json=_forced_tool_choice_probe_payload(
+                    normalized_model,
+                    provider=provider,
+                    base_url=normalized_base,
+                ),
                 headers=headers,
             )
             result.status_code = tool_response.status_code

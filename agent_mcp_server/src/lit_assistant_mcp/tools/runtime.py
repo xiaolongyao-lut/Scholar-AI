@@ -331,6 +331,8 @@ class RuntimeTools:
             },
         )
         result = self._wrap_backend_result(backend_result)
+        if result.get("is_error") is not True:
+            result = self._search_refs_result_for_mcp(result)
         return self._finish("literature.search_refs", args, result, started, endpoint)
 
     def academic_english_status(self) -> dict[str, Any]:
@@ -908,6 +910,7 @@ class RuntimeTools:
         limit: int = 20,
         pixel_only: bool = False,
         render_pdf_fallback: bool = True,
+        query: str | None = None,
     ) -> dict[str, Any]:
         """List backend-derived figure/table candidates for a project.
 
@@ -916,6 +919,7 @@ class RuntimeTools:
             limit: Maximum candidate count, 1 through 100 for MCP use.
             pixel_only: Whether candidates must already have pixel assets.
             render_pdf_fallback: Whether backend may render PDF crops.
+            query: Optional visual/text query used to rank candidates.
         """
         started = time.perf_counter()
         project_id = self._require_non_empty(project_id, "project_id")
@@ -926,6 +930,8 @@ class RuntimeTools:
             "pixel_only": bool(pixel_only),
             "render_pdf_fallback": bool(render_pdf_fallback),
         }
+        if query is not None and str(query).strip():
+            args["query"] = self._bounded_text(str(query), "query", max_chars=4096)
         endpoint = "/api/writing/figures/candidates"
         backend_result = self.backend.get(endpoint, params=args)
         result = self._wrap_backend_result(backend_result)
@@ -1395,6 +1401,7 @@ class RuntimeTools:
         limit: int = 20,
         pixel_only: bool = False,
         render_pdf_fallback: bool = True,
+        query: str | None = None,
     ) -> dict[str, Any]:
         """List visual figure/table candidates prepared by the backend.
 
@@ -1403,6 +1410,7 @@ class RuntimeTools:
             limit: Maximum candidate count, 1 through 100 for MCP use.
             pixel_only: Whether to require pre-existing pixel assets.
             render_pdf_fallback: Whether backend may render PDF crops.
+            query: Optional visual/text query used to rank candidates.
         """
         started = time.perf_counter()
         project_id = self._require_non_empty(project_id, "project_id")
@@ -1413,6 +1421,8 @@ class RuntimeTools:
             "pixel_only": bool(pixel_only),
             "render_pdf_fallback": bool(render_pdf_fallback),
         }
+        if query is not None and str(query).strip():
+            args["query"] = self._bounded_text(str(query), "query", max_chars=4096)
         endpoint = "/resources/figure-table-candidates"
         backend_result = self.backend.get(endpoint, params=args)
         result = self._wrap_backend_result(backend_result)
@@ -1861,17 +1871,68 @@ class RuntimeTools:
         session_id: str | None = None,
         job_id: str | None = None,
         project_id: str | None = None,
+        query: str | None = None,
+        evidence_pack_ref: str | None = None,
+        evidence_refs: list[dict[str, Any]] | None = None,
+        retrieval_diagnostics: dict[str, Any] | None = None,
         limit: int = 500,
     ) -> dict[str, Any]:
-        """Read the evidence integrity gate projection for runtime research state.
+        """Read runtime or query-scoped evidence integrity diagnostics.
 
         Args:
             session_id: Optional runtime session filter.
             job_id: Optional runtime job filter.
             project_id: Optional Scholar AI project filter.
+            query: Optional evidence-pack query. Supplying this or evidence refs
+                validates the current pack instead of export/workflow readiness.
+            evidence_pack_ref: Optional pack id returned by evidence_pack_build.
+            evidence_refs: Optional refs returned by evidence_pack_build.
+            retrieval_diagnostics: Optional diagnostics returned by evidence_pack_build.
             limit: Maximum runtime records considered by the backend.
         """
         started = time.perf_counter()
+        if (
+            query is not None
+            or evidence_pack_ref is not None
+            or evidence_refs is not None
+            or retrieval_diagnostics is not None
+        ):
+            normalized_project_id = self._require_non_empty(str(project_id or ""), "project_id")
+            normalized_query = (
+                self._bounded_text(str(query), "query", max_chars=4096, allow_empty=True)
+                if query is not None
+                else ""
+            )
+            normalized_refs = self._dict_list(evidence_refs, "evidence_refs", maximum=50)
+            payload: dict[str, Any] = {
+                "project_id": normalized_project_id,
+                "query": normalized_query,
+                "evidence_refs": normalized_refs,
+            }
+            if evidence_pack_ref is not None and str(evidence_pack_ref).strip():
+                payload["evidence_pack_ref"] = self._bounded_text(
+                    str(evidence_pack_ref),
+                    "evidence_pack_ref",
+                    max_chars=200,
+                )
+            if retrieval_diagnostics is not None:
+                payload["retrieval_diagnostics"] = self._bounded_json_object(
+                    retrieval_diagnostics,
+                    "retrieval_diagnostics",
+                    max_chars=40000,
+                )
+            args = {
+                "project_id": normalized_project_id,
+                "query": normalized_query[:200],
+                "evidence_pack_ref": payload.get("evidence_pack_ref"),
+                "evidence_ref_count": len(normalized_refs),
+                "retrieval_diagnostics_present": retrieval_diagnostics is not None,
+            }
+            endpoint = "/api/evidence-pack/integrity-gate"
+            backend_result = self.backend.post_json(endpoint, payload=payload)
+            result = self._wrap_backend_result(backend_result)
+            return self._finish("literature.evidence_integrity_gate", args, result, started, endpoint)
+
         params = self._runtime_projection_params(
             session_id=session_id,
             job_id=job_id,
@@ -2034,6 +2095,8 @@ class RuntimeTools:
         endpoint = f"/api/agent-bridge/resource/{ref_id}"
         backend_result = self.backend.get(endpoint, params=params)
         result = self._wrap_backend_result(backend_result)
+        if result.get("is_error") is not True:
+            result = self._agent_resource_result_for_mcp(result)
         return self._finish("literature.agent_resource_read", args, result, started, endpoint)
 
     def agent_progress(
@@ -2113,6 +2176,42 @@ class RuntimeTools:
                 message=backend_result.get("message"),
             )
         return safe_result(backend_result.get("data"))
+
+    def _search_refs_result_for_mcp(self, result: dict[str, Any]) -> dict[str, Any]:
+        """Return search refs with both explicit and conventional count fields."""
+
+        data = result.get("data")
+        if not isinstance(data, dict):
+            return result
+        if "total" in data or "total_refs" not in data:
+            return result
+        total_refs = data.get("total_refs")
+        if not isinstance(total_refs, int) or isinstance(total_refs, bool):
+            return result
+        return {**result, "data": {**data, "total": total_refs}}
+
+    def _agent_resource_result_for_mcp(self, result: dict[str, Any]) -> dict[str, Any]:
+        """Project common provenance fields to the top-level resource envelope."""
+
+        data = result.get("data")
+        if not isinstance(data, dict):
+            return result
+        metadata = data.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        page = data.get("page")
+        if not isinstance(page, int) or isinstance(page, bool):
+            page = metadata.get("page")
+        normalized_page = page if isinstance(page, int) and not isinstance(page, bool) else None
+        enriched = {
+            **data,
+            "source_title": data.get("source_title") or data.get("title"),
+            "source_path": data.get("source_path") or metadata.get("source_relative_path") or metadata.get("source_path"),
+            "material_id": data.get("material_id") or metadata.get("material_id"),
+            "chunk_id": data.get("chunk_id") or metadata.get("chunk_id"),
+            "page": normalized_page,
+        }
+        return {**result, "data": enriched}
 
     def _project_list_for_mcp(self, data: Any) -> Any:
         """Return project list data without local source-folder paths."""

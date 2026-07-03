@@ -18,8 +18,10 @@ from pathlib import Path
 from typing import Any, Mapping, Callable
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from chunk_size_guard import hard_max_chars, hard_max_tokens, inspect_chunk
+from chunk_hashing import compute_chunk_store_version
 from chunk_models import EnrichedChunk
 from project_paths import output_path, project_data_path
+from retrieval_gateway import retrieve_candidates
 from models import (
     ProjectPayload,
     SectionPayload,
@@ -236,6 +238,10 @@ from ._scan_helpers import (
     _resolve_scan_workers,
     _iter_scan_batches,
     _extract_scan_candidate_content,
+    _extract_scan_candidate_payload,
+    _build_scan_dedupe_key,
+    _is_translated_scan_derivative,
+    _is_probable_non_literature_scan_artifact,
     _score_pending_candidate_for_query,
     _select_query_pending_candidates,
     _normalize_project_title_for_cleanup,
@@ -305,6 +311,75 @@ def _search_chunks_hybrid(query: str, project_id: str, top_k: int = 10) -> list[
     return [{"score": round(score, 2), **chunk} for score, chunk in top if score > 0]
 
 
+def _search_chunks_via_gateway(project_id: str, query: str, top_k: int = 10) -> list[dict[str, Any]] | None:
+    """Return Gateway-ranked chunks when the derived lexical index is valid.
+
+    Args:
+        project_id: Existing writing project identifier.
+        query: Non-empty retrieval query.
+        top_k: Positive maximum number of chunks to return.
+
+    Returns:
+        Ranked chunk dictionaries, or ``None`` when the caller must use the
+        legacy scorer because the derived index is unavailable or stale.
+    """
+
+    normalized_project_id = str(project_id or "").strip()
+    normalized_query = str(query or "").strip()
+    if not normalized_project_id:
+        raise ValueError("project_id must be a non-empty string")
+    if not normalized_query:
+        raise ValueError("query must be a non-empty string")
+    if not isinstance(top_k, int) or top_k < 1:
+        raise ValueError("top_k must be a positive integer")
+
+    try:
+        chunk_store = _ensure_project_chunks(normalized_project_id)
+        chunk_store_version = compute_chunk_store_version(chunk_store)
+        gateway_result = retrieve_candidates(
+            normalized_project_id,
+            normalized_query,
+            "general",
+            store=chunk_store,
+            chunk_store_version=chunk_store_version,
+            fts_db_path=_chunk_fts_index_path(normalized_project_id),
+            limit=top_k,
+            lexical_limit=top_k,
+            visual_budget_floor=2,
+            visual_budget_intent=max(3, min(12, top_k)),
+        )
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+
+    if gateway_result.diagnostics.fts_status != "valid" or not gateway_result.candidates:
+        return None
+
+    chunk_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for chunks in chunk_store.values():
+        for chunk in chunks:
+            if not isinstance(chunk, dict):
+                continue
+            material_id = str(chunk.get("material_id") or "").strip()
+            chunk_id = str(chunk.get("chunk_id") or "").strip()
+            if material_id and chunk_id:
+                chunk_by_key[(material_id, chunk_id)] = chunk
+
+    results: list[dict[str, Any]] = []
+    diagnostics = gateway_result.diagnostics.to_dict()
+    for candidate in gateway_result.candidates:
+        chunk = chunk_by_key.get((candidate.material_id, candidate.chunk_id))
+        if chunk is None:
+            continue
+        enriched = dict(chunk)
+        enriched["score"] = round(candidate.score, 6)
+        enriched["retrieval_sources"] = list(candidate.sources)
+        enriched["retrieval_gateway_diagnostics"] = diagnostics
+        results.append(enriched)
+        if len(results) >= top_k:
+            break
+    return results or None
+
+
 def search_project_chunks_for_query(project_id: str, query: str, top_k: int = 10) -> list[dict[str, Any]]:
     """Return ranked project chunks for API consumers that need local RAG context.
 
@@ -317,6 +392,9 @@ def search_project_chunks_for_query(project_id: str, query: str, top_k: int = 10
         Ranked chunk dictionaries with a numeric ``score`` field and original
         chunk provenance preserved.
     """
+    gateway_hits = _search_chunks_via_gateway(project_id=project_id, query=query, top_k=top_k)
+    if gateway_hits is not None:
+        return gateway_hits
     return _search_chunks_hybrid(query=query, project_id=project_id, top_k=top_k)
 
 
@@ -353,7 +431,7 @@ def _ensure_project_chunks(
     for mid in list(material_ids):
         document = doc_store.get(mid)
         if document is None:
-            if mid in chunk_store:
+            if mid in chunk_store and (material_id or doc_store):
                 del chunk_store[mid]
                 updated = True
             continue
@@ -387,7 +465,7 @@ def _ensure_project_chunks(
                 normalized_chunk["chunk_index"] = idx
                 changed = True
             expected_chunk_id = f"{mid}_chunk_{idx}"
-            if normalized_chunk.get("chunk_id") != expected_chunk_id:
+            if not str(normalized_chunk.get("chunk_id") or "").strip():
                 normalized_chunk["chunk_id"] = expected_chunk_id
                 changed = True
             char_count = len(str(normalized_chunk.get("content") or ""))
@@ -430,7 +508,16 @@ def _collect_pending_scan_candidates(
     This is a reusable metadata stage shared by both full-folder scan and
     query-driven on-demand ingestion.
     """
-    candidates = _iter_scan_files(folder_path)
+    root_resolved = folder_path.resolve()
+    candidates = sorted(
+        _iter_scan_files(folder_path),
+        key=lambda path: (
+            _build_scan_dedupe_key(path.resolve().relative_to(root_resolved).as_posix()),
+            _is_translated_scan_derivative(path.name),
+            len(path.name),
+            path.name.lower(),
+        ),
+    )
     existing_doc_store = _load_doc_store(project_id)
     existing_titles = {str(v.get("title") or "") for v in existing_doc_store.values()}
     existing_fingerprints = {
@@ -438,15 +525,68 @@ def _collect_pending_scan_candidates(
         for v in existing_doc_store.values()
         if str(v.get("source_fingerprint") or "")
     }
+    existing_dedupe_keys: set[str] = set()
+    for existing_doc in existing_doc_store.values():
+        if not isinstance(existing_doc, dict):
+            continue
+        for raw_value in (
+            existing_doc.get("source_relative_path"),
+            existing_doc.get("title"),
+        ):
+            raw_text = str(raw_value or "").strip()
+            if not raw_text:
+                continue
+            try:
+                existing_dedupe_keys.add(_build_scan_dedupe_key(raw_text))
+            except (TypeError, ValueError):
+                continue
 
     pending_candidates: list[dict[str, Any]] = []
     skipped_results: list[dict[str, Any]] = []
     failed_results: list[dict[str, Any]] = []
+    seen_dedupe_keys = set(existing_dedupe_keys)
 
     for file_path in candidates:
         filename = file_path.name
-        relative_path = file_path.resolve().relative_to(folder_path.resolve())
+        relative_path = file_path.resolve().relative_to(root_resolved)
         relative_posix = relative_path.as_posix()
+        dedupe_key = _build_scan_dedupe_key(relative_posix)
+
+        if _is_translated_scan_derivative(relative_posix):
+            skipped_results.append(
+                {
+                    "title": relative_posix,
+                    "status": "skipped",
+                    "reason": "翻译副本（mono/dual/zh-CN），保留原文材料",
+                    "decision": "translated_duplicate",
+                    "dedupe_key": dedupe_key,
+                }
+            )
+            continue
+
+        if _is_probable_non_literature_scan_artifact(relative_posix):
+            skipped_results.append(
+                {
+                    "title": relative_posix,
+                    "status": "skipped",
+                    "reason": "疑似非论文 PDF（文件名含 PnP/cutlines 等制图标记）",
+                    "decision": "non_literature_artifact",
+                    "dedupe_key": dedupe_key,
+                }
+            )
+            continue
+
+        if dedupe_key in seen_dedupe_keys:
+            skipped_results.append(
+                {
+                    "title": relative_posix,
+                    "status": "skipped",
+                    "reason": "重复文献（规范化标题匹配）",
+                    "decision": "scan_duplicate",
+                    "dedupe_key": dedupe_key,
+                }
+            )
+            continue
 
         try:
             stat = file_path.stat()
@@ -457,10 +597,12 @@ def _collect_pending_scan_candidates(
 
         if fingerprint in existing_fingerprints:
             skipped_results.append({"title": relative_posix, "status": "skipped", "reason": "已索引（指纹匹配）"})
+            seen_dedupe_keys.add(dedupe_key)
             continue
 
         if relative_posix in existing_titles or filename in existing_titles:
             skipped_results.append({"title": relative_posix, "status": "skipped", "reason": "已索引（路径/文件名匹配）"})
+            seen_dedupe_keys.add(dedupe_key)
             continue
 
         pending_candidates.append(
@@ -471,8 +613,10 @@ def _collect_pending_scan_candidates(
                 "fingerprint": fingerprint,
                 "size": stat.st_size,
                 "mtime": stat.st_mtime,
+                "dedupe_key": dedupe_key,
             }
         )
+        seen_dedupe_keys.add(dedupe_key)
 
     return {
         "candidates": candidates,
@@ -514,7 +658,7 @@ def _ingest_pending_candidates(
         for batch in _iter_scan_batches(pending_candidates, batch_size):
             with futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
                 future_map = {
-                    executor.submit(_extract_scan_candidate_content, item["path"]): item
+                    executor.submit(_extract_scan_candidate_payload, item["path"], project_id=project_id): item
                     for item in batch
                 }
                 for future in futures.as_completed(future_map):
@@ -523,7 +667,9 @@ def _ingest_pending_candidates(
                     relative_path = item["relative_path"]
                     fingerprint = str(item["fingerprint"])
 
-                    content, error_reason = future.result()
+                    extraction = future.result()
+                    content = extraction.content
+                    error_reason = extraction.error_reason
                     if error_reason or not content:
                         failed += 1
                         results.append({"title": relative_posix, "status": "error", "reason": error_reason or "无法提取文本"})
@@ -542,6 +688,8 @@ def _ingest_pending_candidates(
                         source_fingerprint=fingerprint,
                         source_size=int(item["size"]),
                         source_mtime=float(item["mtime"]),
+                        blocks=extraction.blocks,
+                        markdown_full=extraction.markdown_full,
                     )
                     total_chunks += int(result.get("chunks") or 0)
                     existing_fingerprints.add(fingerprint)
@@ -553,7 +701,9 @@ def _ingest_pending_candidates(
             relative_path = item["relative_path"]
             fingerprint = str(item["fingerprint"])
 
-            content, error_reason = _extract_scan_candidate_content(item["path"])
+            extraction = _extract_scan_candidate_payload(item["path"], project_id=project_id)
+            content = extraction.content
+            error_reason = extraction.error_reason
             if error_reason or not content:
                 failed += 1
                 results.append({"title": relative_posix, "status": "error", "reason": error_reason or "无法提取文本"})
@@ -572,6 +722,8 @@ def _ingest_pending_candidates(
                 source_fingerprint=fingerprint,
                 source_size=int(item["size"]),
                 source_mtime=float(item["mtime"]),
+                blocks=extraction.blocks,
+                markdown_full=extraction.markdown_full,
             )
             total_chunks += int(result.get("chunks") or 0)
             existing_fingerprints.add(fingerprint)
@@ -1172,7 +1324,11 @@ async def _start_uploaded_document_extraction_job(
         runtime.emit_job_progress(target_job.job_id, stage="read_source", message="正在读取已保存的 PDF", progress=12)
 
         def _extract_and_persist() -> dict[str, Any]:
-            payload = _extract_document_payload_from_path(safe_filename, source_path)
+            payload = _extract_document_payload_from_path(
+                safe_filename,
+                source_path,
+                project_id=project_id,
+            )
             content = _truncate_document_content(payload.content)
             return _write_material_document_content(
                 project_id,
@@ -1302,6 +1458,50 @@ async def _ingest_uploaded_document(
 ) -> dict[str, Any]:
     """Read one uploaded file and persist it into the project knowledge base."""
     filename = _safe_upload_filename(upload.filename or "unnamed")
+    dedupe_key = _build_scan_dedupe_key(filename)
+
+    if _is_translated_scan_derivative(filename):
+        return {
+            "title": filename,
+            "chunks": 0,
+            "status": "skipped",
+            "reason": "翻译副本（mono/dual/zh-CN），保留原文材料",
+            "decision": "translated_duplicate",
+            "dedupe_key": dedupe_key,
+        }
+
+    if _is_probable_non_literature_scan_artifact(filename):
+        return {
+            "title": filename,
+            "chunks": 0,
+            "status": "skipped",
+            "reason": "疑似非论文 PDF（文件名含 PnP/cutlines 等制图标记）",
+            "decision": "non_literature_artifact",
+            "dedupe_key": dedupe_key,
+        }
+
+    existing_doc_store = _load_doc_store(project_id)
+    for existing_doc in existing_doc_store.values():
+        if not isinstance(existing_doc, dict):
+            continue
+        for raw_value in (existing_doc.get("source_relative_path"), existing_doc.get("title")):
+            raw_text = str(raw_value or "").strip()
+            if not raw_text:
+                continue
+            try:
+                existing_key = _build_scan_dedupe_key(raw_text)
+            except (TypeError, ValueError):
+                continue
+            if existing_key == dedupe_key:
+                return {
+                    "title": filename,
+                    "chunks": 0,
+                    "status": "skipped",
+                    "reason": "重复文献（规范化标题匹配）",
+                    "decision": "scan_duplicate",
+                    "dedupe_key": dedupe_key,
+                }
+
     uploaded = await _persist_upload_to_source_file(project_id, filename, upload)
     content_fingerprint = uploaded.fingerprint
 
@@ -1309,7 +1509,6 @@ async def _ingest_uploaded_document(
     # different filename) collapses into one material. Cheaper than re-running
     # extraction + chunking, and prevents the symptom where a batch upload
     # creates two rows for the same PDF.
-    existing_doc_store = _load_doc_store(project_id)
     for existing_mid, existing_doc in existing_doc_store.items():
         if str(existing_doc.get("source_fingerprint") or "") == content_fingerprint:
             if not str(existing_doc.get("source_relative_path") or "").strip():
@@ -1349,7 +1548,11 @@ async def _ingest_uploaded_document(
             "message": "PDF 已可阅读，文本提取将在后台完成。",
         }
 
-    payload = _extract_document_payload_from_path(filename, uploaded.path)
+    payload = _extract_document_payload_from_path(
+        filename,
+        uploaded.path,
+        project_id=project_id,
+    )
     content = _truncate_document_content(payload.content)
     return _persist_uploaded_document(
         project_id,
@@ -1493,6 +1696,7 @@ from ._chunk_store_internals import (  # noqa: E402,F401
     _get_doc_store_path,
     _chunk_store_dir,
     _chunk_quarantine_dir,
+    _chunk_fts_index_path,
     _sanitize_chunk_filename_stem,
     _material_filename,
     _hash_chunks,

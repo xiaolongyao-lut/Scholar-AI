@@ -19,15 +19,18 @@ if str(_CORE) not in sys.path:
     sys.path.insert(0, str(_CORE))
 
 import provider_probe  # noqa: E402
+import provider_payload_compat  # noqa: E402
 from provider_probe import (  # noqa: E402
     DiscoverResult,
     ProbeResult,
     ToolCallingProbeResult,
+    _forced_tool_choice_probe_payload,
     _build_models_url,
     _chat_probe_payload,
     _chat_probe_url,
     _extract_provider_error_message,
     _judge_scholar_probe_response,
+    _ordinary_chat_probe_payload,
     probe_openai_tool_calling_capability,
     _redact_secrets,
     validate_outbound_endpoint,
@@ -87,6 +90,8 @@ def test_non_strict_still_rejects_scheme_violations() -> None:
     ("https://api.x.com/v1",                  "https://api.x.com/v1/models"),
     ("https://api.x.com/v1/",                 "https://api.x.com/v1/models"),
     ("https://api.x.com/v1/chat/completions", "https://api.x.com/v1/models"),
+    ("https://api.x.com/chat/completions",    "https://api.x.com/v1/models"),
+    ("https://integrate.api.nvidia.com/v1",   "https://integrate.api.nvidia.com/v1/models"),
     ("https://free.hanhanapi.top/v1",         "https://free.hanhanapi.top/v1/models"),
     ("https://api.krill-ai.com/codex/v1",     "https://api.krill-ai.com/codex/v1/models"),
 ])
@@ -120,6 +125,18 @@ def test_chat_probe_url_normalizes_trailing_slash() -> None:
     b = _chat_probe_url("https://provider.example/v1", "openai_chat_completions")
     assert a == b
     assert "//chat" not in a
+
+
+def test_chat_probe_url_accepts_full_chat_completions_endpoint() -> None:
+    """Users often paste the full OpenAI-compatible chat endpoint."""
+
+    assert (
+        _chat_probe_url(
+            "https://provider.example/v1/chat/completions",
+            "openai_chat_completions",
+        )
+        == "https://provider.example/v1/chat/completions"
+    )
 
 
 def test_chat_probe_url_returns_none_for_non_chat_protocols() -> None:
@@ -170,6 +187,59 @@ def test_scholar_probe_accepts_plain_text_with_warning() -> None:
 
 def test_chat_probe_payload_requires_real_model() -> None:
     assert _chat_probe_payload("openai_chat_completions", "   ") is None
+
+
+def test_nvidia_chat_probe_payload_adds_reasoning_effort_without_extra_body() -> None:
+    payload = _chat_probe_payload(
+        "openai_chat_completions",
+        "deepseek-ai/deepseek-v4-flash",
+        provider="NVIDIA",
+        base_url="https://integrate.api.nvidia.com/v1",
+    )
+
+    assert payload is not None
+    assert payload["reasoning_effort"] == "none"
+    assert "extra_body" not in payload
+
+
+def test_nvidia_tool_probe_payloads_use_openai_shape_with_reasoning_effort() -> None:
+    ordinary = _ordinary_chat_probe_payload(
+        "deepseek-ai/deepseek-v4-flash",
+        provider="NVIDIA",
+        base_url="https://integrate.api.nvidia.com/v1",
+    )
+    forced = _forced_tool_choice_probe_payload(
+        "deepseek-ai/deepseek-v4-flash",
+        provider="NVIDIA",
+        base_url="https://integrate.api.nvidia.com/v1",
+    )
+
+    assert ordinary["reasoning_effort"] == "none"
+    assert forced["reasoning_effort"] == "none"
+    assert forced["tools"][0]["type"] == "function"
+
+
+def test_nvidia_timeout_is_provider_aware(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LITASSIST_NVIDIA_HTTP_TIMEOUT", raising=False)
+    timeout = provider_payload_compat.provider_http_timeout_s(
+        provider="NVIDIA",
+        base_url="https://integrate.api.nvidia.com/v1",
+        model="deepseek-ai/deepseek-v4-flash",
+        default_s=10.0,
+    )
+
+    assert timeout >= 180.0
+
+
+def test_nvidia_reasoning_effort_aliases(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LITASSIST_NVIDIA_REASONING_EFFORT", "medium")
+
+    assert (
+        provider_payload_compat.nvidia_reasoning_effort_for_model(
+            "deepseek-ai/deepseek-v4-flash"
+        )
+        == "high"
+    )
 
 
 # ---------------------------------------------------------------------------

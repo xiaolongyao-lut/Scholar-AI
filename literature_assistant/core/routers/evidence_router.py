@@ -36,8 +36,11 @@ from literature_assistant.core.wiki.query import WikiQueryIndex, build_knowledge
 from project_paths import project_data_path, runtime_state_path
 from routers.resources_router.endpoints_search_upload import (
     build_locator_coverage,
+    _augment_chunks_with_project_figure_assets,
     _chunk_to_search_ref,
     _flatten_chunk_store_for_search_refs,
+    _search_refs_visual_query_enabled,
+    _select_search_ref_chunks,
     enrich_chunk_locator_with_pdf,
     find_chunk_locator,
 )
@@ -55,6 +58,9 @@ from models import (
     DiscussionEvidencePackPayload,
     EvidencePackBuildRequest,
     EvidencePackBuildResponse,
+    EvidencePackIntegrityCheckPayload,
+    EvidencePackIntegrityGateRequest,
+    EvidencePackIntegrityGateResponse,
     EvidencePackReferencePayload,
     EvidenceRetrievalDiagnosticsPayload,
     RetrievalQrelsStatusPayload,
@@ -101,6 +107,49 @@ _EVIDENCE_REFS_EXPORT_CSV_FIELDS: tuple[str, ...] = (
     "compressed_text",
     "created_at",
     "updated_at",
+)
+_EVIDENCE_PACK_VISUAL_TERMS: dict[str, tuple[str, ...]] = {
+    "appearance": (
+        "外观",
+        "成形",
+        "宏观形貌",
+        "表面形貌",
+        "上表面",
+        "焊缝表面",
+        "weld bead",
+        "appearance",
+        "surface morphology",
+        "top surface",
+        "macrograph",
+        "macroscopic",
+    ),
+    "image": (
+        "图片",
+        "图像",
+        "照片",
+        "显微图",
+        "形貌",
+        "figure",
+        "fig.",
+        "image",
+        "photo",
+        "micrograph",
+        "morphology",
+    ),
+}
+_EVIDENCE_PACK_IMAGE_ASSET_KEYS: frozenset[str] = frozenset(
+    {
+        "image_path",
+        "image_paths",
+        "image_asset",
+        "image_assets",
+        "asset_path",
+        "asset_paths",
+        "crop_path",
+        "crop_paths",
+        "thumbnail_path",
+        "thumbnail_paths",
+    }
 )
 _CANDIDATE_QRELS_FILENAMES: tuple[str, ...] = (
     "qrels_candidate.trec",
@@ -965,6 +1014,36 @@ def _evidence_pack_ref(project_id: str, query: str, section_id: str | None) -> s
     return f"evidence_pack:{uuid.uuid5(uuid.NAMESPACE_URL, seed).hex}"
 
 
+def _material_source_path_from_doc_store(project_id: str, material_id: str) -> str | None:
+    """Return a bounded project-relative source path for a material.
+
+    Args:
+        project_id: Non-empty project identifier.
+        material_id: Non-empty material identifier from a project chunk ref.
+
+    Returns:
+        A project-relative source path when the project's doc store preserves
+        one, otherwise ``None``. Absolute filesystem paths are intentionally not
+        synthesized here because evidence packs are MCP/user-facing output.
+    """
+
+    normalized_project_id = str(project_id or "").strip()
+    normalized_material_id = str(material_id or "").strip()
+    if not normalized_project_id or not normalized_material_id:
+        return None
+    try:
+        doc_store = _resources_router._load_doc_store(normalized_project_id)  # type: ignore[attr-defined]
+    except Exception:
+        return None
+    if not isinstance(doc_store, dict):
+        return None
+    record = doc_store.get(normalized_material_id)
+    if not isinstance(record, dict):
+        return None
+    source_path = str(record.get("source_relative_path") or "").strip()
+    return source_path[:240] or None
+
+
 def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackReferencePayload | None:
     """Project one search ref into the evidence-pack contract.
 
@@ -987,6 +1066,10 @@ def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackRefere
         return None
 
     summary = _bounded_evidence_pack_summary(str(getattr(ref, "summary", "") or ""))
+    source_title = _bounded_evidence_pack_summary(str(getattr(ref.metadata, "title", "") or summary))[:160]
+    source_path = str(getattr(ref.metadata, "source_relative_path", "") or "").strip()[:240] or None
+    if source_path is None:
+        source_path = _material_source_path_from_doc_store(project_id, material_id)
     page = getattr(ref.metadata, "page", None)
     locator = getattr(ref.metadata, "locator", None)
     if not isinstance(locator, dict):
@@ -997,6 +1080,13 @@ def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackRefere
     source_labels = [str(label).strip() for label in source_labels if str(label).strip()][:16]
     figure_candidate = getattr(ref.metadata, "figure_candidate", None)
     figure_candidate = str(figure_candidate).strip()[:260] if figure_candidate is not None else None
+    figure_candidate_detail = getattr(ref.metadata, "figure_candidate_detail", None)
+    if not isinstance(figure_candidate_detail, dict):
+        figure_candidate_detail = None
+    image_paths = getattr(ref.metadata, "image_paths", [])
+    if not isinstance(image_paths, list):
+        image_paths = []
+    bounded_image_paths = [str(path).strip()[:260] for path in image_paths if str(path).strip()][:8]
     lexical_score = float(getattr(ref, "lexical_score", 0.0) or 0.0)
     rerank_score = getattr(ref, "rerank_score", None)
     evidence_ref = EvidencePackReferencePayload(
@@ -1011,14 +1101,88 @@ def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackRefere
         rerank_score=rerank_score,
         citation_anchor=_citation_anchor_from_ref(ref_id, material_id, chunk_id),
         figure_candidate=figure_candidate or None,
+        figure_candidate_detail=figure_candidate_detail,
+        image_paths=bounded_image_paths,
         source_labels=source_labels,
         summary=summary,
         suitable_for_body=bool(summary.strip()),
+        source_title=source_title or None,
+        source_path=source_path,
     )
     locator_quality = getattr(ref, "_locator_quality", None)
     if isinstance(locator_quality, dict):
         evidence_ref._locator_quality = dict(locator_quality)
     return evidence_ref
+
+
+def _select_project_evidence_chunks(
+    *,
+    project_id: str,
+    all_chunks: list[dict[str, Any]],
+    query: str,
+    top_k: int,
+) -> list[tuple[float, dict[str, Any]]]:
+    """Return project evidence chunks through Gateway when its FTS gate is valid.
+
+    Args:
+        project_id: Project owning the chunk store.
+        all_chunks: Flattened chunk-store truth already loaded by the caller.
+        query: Non-empty evidence-pack query.
+        top_k: Positive maximum chunks to return.
+
+    Returns:
+        Score/chunk pairs ready for evidence-pack ref projection.
+    """
+
+    normalized_project_id = str(project_id or "").strip()
+    normalized_query = str(query or "").strip()
+    if not normalized_project_id:
+        raise ValueError("project_id must be non-empty")
+    if not isinstance(all_chunks, list):
+        raise TypeError("all_chunks must be a list")
+    if not normalized_query:
+        raise ValueError("query must be non-empty")
+    if not isinstance(top_k, int) or top_k < 1:
+        raise ValueError("top_k must be positive")
+
+    try:
+        gateway_hits = _resources_router._search_chunks_via_gateway(  # type: ignore[attr-defined]
+            project_id=normalized_project_id,
+            query=normalized_query,
+            top_k=top_k,
+        )
+    except (OSError, RuntimeError, TypeError, ValueError):
+        gateway_hits = None
+    if gateway_hits:
+        chunks_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        for chunk in all_chunks:
+            if not isinstance(chunk, dict):
+                continue
+            material_id = str(chunk.get("material_id") or "").strip()
+            chunk_id = str(chunk.get("chunk_id") or "").strip()
+            if material_id and chunk_id:
+                chunks_by_key[(material_id, chunk_id)] = chunk
+        selected: list[tuple[float, dict[str, Any]]] = []
+        for hit in gateway_hits:
+            if not isinstance(hit, dict):
+                continue
+            try:
+                score = float(hit.get("score") or 0.0)
+            except (TypeError, ValueError):
+                score = 0.0
+            material_id = str(hit.get("material_id") or "").strip()
+            chunk_id = str(hit.get("chunk_id") or "").strip()
+            selected_chunk = dict(chunks_by_key.get((material_id, chunk_id), hit))
+            for key in ("score", "retrieval_sources", "retrieval_diagnostics"):
+                if key in hit and key not in selected_chunk:
+                    selected_chunk[key] = hit[key]
+            selected.append((score, selected_chunk))
+            if len(selected) >= top_k:
+                break
+        if selected:
+            return selected
+
+    return _select_search_ref_chunks(all_chunks, normalized_query, top_k=top_k)
 
 
 def _resolve_hybrid_retriever_class() -> Any | None:
@@ -1403,6 +1567,58 @@ def _knowledge_ref_providers() -> tuple[
     )
 
 
+def _knowledge_ref_provider_enabled(query: str, source_type: KnowledgeRefSourceType) -> bool:
+    """Return True when the query explicitly asks for a non-project knowledge domain.
+
+    Args:
+        query: User evidence-pack query text.
+        source_type: Bounded knowledge provider kind.
+
+    Returns:
+        Whether the provider may contribute refs to this evidence pack.
+    """
+
+    normalized = re.sub(r"\s+", " ", str(query or "").strip().lower())
+    if not normalized:
+        return False
+    triggers: dict[KnowledgeRefSourceType, tuple[str, ...]] = {
+        "product_docs": (
+            "scholar ai",
+            "文献助手",
+            "knowledge runtime",
+            "agent resource",
+            "product_docs",
+            "mcp",
+        ),
+        "scoring_rules": (
+            "direct_evidence",
+            "high_quality",
+            "scoring rule",
+            "scoring_rules",
+            "qrels",
+            "rerank",
+        ),
+        "academic_english": (
+            "academic english",
+            "evidence-bound",
+            "claim scope",
+            "hedging",
+            "rhetorical move",
+        ),
+        "skill_package": (
+            "skill package",
+            "academic-english-discourse",
+            "discourse move",
+            "evidence-bound",
+        ),
+        "source_vault": (
+            "source vault",
+            "source_vault",
+        ),
+    }
+    return any(trigger in normalized for trigger in triggers[source_type])
+
+
 def _attach_knowledge_refs(
     diagnostics: EvidenceRetrievalDiagnosticsPayload,
     *,
@@ -1442,9 +1658,13 @@ def _attach_knowledge_refs(
     source_counts = {kind: 0 for kind in _EVIDENCE_PACK_KNOWLEDGE_REF_KINDS}
     summaries: dict[str, list[dict[str, Any]]] = {f"{kind}_summaries": [] for kind in _EVIDENCE_PACK_KNOWLEDGE_REF_KINDS}
     blocked: list[str] = []
+    skipped: list[str] = []
     for source_type, searcher in _knowledge_ref_providers():
         if len(refs) >= remaining:
             break
+        if not _knowledge_ref_provider_enabled(query, source_type):
+            skipped.append(source_type)
+            continue
         provider_limit = 1
         try:
             hits = searcher(project_id, query, provider_limit)
@@ -1479,6 +1699,7 @@ def _attach_knowledge_refs(
         ),
         "source_counts": source_counts,
         "blocked_sources": blocked,
+        "skipped_sources": skipped,
         **summaries,
     }
     if refs:
@@ -2095,6 +2316,446 @@ def _evidence_pack_outcome(
     )
 
 
+def _evidence_pack_visual_intent(query: str) -> dict[str, Any]:
+    """Return a bounded visual-intent signal from the public query text."""
+
+    text = str(query or "").strip().lower()
+    matched_terms: list[str] = []
+    categories: list[str] = []
+    for category, terms in _EVIDENCE_PACK_VISUAL_TERMS.items():
+        category_matches = [term for term in terms if term.lower() in text]
+        if category_matches:
+            categories.append(category)
+            matched_terms.extend(category_matches)
+    unique_terms = list(dict.fromkeys(matched_terms))[:12]
+    return {
+        "requires_image_evidence": bool(unique_terms),
+        "categories": categories[:8],
+        "matched_terms": unique_terms,
+    }
+
+
+def _looks_like_image_asset_key(key: str) -> bool:
+    """Return whether a metadata key is allowed to contribute image paths."""
+
+    normalized = str(key or "").strip().lower()
+    if not normalized:
+        return False
+    if normalized in _EVIDENCE_PACK_IMAGE_ASSET_KEYS:
+        return True
+    return (
+        ("image" in normalized and ("path" in normalized or "asset" in normalized or "url" in normalized))
+        or ("asset" in normalized and "path" in normalized)
+        or ("crop" in normalized and "path" in normalized)
+    )
+
+
+def _bounded_unique_strings(values: list[str], *, max_items: int, max_chars: int) -> list[str]:
+    """Return stable bounded strings for MCP-safe diagnostics."""
+
+    output: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        output.append(text[:max_chars])
+        if len(output) >= max_items:
+            break
+    return output
+
+
+def _image_assets_from_detail(value: Any, *, key_hint: str = "", depth: int = 0) -> list[str]:
+    """Extract image asset strings only from explicit image/path metadata keys."""
+
+    if depth > 4:
+        return []
+    if isinstance(value, str):
+        return [value] if _looks_like_image_asset_key(key_hint) else []
+    if isinstance(value, list):
+        assets: list[str] = []
+        for item in value[:20]:
+            if isinstance(item, str) and _looks_like_image_asset_key(key_hint):
+                assets.append(item)
+            elif isinstance(item, (dict, list)):
+                assets.extend(_image_assets_from_detail(item, key_hint=key_hint, depth=depth + 1))
+        return assets
+    if isinstance(value, dict):
+        assets: list[str] = []
+        for key, item in list(value.items())[:40]:
+            assets.extend(_image_assets_from_detail(item, key_hint=str(key), depth=depth + 1))
+        return assets
+    return []
+
+
+def _evidence_ref_image_assets(ref: EvidencePackReferencePayload) -> list[str]:
+    """Return bounded image assets linked to one evidence ref."""
+
+    assets = [str(path) for path in ref.image_paths if str(path or "").strip()]
+    if isinstance(ref.figure_candidate_detail, dict):
+        assets.extend(_image_assets_from_detail(ref.figure_candidate_detail))
+    return _bounded_unique_strings(assets, max_items=8, max_chars=260)
+
+
+def _is_whole_page_image_asset(path: str) -> bool:
+    """Return whether an asset name looks like a whole-page render."""
+
+    filename = str(path or "").replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if not filename:
+        return False
+    if "screenshot" in filename:
+        return True
+    if "whole" in filename and "page" in filename:
+        return True
+    if "full" in filename and "page" in filename:
+        return True
+    if re.search(r"(?:^|[_-])page[_-]?\d{1,5}\.(?:png|jpe?g|webp)$", filename):
+        return True
+    if re.search(r"(?:^|[_-])p\d{1,5}[_-]?page\.(?:png|jpe?g|webp)$", filename):
+        return True
+    return False
+
+
+def _evidence_ref_page(ref: EvidencePackReferencePayload) -> int | None:
+    """Return the best available one-based page for an evidence ref."""
+
+    if isinstance(ref.page, int) and not isinstance(ref.page, bool) and ref.page > 0:
+        return ref.page
+    locator = ref.locator if isinstance(ref.locator, dict) else {}
+    page = locator.get("page")
+    if isinstance(page, int) and not isinstance(page, bool) and page > 0:
+        return page
+    return None
+
+
+def _evidence_ref_has_bbox(ref: EvidencePackReferencePayload) -> bool:
+    """Return whether a project ref carries a valid layout bbox."""
+
+    locator = ref.locator if isinstance(ref.locator, dict) else {}
+    for key in ("bbox", "pdf_bbox", "normalized_bbox"):
+        if coerce_pdf_bbox(locator.get(key)) is not None:
+            return True
+    return False
+
+
+def _evidence_pack_sample_refs(refs: list[EvidencePackReferencePayload]) -> list[dict[str, Any]]:
+    """Return top refs with enough fields for human/agent evidence judgment."""
+
+    samples: list[dict[str, Any]] = []
+    for ref in refs[:12]:
+        image_assets = _evidence_ref_image_assets(ref)
+        item: dict[str, Any] = {
+            "ref_id": ref.ref_id,
+            "source_type": ref.source_type,
+            "source_title": ref.source_title,
+            "source_path": ref.source_path,
+            "material_id": ref.material_id,
+            "chunk_id": ref.chunk_id,
+            "page": _evidence_ref_page(ref),
+            "lexical_score": round(float(ref.lexical_score or 0.0), 6),
+            "rerank_score": round(float(ref.rerank_score), 6) if ref.rerank_score is not None else None,
+            "citation_anchor": ref.citation_anchor,
+            "figure_candidate": ref.figure_candidate,
+            "has_image": bool(image_assets),
+            "image_asset_count": len(image_assets),
+            "image_assets": image_assets[:3],
+            "source_labels": ref.source_labels[:8],
+            "summary": ref.summary,
+        }
+        samples.append(item)
+    return samples
+
+
+def _evidence_pack_check(
+    check_id: str,
+    status: Literal["passed", "warning", "blocked", "unresolved"],
+    severity: Literal["none", "note", "warn", "block"],
+    reason: str,
+    *,
+    recommendation: str = "",
+    metadata: dict[str, Any] | None = None,
+) -> EvidencePackIntegrityCheckPayload:
+    """Create one validated integrity check row."""
+
+    return EvidencePackIntegrityCheckPayload(
+        check_id=check_id,
+        status=status,
+        severity=severity,
+        reason=reason[:500],
+        recommendation=recommendation[:500],
+        metadata=dict(metadata or {}),
+    )
+
+
+def _aggregate_evidence_pack_gate_status(
+    checks: list[EvidencePackIntegrityCheckPayload],
+) -> Literal["passed", "warning", "blocked", "unresolved"]:
+    """Return the aggregate status without treating unresolved as passed."""
+
+    if not checks:
+        return "unresolved"
+    statuses = {check.status for check in checks}
+    if "blocked" in statuses:
+        return "blocked"
+    if "warning" in statuses:
+        return "warning"
+    if "unresolved" in statuses:
+        return "unresolved"
+    return "passed"
+
+
+def _evidence_pack_next_actions(
+    *,
+    summary: dict[str, Any],
+    visual_intent: dict[str, Any],
+    status: str,
+) -> list[str]:
+    """Return bounded repair/review actions for the evidence-pack gate."""
+
+    actions: list[str] = []
+    if int(summary.get("evidence_ref_count") or 0) == 0:
+        actions.append("Build an evidence pack with literature.evidence_pack_build before using this gate.")
+    if visual_intent.get("requires_image_evidence") and int(summary.get("image_ref_count") or 0) == 0:
+        actions.append("Retry retrieval with appearance/surface/image terms and require pixel-backed figure candidates.")
+    if int(summary.get("whole_page_image_ref_count") or 0) > 0:
+        actions.append("Use pixel-level figure/table crops instead of whole-page PDF renders for visual evidence.")
+    if int(summary.get("missing_page_count") or 0) > 0:
+        actions.append("Review material processing locator coverage before citing page-specific claims.")
+    if int(summary.get("missing_source_title_count") or 0) > 0:
+        actions.append("Repair source-title metadata so citation links identify the exact literature item.")
+    if not actions and status == "passed":
+        actions.append("Read the top evidence refs, then cite only claims directly supported by those refs.")
+    return actions[:12]
+
+
+def _build_evidence_pack_integrity_gate(
+    request: EvidencePackIntegrityGateRequest,
+) -> EvidencePackIntegrityGateResponse:
+    """Build a read-only integrity gate over one supplied evidence pack."""
+
+    project_id = request.project_id.strip()
+    if not project_id:
+        raise ValueError("project_id must be non-empty")
+    refs = list(request.evidence_refs)
+    visual_intent = _evidence_pack_visual_intent(request.query)
+
+    image_assets_by_ref: dict[str, list[str]] = {
+        ref.ref_id: _evidence_ref_image_assets(ref)
+        for ref in refs
+    }
+    all_image_assets = [
+        asset
+        for assets in image_assets_by_ref.values()
+        for asset in assets
+    ]
+    duplicate_image_assets = sorted(
+        asset
+        for asset in set(all_image_assets)
+        if all_image_assets.count(asset) > 1
+    )[:8]
+    whole_page_ref_ids = [
+        ref.ref_id
+        for ref in refs
+        if any(_is_whole_page_image_asset(asset) for asset in image_assets_by_ref.get(ref.ref_id, []))
+    ]
+    project_refs = [ref for ref in refs if ref.source_type == "project"]
+    page_refs = [ref for ref in project_refs if _evidence_ref_page(ref) is not None]
+    bbox_refs = [ref for ref in project_refs if _evidence_ref_has_bbox(ref)]
+    title_refs = [ref for ref in refs if str(ref.source_title or ref.source_path or "").strip()]
+    citation_anchor_refs = [ref for ref in refs if str(ref.citation_anchor or "").strip()]
+    image_refs = [ref for ref in refs if image_assets_by_ref.get(ref.ref_id)]
+
+    summary: dict[str, Any] = {
+        "evidence_ref_count": len(refs),
+        "project_ref_count": len(project_refs),
+        "non_project_ref_count": len(refs) - len(project_refs),
+        "page_locator_count": len(page_refs),
+        "bbox_locator_count": len(bbox_refs),
+        "source_title_count": len(title_refs),
+        "citation_anchor_count": len(citation_anchor_refs),
+        "image_ref_count": len(image_refs),
+        "image_asset_count": len(_bounded_unique_strings(all_image_assets, max_items=100, max_chars=260)),
+        "duplicate_image_asset_count": len(duplicate_image_assets),
+        "whole_page_image_ref_count": len(whole_page_ref_ids),
+        "missing_page_count": max(0, len(project_refs) - len(page_refs)),
+        "missing_bbox_count": max(0, len(project_refs) - len(bbox_refs)),
+        "missing_source_title_count": max(0, len(refs) - len(title_refs)),
+        "missing_citation_anchor_count": max(0, len(refs) - len(citation_anchor_refs)),
+        "sample_missing_page_ref_ids": [
+            ref.ref_id for ref in project_refs if _evidence_ref_page(ref) is None
+        ][:8],
+        "sample_missing_source_title_ref_ids": [
+            ref.ref_id for ref in refs if not str(ref.source_title or ref.source_path or "").strip()
+        ][:8],
+        "sample_duplicate_image_assets": duplicate_image_assets,
+        "sample_whole_page_image_ref_ids": whole_page_ref_ids[:8],
+    }
+    if request.retrieval_diagnostics is not None:
+        summary["retrieval_method"] = request.retrieval_diagnostics.retrieval_method
+        summary["rerank_status"] = request.retrieval_diagnostics.rerank_status
+        summary["embedding_status"] = request.retrieval_diagnostics.embedding_status
+
+    checks: list[EvidencePackIntegrityCheckPayload] = []
+    checks.append(
+        _evidence_pack_check(
+            "refs_present",
+            "passed" if refs else "blocked",
+            "none" if refs else "block",
+            "Evidence refs are present for this query." if refs else "No evidence refs were supplied to this gate.",
+            recommendation="" if refs else "Run literature.evidence_pack_build and pass its evidence_refs into this gate.",
+            metadata={"evidence_ref_count": len(refs)},
+        )
+    )
+
+    locator_status: Literal["passed", "warning", "blocked", "unresolved"] = "passed"
+    locator_severity: Literal["none", "note", "warn", "block"] = "none"
+    locator_reason = "Project refs include page locators for citation review."
+    locator_recommendation = ""
+    if project_refs and not page_refs:
+        locator_status = "warning"
+        locator_severity = "warn"
+        locator_reason = "Project refs identify chunks but do not include page locators."
+        locator_recommendation = "Refresh material processing with locator extraction before page-specific citation."
+    elif project_refs and len(page_refs) < len(project_refs):
+        locator_status = "warning"
+        locator_severity = "warn"
+        locator_reason = "Some project refs are missing page locators."
+        locator_recommendation = "Review missing locator refs before relying on exact source navigation."
+    elif not project_refs and refs:
+        locator_status = "warning"
+        locator_severity = "warn"
+        locator_reason = "This pack contains no project-local refs, so local PDF locator coverage cannot be proven."
+    checks.append(
+        _evidence_pack_check(
+            "source_locators",
+            locator_status,
+            locator_severity,
+            locator_reason,
+            recommendation=locator_recommendation,
+            metadata={
+                "project_ref_count": len(project_refs),
+                "page_locator_count": len(page_refs),
+                "bbox_locator_count": len(bbox_refs),
+                "missing_page_count": summary["missing_page_count"],
+                "missing_bbox_count": summary["missing_bbox_count"],
+            },
+        )
+    )
+
+    citation_status: Literal["passed", "warning", "blocked", "unresolved"] = "passed"
+    citation_severity: Literal["none", "note", "warn", "block"] = "none"
+    citation_reason = "Refs include citation anchors and source labels/titles for user-facing identification."
+    citation_recommendation = ""
+    if refs and (len(title_refs) < len(refs) or len(citation_anchor_refs) < len(refs)):
+        citation_status = "warning"
+        citation_severity = "warn"
+        citation_reason = "Some refs are missing source titles or citation anchors."
+        citation_recommendation = "Repair source metadata before rendering citation links for users."
+    checks.append(
+        _evidence_pack_check(
+            "citation_identity",
+            citation_status,
+            citation_severity,
+            citation_reason,
+            recommendation=citation_recommendation,
+            metadata={
+                "source_title_count": len(title_refs),
+                "citation_anchor_count": len(citation_anchor_refs),
+                "missing_source_title_count": summary["missing_source_title_count"],
+                "missing_citation_anchor_count": summary["missing_citation_anchor_count"],
+            },
+        )
+    )
+
+    visual_required = bool(visual_intent.get("requires_image_evidence"))
+    visual_status: Literal["passed", "warning", "blocked", "unresolved"] = "passed"
+    visual_severity: Literal["none", "note", "warn", "block"] = "none"
+    visual_reason = "This query does not require image-backed evidence."
+    visual_recommendation = ""
+    if visual_required and not image_refs:
+        visual_status = "blocked"
+        visual_severity = "block"
+        visual_reason = "The query asks for visual/appearance evidence, but no returned ref has pixel-backed image assets."
+        visual_recommendation = "Retry evidence retrieval with appearance, surface morphology, figure, and image terms."
+    elif visual_required:
+        visual_reason = "The visual query has at least one pixel-backed evidence ref."
+    checks.append(
+        _evidence_pack_check(
+            "visual_image_evidence",
+            visual_status,
+            visual_severity,
+            visual_reason,
+            recommendation=visual_recommendation,
+            metadata={
+                "requires_image_evidence": visual_required,
+                "image_ref_count": len(image_refs),
+                "image_asset_count": summary["image_asset_count"],
+                "matched_terms": visual_intent.get("matched_terms", []),
+            },
+        )
+    )
+
+    asset_quality_status: Literal["passed", "warning", "blocked", "unresolved"] = "passed"
+    asset_quality_severity: Literal["none", "note", "warn", "block"] = "none"
+    asset_quality_reason = "Image assets do not look like duplicate or whole-page substitutes."
+    asset_quality_recommendation = ""
+    if visual_required and image_refs and len(whole_page_ref_ids) == len(image_refs):
+        asset_quality_status = "blocked"
+        asset_quality_severity = "block"
+        asset_quality_reason = "All image-backed refs look like whole-page renders rather than figure/table crops."
+        asset_quality_recommendation = "Use extracted figure/table image assets, not rendered PDF pages."
+    elif duplicate_image_assets or whole_page_ref_ids:
+        asset_quality_status = "warning"
+        asset_quality_severity = "warn"
+        asset_quality_reason = "Some image assets are duplicated or look like whole-page renders."
+        asset_quality_recommendation = "Prefer unique pixel-level figure/table crops for visual answers."
+    checks.append(
+        _evidence_pack_check(
+            "image_asset_quality",
+            asset_quality_status,
+            asset_quality_severity,
+            asset_quality_reason,
+            recommendation=asset_quality_recommendation,
+            metadata={
+                "duplicate_image_asset_count": len(duplicate_image_assets),
+                "whole_page_image_ref_count": len(whole_page_ref_ids),
+                "sample_duplicate_image_assets": duplicate_image_assets,
+                "sample_whole_page_image_ref_ids": whole_page_ref_ids[:8],
+            },
+        )
+    )
+
+    status = _aggregate_evidence_pack_gate_status(checks)
+    next_actions = _evidence_pack_next_actions(
+        summary=summary,
+        visual_intent=visual_intent,
+        status=status,
+    )
+    return EvidencePackIntegrityGateResponse(
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        project_id=project_id,
+        evidence_pack_ref=request.evidence_pack_ref,
+        query=request.query,
+        status=status,
+        visual_intent=visual_intent,
+        summary=summary,
+        checks=checks,
+        sample_refs=_evidence_pack_sample_refs(refs),
+        next_actions=next_actions,
+        provenance={
+            "derived_from": [
+                "/api/evidence-pack/build.evidence_refs",
+                "/api/evidence-pack/integrity-gate",
+            ],
+            "read_only": True,
+            "raw_chunk_text_exposed": False,
+            "private_chain_of_thought_exposed": False,
+            "policy": "Validate the supplied evidence pack, not workflow export readiness.",
+        },
+    )
+
+
 @router.post("/api/evidence-pack/build", response_model=EvidencePackBuildResponse)
 async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePackBuildResponse:
     """Build a query-scoped evidence pack from existing project chunks.
@@ -2114,6 +2775,8 @@ async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePack
 
     chunk_store = _resources_router._load_chunk_store(project_id)
     all_chunks = _flatten_chunk_store_for_search_refs(chunk_store)
+    if _search_refs_visual_query_enabled(query):
+        all_chunks = _augment_chunks_with_project_figure_assets(project_id, chunk_store, all_chunks)
     evidence_refs: list[EvidencePackReferencePayload] = []
     positive_hit_count = 0
     retrieval_method: Literal["lexical", "hybrid", "hybrid_rerank"] = "lexical"
@@ -2134,8 +2797,15 @@ async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePack
         else:
             scored = _resources_router._score_chunks_for_query(all_chunks, query)
             positive_hit_count = len([score for score, _chunk in scored if score > 0])
-            for score, chunk in _resources_router._select_diverse_top_chunks(scored, top_k=request.top_k):
-                search_ref = _chunk_to_search_ref(project_id, score, chunk)
+            selected_chunks = _select_project_evidence_chunks(
+                project_id=project_id,
+                all_chunks=all_chunks,
+                query=query,
+                top_k=request.top_k,
+            )
+            positive_hit_count = max(positive_hit_count, len(selected_chunks))
+            for score, chunk in selected_chunks:
+                search_ref = _chunk_to_search_ref(project_id, score, chunk, chunk_store=chunk_store)
                 evidence_ref = _search_ref_to_evidence_ref(project_id, search_ref)
                 if evidence_ref is not None:
                     evidence_refs.append(evidence_ref)
@@ -2179,6 +2849,18 @@ async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePack
         outcome=outcome,
         evidence_refs=evidence_refs,
     )
+
+
+@router.post("/api/evidence-pack/integrity-gate", response_model=EvidencePackIntegrityGateResponse)
+async def build_evidence_pack_integrity_gate(
+    request: EvidencePackIntegrityGateRequest,
+) -> EvidencePackIntegrityGateResponse:
+    """Validate a supplied evidence pack instead of workflow/export readiness."""
+
+    try:
+        return _build_evidence_pack_integrity_gate(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 class SaveEvidencePackRequest(BaseModel):

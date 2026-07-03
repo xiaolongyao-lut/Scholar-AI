@@ -21,7 +21,10 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
+import math
 import time
 from typing import Any
 
@@ -36,15 +39,31 @@ from provider_capabilities import (
     provider_capability_store,
 )
 from model_config_store import (
+    CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT,
+    CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MAX,
+    CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MIN,
+    CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
+    CHAT_CONTEXT_COMPRESSION_TARGET_MAX,
+    CHAT_CONTEXT_COMPRESSION_TARGET_MIN,
+    CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
+    CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX,
+    CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN,
     chat_context_compression_store,
     chat_store,
     discussion_defaults_store,
     embedding_store,
     ModelConfigStore,
+    normalize_chat_context_compression_settings,
 )
 from models.discussion import DISCUSSION_MAX_TURNS_LIMIT
+from provider_payload_compat import apply_openai_chat_payload_compat, provider_http_timeout_s
 
 logger = logging.getLogger(__name__)
+
+_EMBEDDING_CONTRACT_SCHEMA_VERSION = "scholar-ai-embedding-contract/v1"
+_EMBEDDING_INPUT_BUILDER_VERSION = "runtime_env.build_embedding_request_payload/v1"
+_EMBEDDING_NORMALIZATION_VERSION = "observed_l2_norm/v1"
+_EMBEDDING_TRUNCATION_VERSION = "probe_sample_no_truncation/v1"
 
 
 def _probe_error_response(
@@ -107,6 +126,148 @@ def _embedding_vectors_from_payload(payload: Any) -> list[list[float]]:
         ):
             vectors.append([float(value) for value in raw_vector])
     return vectors
+
+
+def _embedding_response_model_from_payload(payload: Any) -> str | None:
+    """Return the provider-reported embedding model when the response exposes it.
+
+    Args:
+        payload: JSON-decoded provider response object.
+
+    Returns:
+        A non-empty model id string, or None when the provider omits it.
+    """
+    if not isinstance(payload, dict):
+        return None
+    top_level_model = payload.get("model")
+    if isinstance(top_level_model, str) and top_level_model.strip():
+        return top_level_model.strip()
+    data = payload.get("data")
+    if isinstance(data, list):
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            item_model = item.get("model")
+            if isinstance(item_model, str) and item_model.strip():
+                return item_model.strip()
+    output = payload.get("output")
+    if isinstance(output, dict):
+        output_model = output.get("model")
+        if isinstance(output_model, str) and output_model.strip():
+            return output_model.strip()
+    return None
+
+
+def _embedding_vectors_are_l2_normalized(vectors: list[list[float]]) -> bool | None:
+    """Infer whether returned dense vectors are already L2-normalized.
+
+    Args:
+        vectors: Dense embedding vectors extracted from a provider response.
+
+    Returns:
+        True when every non-zero probe vector has unit L2 norm within tolerance;
+        False when at least one vector is clearly not unit-normalized; None when
+        no non-zero vector is available.
+    """
+    if not isinstance(vectors, list) or not vectors:
+        return None
+    observed = False
+    for vector in vectors:
+        if not vector:
+            continue
+        norm = math.sqrt(sum(value * value for value in vector))
+        if norm <= 1e-12:
+            continue
+        observed = True
+        if abs(norm - 1.0) > 1e-3:
+            return False
+    return True if observed else None
+
+
+def _embedding_representation_mode(base_url: str, model: str, vectors: list[list[float]]) -> str:
+    """Classify the observed embedding representation for index-contract gating.
+
+    Args:
+        base_url: Configured provider base URL.
+        model: Requested embedding model id.
+        vectors: Dense vectors extracted from the probe response.
+
+    Returns:
+        A stable representation mode string. Current runtime extraction only
+        accepts dense vectors; multimodal providers are flagged separately.
+    """
+    if not vectors:
+        raise ValueError("vectors must contain at least one dense vector")
+    try:
+        from runtime_env import is_dashscope_multimodal_embedding_config
+
+        if is_dashscope_multimodal_embedding_config(base_url, model):
+            return "multimodal-dense"
+    except (ImportError, AttributeError):
+        pass
+    lowered_model = model.strip().lower()
+    if any(token in lowered_model for token in ("multimodal", "vl-embedding", "vision")):
+        return "multimodal-dense"
+    return "dense"
+
+
+def _build_embedding_contract_extra(
+    *,
+    provider: str,
+    base_url: str,
+    requested_model: str,
+    response_model: str | None,
+    vectors: list[list[float]],
+) -> dict[str, Any]:
+    """Build a redacted, deterministic Phase-0 embedding contract diagnostic.
+
+    Args:
+        provider: User-visible provider label.
+        base_url: Configured provider base URL. Only a hash id is emitted.
+        requested_model: Model id sent in the embedding request.
+        response_model: Provider-reported model id when present.
+        vectors: Dense vectors extracted from the probe response.
+
+    Returns:
+        JSON-safe fields suitable for ``ProbeResult.extra``.
+
+    Raises:
+        ValueError: If required inputs are missing or vector dimensions are
+        inconsistent.
+    """
+    normalized_provider = provider.strip() or "Local LLM"
+    normalized_model = requested_model.strip()
+    if not normalized_model:
+        raise ValueError("requested_model must be a non-empty string")
+    if not vectors:
+        raise ValueError("vectors must contain at least one dense vector")
+    dim = len(vectors[0])
+    if dim <= 0:
+        raise ValueError("embedding dimension must be positive")
+    if any(len(vector) != dim for vector in vectors):
+        raise ValueError("embedding vectors must have a consistent dimension")
+
+    base_url_id = hashlib.sha256(base_url.strip().rstrip("/").encode("utf-8")).hexdigest()[:16]
+    contract: dict[str, Any] = {
+        "contract_schema_version": _EMBEDDING_CONTRACT_SCHEMA_VERSION,
+        "provider": normalized_provider,
+        "base_url_id": base_url_id,
+        "requested_model": normalized_model,
+        "provider_response_model": response_model,
+        "dim": dim,
+        "representation_mode": _embedding_representation_mode(base_url, normalized_model, vectors),
+        "normalize": _embedding_vectors_are_l2_normalized(vectors),
+        "distance_metric": "cosine",
+        "instruction_template": "none",
+        "max_length": None,
+        "truncation_policy": "probe_sample_no_truncation",
+        "embedding_input_builder_version": _EMBEDDING_INPUT_BUILDER_VERSION,
+        "normalization_version": _EMBEDDING_NORMALIZATION_VERSION,
+        "truncation_version": _EMBEDDING_TRUNCATION_VERSION,
+    }
+    digest_payload = json.dumps(contract, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    contract["contract_hash"] = hashlib.sha256(digest_payload.encode("utf-8")).hexdigest()
+    return contract
 
 
 # ---------------------------------------------------------------------------
@@ -339,19 +500,35 @@ class ChatContextCompressionPayload(BaseModel):
     """SmartRead long-session compression settings."""
 
     enabled: bool = True
-    trigger_tokens: int = Field(default=24_000, ge=512, le=1_000_000)
-    target_tokens: int = Field(default=2_000, ge=128, le=64_000)
-    keep_recent_turns: int = Field(default=6, ge=1, le=100)
+    trigger_tokens: int = Field(
+        default=CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
+        ge=CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN,
+        le=CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX,
+    )
+    target_tokens: int = Field(
+        default=CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
+        ge=CHAT_CONTEXT_COMPRESSION_TARGET_MIN,
+        le=CHAT_CONTEXT_COMPRESSION_TARGET_MAX,
+    )
+    keep_recent_turns: int = Field(
+        default=CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT,
+        ge=CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MIN,
+        le=CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MAX,
+    )
     updated_at: str = ""
 
 
 def _chat_context_compression_payload() -> ChatContextCompressionPayload:
-    settings = chat_context_compression_store.get_settings()
+    settings = normalize_chat_context_compression_settings(
+        chat_context_compression_store.get_settings()
+    )
     return ChatContextCompressionPayload(
         enabled=bool(settings.get("enabled", True)),
-        trigger_tokens=int(settings.get("trigger_tokens") or 24_000),
-        target_tokens=int(settings.get("target_tokens") or 2_000),
-        keep_recent_turns=int(settings.get("keep_recent_turns") or 6),
+        trigger_tokens=int(settings.get("trigger_tokens") or CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT),
+        target_tokens=int(settings.get("target_tokens") or CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT),
+        keep_recent_turns=int(
+            settings.get("keep_recent_turns") or CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT
+        ),
         updated_at=str(settings.get("updated_at") or ""),
     )
 
@@ -372,13 +549,15 @@ async def put_chat_context_compression(
             status_code=400,
             detail="target_tokens must be smaller than trigger_tokens",
         )
-    settings = chat_context_compression_store.write_settings(
-        {
-            "enabled": payload.enabled,
-            "trigger_tokens": payload.trigger_tokens,
-            "target_tokens": payload.target_tokens,
-            "keep_recent_turns": payload.keep_recent_turns,
-        }
+    settings = normalize_chat_context_compression_settings(
+        chat_context_compression_store.write_settings(
+            {
+                "enabled": payload.enabled,
+                "trigger_tokens": payload.trigger_tokens,
+                "target_tokens": payload.target_tokens,
+                "keep_recent_turns": payload.keep_recent_turns,
+            }
+        )
     )
     return ChatContextCompressionPayload(
         enabled=bool(settings.get("enabled", True)),
@@ -439,10 +618,25 @@ async def test_chat_endpoint(payload: ConfigUpdate) -> ProbeResult:
         "max_tokens": 1,
         "temperature": 0,
     }
+    apply_openai_chat_payload_compat(
+        probe_body,
+        provider=provider,
+        base_url=base_url,
+        model=str(probe_body["model"]),
+        top_k=None,
+    )
 
     start = time.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
+        async with httpx.AsyncClient(
+            timeout=provider_http_timeout_s(
+                provider=provider,
+                base_url=base_url,
+                model=str(probe_body["model"]),
+                default_s=15.0,
+            ),
+            follow_redirects=False,
+        ) as client:
             resp = await client.post(url, headers=headers, json=probe_body)
     except httpx.RequestError as exc:
         return ProbeResult(
@@ -577,6 +771,13 @@ async def test_chat_tool_capability(payload: ConfigUpdate) -> ToolCapabilityProb
         base_url,
         api_key,
         model,
+        provider=provider,
+        timeout_s=provider_http_timeout_s(
+            provider=provider,
+            base_url=base_url,
+            model=model,
+            default_s=10.0,
+        ),
     )
     status = _capability_status_from_probe_result(probe_result)
     record = provider_capability_store.upsert_record(
@@ -741,6 +942,18 @@ async def test_embedding_endpoint(payload: ConfigUpdate) -> ProbeResult:
             )
         extra["dimension"] = len(vectors[0])
         extra["vectors"] = len(vectors)
+        response_model = _embedding_response_model_from_payload(resp_data)
+        contract_model = str(body.get("model") or model or "").strip()
+        if contract_model:
+            extra.update(
+                _build_embedding_contract_extra(
+                    provider=provider,
+                    base_url=base_url,
+                    requested_model=contract_model,
+                    response_model=response_model,
+                    vectors=vectors,
+                )
+            )
         return ProbeResult(ok=True, status=resp.status_code, elapsed_ms=elapsed_ms, extra=extra)
 
     body_preview = resp.text[:300] if resp.text else ""

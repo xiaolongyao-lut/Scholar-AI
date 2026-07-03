@@ -25,6 +25,7 @@ from typing import Any, Callable
 from urllib.parse import urlencode
 
 from datetime_utils import utc_now_iso_z
+from terminal_output import progress_bar
 from repositories.writing_runtime_repository import WritingRuntimeRepository
 from harness_protocols import (
     WritingSession,
@@ -42,6 +43,28 @@ from harness_protocols import (
 from skills.runtime import SkillRunResult
 
 logger = logging.getLogger("WritingRuntime")
+
+
+def _format_terminal_progress_data(data: dict[str, Any] | None) -> str:
+    """Return bounded task metrics for terminal progress lines."""
+
+    if not isinstance(data, dict) or not data:
+        return ""
+    keys = (
+        "indexed",
+        "skipped",
+        "failed",
+        "total_chunks",
+        "asset_count",
+        "candidate_count",
+        "evidence_count",
+        "citation_count",
+    )
+    parts: list[str] = []
+    for key in keys:
+        if key in data:
+            parts.append(f"{key}={data[key]}")
+    return f" ({', '.join(parts)})" if parts else ""
 
 _RUNTIME_RECOVERABLE_EXCEPTIONS = (
     AssertionError,
@@ -5436,6 +5459,16 @@ class WritingRuntime:
             payload["progress"] = max(0, min(100, int(progress)))
         if data:
             payload.update(dict(data))
+        if os.environ.get("LITASSIST_TERMINAL_PROGRESS", "1").strip() != "0":
+            metrics = _format_terminal_progress_data(data)
+            self._logger.info(
+                "[任务进度] job=%s stage=%s %s %s%s",
+                job_id,
+                normalized_stage,
+                progress_bar(payload.get("progress") if "progress" in payload else None),
+                normalized_message,
+                metrics,
+            )
         metadata = dict(job.metadata)
         metadata.update(
             {

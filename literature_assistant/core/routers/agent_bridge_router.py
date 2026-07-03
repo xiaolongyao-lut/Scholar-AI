@@ -171,6 +171,13 @@ class AgentBridgeResourcePayload(BaseModel):
     kind: str
     project_id: str | None = None
     title: str | None = None
+    source_title: str | None = None
+    source_path: str | None = None
+    material_id: str | None = None
+    chunk_id: str | None = None
+    page: int | None = None
+    image_paths: list[str] = Field(default_factory=list)
+    figure_candidate_detail: dict[str, Any] | None = None
     content: str
     metadata: dict[str, Any] = Field(default_factory=dict)
     truncated: bool
@@ -543,17 +550,40 @@ async def read_agent_resource(
     chunk = text[offset : offset + max_chars]
     next_offset = offset + len(chunk)
     truncated = next_offset < total
+    metadata = {
+        **dict(resource.get("metadata") or {}),
+        "offset": offset,
+        "returned_chars": len(chunk),
+    }
+    page = metadata.get("page")
+    normalized_page = page if isinstance(page, int) and not isinstance(page, bool) else None
+    material_id = str(metadata.get("material_id") or "").strip() or None
+    chunk_id = str(metadata.get("chunk_id") or "").strip() or None
+    source_title = str(resource.get("source_title") or resource.get("title") or "").strip() or None
+    source_path = str(resource.get("source_path") or metadata.get("source_relative_path") or metadata.get("source_path") or "").strip() or None
+    image_paths_raw = resource.get("image_paths")
+    image_paths = (
+        [str(path).strip()[:260] for path in image_paths_raw if str(path).strip()][:8]
+        if isinstance(image_paths_raw, list)
+        else []
+    )
+    figure_candidate_detail = resource.get("figure_candidate_detail")
+    if not isinstance(figure_candidate_detail, dict):
+        figure_candidate_detail = None
     return AgentBridgeResourcePayload(
         ref_id=normalized_ref,
         kind=kind,
         project_id=resource.get("project_id"),
         title=resource.get("title"),
+        source_title=source_title,
+        source_path=source_path,
+        material_id=material_id,
+        chunk_id=chunk_id,
+        page=normalized_page,
+        image_paths=image_paths,
+        figure_candidate_detail=figure_candidate_detail,
         content=chunk,
-        metadata={
-            **dict(resource.get("metadata") or {}),
-            "offset": offset,
-            "returned_chars": len(chunk),
-        },
+        metadata=metadata,
         truncated=truncated,
         cursor=str(offset),
         next_cursor=str(next_offset) if truncated else None,
@@ -1842,6 +1872,10 @@ def _chunk_resource(chunk_id: str, *, project_id: str | None) -> dict[str, Any]:
     if not project_id:
         raise HTTPException(status_code=400, detail="project_id is required for chunk refs")
     import routers.resources_router as resources_router
+    from routers.resources_router.endpoints_search_upload import (
+        _chunk_figure_candidate_detail,
+        _chunk_image_paths,
+    )
 
     # ``search-refs`` returns refs from the persisted chunk store. Read that
     # store first so the bounded reader does not prune refs that are already
@@ -1853,9 +1887,19 @@ def _chunk_resource(chunk_id: str, *, project_id: str | None) -> dict[str, Any]:
         for chunk in chunks
     ):
         chunk_store = resources_router._ensure_project_chunks(project_id)
+    doc_store = resources_router._load_doc_store(project_id)
     for material_id, chunks in chunk_store.items():
         for chunk in chunks:
             if isinstance(chunk, dict) and str(chunk.get("chunk_id") or "") == chunk_id:
+                doc_entry = doc_store.get(str(material_id), {})
+                if not isinstance(doc_entry, dict):
+                    doc_entry = {}
+                source_relative_path = (
+                    str(chunk.get("source_relative_path") or "").strip()
+                    or str(doc_entry.get("source_relative_path") or "").strip()
+                    or None
+                )
+                title = str(chunk.get("title") or doc_entry.get("title") or material_id)
                 locator = chunk.get("locator") if isinstance(chunk.get("locator"), dict) else None
                 safe_locator = (
                     {
@@ -1871,14 +1915,28 @@ def _chunk_resource(chunk_id: str, *, project_id: str | None) -> dict[str, Any]:
                     "material_id": str(chunk.get("material_id") or material_id),
                     "page": chunk.get("page"),
                     "chunk_type": chunk.get("chunk_type"),
-                    "source_relative_path": chunk.get("source_relative_path"),
+                    "source_relative_path": source_relative_path,
                     "locator": safe_locator,
                 }
+                image_paths = _chunk_image_paths(chunk)
+                figure_candidate_detail = _chunk_figure_candidate_detail(
+                    chunk,
+                    material_id=str(chunk.get("material_id") or material_id),
+                    chunk_id=str(chunk.get("chunk_id") or chunk_id),
+                )
+                if image_paths:
+                    metadata["image_paths"] = image_paths
+                if figure_candidate_detail is not None:
+                    metadata["figure_candidate_detail"] = figure_candidate_detail
                 return {
                     "kind": "chunk",
                     "project_id": project_id,
-                    "title": str(chunk.get("title") or material_id),
+                    "title": title,
+                    "source_title": title,
+                    "source_path": source_relative_path,
                     "content": str(chunk.get("content") or ""),
+                    "image_paths": image_paths,
+                    "figure_candidate_detail": figure_candidate_detail,
                     "metadata": {key: value for key, value in metadata.items() if value is not None},
                 }
     raise HTTPException(status_code=404, detail=f"Chunk not found: {chunk_id}")

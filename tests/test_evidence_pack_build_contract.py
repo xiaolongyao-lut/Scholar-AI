@@ -49,7 +49,7 @@ def _write_chunk_fixture(project_id: str) -> None:
                     "material_id": "mat_pack",
                     "title": "AlSi10Mg porosity fatigue evidence",
                     "summary": "AlSi10Mg porosity affects fatigue crack initiation near the surface.",
-                    "content": "AlSi10Mg porosity affects fatigue crack initiation near the surface.",
+                    "content": "AlSi10Mg porosity affects fatigue crack initiation near the surface. Fig. 1 shows the weld surface morphology.",
                     "abstract": "SHOULD_NOT_LEAK_ABSTRACT",
                     "ocr_text": "SHOULD_NOT_LEAK_OCR",
                     "raw_ocr_blocks": [{"text": "SHOULD_NOT_LEAK_BLOCK"}],
@@ -60,6 +60,7 @@ def _write_chunk_fixture(project_id: str) -> None:
                     "source_relative_path": "papers/alsi10mg.pdf",
                     "source_labels": ["bm25", "layout_pdf"],
                     "figure_candidate": "figure:porosity-1",
+                    "image_paths": ["figure_assets/extracted/porosity/p0009_img001.png"],
                     "locator": {
                         "page": 9,
                         "chunk_index": 1,
@@ -292,6 +293,8 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
         "rerank_score",
         "citation_anchor",
         "figure_candidate",
+        "figure_candidate_detail",
+        "image_paths",
         "source_labels",
         "summary",
         "suitable_for_body",
@@ -318,10 +321,17 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
     assert ref["rerank_score"] is None
     assert ref["citation_anchor"]
     assert ref["figure_candidate"] == "figure:porosity-1"
+    assert ref["image_paths"] == ["figure_assets/extracted/porosity/p0009_img001.png"]
+    assert ref["figure_candidate_detail"]["id"] == "figure:porosity-1"
+    assert ref["figure_candidate_detail"]["label"] == "图 1"
+    assert ref["figure_candidate_detail"]["page"] == 9
+    assert ref["figure_candidate_detail"]["chunk_id"] == "pack_chunk_1"
+    assert ref["figure_candidate_detail"]["asset_path"] == "figure_assets/extracted/porosity/p0009_img001.png"
+    assert ref["figure_candidate_detail"]["source"] == "chunk_image_paths"
     assert ref["source_labels"] == ["bm25", "layout_pdf"]
     assert ref["suitable_for_body"] is True
-    assert ref["source_title"] is None
-    assert ref["source_path"] is None
+    assert ref["source_title"] == "AlSi10Mg porosity fatigue evidence"
+    assert ref["source_path"] == "papers/alsi10mg.pdf"
     assert ref["joint_score"] is None
     assert len(ref["summary"]) <= 300
 
@@ -331,6 +341,360 @@ def test_evidence_pack_build_returns_mcp_safe_lexical_pack() -> None:
     assert "SHOULD_NOT_LEAK" not in serialized
     assert "ocr" not in serialized.lower()
     assert "private_note" not in serialized
+
+
+def test_evidence_pack_project_chunk_selection_uses_gateway_when_fts_is_valid(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Evidence-pack project refs should share the Gateway candidate arm."""
+
+    import routers.evidence_router as evidence_router
+    from chunk_fts_index import rebuild_chunk_fts_index
+    from chunk_hashing import compute_chunk_store_version
+
+    store = {
+        "mat_gateway": [
+            {
+                "chunk_id": "pack_gateway_1",
+                "material_id": "mat_gateway",
+                "title": "Gateway evidence pack paper",
+                "content": "AlSi10Mg keyhole porosity evidence at laser power 2000 W.",
+                "raw_content": "AlSi10Mg keyhole porosity evidence at laser power 2000 W.",
+                "page": 4,
+                "bbox": [0.1, 0.2, 0.3, 0.4],
+            }
+        ]
+    }
+    db_path = tmp_path / "chunks.sqlite3"
+    rebuild_chunk_fts_index(
+        db_path=db_path,
+        project_id="proj_gateway_pack",
+        store=store,
+        chunk_store_version=compute_chunk_store_version(store),
+    )
+    monkeypatch.setattr(evidence_router._resources_router, "_ensure_project_chunks", lambda _project_id: store)
+    monkeypatch.setattr(evidence_router._resources_router, "_chunk_fts_index_path", lambda _project_id: db_path)
+    monkeypatch.setattr(
+        evidence_router,
+        "_select_search_ref_chunks",
+        lambda *_args, **_kwargs: pytest.fail("legacy evidence-pack selector must not run when Gateway FTS is valid"),
+    )
+
+    selected = evidence_router._select_project_evidence_chunks(
+        project_id="proj_gateway_pack",
+        all_chunks=list(store["mat_gateway"]),
+        query="AlSi10Mg keyhole porosity laser power 2000 W",
+        top_k=3,
+    )
+
+    assert selected
+    assert selected[0][1]["chunk_id"] == "pack_gateway_1"
+    assert selected[0][1]["retrieval_sources"] == ["lexical"]
+
+
+def test_evidence_pack_integrity_gate_passes_visual_pack_with_pixel_assets() -> None:
+    """Evidence-pack gate validates query-scoped image refs, not export readiness."""
+
+    client = _client()
+    project = _create_project(client, title="Evidence Pack Integrity Visual Project")
+    project_id = project["project_id"]
+    _write_chunk_fixture(project_id)
+    build_response = client.post(
+        "/api/evidence-pack/build",
+        json={
+            "project_id": project_id,
+            "query": "AlSi10Mg 外观 图片 表面形貌",
+            "top_k": 5,
+        },
+    )
+    assert build_response.status_code == 200
+    pack = build_response.json()
+
+    gate_response = client.post(
+        "/api/evidence-pack/integrity-gate",
+        json={
+            "project_id": project_id,
+            "query": pack["query"],
+            "evidence_pack_ref": pack["evidence_pack_ref"],
+            "evidence_refs": pack["evidence_refs"],
+            "retrieval_diagnostics": pack["retrieval_diagnostics"],
+        },
+    )
+
+    assert gate_response.status_code == 200
+    gate = gate_response.json()
+    assert gate["schema_version"] == "scholar_ai_evidence_pack_integrity_gate_v1"
+    assert gate["status"] == "passed"
+    assert gate["project_id"] == project_id
+    assert gate["visual_intent"]["requires_image_evidence"] is True
+    assert "外观" in gate["visual_intent"]["matched_terms"]
+    assert gate["summary"]["evidence_ref_count"] >= 1
+    assert gate["summary"]["project_ref_count"] >= 1
+    assert gate["summary"]["image_ref_count"] == 1
+    assert gate["summary"]["whole_page_image_ref_count"] == 0
+    assert gate["summary"]["retrieval_method"] == "lexical"
+    checks = {check["check_id"]: check for check in gate["checks"]}
+    assert checks["visual_image_evidence"]["status"] == "passed"
+    assert checks["image_asset_quality"]["status"] == "passed"
+    image_sample = next(item for item in gate["sample_refs"] if item["has_image"] is True)
+    assert image_sample["source_title"] == "AlSi10Mg porosity fatigue evidence"
+    assert image_sample["page"] == 9
+    assert image_sample["image_assets"] == [
+        "figure_assets/extracted/porosity/p0009_img001.png"
+    ]
+    assert gate["provenance"]["raw_chunk_text_exposed"] is False
+    assert gate["provenance"]["private_chain_of_thought_exposed"] is False
+
+
+def test_evidence_pack_integrity_gate_blocks_visual_pack_without_pixel_assets() -> None:
+    """Visual questions must not pass when the supplied evidence refs lack images."""
+
+    client = _client()
+    response = client.post(
+        "/api/evidence-pack/integrity-gate",
+        json={
+            "project_id": "project-no-image",
+            "query": "AlSi10Mg 激光焊接 外观 图片",
+            "evidence_refs": [
+                {
+                    "project_id": "project-no-image",
+                    "source_type": "project",
+                    "ref_id": "chunk:no_image_1",
+                    "read_endpoint": "/api/agent-bridge/resource/chunk:no_image_1?project_id=project-no-image",
+                    "chunk_id": "no_image_1",
+                    "material_id": "mat_no_image",
+                    "page": 4,
+                    "locator": {"page": 4, "bbox": [0.1, 0.1, 0.2, 0.2]},
+                    "lexical_score": 4.0,
+                    "citation_anchor": "mat_no_image_no_image_1",
+                    "summary": "The text mentions weld appearance but no extracted figure asset is linked.",
+                    "source_title": "No image paper",
+                    "source_path": "papers/no-image.pdf",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    gate = response.json()
+    assert gate["status"] == "blocked"
+    assert gate["visual_intent"]["requires_image_evidence"] is True
+    assert gate["summary"]["image_ref_count"] == 0
+    checks = {check["check_id"]: check for check in gate["checks"]}
+    assert checks["visual_image_evidence"]["status"] == "blocked"
+    assert checks["visual_image_evidence"]["severity"] == "block"
+    assert "pixel-backed image assets" in checks["visual_image_evidence"]["reason"]
+    assert any("pixel-backed figure candidates" in action for action in gate["next_actions"])
+
+
+def test_evidence_pack_build_uses_doc_store_source_path_when_chunk_lacks_it() -> None:
+    """Project refs keep file provenance even when legacy chunks omit it."""
+
+    client = _client()
+    project = _create_project(client, title="Evidence Pack Doc Store Source Project")
+    project_id = project["project_id"]
+    resources_router._save_doc_store(  # type: ignore[attr-defined]
+        project_id,
+        {
+            "mat_doc_source": {
+                "title": "Doc store source paper.pdf",
+                "content": "AlSi10Mg laser welding surface morphology evidence.",
+                "source_relative_path": "1230/Doc store source paper.pdf",
+            }
+        },
+    )
+    resources_router._save_chunk_store(  # type: ignore[attr-defined]
+        project_id,
+        {
+            "mat_doc_source": [
+                {
+                    "chunk_id": "chunk_doc_source_1",
+                    "material_id": "mat_doc_source",
+                    "title": "Doc store source paper.pdf",
+                    "content": "AlSi10Mg laser welding surface morphology evidence.",
+                    "page": 3,
+                    "chunk_index": 1,
+                }
+            ]
+        },
+    )
+
+    response = client.post(
+        "/api/evidence-pack/build",
+        json={
+            "project_id": project_id,
+            "query": "AlSi10Mg laser welding surface morphology",
+            "top_k": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    ref = response.json()["evidence_refs"][0]
+    assert ref["material_id"] == "mat_doc_source"
+    assert ref["source_title"] == "Doc store source paper.pdf"
+    assert ref["source_path"] == "1230/Doc store source paper.pdf"
+
+
+def test_evidence_pack_build_blends_pixel_backed_visual_refs_for_appearance_query() -> None:
+    """Visual evidence packs should preserve real chunk image assets."""
+
+    client = _client()
+    project = _create_project(client, title="Evidence Pack Visual Project")
+    project_id = project["project_id"]
+    text_chunks = [
+        {
+            "chunk_id": f"pack_text_hit_{index}",
+            "material_id": f"mat_pack_text_{index}",
+            "title": f"AlSi10Mg laser welding process evidence {index}",
+            "content": "AlSi10Mg laser welding process parameters and porosity suppression.",
+            "page": index + 1,
+            "chunk_index": index,
+        }
+        for index in range(5)
+    ]
+    resources_router._save_chunk_store(  # type: ignore[attr-defined]
+        project_id,
+        {
+            **{f"mat_pack_text_{index}": [chunk] for index, chunk in enumerate(text_chunks)},
+            "mat_pack_page_list": [
+                {
+                    "chunk_id": "pack_visual_page_list_1",
+                    "material_id": "mat_pack_page_list",
+                    "title": "AlSi10Mg laser welding figure list",
+                    "content": "Figure 7. Weld upper surface appearance and bead formation results.",
+                    "raw_content": "Figure 7. Weld upper surface appearance and bead formation results.",
+                    "page": 3,
+                    "chunk_index": 12,
+                    "chunk_type": "figure_caption",
+                    "bbox": [0.0, 0.0, 1.0, 1.0],
+                    "image_paths": [
+                        "figure_assets/extracted/Ping/p0003_page_list.png",
+                    ],
+                }
+            ],
+            "mat_pack_cross": [
+                {
+                    "chunk_id": "pack_visual_cross_section_1",
+                    "material_id": "mat_pack_cross",
+                    "title": "AlSi10Mg laser welding cross-section figure",
+                    "content": "Figure 6. Weld cross-section morphology and penetration depth.",
+                    "raw_content": "Figure 6. Weld cross-section morphology and penetration depth.",
+                    "page": 9,
+                    "chunk_index": 67,
+                    "chunk_type": "figure_caption",
+                    "bbox": [0.1, 0.2, 0.7, 0.4],
+                    "image_paths": [
+                        "figure_assets/extracted/Ping/p0009_img001.jpeg",
+                    ],
+                }
+            ],
+            "mat_pack_visual": [
+                {
+                    "chunk_id": "pack_visual_surface_1",
+                    "material_id": "mat_pack_visual",
+                    "title": "AlSi10Mg laser welding appearance figure",
+                    "content": "Figure 7. Weld upper surface appearance and bead formation results.",
+                    "raw_content": "Figure 7. Weld upper surface appearance and bead formation results.",
+                    "page": 10,
+                    "chunk_index": 68,
+                    "chunk_type": "figure_caption",
+                    "bbox": [0.1, 0.2, 0.7, 0.4],
+                    "image_paths": [
+                        "figure_assets/extracted/Ping/p0010_img001.jpeg",
+                    ],
+                }
+            ],
+        },
+    )
+
+    response = client.post(
+        "/api/evidence-pack/build",
+        json={
+            "project_id": project_id,
+            "query": "AlSi10Mg 外观 上表面 图片",
+            "top_k": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    refs = response.json()["evidence_refs"]
+    visual_refs = [ref for ref in refs if ref["image_paths"]]
+    assert [ref["chunk_id"] for ref in visual_refs] == ["pack_visual_surface_1"]
+    assert "pack_visual_page_list_1" not in {ref["chunk_id"] for ref in visual_refs}
+    assert visual_refs[0]["source_labels"] == ["visual_image_asset"]
+    assert visual_refs[0]["figure_candidate_detail"]["asset_path"] == (
+        "figure_assets/extracted/Ping/p0010_img001.jpeg"
+    )
+
+
+def test_evidence_pack_build_blends_project_figure_asset_files_without_mutating_chunks() -> None:
+    """Evidence packs should use derived project figure files as image evidence."""
+
+    client = _client()
+    project = _create_project(client, title="Evidence Pack Derived Visual Project")
+    project_id = project["project_id"]
+    chunk_store = {
+        "mat_pack_surface": [
+            {
+                "chunk_id": "pack_surface_asset_chunk",
+                "material_id": "mat_pack_surface",
+                "title": "AlSi10Mg laser welding surface figure",
+                "content": "Figure 7. Weld upper surface appearance, morphology, and bead formation.",
+                "raw_content": "Figure 7. Weld upper surface appearance, morphology, and bead formation.",
+                "page": 12,
+                "chunk_index": 8,
+                "chunk_type": "figure_caption",
+                "bbox": [0.12, 0.18, 0.52, 0.34],
+            }
+        ],
+        "mat_pack_text": [
+            {
+                "chunk_id": f"pack_text_only_{index}",
+                "material_id": "mat_pack_text",
+                "title": f"AlSi10Mg process evidence {index}",
+                "content": "AlSi10Mg laser welding process parameters and porosity suppression.",
+                "page": index + 1,
+                "chunk_index": index,
+            }
+            for index in range(4)
+        ],
+    }
+    resources_router._save_chunk_store(project_id, chunk_store)  # type: ignore[attr-defined]
+    asset_path = resources_router.project_data_path(  # type: ignore[attr-defined]
+        project_id,
+        "figure_assets",
+        "mat_pack_surface",
+        "pack_surface_asset_chunk-Figure7-feedface.jpg",
+    )
+    asset_path.parent.mkdir(parents=True, exist_ok=True)
+    asset_path.write_bytes(b"derived project figure asset")
+
+    response = client.post(
+        "/api/evidence-pack/build",
+        json={
+            "project_id": project_id,
+            "query": "AlSi10Mg 外观 上表面 图片",
+            "top_k": 4,
+        },
+    )
+
+    assert response.status_code == 200
+    refs = response.json()["evidence_refs"]
+    refs_by_chunk = {ref["chunk_id"]: ref for ref in refs}
+    ref = refs_by_chunk["pack_surface_asset_chunk"]
+    assert ref["image_paths"] == [
+        "figure_assets/mat_pack_surface/pack_surface_asset_chunk-Figure7-feedface.jpg"
+    ]
+    assert ref["figure_candidate_detail"]["source"] == "project_figure_asset"
+    assert ref["figure_candidate_detail"]["asset_path"] == (
+        "figure_assets/mat_pack_surface/pack_surface_asset_chunk-Figure7-feedface.jpg"
+    )
+    assert "visual_project_figure_asset" in ref["source_labels"]
+    assert "visual_image_asset" in ref["source_labels"]
+
+    assert "image_paths" not in chunk_store["mat_pack_surface"][0]
+    assert "asset_path" not in chunk_store["mat_pack_surface"][0]
 
 
 def test_evidence_pack_build_reports_invalid_bbox_locator_gap() -> None:

@@ -1300,6 +1300,53 @@ def test_api_chat_local_literature_tools_run_through_smart_read(
     _assert_tool_result_payload_contains_ref(captured_payloads[1], "alsi10mg_defects_chunk_0")
 
 
+def test_api_chat_plain_smart_read_omits_tools_from_upstream_payload(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """SmartRead plain chat must remain compatible with chat-only proxies."""
+
+    client = TestClient(app)
+    source = tmp_path / "paper.txt"
+    source.write_text(
+        "Laser power changes molten pool geometry and affects hardness.",
+        encoding="utf-8",
+    )
+    captured_payloads: list[dict[str, Any]] = []
+
+    def _unexpected_skill_schema_load() -> list[dict[str, Any]]:
+        raise AssertionError("plain SmartRead turns must not load tool schemas")
+
+    _configure_test_llm(monkeypatch)
+    monkeypatch.setenv("LITERATURE_SOURCE_PATHS", str(tmp_path))
+    monkeypatch.setattr(
+        intelligent_chat_router,
+        "_load_skill_tool_schemas",
+        _unexpected_skill_schema_load,
+    )
+    monkeypatch.setattr(
+        chat_router,
+        "_post_chat_with_retry",
+        _fake_post_chat_with_retry_factory(
+            captured_payloads,
+            [_final_response("Laser power is discussed in the supplied context.")],
+        ),
+    )
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "query": "Explain laser power and hardness mechanisms",
+            "tier": "fast",
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(captured_payloads) == 1
+    assert "tools" not in captured_payloads[0]
+    assert "tool_choice" not in captured_payloads[0]
+
+
 def test_api_chat_local_literature_tools_context_receipt_enters_provider_context(
     monkeypatch: Any,
     tmp_path: Path,

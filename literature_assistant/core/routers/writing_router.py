@@ -6,6 +6,7 @@ citations, figures, and submissions.
 """
 
 import asyncio
+import hashlib
 import inspect
 import json
 import logging
@@ -57,6 +58,14 @@ _FIGURE_IMAGE_MEDIA_TYPES = {
     ".gif": "image/gif",
     ".bmp": "image/bmp",
     ".svg": "image/svg+xml",
+}
+_BROWSER_NATIVE_IMAGE_FORMATS = {"PNG", "JPEG", "WEBP", "GIF", "BMP"}
+_PIL_FORMAT_TO_SUFFIX = {
+    "PNG": ".png",
+    "JPEG": ".jpg",
+    "WEBP": ".webp",
+    "GIF": ".gif",
+    "BMP": ".bmp",
 }
 _CITATION_TERM_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_-]{1,}|[\u4e00-\u9fff]+")
 _CITATION_STOPWORDS = {
@@ -191,6 +200,54 @@ def _resolve_figure_file_path(project_id: str, asset_path: str) -> Path:
             return resolved
 
     raise HTTPException(status_code=404, detail="图像文件不存在或不在项目允许目录内")
+
+
+def _browser_displayable_figure_file(project_id: str, resolved: Path) -> tuple[Path, str]:
+    """Return a browser-displayable image file for an already-authorized asset.
+
+    Args:
+        project_id: Project owning the figure asset; must be non-empty.
+        resolved: Authorized local file returned by ``_resolve_figure_file_path``.
+
+    Returns:
+        A file path and media type that common desktop WebViews can render.
+    """
+
+    normalized_project_id = str(project_id or "").strip()
+    if not normalized_project_id:
+        raise HTTPException(status_code=400, detail="project_id is required")
+    if not isinstance(resolved, Path):
+        raise HTTPException(status_code=500, detail="Invalid figure asset path")
+    suffix = resolved.suffix.lower()
+    if suffix == ".svg":
+        return resolved, _FIGURE_IMAGE_MEDIA_TYPES[suffix]
+
+    try:
+        from PIL import Image, UnidentifiedImageError
+    except ImportError:
+        return resolved, _FIGURE_IMAGE_MEDIA_TYPES.get(suffix, "application/octet-stream")
+
+    try:
+        with Image.open(resolved) as image:
+            image_format = str(image.format or "").upper()
+            expected_suffix = _PIL_FORMAT_TO_SUFFIX.get(image_format)
+            if image_format in _BROWSER_NATIVE_IMAGE_FORMATS and (expected_suffix is None or suffix == expected_suffix):
+                return resolved, _FIGURE_IMAGE_MEDIA_TYPES.get(suffix, f"image/{image_format.lower()}")
+
+            from project_paths import project_data_path
+
+            stat = resolved.stat()
+            cache_seed = f"{resolved.resolve()}:{stat.st_mtime_ns}:{stat.st_size}:{image_format}".encode("utf-8")
+            cache_name = f"{hashlib.sha256(cache_seed).hexdigest()[:24]}.png"
+            cache_dir = project_data_path(normalized_project_id, "figure_assets", "_browser_previews")
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_path = cache_dir / cache_name
+            if not cache_path.exists():
+                converted = image.convert("RGBA") if image.mode in {"P", "LA", "RGBA"} else image.convert("RGB")
+                converted.save(cache_path, format="PNG", optimize=True)
+            return cache_path, "image/png"
+    except (OSError, ValueError, UnidentifiedImageError):
+        return resolved, _FIGURE_IMAGE_MEDIA_TYPES.get(suffix, "application/octet-stream")
 
 
 def _build_project_export_bundle_manifest(
@@ -1566,9 +1623,9 @@ async def serve_figure_asset_file(
     if not store.get_project(project_id):
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
     resolved = _resolve_figure_file_path(project_id, path)
-    media_type = _FIGURE_IMAGE_MEDIA_TYPES[resolved.suffix.lower()]
-    response = FileResponse(path=str(resolved), media_type=media_type)
-    safe_name = resolved.name.encode("utf-8").decode("latin-1", errors="ignore")
+    display_path, media_type = _browser_displayable_figure_file(project_id, resolved)
+    response = FileResponse(path=str(display_path), media_type=media_type)
+    safe_name = display_path.name.encode("utf-8").decode("latin-1", errors="ignore")
     response.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
     return response
 
@@ -1651,6 +1708,7 @@ async def list_figure_candidates_alias(
     limit: int = Query(96, ge=1, le=200, description="Maximum number of candidates"),
     pixel_only: bool = Query(False, description="Return only chunk records that already include image assets"),
     render_pdf_fallback: bool = Query(True, description="Allow PDF page/crop rendering when chunk assets are missing"),
+    query: str | None = Query(None, max_length=4096, description="Optional query used to rank figure/table candidates"),
 ) -> list[FigureTableCandidatePayload]:
     """List text-derived figure/table candidates (alias to /resources/figure-table-candidates).
 
@@ -1662,6 +1720,7 @@ async def list_figure_candidates_alias(
         limit=limit,
         pixel_only=pixel_only,
         render_pdf_fallback=render_pdf_fallback,
+        query=query,
     )
 
 

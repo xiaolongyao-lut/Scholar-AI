@@ -236,6 +236,11 @@ class EvidencePackReferencePayload(BaseModel):
         rerank_score: Optional rerank score; ``None`` when rerank did not run.
         citation_anchor: Stable local citation anchor for draft traceability.
         figure_candidate: Optional future figure/table candidate id.
+        figure_candidate_detail: Bounded figure/table metadata linked to the
+            ref, including real chunk image asset paths when ingestion produced
+            them.
+        image_paths: Project-relative chunk image assets available for visual
+            evidence review.
         source_labels: Retrieval/source labels used to explain provenance.
         summary: Bounded summary safe for model context.
         suitable_for_body: Whether the ref is safe to cite in body prose.
@@ -266,6 +271,8 @@ class EvidencePackReferencePayload(BaseModel):
     rerank_score: Optional[float] = Field(default=None, ge=0.0)
     citation_anchor: str = Field(min_length=1, max_length=260)
     figure_candidate: Optional[str] = Field(default=None, max_length=260)
+    figure_candidate_detail: Optional[dict[str, Any]] = None
+    image_paths: List[str] = Field(default_factory=list, max_length=8)
     source_labels: List[str] = Field(default_factory=list, max_length=16)
     summary: str = Field(min_length=1, max_length=300)
     suitable_for_body: bool = True
@@ -469,6 +476,81 @@ class EvidencePackBuildResponse(BaseModel):
     )
     outcome: Optional[ToolOutcome] = None
     evidence_refs: List[EvidencePackReferencePayload] = Field(default_factory=list)
+
+
+class EvidencePackIntegrityGateRequest(BaseModel):
+    """Request to validate one query-scoped evidence pack before agent use.
+
+    Args:
+        project_id: Project whose evidence pack is being checked.
+        query: Optional retrieval/user query used to detect visual-evidence
+            requirements without exposing private reasoning.
+        evidence_pack_ref: Optional stable pack id returned by the builder.
+        evidence_refs: Bounded refs from ``/api/evidence-pack/build``.
+        retrieval_diagnostics: Optional diagnostics copied from the builder.
+    """
+
+    project_id: str = Field(min_length=1, max_length=128)
+    query: str = Field(default="", max_length=4096)
+    evidence_pack_ref: Optional[str] = Field(default=None, max_length=200)
+    evidence_refs: List[EvidencePackReferencePayload] = Field(default_factory=list, max_length=50)
+    retrieval_diagnostics: Optional[EvidenceRetrievalDiagnosticsPayload] = None
+
+    @field_validator("project_id", "query", "evidence_pack_ref", mode="before")
+    @classmethod
+    def _strip_text_fields(cls, value: Any) -> Any:
+        """Normalize optional text before downstream gate checks."""
+
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("evidence-pack integrity text fields must be strings")
+        return value.strip()
+
+
+class EvidencePackIntegrityCheckPayload(BaseModel):
+    """One evidence-pack integrity check suitable for API and MCP output."""
+
+    check_id: str = Field(min_length=1, max_length=120)
+    status: Literal["passed", "warning", "blocked", "unresolved"]
+    severity: Literal["none", "note", "warn", "block"]
+    reason: str = Field(min_length=1, max_length=500)
+    recommendation: str = Field(default="", max_length=500)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvidencePackIntegrityGateResponse(BaseModel):
+    """Evidence-pack-level integrity gate for retrieval and citation use.
+
+    Args:
+        schema_version: Versioned additive contract for agent callers.
+        project_id: Project checked.
+        evidence_pack_ref: Optional evidence pack id checked.
+        query: Query used for visual-intent detection.
+        status: Aggregate gate status. ``blocked`` means the current pack
+            should not be used as evidence without repair or another retrieval.
+        visual_intent: Bounded query classification for image/appearance needs.
+        summary: Counts and coverage facts used to explain the decision.
+        checks: Individual gate checks.
+        sample_refs: Bounded top refs with titles, pages, scores, and image flags.
+        next_actions: Local follow-up actions for agents or UI.
+        provenance: Read-only source routes and policy notes.
+    """
+
+    schema_version: Literal["scholar_ai_evidence_pack_integrity_gate_v1"] = (
+        "scholar_ai_evidence_pack_integrity_gate_v1"
+    )
+    generated_at: str
+    project_id: str = Field(min_length=1, max_length=128)
+    evidence_pack_ref: Optional[str] = Field(default=None, max_length=200)
+    query: str = Field(default="", max_length=4096)
+    status: Literal["passed", "warning", "blocked", "unresolved"]
+    visual_intent: dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
+    checks: List[EvidencePackIntegrityCheckPayload] = Field(default_factory=list, max_length=16)
+    sample_refs: List[dict[str, Any]] = Field(default_factory=list, max_length=12)
+    next_actions: List[str] = Field(default_factory=list, max_length=12)
+    provenance: dict[str, Any] = Field(default_factory=dict)
 
 
 class JournalMetricEvidencePayload(BaseModel):
