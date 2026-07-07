@@ -19,6 +19,20 @@ cd <repo-root>
   `http://127.0.0.1:8000/health`.
 - Browser `localhost` / Vite pages are diagnostics only, not final desktop UI
   acceptance, unless the user explicitly asks for browser-path debugging.
+- Codex sidebar work is the explicit browser-path exception: use the Codex
+  in-app browser / side browser to open the local Scholar AI `/agent-sidebar`
+  route. Do not pursue a native Codex rendered sidebar unless an official,
+  verifiable host API exists.
+- Claude work stays MCP/tool-bridge first. Visible UI review uses the native
+  `文献助手` desktop window, not a duplicated sidebar state chain.
+- Use host tool search or deferred MCP loading when available, but keep Scholar
+  AI tool names/descriptions searchable, outputs bounded, and core entry points
+  obvious. Tool search is not a reason to add duplicate tools, schemas, or
+  answer state.
+- For resumed or new sessions, use repository docs as working memory: read the
+  active plan or ledger for the task, update it when reference reading or host
+  testing changes direction, and close each slice with concrete evidence
+  instead of relying on chat history.
 - Before nontrivial edits or runbooks, create rollback/audit records outside the
   repository and check official or mature references.
 - Do not stage, commit, push, move tags, create releases, or rewrite history

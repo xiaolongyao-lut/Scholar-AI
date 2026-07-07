@@ -30,7 +30,11 @@ operator memories, and no private run logs.
 5. Before changing architecture, packaging, startup, import behavior, desktop
    launch, process cleanup, MCP/tool contracts, or public docs, check official
    or mature references instead of relying on memory.
-6. Read target files before editing. Preserve unrelated user or agent changes.
+6. For sidebar or agent-host work, read the "Agent Host UI Direction" and
+   "MCP Tool Loading And Context Budget" sections in this guide before editing.
+7. Read the "Session Continuity And Working Habits" section before resuming a
+   prior plan, continuing after compaction, or starting a new agent-host slice.
+8. Read target files before editing. Preserve unrelated user or agent changes.
 
 Rollback snapshots must not be created inside the repository. Use an external
 parent directory such as a sibling `_backups/Scholar-AI/<task>-<timestamp>/`.
@@ -38,6 +42,41 @@ If this checkout lives under a local `tools` directory, put rollback/audit
 records under that external `tools/_backups/` tree. Do not copy credential,
 token, login-state, runtime database, log, or browser-profile files into a
 snapshot; record only path, size, timestamp, and intended action.
+
+## Session Continuity And Working Habits
+
+Treat repository docs as the durable memory for new or compacted sessions. Do
+not depend on hidden chat history for product direction, host capability
+status, or implementation order.
+
+Before repeating reference exploration, search the existing plan and ledger
+files with `rg`. If the task involves the Codex/Claude sidebar bridge, read:
+
+- `docs/plans/codex-sidebar-scholar-ai-bridge-draft-2026-07-06.md`
+- `docs/plans/codex-sidebar-widget-reference-ledger-2026-07-07.md`
+
+When reference reading, host testing, or user feedback changes direction,
+record the result in the active plan, reference ledger, or external audit
+before moving on. A useful record names the file, tool, command, screenshot,
+host surface, or behavior that supports the conclusion.
+
+Work in small verifiable slices. Each completed slice needs one matching piece
+of evidence: a test command, MCP tool result, receipt read-back, host capability
+record, screenshot, or explicit blocked reason. Do not write unverified host
+capability as completed work.
+
+For frontend or agent-sidebar work, check the experience from two views before
+closing the slice:
+
+- frontend/operator view: layout, state transitions, errors, responsiveness,
+  reuse of existing components, and no duplicated state chain;
+- user view: the user can ask a question, read the answer, see evidence status,
+  recover from offline/degraded states, and continue in the intended host
+  surface.
+
+Keep notes as the work proceeds. If a reference repository, host behavior, or
+tool contract has already been inspected, update the ledger instead of
+re-reading the same material in the next session.
 
 ## Source Desktop Startup
 
@@ -63,6 +102,11 @@ the acceptance surface. Browser `localhost` / Vite pages are allowed for narrow
 debugging, build checks, and API smoke checks, but they are not final desktop
 UX evidence unless the user explicitly asks for browser-path debugging.
 
+Codex agent-sidebar work is the explicit browser-path exception. For that
+surface, use the Codex in-app browser / side browser to open the local
+Scholar AI `/agent-sidebar` route and verify the narrow agent UI there. This
+does not change final acceptance for the native `文献助手` desktop.
+
 If a source desktop is already running, verify the existing process and health
 endpoint before starting another copy. If port `8000` is occupied by an
 unrelated process, do not kill it blindly; inspect the owning process and either
@@ -73,6 +117,30 @@ stay protocol-clean and does not open the desktop app by default. Use the
 visible `start_desktop.py` launch for source desktop work, or the documented
 `-ForceLaunch` / environment opt-in only when the user explicitly wants the MCP
 wrapper to reopen the desktop.
+
+## Agent Host UI Direction
+
+Codex does not own a separate native Scholar AI sidebar path in this project.
+The current Codex visual surface is a local web route, `/agent-sidebar`, opened
+inside the Codex in-app browser / side browser. Build it as a narrow agent
+panel, not as a squeezed copy of the full `/dialog` desktop workbench.
+
+The `/agent-sidebar` route must reuse the existing Scholar AI backend,
+SmartRead/chat/evidence components, receipts, qrels/gate state, revalidation,
+read-evidence, and answer write-back path where those exist. Do not create a
+second answer chain, schema family, state store, or history model just because
+the view is narrow.
+
+Claude work remains MCP/tool-bridge first. For visible review and acceptance,
+use the native `文献助手` desktop window. Claude MCP Apps, inline widgets, or
+rendered resources may be tested when a host explicitly supports them, but they
+do not replace the desktop review path and should not drive a duplicate UI
+architecture.
+
+If a host later exposes a verified third-party native sidebar/panel API, record
+the evidence in `docs/plans/` before changing this direction. Until then,
+native Codex/Claude sidebar work stays parked; the deliverable surface is the
+Codex in-app browser route plus the existing MCP/desktop bridge.
 
 ## Setup Commands
 
@@ -114,7 +182,9 @@ cd ..
 ```
 
 For desktop work, also launch `start_desktop.py` and verify the `文献助手`
-window. For MCP work, run:
+window. For Codex `/agent-sidebar` work, also open the local route in the
+Codex in-app browser / side browser and record visual or interaction evidence.
+For MCP work, run:
 
 ```powershell
 .\agent_mcp_server\bin\lit-assistant-mcp.ps1 -SelfTest
@@ -166,6 +236,26 @@ Typical tool flow for agents:
 The MCP server must not receive raw provider API keys. Model and credential
 configuration belongs in the local Scholar AI backend/desktop settings. Tool
 outputs should remain redacted, bounded, and reference-bearing.
+
+## MCP Tool Loading And Context Budget
+
+Large MCP inventories can crowd the conversation context. When the host
+provides tool search, deferred tool loading, namespaces, or searchable MCP
+server descriptions, use that capability instead of loading every detailed tool
+schema at startup.
+
+Tool search reduces initial context pressure; it does not remove the need for
+tool governance. Scholar AI tools must keep stable, searchable names; short
+high-signal descriptions; bounded outputs; pagination or filters for large
+results; and clear core entry points such as `literature.config_status`,
+`literature.list_projects`, `literature.search_refs`,
+`literature.evidence_pack_build`, `literature.evidence_integrity_gate`, and
+the safe `source.*` inspection tools.
+
+Do not answer context pressure by adding parallel tools for the same behavior.
+Consolidate descriptions, split large result payloads, and keep
+`agent_mcp_server/CAPABILITY_MAP.md` current so tool search and human operators
+can find the right entry point without loading the whole toolbox.
 
 ## Literature Ingestion And Chunks
 
