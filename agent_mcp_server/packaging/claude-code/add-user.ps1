@@ -53,11 +53,13 @@ $commandParts = @(
     "claude",
     "mcp",
     "add",
-    "literature-assistant",
+    "literature_assistant",
     "--scope",
     "user",
     "--transport",
     "stdio",
+    "--env",
+    "LITASSIST_MCP_TOOL_PROFILE=minimal",
     "--",
     "powershell",
     "-NoProfile",
@@ -77,5 +79,5 @@ if ($PrintOnly) {
     exit 0
 }
 
-& claude mcp add literature-assistant --scope user --transport stdio -- powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File $wrapperPath
+& claude mcp add literature_assistant --scope user --transport stdio --env LITASSIST_MCP_TOOL_PROFILE=minimal -- powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File $wrapperPath
 exit $LASTEXITCODE

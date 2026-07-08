@@ -166,6 +166,8 @@ if ($PrintConfig) {
         python = $pythonExe
         mcp_source_root = $mcpSourceRoot
         backend_base_url = $env:LITERATURE_ASSISTANT_BASE_URL
+        tool_profile = $env:LITASSIST_MCP_TOOL_PROFILE
+        experimental_tools_enabled = $env:LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS
         desktop_runtime_file = (Join-Path $repoRoot "workspace_artifacts\runtime_state\desktop-runtime.json")
     } | ConvertTo-Json -Depth 3
     exit 0
@@ -177,52 +179,71 @@ from __future__ import annotations
 
 import os
 
-from lit_assistant_mcp.server import create_mcp_server, find_repo_root
+from lit_assistant_mcp.server import (
+    MINIMAL_MCP_TOOL_NAMES,
+    MCP_TOOL_PROFILE_MINIMAL,
+    create_mcp_server,
+    experimental_mcp_tools_enabled,
+    find_repo_root,
+    resolve_mcp_tool_profile,
+)
 
 repo_root = find_repo_root()
+profile = resolve_mcp_tool_profile(os.environ.get("LITASSIST_MCP_TOOL_PROFILE"))
 server = create_mcp_server()
 tool_names = sorted(tool.name for tool in server._tool_manager.list_tools())
-required = {
-    "source.list_tree",
-    "source.search",
-    "source.read_file",
-    "source.read_symbols",
-    "source.inspect_routes",
-    "source.find_references",
-    "source.explain_entrypoints",
-    "literature.config_status",
-    "literature.list_projects",
-    "literature.list_materials",
-    "literature.read_material",
-    "literature.get_material_chunks",
-    "literature.search_refs",
-    "literature.evidence_pack_build",
-    "literature.project_scan_folder",
-    "literature.figures_candidates",
-    "literature.figures_generate",
-    "literature.citations_sources",
-    "literature.citations_detect_overlap",
-    "literature.academic_writing_lint",
-    "literature.outline_generate",
-    "literature.export_annotations_markdown",
-    "literature.export_docx",
-    "literature.journal_style_spec_draft",
-    "literature.journal_style_spec_confirm",
-    "literature.agent_bridge_status",
-    "literature.agent_request_create",
-    "literature.agent_request_list",
-    "literature.agent_request_read",
-    "literature.agent_resource_read",
-    "literature.agent_progress",
-    "literature.agent_result",
-    "literature.agent_fail",
-    "workflow.create_plan",
-    "workflow.write_json_workflow",
-    "workflow.run_json_workflow",
-    "artifact.write_markdown",
-    "artifact.read_artifact",
-    "artifact.list_artifacts",
-}
+if profile == MCP_TOOL_PROFILE_MINIMAL:
+    required = set(MINIMAL_MCP_TOOL_NAMES)
+else:
+    required = {
+        "source.list_tree",
+        "source.search",
+        "source.read_file",
+        "source.read_symbols",
+        "source.inspect_routes",
+        "source.find_references",
+        "source.explain_entrypoints",
+        "literature.config_status",
+        "literature.list_projects",
+        "literature.list_materials",
+        "literature.read_material",
+        "literature.get_material_chunks",
+        "literature.search_refs",
+        "literature.evidence_pack_build",
+        "literature.qrels_review_bundle",
+        "literature.evidence_integrity_gate",
+        "literature.chat_ask_persisting",
+        "literature.answer_receipt_list",
+        "literature.answer_receipt_read",
+        "literature.answer_receipt_markdown",
+        "literature.answer_receipt_revalidate",
+        "literature.project_scan_folder",
+        "literature.figures_candidates",
+        "literature.figures_generate",
+        "literature.citations_sources",
+        "literature.citations_detect_overlap",
+        "literature.academic_writing_lint",
+        "literature.outline_generate",
+        "literature.export_annotations_markdown",
+        "literature.export_docx",
+        "literature.journal_style_spec_draft",
+        "literature.journal_style_spec_confirm",
+        "literature.agent_bridge_status",
+        "literature.agent_request_create",
+        "literature.agent_request_list",
+        "literature.agent_request_read",
+        "literature.agent_resource_read",
+        "literature.agent_progress",
+        "literature.agent_handoff_card",
+        "literature.agent_result",
+        "literature.agent_fail",
+        "workflow.create_plan",
+        "workflow.write_json_workflow",
+        "workflow.run_json_workflow",
+        "artifact.write_markdown",
+        "artifact.read_artifact",
+        "artifact.list_artifacts",
+    }
 missing = sorted(required.difference(tool_names))
 if missing:
     raise SystemExit(f"missing tools: {missing}")
@@ -230,6 +251,8 @@ print("lit-assistant-mcp self-test ok")
 print(f"repo_root={repo_root}")
 print(f"backend_base_url={os.environ.get('LITERATURE_ASSISTANT_BASE_URL') or 'desktop-runtime-or-default'}")
 print(f"desktop_runtime_file={os.environ.get('LITASSIST_DESKTOP_RUNTIME_FILE') or ''}")
+print(f"tool_profile={profile}")
+print(f"experimental_tools_enabled={experimental_mcp_tools_enabled()}")
 print(f"tool_count={len(tool_names)}")
 '@
     $selfTestScript | & $pythonExe -

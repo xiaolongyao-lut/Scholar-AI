@@ -20,6 +20,336 @@ from .tools import (
     create_default_workflow_tools,
 )
 
+SIDEBAR_APP_RESOURCE_URI = "ui://scholar-ai/sidebar"
+SIDEBAR_APP_RESOURCE_MIME_TYPE = "text/html;profile=mcp-app"
+SIDEBAR_APP_STATUS_TOOL_NAME = "literature.sidebar_app_status"
+MCP_TOOL_PROFILE_ENV = "LITASSIST_MCP_TOOL_PROFILE"
+EXPERIMENTAL_TOOLS_ENV = "LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS"
+MCP_TOOL_PROFILE_FULL = "full"
+MCP_TOOL_PROFILE_MINIMAL = "minimal"
+SUPPORTED_MCP_TOOL_PROFILES = frozenset({MCP_TOOL_PROFILE_FULL, MCP_TOOL_PROFILE_MINIMAL})
+MINIMAL_MCP_TOOL_NAMES = frozenset(
+    {
+        "source.search",
+        "source.read_file",
+        "source.read_symbols",
+        "source.inspect_routes",
+        "source.find_references",
+        "literature.config_status",
+        "literature.health_check",
+        "literature.list_projects",
+        "literature.list_materials",
+        "literature.read_material",
+        "literature.launch_desktop",
+        "literature.search_refs",
+        "literature.evidence_pack_build",
+        "literature.evidence_integrity_gate",
+        "literature.get_material_chunks",
+        "literature.agent_resource_read",
+        "literature.agent_request_create",
+        "literature.agent_result",
+        "literature.answer_receipt_read",
+        "literature.answer_receipt_list",
+        "literature.export_docx",
+        "literature.export_annotations_markdown",
+    }
+)
+EXPERIMENTAL_MCP_TOOL_NAMES = frozenset(
+    {
+        "literature.ocr_status",
+        "literature.ocr_engines",
+        "literature.ocr_health",
+        "literature.ocr_execution_probe",
+        "literature.ocr_material",
+        "literature.prepare_visual_review",
+        "literature.translate_pack",
+        "literature.export_project_pack",
+        "workflow.run_python_sandbox",
+    }
+)
+SIDEBAR_APP_TOOL_META: dict[str, Any] = {
+    "ui": {
+        "resourceUri": SIDEBAR_APP_RESOURCE_URI,
+        "visibility": ["model", "app"],
+    },
+}
+
+
+def _sidebar_app_html() -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scholar AI Sidebar</title>
+  <style>
+    :root {{
+      color-scheme: light dark;
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #65728a;
+      --line: #d8dfeb;
+      --accent: #16745f;
+      --warn: #9a5a00;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    @media (prefers-color-scheme: dark) {{
+      :root {{
+        --bg: #11151c;
+        --panel: #181f2a;
+        --ink: #eef3fb;
+        --muted: #aeb8c9;
+        --line: #303b4c;
+        --accent: #49c7a8;
+        --warn: #e6ad58;
+      }}
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 13px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    main {{
+      min-width: 280px;
+      max-width: 420px;
+      min-height: 100vh;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      grid-template-rows: auto auto minmax(120px, 1fr) auto auto;
+    }}
+    .topbar, .answer, .drawers {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }}
+    .topbar {{
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      padding: 10px;
+    }}
+    .brand {{ font-weight: 700; }}
+    .status {{
+      color: var(--accent);
+      white-space: nowrap;
+      font-size: 12px;
+    }}
+    label {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin: 0 0 4px;
+    }}
+    textarea {{
+      width: 100%;
+      min-height: 78px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px;
+      background: var(--panel);
+      color: var(--ink);
+      font: inherit;
+    }}
+    .answer {{
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }}
+    h1 {{
+      font-size: 14px;
+      margin: 0;
+      letter-spacing: 0;
+    }}
+    .empty, .evidence-line {{
+      color: var(--muted);
+      margin: 0;
+    }}
+    .evidence-line {{
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+      color: var(--warn);
+    }}
+    .drawers {{
+      padding: 4px 10px;
+    }}
+    details {{
+      border-top: 1px solid var(--line);
+      padding: 8px 0;
+    }}
+    details:first-child {{ border-top: 0; }}
+    summary {{
+      cursor: default;
+      font-weight: 600;
+    }}
+    ul {{
+      margin: 8px 0 0;
+      padding-left: 16px;
+      color: var(--muted);
+    }}
+  </style>
+</head>
+<body>
+  <main data-schema-version="scholar-ai-sidebar-app/v1" data-status-tool="{SIDEBAR_APP_STATUS_TOOL_NAME}">
+    <section class="topbar" aria-label="Project status">
+      <div>
+        <div class="brand">Scholar AI</div>
+        <div class="empty">No project selected</div>
+      </div>
+      <div class="status">Bridge ready</div>
+    </section>
+    <section aria-label="Question">
+      <label for="scholar-ai-question">Question</label>
+      <textarea id="scholar-ai-question" disabled></textarea>
+    </section>
+    <section class="answer" aria-label="Answer">
+      <h1>Answer</h1>
+      <p class="empty">No answer loaded.</p>
+      <p class="evidence-line">Evidence not checked.</p>
+    </section>
+    <section class="drawers" aria-label="Details">
+      <details>
+        <summary>Evidence</summary>
+        <ul><li>No evidence bundle loaded.</li></ul>
+      </details>
+      <details>
+        <summary>History</summary>
+        <ul><li>No receipt selected.</li></ul>
+      </details>
+      <details>
+        <summary>Actions</summary>
+        <ul><li>No queued action.</li></ul>
+      </details>
+      <details>
+        <summary>Handoff</summary>
+        <ul><li>No handoff card loaded.</li></ul>
+      </details>
+    </section>
+  </main>
+</body>
+</html>
+"""
+
+
+def resolve_mcp_tool_profile(value: str | None) -> str:
+    """Resolve the MCP tool registration profile.
+
+    Args:
+        value: Raw profile name from ``LITASSIST_MCP_TOOL_PROFILE`` or an
+            injected test value. Empty input keeps the historical full profile.
+
+    Returns:
+        Canonical profile name, either ``full`` or ``minimal``.
+
+    Raises:
+        ValueError: If the provided profile is not supported.
+    """
+
+    if value is None or not value.strip():
+        return MCP_TOOL_PROFILE_FULL
+    normalized = value.strip().lower()
+    if normalized not in SUPPORTED_MCP_TOOL_PROFILES:
+        supported = ", ".join(sorted(SUPPORTED_MCP_TOOL_PROFILES))
+        raise ValueError(f"{MCP_TOOL_PROFILE_ENV} must be one of: {supported}")
+    return normalized
+
+
+def experimental_mcp_tools_enabled(value: str | None = None) -> bool:
+    """Return whether experimental MCP tools should be exposed.
+
+    Args:
+        value: Optional raw flag value. When omitted, the process environment is
+            checked.
+
+    Returns:
+        ``True`` only for explicit opt-in values.
+    """
+
+    raw_value = os.environ.get(EXPERIMENTAL_TOOLS_ENV, "") if value is None else value
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _server_instructions(tool_profile: str, experimental_enabled: bool) -> str:
+    """Build profile-aware server instructions without duplicating tool counts."""
+
+    profile_note = (
+        "Active tool profile: minimal. Exposes only self-check/navigation, "
+        "retrieval/evidence, desktop-visible answer write-back, export, and "
+        "safe source-reading tools.\n"
+        if tool_profile == MCP_TOOL_PROFILE_MINIMAL
+        else "Active tool profile: full.\n"
+    )
+    experimental_note = (
+        "experimental OCR/visual/translate/pack/sandbox exposed because "
+        f"{EXPERIMENTAL_TOOLS_ENV}=1 (tools/experimental.py).\n"
+        if experimental_enabled
+        else "experimental OCR/visual/translate/pack/sandbox hidden until "
+        f"{EXPERIMENTAL_TOOLS_ENV}=1.\n"
+    )
+    typical_chains = (
+        "Typical chains: cite-with-evidence = search_refs -> evidence_pack_build "
+        "-> evidence_integrity_gate; Claude write-back = agent_request_create "
+        "-> agent_resource_read -> agent_result -> answer_receipt_read; "
+        "read-code = source.inspect_routes -> source.read_symbols -> source.read_file.\n"
+        if tool_profile == MCP_TOOL_PROFILE_MINIMAL
+        else "Typical chains: cite-with-evidence = search_refs -> evidence_pack_build "
+        "-> evidence_integrity_gate; write = evidence_pack_build -> outline_generate "
+        "-> academic_writing_lint -> figures_generate -> export_docx; "
+        "read-code = source.inspect_routes -> source.read_symbols -> source.read_file.\n"
+    )
+    return (
+        "Scholar AI (文献助手) local MCP toolbox. "
+        "If the user asks to start/open 文献助手 or Scholar AI, call "
+        "literature.launch_desktop first; it opens a visible terminal for "
+        "the source desktop when no healthy runtime is attached. "
+        "On connect: literature.config_status / literature.health_check, "
+        "then literature.list_projects to pick a project_id.\n"
+        f"{profile_note}"
+        "Tool groups: source.* = read-only source inspection (tools/source.py); "
+        "literature.* = HTTP to backend literature_assistant/core (tools/runtime.py); "
+        "workflow.* / artifact.* = JSON workflow + artifacts (tools/workflow.py); "
+        f"{experimental_note}"
+        f"{typical_chains}"
+        "Full scenario map + tool->code three-hop locator: "
+        "source.read_file path=agent_mcp_server/CAPABILITY_MAP.md.\n"
+        "Never read/export .env*, credentials, runtime state, logs, browser "
+        "profiles, rollback snapshots, .claude/, .codex/."
+    )
+
+
+def _apply_tool_profile(
+    mcp: FastMCP,
+    tool_profile: str,
+    *,
+    experimental_enabled: bool,
+) -> None:
+    """Remove tools that should not be exposed for the active profile."""
+
+    registered_tool_names = {tool.name for tool in mcp._tool_manager.list_tools()}
+    hidden_tool_names: set[str] = set()
+    if not experimental_enabled:
+        hidden_tool_names.update(EXPERIMENTAL_MCP_TOOL_NAMES)
+    if tool_profile == MCP_TOOL_PROFILE_MINIMAL:
+        missing = sorted(MINIMAL_MCP_TOOL_NAMES.difference(registered_tool_names))
+        if missing:
+            raise RuntimeError(f"minimal MCP tool profile is missing registered tools: {missing}")
+        hidden_tool_names.update(registered_tool_names.difference(MINIMAL_MCP_TOOL_NAMES))
+
+    for tool_name in sorted(hidden_tool_names.intersection(registered_tool_names)):
+        mcp._tool_manager.remove_tool(tool_name)
+
+    if tool_profile == MCP_TOOL_PROFILE_MINIMAL:
+        resource_manager = getattr(mcp, "_resource_manager", None)
+        resources = getattr(resource_manager, "_resources", None)
+        if isinstance(resources, dict):
+            resources.pop(SIDEBAR_APP_RESOURCE_URI, None)
+
 
 def find_repo_root(start: Path | None = None) -> Path:
     """Find the repository root from private or public source-tree anchors.
@@ -52,16 +382,25 @@ def create_mcp_server(
     runtime_tools: RuntimeTools | None = None,
     workflow_tools: WorkflowTools | None = None,
     experimental_tools: ExperimentalTools | None = None,
+    tool_profile: str | None = None,
 ) -> FastMCP:
     """Create and register the Literature Assistant MCP server.
 
     Args:
         source_tools: Optional injected source tool implementation for tests.
         runtime_tools: Optional injected runtime tool implementation for tests.
+        workflow_tools: Optional injected workflow tool implementation for tests.
+        experimental_tools: Optional injected experimental implementation for tests.
+        tool_profile: Optional tool exposure profile. When omitted, the value is
+            read from ``LITASSIST_MCP_TOOL_PROFILE`` and defaults to ``full``.
 
     Returns:
         Configured FastMCP server instance.
     """
+    resolved_tool_profile = resolve_mcp_tool_profile(
+        tool_profile if tool_profile is not None else os.environ.get(MCP_TOOL_PROFILE_ENV)
+    )
+    experimental_enabled = experimental_mcp_tools_enabled()
     repo_root = find_repo_root()
     audit_root = repo_root / "workspace_artifacts/agent_mcp_workflows/.audit"
     source = source_tools or create_default_source_tools(
@@ -86,6 +425,7 @@ def create_mcp_server(
         "source.inspect_routes": source.inspect_routes,
         "source.find_references": source.find_references,
         "source.explain_entrypoints": source.explain_entrypoints,
+        "literature.agent_sidebar_url": runtime.agent_sidebar_url,
         "literature.launch_desktop": runtime.launch_desktop,
         "literature.config_status": runtime.config_status,
         "literature.health_check": runtime.health_check,
@@ -122,6 +462,12 @@ def create_mcp_server(
         "literature.product_docs_read": runtime.product_docs_read,
         "literature.product_docs_search": runtime.product_docs_search,
         "literature.evidence_pack_build": runtime.evidence_pack_build,
+        "literature.qrels_review_bundle": runtime.qrels_review_bundle,
+        "literature.chat_ask_persisting": runtime.chat_ask_persisting,
+        "literature.answer_receipt_list": runtime.answer_receipt_list,
+        "literature.answer_receipt_read": runtime.answer_receipt_read,
+        "literature.answer_receipt_markdown": runtime.answer_receipt_markdown,
+        "literature.answer_receipt_revalidate": runtime.answer_receipt_revalidate,
         "literature.project_scan_folder": runtime.project_scan_folder,
         "literature.figures_candidates": runtime.figures_candidates,
         "literature.figures_generate": runtime.figures_generate,
@@ -175,28 +521,33 @@ def create_mcp_server(
 
     mcp = FastMCP(
         name="literature-assistant",
-        instructions=(
-            "Scholar AI (文献助手) local MCP toolbox. "
-            "If the user asks to start/open 文献助手 or Scholar AI, call "
-            "literature.launch_desktop first; it opens a visible terminal for "
-            "the source desktop when no healthy runtime is attached. "
-            "On connect: literature.config_status / literature.health_check, "
-            "then literature.list_projects to pick a project_id.\n"
-            "Tool groups: source.* = read-only source inspection (tools/source.py); "
-            "literature.* = HTTP to backend literature_assistant/core (tools/runtime.py); "
-            "workflow.* / artifact.* = JSON workflow + artifacts (tools/workflow.py); "
-            "experimental OCR/visual/translate/pack/sandbox gated by "
-            "LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1 (tools/experimental.py).\n"
-            "Typical chains: cite-with-evidence = search_refs -> evidence_pack_build "
-            "-> evidence_integrity_gate; write = evidence_pack_build -> outline_generate "
-            "-> academic_writing_lint -> figures_generate -> export_docx; "
-            "read-code = source.inspect_routes -> source.read_symbols -> source.read_file.\n"
-            "Full scenario map + tool->code three-hop locator: "
-            "source.read_file path=agent_mcp_server/CAPABILITY_MAP.md.\n"
-            "Never read/export .env*, credentials, runtime state, logs, browser "
-            "profiles, rollback snapshots, .claude/, .codex/."
+        instructions=_server_instructions(
+            tool_profile=resolved_tool_profile,
+            experimental_enabled=experimental_enabled,
         ),
     )
+
+    @mcp.resource(
+        uri=SIDEBAR_APP_RESOURCE_URI,
+        name="scholar-ai-sidebar",
+        title="Scholar AI Sidebar",
+        description="Narrow host-rendered shell over the existing Scholar AI prompt/tool bridge.",
+        mime_type=SIDEBAR_APP_RESOURCE_MIME_TYPE,
+        meta={
+            "ui": {
+                "schemaVersion": "scholar-ai-sidebar-app/v1",
+                "statusTool": SIDEBAR_APP_STATUS_TOOL_NAME,
+                "prefersBorder": False,
+                "csp": {
+                    "connectDomains": [],
+                    "resourceDomains": [],
+                },
+            },
+        },
+    )
+    def scholar_ai_sidebar_resource() -> str:
+        """Return the static Scholar AI MCP Apps sidebar shell."""
+        return _sidebar_app_html()
 
     @mcp.tool(
         name="source.list_tree",
@@ -329,6 +680,24 @@ def create_mcp_server(
         return source.explain_entrypoints(path=path, max_depth=max_depth, max_files=max_files)
 
     @mcp.tool(
+        name="literature.agent_sidebar_url",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Agent Sidebar URL",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_agent_sidebar_url(
+        project_id: str | None = None,
+        conversation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Return the current Codex side-browser URL for `/agent-sidebar`."""
+        return runtime.agent_sidebar_url(project_id=project_id, conversation_id=conversation_id)
+
+    @mcp.tool(
         name="literature.launch_desktop",
         structured_output=True,
         annotations=ToolAnnotations(
@@ -365,6 +734,72 @@ def create_mcp_server(
     def literature_config_status() -> dict[str, Any]:
         """Return Literature Assistant backend health."""
         return runtime.config_status()
+
+    @mcp.tool(
+        name=SIDEBAR_APP_STATUS_TOOL_NAME,
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Sidebar App Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+        meta=SIDEBAR_APP_TOOL_META,
+    )
+    def literature_sidebar_app_status() -> dict[str, Any]:
+        """Return the host-rendered sidebar shell status without generating answers."""
+        sidebar_url = runtime.agent_sidebar_url()
+        return {
+            "is_error": False,
+            "schema_version": "scholar-ai-sidebar-status/v1",
+            "resource_uri": SIDEBAR_APP_RESOURCE_URI,
+            "resource_mime_type": SIDEBAR_APP_RESOURCE_MIME_TYPE,
+            "delivery": {
+                "default": "codex_side_browser_route",
+                "codex_side_browser_route": "active",
+                "rendered_sidebar": "host_capability_gated",
+                "prompt_tool_bridge": "available",
+            },
+            "codex_side_browser": {
+                "url_tool": "literature.agent_sidebar_url",
+                "url": (
+                    sidebar_url.get("data", {}).get("url")
+                    if isinstance(sidebar_url.get("data"), dict)
+                    else None
+                ),
+                "status": "ready" if sidebar_url.get("is_error") is not True else "unavailable",
+                "source": "runtime_descriptor",
+                "note": (
+                    "Open this URL in the Codex in-app browser. It follows the "
+                    "current Scholar AI backend port instead of assuming 8000."
+                ),
+            },
+            "existing_tool_chain": {
+                "health": "literature.config_status",
+                "projects": "literature.list_projects",
+                "answers": [
+                    "literature.chat_ask_persisting",
+                    "literature.answer_receipt_list",
+                    "literature.answer_receipt_read",
+                    "literature.answer_receipt_markdown",
+                    "literature.answer_receipt_revalidate",
+                ],
+                "evidence": [
+                    "literature.search_refs",
+                    "literature.evidence_pack_build",
+                    "literature.evidence_integrity_gate",
+                    "literature.agent_resource_read",
+                    "literature.qrels_review_bundle",
+                ],
+            },
+            "host_gates": {
+                "claude_desktop": "pending_resource_render_ui_tool_call_and_main_conversation_read_back",
+                "codex_desktop_class": "blocked_until_official_third_party_sidebar_or_panel_surface_exists",
+            },
+            "backend": runtime.config_status(),
+            "sidebar_url": sidebar_url,
+        }
 
     @mcp.tool(
         name="literature.health_check",
@@ -964,6 +1399,130 @@ def create_mcp_server(
             project_id=project_id,
             query=query,
             section_id=section_id,
+            top_k=top_k,
+        )
+
+    @mcp.tool(
+        name="literature.qrels_review_bundle",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Qrels Review Bundle",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_qrels_review_bundle(
+        project_id: str,
+        evidence_pack_ref: str,
+        query: str | None = None,
+        max_chunks_per_section: int = 5,
+    ) -> dict[str, Any]:
+        """Generate candidate-only qrels review artifacts from an evidence pack."""
+        return runtime.qrels_review_bundle(
+            project_id=project_id,
+            evidence_pack_ref=evidence_pack_ref,
+            query=query,
+            max_chunks_per_section=max_chunks_per_section,
+        )
+
+    @mcp.tool(
+        name="literature.chat_ask_persisting",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Persisting SmartRead Ask",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
+    def literature_chat_ask_persisting(
+        query: str,
+        project_id: str,
+        session_id: str | None = None,
+        tier: str = "balanced",
+        answer_origin: str = "internal_smartread",
+        generated_in: str = "mcp_sidebar",
+        evidence_pack_ref: str | None = None,
+    ) -> dict[str, Any]:
+        """Ask through SmartRead and save a receipt; tier accepts backend or UX labels."""
+        return runtime.chat_ask_persisting(
+            query=query,
+            project_id=project_id,
+            session_id=session_id,
+            tier=tier,
+            answer_origin=answer_origin,
+            generated_in=generated_in,
+            evidence_pack_ref=evidence_pack_ref,
+        )
+
+    @mcp.tool(
+        name="literature.answer_receipt_list",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Answer Receipt List",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_answer_receipt_list(project_id: str, limit: int = 100) -> dict[str, Any]:
+        """List project-scoped saved answer receipts."""
+        return runtime.answer_receipt_list(project_id=project_id, limit=limit)
+
+    @mcp.tool(
+        name="literature.answer_receipt_read",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Answer Receipt Read",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_answer_receipt_read(conversation_id: str) -> dict[str, Any]:
+        """Read one saved answer receipt and its staleness projection."""
+        return runtime.answer_receipt_read(conversation_id=conversation_id)
+
+    @mcp.tool(
+        name="literature.answer_receipt_markdown",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Answer Receipt Markdown",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_answer_receipt_markdown(conversation_id: str) -> dict[str, Any]:
+        """Render one saved answer receipt as the prompt/tool bridge Markdown projection."""
+        return runtime.answer_receipt_markdown(conversation_id=conversation_id)
+
+    @mcp.tool(
+        name="literature.answer_receipt_revalidate",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Answer Receipt Revalidate",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
+    def literature_answer_receipt_revalidate(
+        conversation_id: str,
+        apply: bool = False,
+        top_k: int = 10,
+    ) -> dict[str, Any]:
+        """Dry-run or apply revalidation for one saved answer receipt."""
+        return runtime.answer_receipt_revalidate(
+            conversation_id=conversation_id,
+            apply=apply,
             top_k=top_k,
         )
 
@@ -1967,6 +2526,11 @@ def create_mcp_server(
         """List workflow artifacts."""
         return workflow_impl.list_artifacts(max_entries=max_entries)
 
+    _apply_tool_profile(
+        mcp,
+        resolved_tool_profile,
+        experimental_enabled=experimental_enabled,
+    )
     return mcp
 
 

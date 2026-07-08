@@ -31,6 +31,7 @@ def test_stdio_wrapper_initialize_list_and_call() -> None:
         env["LITERATURE_ASSISTANT_REPO_ROOT"] = str(REPO_ROOT)
         env["LITERATURE_ASSISTANT_BASE_URL"] = _unused_loopback_url()
         env["LITASSIST_MCP_SKIP_BACKEND_AUTOSTART"] = "1"
+        env["LITASSIST_MCP_TOOL_PROFILE"] = "full"
         server_params = StdioServerParameters(
             command="powershell",
             args=[

@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "literature-assistant": {
+    "literature_assistant": {
       "command": "powershell",
       "args": [
         "-NoProfile",
@@ -13,7 +13,7 @@
       ],
       "env": {
         "LITERATURE_ASSISTANT_REPO_ROOT": "C:\\path\\to\\Scholar-AI",
-        "LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS": "1"
+        "LITASSIST_MCP_TOOL_PROFILE": "minimal"
       }
     }
   }

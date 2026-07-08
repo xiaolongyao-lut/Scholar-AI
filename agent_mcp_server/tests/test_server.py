@@ -1,10 +1,23 @@
 """Tests for FastMCP server registration."""
 
+import asyncio
 from pathlib import Path
+
+import pytest
 
 from lit_assistant_mcp.audit import AuditLog
 from lit_assistant_mcp.policy import PathPolicy
-from lit_assistant_mcp.server import create_mcp_server, find_repo_root
+from lit_assistant_mcp.server import (
+    EXPERIMENTAL_MCP_TOOL_NAMES,
+    EXPERIMENTAL_TOOLS_ENV,
+    MCP_TOOL_PROFILE_ENV,
+    MINIMAL_MCP_TOOL_NAMES,
+    SIDEBAR_APP_RESOURCE_MIME_TYPE,
+    SIDEBAR_APP_RESOURCE_URI,
+    SIDEBAR_APP_STATUS_TOOL_NAME,
+    create_mcp_server,
+    find_repo_root,
+)
 from lit_assistant_mcp.tools.source import SourceTools
 
 
@@ -67,6 +80,17 @@ def _assert_local_write_annotations(tool: object) -> None:
     assert annotations.openWorldHint is False
 
 
+def _assert_idempotent_local_write_annotations(tool: object) -> None:
+    """Assert a repeatable local write tool declares idempotent MCP metadata."""
+
+    annotations = getattr(tool, "annotations", None)
+    assert annotations is not None
+    assert annotations.readOnlyHint is False
+    assert annotations.destructiveHint is False
+    assert annotations.idempotentHint is True
+    assert annotations.openWorldHint is False
+
+
 def _assert_destructive_local_write_annotations(tool: object) -> None:
     """Assert a tool declares local writes that may replace artifacts or terminal state."""
 
@@ -89,9 +113,10 @@ def _assert_open_world_destructive_write_annotations(tool: object) -> None:
     assert annotations.openWorldHint is True
 
 
-def test_server_registers_source_and_runtime_tools() -> None:
+def test_server_registers_source_and_runtime_tools(monkeypatch) -> None:
     """FastMCP server exposes source, runtime, and workflow-spine tool names."""
-    server = create_mcp_server()
+    monkeypatch.setenv(EXPERIMENTAL_TOOLS_ENV, "1")
+    server = create_mcp_server(tool_profile="full")
 
     tool_names = {tool.name for tool in server._tool_manager.list_tools()}
 
@@ -103,8 +128,10 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "source.inspect_routes",
         "source.find_references",
         "source.explain_entrypoints",
+        "literature.agent_sidebar_url",
         "literature.launch_desktop",
         "literature.config_status",
+        "literature.sidebar_app_status",
         "literature.health_check",
         "literature.zotero_attachment_health",
         "literature.list_projects",
@@ -139,6 +166,12 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.product_docs_read",
         "literature.product_docs_search",
         "literature.evidence_pack_build",
+        "literature.qrels_review_bundle",
+        "literature.chat_ask_persisting",
+        "literature.answer_receipt_list",
+        "literature.answer_receipt_read",
+        "literature.answer_receipt_markdown",
+        "literature.answer_receipt_revalidate",
         "literature.project_scan_folder",
         "literature.figures_candidates",
         "literature.figures_generate",
@@ -195,7 +228,9 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "source.inspect_routes",
         "source.find_references",
         "source.explain_entrypoints",
+        "literature.agent_sidebar_url",
         "literature.config_status",
+        "literature.sidebar_app_status",
         "literature.health_check",
         "literature.list_projects",
         "literature.list_materials",
@@ -227,6 +262,9 @@ def test_server_registers_source_and_runtime_tools() -> None:
         "literature.product_docs_status",
         "literature.product_docs_read",
         "literature.evidence_pack_build",
+        "literature.answer_receipt_list",
+        "literature.answer_receipt_read",
+        "literature.answer_receipt_markdown",
         "literature.figures_candidates",
         "literature.citations_sources",
         "literature.citations_detect_overlap",
@@ -264,6 +302,9 @@ def test_server_registers_source_and_runtime_tools() -> None:
     assert wiki_import_annotations.openWorldHint is False
     _assert_local_write_annotations(tools_by_name["literature.zotero_attachment_health"])
     _assert_local_write_annotations(tools_by_name["literature.behavior_eval_pack"])
+    _assert_idempotent_local_write_annotations(tools_by_name["literature.qrels_review_bundle"])
+    _assert_open_world_local_write_annotations(tools_by_name["literature.chat_ask_persisting"])
+    assert "backend or UX labels" in (tools_by_name["literature.chat_ask_persisting"].description or "")
     _assert_open_world_local_write_annotations(tools_by_name["literature.outline_generate"])
     _assert_local_write_annotations(tools_by_name["literature.agent_request_create"])
     _assert_local_write_annotations(tools_by_name["literature.single_paper_task_create"])
@@ -285,9 +326,101 @@ def test_server_registers_source_and_runtime_tools() -> None:
     _assert_destructive_local_write_annotations(tools_by_name["artifact.write_markdown"])
 
 
+def test_server_full_profile_hides_experimental_tools_without_opt_in(monkeypatch) -> None:
+    """Experimental tools should not consume host context until explicitly enabled."""
+    monkeypatch.delenv(EXPERIMENTAL_TOOLS_ENV, raising=False)
+
+    server = create_mcp_server(tool_profile="full")
+
+    tool_names = {tool.name for tool in server._tool_manager.list_tools()}
+    assert not EXPERIMENTAL_MCP_TOOL_NAMES.intersection(tool_names)
+    assert "literature.outline_generate" in tool_names
+    assert "workflow.run_json_workflow" in tool_names
+
+
+def test_server_minimal_profile_exposes_only_core_claude_tools(monkeypatch) -> None:
+    """Minimal profile keeps the verified evidence and answer write-back chain."""
+    monkeypatch.setenv(EXPERIMENTAL_TOOLS_ENV, "1")
+
+    server = create_mcp_server(tool_profile="minimal")
+
+    tool_names = {tool.name for tool in server._tool_manager.list_tools()}
+    assert tool_names == MINIMAL_MCP_TOOL_NAMES
+    assert len(tool_names) == 22
+    assert {
+        "literature.agent_request_create",
+        "literature.agent_result",
+        "literature.answer_receipt_read",
+        "literature.answer_receipt_list",
+    }.issubset(tool_names)
+    assert not EXPERIMENTAL_MCP_TOOL_NAMES.intersection(tool_names)
+    assert "literature.outline_generate" not in tool_names
+    assert "workflow.run_json_workflow" not in tool_names
+
+    resources = asyncio.run(server.list_resources())
+    assert SIDEBAR_APP_RESOURCE_URI not in {str(resource.uri) for resource in resources}
+
+
+def test_server_reads_minimal_profile_from_environment(monkeypatch) -> None:
+    """The stdio process can reduce Claude tool loading by setting one env var."""
+    monkeypatch.setenv(MCP_TOOL_PROFILE_ENV, "minimal")
+
+    server = create_mcp_server()
+
+    tool_names = {tool.name for tool in server._tool_manager.list_tools()}
+    assert tool_names == MINIMAL_MCP_TOOL_NAMES
+
+
+def test_server_rejects_unknown_tool_profile() -> None:
+    """Invalid profiles should fail closed instead of silently exposing surprises."""
+    with pytest.raises(ValueError, match=MCP_TOOL_PROFILE_ENV):
+        create_mcp_server(tool_profile="tiny")
+
+
+def test_server_registers_sidebar_app_resource_and_status_tool_metadata() -> None:
+    """The MCP Apps sidebar shell is discoverable without a parallel answer chain."""
+    server = create_mcp_server(tool_profile="full")
+
+    tools_by_name = {tool.name: tool for tool in server._tool_manager.list_tools()}
+    status_tool = tools_by_name[SIDEBAR_APP_STATUS_TOOL_NAME]
+    _assert_read_only_annotations(status_tool)
+    assert status_tool.meta == {
+        "ui": {
+            "resourceUri": SIDEBAR_APP_RESOURCE_URI,
+            "visibility": ["model", "app"],
+        }
+    }
+
+    resources = asyncio.run(server.list_resources())
+    resources_by_uri = {str(resource.uri): resource for resource in resources}
+    sidebar_resource = resources_by_uri[SIDEBAR_APP_RESOURCE_URI]
+    assert sidebar_resource.name == "scholar-ai-sidebar"
+    assert sidebar_resource.mimeType == SIDEBAR_APP_RESOURCE_MIME_TYPE
+    assert sidebar_resource.meta == {
+        "ui": {
+            "schemaVersion": "scholar-ai-sidebar-app/v1",
+            "statusTool": SIDEBAR_APP_STATUS_TOOL_NAME,
+            "prefersBorder": False,
+            "csp": {
+                "connectDomains": [],
+                "resourceDomains": [],
+            },
+        }
+    }
+
+    contents = asyncio.run(server.read_resource(SIDEBAR_APP_RESOURCE_URI))
+    assert len(contents) == 1
+    resource_content = contents[0]
+    assert resource_content.mime_type == SIDEBAR_APP_RESOURCE_MIME_TYPE
+    assert resource_content.meta == sidebar_resource.meta
+    assert 'data-schema-version="scholar-ai-sidebar-app/v1"' in resource_content.content
+    assert f'data-status-tool="{SIDEBAR_APP_STATUS_TOOL_NAME}"' in resource_content.content
+    assert "literature.answer_receipt" not in resource_content.content
+
+
 def test_server_instructions_point_to_capability_map_without_stale_count() -> None:
     """Server instructions should advertise the map without duplicating registry counts."""
-    server = create_mcp_server()
+    server = create_mcp_server(tool_profile="full")
 
     instructions = getattr(server, "instructions", "")
     assert "agent_mcp_server/CAPABILITY_MAP.md" in instructions
@@ -297,7 +430,7 @@ def test_server_instructions_point_to_capability_map_without_stale_count() -> No
 
 def test_capability_map_covers_registered_tools_and_is_source_readable() -> None:
     """The agent-facing capability map must stay synchronized with registered tools."""
-    server = create_mcp_server()
+    server = create_mcp_server(tool_profile="full")
     tool_names = {tool.name for tool in server._tool_manager.list_tools()}
     capability_map = REPO_ROOT / "agent_mcp_server" / "CAPABILITY_MAP.md"
     text = capability_map.read_text(encoding="utf-8")

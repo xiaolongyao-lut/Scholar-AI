@@ -47,14 +47,15 @@ def test_claude_desktop_config_example_points_to_shared_wrapper() -> None:
     """Claude Desktop config must use the shared PowerShell wrapper."""
     payload = _load_json(CLAUDE_DESKTOP / "claude_desktop_config.example.json")
 
-    server = payload["mcpServers"]["literature-assistant"]
+    server = payload["mcpServers"]["literature_assistant"]
     assert server["command"] == "powershell"
     assert "-WindowStyle" in server["args"]
     assert "Hidden" in server["args"]
     assert GENERIC_WRAPPER in server["args"]
     assert server["env"]["LITERATURE_ASSISTANT_REPO_ROOT"] == GENERIC_REPO_ROOT
     assert "LITERATURE_ASSISTANT_BASE_URL" not in server["env"]
-    assert server["env"]["LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS"] == "1"
+    assert server["env"]["LITASSIST_MCP_TOOL_PROFILE"] == "minimal"
+    assert "LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS" not in server["env"]
 
 
 def test_distribution_templates_do_not_embed_local_absolute_paths() -> None:
@@ -180,7 +181,7 @@ def test_add_user_scripts_accept_public_source_tree_without_local_workspace_guid
     for script_path, expected in (
         (
             packaging_root / "claude-code" / "add-user.ps1",
-            "claude mcp add literature-assistant --scope user --transport stdio",
+            "claude mcp add literature_assistant --scope user --transport stdio",
         ),
         (
             packaging_root / "codex" / "add-user.ps1",
@@ -234,7 +235,8 @@ def test_claude_code_script_prints_non_mutating_add_command() -> None:
         env=env,
     )
 
-    assert "claude mcp add literature-assistant --scope user --transport stdio" in completed.stdout
+    assert "claude mcp add literature_assistant --scope user --transport stdio" in completed.stdout
+    assert "--env LITASSIST_MCP_TOOL_PROFILE=minimal" in completed.stdout
     assert "-WindowStyle Hidden" in completed.stdout
     assert str(WRAPPER) in completed.stdout
 
@@ -276,6 +278,8 @@ def test_wrapper_self_test_registers_expected_tools() -> None:
 
     env = os.environ.copy()
     env["LITERATURE_ASSISTANT_BASE_URL"] = "http://127.0.0.1:8000"
+    env["LITASSIST_MCP_TOOL_PROFILE"] = "full"
+    env.pop("LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS", None)
     completed = subprocess.run(
         [
             "powershell",
@@ -295,6 +299,42 @@ def test_wrapper_self_test_registers_expected_tools() -> None:
     )
 
     assert "lit-assistant-mcp self-test ok" in completed.stdout
+    assert "tool_profile=full" in completed.stdout
+    assert "experimental_tools_enabled=False" in completed.stdout
     tool_count_line = next(line for line in completed.stdout.splitlines() if line.startswith("tool_count="))
     tool_count = int(tool_count_line.partition("=")[2])
     assert tool_count >= 44
+
+
+def test_wrapper_self_test_honors_minimal_tool_profile() -> None:
+    """Wrapper self-test should pass when Claude uses the minimal profile."""
+    if platform.system() != "Windows":
+        return
+
+    env = os.environ.copy()
+    env["LITERATURE_ASSISTANT_BASE_URL"] = "http://127.0.0.1:8000"
+    env["LITASSIST_MCP_TOOL_PROFILE"] = "minimal"
+    env["LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS"] = "1"
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(WRAPPER),
+            "-SelfTest",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+
+    assert "lit-assistant-mcp self-test ok" in completed.stdout
+    assert "tool_profile=minimal" in completed.stdout
+    tool_count_line = next(line for line in completed.stdout.splitlines() if line.startswith("tool_count="))
+    tool_count = int(tool_count_line.partition("=")[2])
+    assert tool_count == 22
