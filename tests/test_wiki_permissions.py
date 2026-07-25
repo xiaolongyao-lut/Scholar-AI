@@ -27,7 +27,7 @@ def client():
 @pytest.fixture
 def mock_wiki_service():
     """Mock WikiService for testing."""
-    with patch("wiki.service.get_wiki_service") as mock_get:
+    with patch("literature_assistant.core.wiki.service.get_wiki_service") as mock_get:
         service = MagicMock()
         mock_get.return_value = service
         yield service
@@ -50,7 +50,7 @@ def _write_wiki_page(
     visibility: str,
 ) -> None:
     """Write a rendered test wiki page with explicit ACL metadata."""
-    from wiki.page_store import WikiPageStore, render_page
+    from literature_assistant.core.wiki.page_store import WikiPageStore, render_page
 
     store = WikiPageStore(wiki_root, create=True)
     page_path = Path(relative_path)
@@ -73,7 +73,7 @@ def _write_wiki_page(
 
 def _patch_router_page_store(wiki_root: Path):
     """Patch the wiki router to use a test page store rooted at wiki_root."""
-    from wiki.page_store import WikiPageStore
+    from literature_assistant.core.wiki.page_store import WikiPageStore
 
     store = WikiPageStore(wiki_root, create=False)
     return patch("routers.wiki_router._page_store", return_value=store)
@@ -84,7 +84,7 @@ class TestGetWikiPagePermissions:
 
     def test_get_permissions_success(self, client, mock_wiki_service, mock_wiki_enabled):
         """Successful get returns owner/visibility/shared_with."""
-        from wiki.models import WikiPage, WikiPageKind, WikiPageStatus
+        from literature_assistant.core.wiki.models import WikiPage, WikiPageKind, WikiPageStatus
 
         page = WikiPage(
             stable_slug="test-page",
@@ -122,7 +122,7 @@ class TestGetWikiPagePermissions:
 
     def test_get_permissions_access_denied(self, client, mock_wiki_service, mock_wiki_enabled):
         """Get permissions without read access returns 403."""
-        from wiki.models import WikiPage, WikiPageKind, WikiPageStatus
+        from literature_assistant.core.wiki.models import WikiPage, WikiPageKind, WikiPageStatus
 
         page = WikiPage(
             stable_slug="private-page",
@@ -159,7 +159,7 @@ class TestUpdateWikiPagePermissions:
 
     def test_update_permissions_success(self, client, mock_wiki_service, mock_wiki_enabled):
         """Successful update returns new permissions."""
-        from wiki.models import WikiPage, WikiPageKind, WikiPageStatus
+        from literature_assistant.core.wiki.models import WikiPage, WikiPageKind, WikiPageStatus
 
         page = WikiPage(
             stable_slug="test-page",
@@ -206,7 +206,7 @@ class TestUpdateWikiPagePermissions:
 
     def test_update_permissions_not_owner(self, client, mock_wiki_service, mock_wiki_enabled):
         """Update permissions by non-owner returns 403."""
-        from wiki.models import WikiPage, WikiPageKind, WikiPageStatus
+        from literature_assistant.core.wiki.models import WikiPage, WikiPageKind, WikiPageStatus
 
         page = WikiPage(
             stable_slug="test-page",
@@ -236,7 +236,7 @@ class TestUpdateWikiPagePermissions:
 
     def test_update_permissions_invalid_visibility(self, client, mock_wiki_service, mock_wiki_enabled):
         """Update with invalid visibility returns 400."""
-        from wiki.models import WikiPage, WikiPageKind, WikiPageStatus
+        from literature_assistant.core.wiki.models import WikiPage, WikiPageKind, WikiPageStatus
 
         page = WikiPage(
             stable_slug="test-page",
@@ -266,7 +266,7 @@ class TestUpdateWikiPagePermissions:
 
     def test_update_permissions_shared_with_users(self, client, mock_wiki_service, mock_wiki_enabled):
         """Update permissions with shared_with list."""
-        from wiki.models import WikiPage, WikiPageKind, WikiPageStatus
+        from literature_assistant.core.wiki.models import WikiPage, WikiPageKind, WikiPageStatus
 
         page = WikiPage(
             stable_slug="test-page",
@@ -312,7 +312,7 @@ class TestWikiPermissionsHelpers:
 
     def test_can_read_public_page(self):
         """Public pages are readable by all users."""
-        from wiki.permissions import can_read
+        from literature_assistant.core.wiki.permissions import can_read
 
         page_extra = {
             "permissions": {
@@ -328,7 +328,7 @@ class TestWikiPermissionsHelpers:
 
     def test_can_read_private_page(self):
         """Private pages are readable only by owner."""
-        from wiki.permissions import can_read
+        from literature_assistant.core.wiki.permissions import can_read
 
         page_extra = {
             "permissions": {
@@ -344,7 +344,7 @@ class TestWikiPermissionsHelpers:
 
     def test_can_read_shared_page(self):
         """Shared pages are readable by owner and shared_with users."""
-        from wiki.permissions import can_read
+        from literature_assistant.core.wiki.permissions import can_read
 
         page_extra = {
             "permissions": {
@@ -362,7 +362,7 @@ class TestWikiPermissionsHelpers:
 
     def test_can_write_owner_only(self):
         """Only owner can write to pages."""
-        from wiki.permissions import can_write
+        from literature_assistant.core.wiki.permissions import can_write
 
         page_extra = {
             "permissions": {
@@ -378,7 +378,7 @@ class TestWikiPermissionsHelpers:
 
     def test_permissions_backward_compat(self):
         """Pages without permissions fail closed to the local workspace owner."""
-        from wiki.permissions import can_read, can_write
+        from literature_assistant.core.wiki.permissions import can_read, can_write
 
         page_extra = {}
 
@@ -443,8 +443,8 @@ class TestWikiPermissionEnforcement:
 
     def test_query_filters_unreadable_fts_hits(self, client, mock_wiki_enabled, tmp_path):
         """FTS hits are filtered against the current wiki ACL before return."""
-        from wiki.page_store import WikiPageStore
-        from wiki.query import WikiQueryIndex, build_wiki_index
+        from literature_assistant.core.wiki.page_store import WikiPageStore
+        from literature_assistant.core.wiki.query import WikiQueryIndex, build_wiki_index
 
         wiki_root = tmp_path / "wiki"
         index_path = tmp_path / "runtime" / "wiki_query_index.db"

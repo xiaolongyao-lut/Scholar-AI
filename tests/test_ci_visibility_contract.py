@@ -576,19 +576,27 @@ def test_current_workflow_spine_goal_lifecycle_rollup_matches_requirements() -> 
         assert full_goal.startswith("complete")
 
 
-def test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim() -> None:
+def test_current_workflow_spine_agent_workspace_projection_exposes_completion_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Agent Workspace recovery projection must expose the real goal completion gate."""
 
     from literature_assistant.core.routers import agent_workspace_router
 
-    if not (REPO_ROOT / WORKFLOW_SPINE_GOAL_STATE).is_file():
+    goal_state_path = REPO_ROOT / WORKFLOW_SPINE_GOAL_STATE
+    monkeypatch.setattr(
+        agent_workspace_router,
+        "_latest_goal_state_file",
+        lambda: goal_state_path if goal_state_path.is_file() else None,
+    )
+    if not goal_state_path.is_file():
         summary = agent_workspace_router._load_goal_state_summary()
         assert summary.available is False
         assert summary.path is None
         assert summary.error == "no longrun goal-state record found"
         return
 
-    payload = _read_json_object(REPO_ROOT / WORKFLOW_SPINE_GOAL_STATE)
+    payload = _read_json_object(goal_state_path)
     completion_claim = payload.get("completion_claim")
     assert isinstance(completion_claim, dict)
     rollup = payload.get("goal_lifecycle_rollup")

@@ -502,6 +502,35 @@ def _chunk_figure_table_candidate(chunk: dict[str, Any]) -> str | None:
     return None
 
 
+def _coerce_internal_normalized_ratio_bbox(
+    bbox: Any,
+    bbox_unit: Any,
+) -> list[float] | None:
+    """Return ratio geometry for bounded internal legacy heuristics only.
+
+    Persisted chunks created before ``bbox_unit`` existed may still carry
+    normalized-ratio coordinates. This helper accepts that one legacy shape
+    without synthesizing a unit for locators, evidence refs, or API payloads.
+    """
+
+    if bbox_unit is None:
+        raw_unit = ""
+    elif isinstance(bbox_unit, PdfBboxUnit):
+        raw_unit = bbox_unit.value
+    elif isinstance(bbox_unit, str):
+        raw_unit = bbox_unit.strip().casefold()
+    else:
+        return None
+    if raw_unit not in {"", PdfBboxUnit.NORMALIZED_RATIO.value}:
+        return None
+    normalized_bbox = coerce_pdf_bbox(bbox)
+    if normalized_bbox is None:
+        return None
+    if not pdf_bbox_matches_unit(normalized_bbox, PdfBboxUnit.NORMALIZED_RATIO):
+        return None
+    return normalized_bbox
+
+
 def _chunk_image_paths(
     chunk: dict[str, Any],
     *,
@@ -525,15 +554,11 @@ def _chunk_image_paths(
         not isinstance(max_items, int) or max_items < 1 or max_items > 32
     ):
         raise ValueError("max_items must be between 1 and 32")
-    bbox_anchor = _coerce_declared_bbox_anchor(
+    internal_bbox = _coerce_internal_normalized_ratio_bbox(
         chunk.get("bbox"),
         chunk.get("bbox_unit"),
     )
-    if (
-        bbox_anchor is not None
-        and bbox_anchor[1] == PdfBboxUnit.NORMALIZED_RATIO
-        and _bbox_is_probable_page_screenshot(bbox_anchor[0])
-    ):
+    if internal_bbox is not None and _bbox_is_probable_page_screenshot(internal_bbox):
         return []
 
     values: list[Any] = []
