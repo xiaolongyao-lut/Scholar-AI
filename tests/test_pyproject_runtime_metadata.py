@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -18,6 +19,21 @@ def test_pyproject_declares_python_311_runtime_floor() -> None:
     assert data["project"]["requires-python"] == ">=3.11"
     assert data["tool"]["mypy"]["python_version"] == "3.11"
     assert data["tool"]["black"]["target-version"] == ["py311"]
+
+
+def test_mypy_excludes_ignored_local_resource_importers() -> None:
+    """Ignored importer resources must not contaminate tracked-source discovery."""
+
+    data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    mypy_config = data["tool"]["mypy"]
+    excluded_patterns = mypy_config["exclude"]
+    ignored_importer = (
+        "literature_assistant/core/skills/importers/"
+        "ui-ux-pro-max/src/ui-ux-pro-max/data/_sync_all.py"
+    )
+
+    assert mypy_config.get("exclude_gitignore") is not True
+    assert any(re.search(pattern, ignored_importer) for pattern in excluded_patterns)
 
 
 def test_pyproject_reads_product_version_from_runtime_source() -> None:

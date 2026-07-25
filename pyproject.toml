@@ -105,6 +105,7 @@ ignore_missing_imports = true
 files = ["literature_assistant", "run_literature_assistant.py", "sitecustomize.py"]
 exclude = [
     "tests/",
+    "ui-ux-pro-max",
     ".venv",
     "__pycache__",
 ]
