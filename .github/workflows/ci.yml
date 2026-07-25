@@ -72,6 +72,7 @@ jobs:
             tests/test_ocr_ingestion.py \
             tests/test_resources_chunk_locator.py \
             tests/test_terminal_output.py \
+            tests/test_pyproject_runtime_metadata.py \
             tests/test_ci_visibility_contract.py \
             tests/test_wiki_crud.py \
             tests/wiki/test_query.py \
