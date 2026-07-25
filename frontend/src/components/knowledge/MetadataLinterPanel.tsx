@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, CheckCircle2, Info, Loader2, Sparkles } from 'lucide-react';
+import { AlertTriangle, Info, Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import axios from 'axios';
@@ -101,14 +101,10 @@ export function MetadataLinterPanel({ projectId, onComplete }: MetadataLinterPan
       const baseUrl = getApiBaseUrl();
 
       // 调用异步端点创建后台任务
-      console.log('[Linter] 创建后台任务...');
-      const { data: taskData } = await axios.post(`${baseUrl}/api/linter/lint/batch/async`, {
+      await axios.post(`${baseUrl}/api/linter/lint/batch/async`, {
         project_id: projectId,
         preferred_case: caseStyle,
       }, { timeout: 5000 });
-
-      const taskId = taskData.task_id;
-      console.log('[Linter] 任务已创建:', taskId);
 
       // 显示提示消息
       setSuccessMessage('检查任务已在后台启动，请到"任务中心"查看进度');
@@ -132,7 +128,6 @@ export function MetadataLinterPanel({ projectId, onComplete }: MetadataLinterPan
     }
 
     const fixableFields = getFixableFields(result);
-    console.log('[Linter] 可修复字段:', fixableFields, '问题列表:', result.issues);
 
     if (fixableFields.length === 0) {
       setSuccessMessage(null);
@@ -146,35 +141,22 @@ export function MetadataLinterPanel({ projectId, onComplete }: MetadataLinterPan
     setApplyingFixes(prev => new Set(prev).add(materialId));
     try {
       const baseUrl = getApiBaseUrl();
-      console.log('[Linter] 发送修复请求:', { material_id: materialId, fixes: fixableFields });
       const { data } = await axios.post<ApplyFixesResponse>(`${baseUrl}/api/linter/apply-fixes`, {
         material_id: materialId,
         fixes: fixableFields,
         preferred_case: caseStyle,
       }, { timeout: 15000 });
 
-      console.log('[Linter] 修复成功:', data);
-      console.log('[Linter] 修复后的结果:', data.result);
-      console.log('[Linter] 修复后的问题数:', data.result?.issues?.length);
-
       // 更新结果：如果修复后没有问题了，从列表中移除
       setResults(prev => {
-        console.log('[Linter] 当前结果列表:', prev);
         const updated = prev.map(r => {
           if (r.material_id === materialId) {
-            console.log('[Linter] 找到匹配的文献，更新为:', data.result);
             return data.result;
           }
           return r;
         });
         // 过滤掉没有问题的文献
-        const filtered = updated.filter(r => {
-          const hasIssues = r.issues && r.issues.length > 0;
-          console.log(`[Linter] 文献 ${r.material_id}: ${r.issues?.length || 0} 个问题, 保留: ${hasIssues}`);
-          return hasIssues;
-        });
-        console.log('[Linter] 过滤后的结果:', filtered);
-        return filtered;
+        return updated.filter(r => r.issues.length > 0);
       });
 
       setSuccessMessage(`已修复 ${fixableFields.length} 个字段`);
@@ -183,8 +165,14 @@ export function MetadataLinterPanel({ projectId, onComplete }: MetadataLinterPan
       if (onComplete) onComplete();
     } catch (err) {
       console.error('[Linter] 应用修复失败:', err);
-      const axiosError = err as any;
-      const detail = axiosError?.response?.data?.detail || axiosError?.message || '未知错误';
+      const responseDetail = axios.isAxiosError<{ detail?: unknown }>(err)
+        ? err.response?.data?.detail
+        : undefined;
+      const detail = typeof responseDetail === 'string' && responseDetail.trim()
+        ? responseDetail
+        : err instanceof Error && err.message.trim()
+          ? err.message
+          : '未知错误';
 
       // 如果是"没有可应用的修复"，说明已经是清洁状态
       if (detail.includes('没有可应用') || detail.includes('no fixes')) {
@@ -206,7 +194,6 @@ export function MetadataLinterPanel({ projectId, onComplete }: MetadataLinterPan
   const cleanResults = results.filter(r => r.issues.length === 0);
   const errorCount = results.filter(r => r.has_errors).length;
   const warningCount = results.filter(r => r.has_warnings).length;
-  const infoCount = results.filter(r => r.issues.some(issue => issue.severity === 'info')).length;
 
   return (
     <div className="space-y-2">

@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils';
 import {
   getKnowledgePackages,
   getKnowledgeRuntimeConformance,
-  type KnowledgeRuntimeConformanceItem,
   type KnowledgeRuntimeConformancePackage,
   type KnowledgeRuntimeConformanceResponse,
   type KnowledgePackageProjection,

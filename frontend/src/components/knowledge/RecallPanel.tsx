@@ -162,7 +162,6 @@ export function RecallPanel({
     void runPaper(state.query);
     void runInbox();
     // 故意只在挂载时跑一次；后续靠搜索框 / 刷新按钮主动触发。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSubmit = () => {

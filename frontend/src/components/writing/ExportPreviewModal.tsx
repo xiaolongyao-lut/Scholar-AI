@@ -17,7 +17,6 @@ import type { AcademicWritingLintResponse, ProjectExportResponseEnvelope } from 
 import {
   DOCUMENT_EXPORT_OPTIONS,
   getDocumentExportOption,
-  writingExportFormatLabel,
 } from './documentExportOptions';
 
 interface ExportPreviewModalProps {
