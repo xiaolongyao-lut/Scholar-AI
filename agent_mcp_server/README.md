@@ -27,6 +27,13 @@ typical workflow chains, full tool-name index, and the tool→code three-hop loc
 [`CAPABILITY_MAP.md`](./CAPABILITY_MAP.md) — agents can pull it via
 `source.read_file path=agent_mcp_server/CAPABILITY_MAP.md`.
 
+Tool loading profiles:
+
+- `LITASSIST_MCP_TOOL_PROFILE=full` or unset exposes the normal toolbox.
+- `LITASSIST_MCP_TOOL_PROFILE=minimal` exposes only the 22 Claude core tools
+  for self-check/navigation, evidence retrieval, desktop-visible answer
+  write-back, export, and safe source reading.
+
 Groups (prefix → implementation):
 
 - `source.*` — read-only source inspection (`tools/source.py`):
@@ -57,8 +64,8 @@ Groups (prefix → implementation):
   `workflow.run_json_workflow`, `workflow.run_python_sandbox`,
   `artifact.write_markdown`, `artifact.read_artifact`, `artifact.list_artifacts`.
 
-Experimental tools (OCR generation, visual review, translate/project packs,
-Python sandbox) are gated by `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1`.
+Experimental OCR/visual/translate/project-pack/sandbox tools are not listed
+unless `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1` is set.
 
 ## Proven Workflow Chains
 
@@ -125,12 +132,17 @@ server and must not print extra protocol noise.
 Optional non-secret runtime setting:
 
 ```powershell
+$env:LITASSIST_MCP_TOOL_PROFILE = "minimal"
 $env:LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS = "1"
 $env:LITASSIST_MCP_SKIP_BACKEND_AUTOSTART = "1"
 $env:LITASSIST_MCP_BACKEND_STARTUP_TIMEOUT_SEC = "45"
 ```
 
-`LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1` enables OCR/page-image artifact
+`LITASSIST_MCP_TOOL_PROFILE=minimal` is the recommended Claude context-budget
+profile after the verified chain
+`agent_request_create -> Claude answer -> agent_result -> answer_receipt_read`.
+
+`LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1` exposes OCR/page-image artifact
 generation, visual review packs, translation packs, project packs, and the
 bounded Python sandbox. Translation model calls still go through the Scholar AI
 backend; raw provider keys are never passed through MCP.

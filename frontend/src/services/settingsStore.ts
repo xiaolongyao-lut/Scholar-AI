@@ -65,7 +65,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   llm: {
     temperature: 0.7,
     topP: 0.9,
-    maxTokens: 4096,
+    maxTokens: 12000,
     systemPrompt: '',
   },
   embedding: {

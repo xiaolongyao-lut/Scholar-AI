@@ -1,4 +1,5 @@
 import type { GraphEdge, GraphNode, GraphPayloadV0 } from './payloadToRf';
+import { readNodeEvidenceText, readNodeLabel } from './graphEvidenceDisplay';
 
 /**
  * 六维思维角色 + 问题/背景兜底。
@@ -242,6 +243,7 @@ export interface DimensionGraphNode {
    */
   display: {
     title: string;
+    previewText: string | null;
     typeLabel: string;
     sourceLabel?: string;
     evidenceCount: number;
@@ -341,7 +343,8 @@ export function buildDimensionGraph(payload: GraphPayloadV0): DimensionGraph {
       dimension: assignment.dimension,
       reason: assignment.reason,
       display: {
-        title: truncateTitle(node.label),
+        title: truncateTitle(readNodeLabel(node)),
+        previewText: readNodeEvidenceText(node),
         typeLabel,
         sourceLabel: readSourceLabel(node),
         evidenceCount: (node.evidence_refs?.length ?? 0) + (node.source_ref ? 1 : 0),

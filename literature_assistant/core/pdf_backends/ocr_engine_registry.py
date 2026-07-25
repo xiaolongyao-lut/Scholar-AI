@@ -15,6 +15,11 @@ from .ocr_engine import (
     OcrReadinessStatus,
     OcrRuntimeConfig,
 )
+from .ocr_credential_config import (
+    OcrCredentialStore,
+    prepare_ocr_engine_config_for_persistence,
+    resolve_remote_ocr_credential_config,
+)
 
 
 OCR_POLICY_ENV_VAR = "LITASSIST_OCR_POLICY"
@@ -333,8 +338,9 @@ def build_ocr_engine(
     config: Mapping[str, Any] | None = None,
     *,
     include_builtins: bool = True,
+    credential_store: OcrCredentialStore | None = None,
 ) -> OcrEngine:
-    """Build a registered OCR engine by id."""
+    """Build a registered OCR engine, resolving remote credential references in memory."""
 
     if include_builtins:
         load_builtin_ocr_engines()
@@ -344,7 +350,13 @@ def build_ocr_engine(
     factory = _ENGINE_FACTORIES.get(normalized)
     if factory is None:
         raise ValueError(f"Unknown OCR engine: {normalized}")
-    return factory(dict(config or {}))
+    engine_config = dict(config or {})
+    if normalized == "remote_api":
+        engine_config = resolve_remote_ocr_credential_config(
+            engine_config,
+            credential_store=credential_store,
+        )
+    return factory(engine_config)
 
 
 def resolve_ocr_runtime_config(
@@ -414,7 +426,7 @@ def write_ocr_runtime_config(
         "policy": config.policy,
         "engine": config.engine,
         "language": config.language,
-        "engine_config": dict(config.engine_config),
+        "engine_config": prepare_ocr_engine_config_for_persistence(config.engine_config),
     }
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -425,6 +437,7 @@ def write_ocr_runtime_config(
 def list_ocr_engine_info(
     *,
     engine_config: Mapping[str, Any] | None = None,
+    credential_store: OcrCredentialStore | None = None,
 ) -> list[OcrEngineInfo]:
     """Return public metadata for all registered OCR engines."""
 
@@ -432,7 +445,12 @@ def list_ocr_engine_info(
     config = dict(engine_config or {})
     items: list[OcrEngineInfo] = []
     for name in list_ocr_engine_names(include_builtins=False):
-        engine = build_ocr_engine(name, config, include_builtins=False)
+        engine = build_ocr_engine(
+            name,
+            config,
+            include_builtins=False,
+            credential_store=credential_store,
+        )
         available = engine.is_available()
         unavailable_reason = None if available else engine.unavailable_reason()
         readiness_status = _engine_readiness_status(
@@ -470,6 +488,8 @@ def list_ocr_engine_info(
 
 def select_ocr_engine(
     runtime_config: OcrRuntimeConfig | None = None,
+    *,
+    credential_store: OcrCredentialStore | None = None,
 ) -> tuple[OcrEngine | None, str | None]:
     """Select an OCR engine for a scanned-page workload.
 
@@ -483,7 +503,11 @@ def select_ocr_engine(
         return None, "OCR policy is none"
 
     if config.engine:
-        engine = build_ocr_engine(config.engine, config.engine_config)
+        engine = build_ocr_engine(
+            config.engine,
+            config.engine_config,
+            credential_store=credential_store,
+        )
         if engine.is_available():
             return engine, None
         return None, engine.unavailable_reason() or f"OCR engine {config.engine} is unavailable"
@@ -493,7 +517,12 @@ def select_ocr_engine(
 
     available_by_name: dict[str, OcrEngine] = {}
     for name in list_ocr_engine_names():
-        engine = build_ocr_engine(name, config.engine_config, include_builtins=False)
+        engine = build_ocr_engine(
+            name,
+            config.engine_config,
+            include_builtins=False,
+            credential_store=credential_store,
+        )
         if engine.is_available():
             available_by_name[name] = engine
     for preferred in _AUTO_PRIORITY:
@@ -505,11 +534,13 @@ def select_ocr_engine(
 
 def public_ocr_status(
     runtime_config: OcrRuntimeConfig | None = None,
+    *,
+    credential_store: OcrCredentialStore | None = None,
 ) -> dict[str, Any]:
     """Return redacted OCR runtime status for API responses."""
 
     config = runtime_config or resolve_ocr_runtime_config()
-    selected, warning = select_ocr_engine(config)
+    selected, warning = select_ocr_engine(config, credential_store=credential_store)
     selected_engine_name = selected.name if selected is not None else None
     return {
         "policy": config.policy,
@@ -519,7 +550,11 @@ def public_ocr_status(
         "source": config.source,
         "engine_config": _redact_config(config.engine_config),
         "available_engines": [
-            item.as_dict() for item in list_ocr_engine_info(engine_config=config.engine_config)
+            item.as_dict()
+            for item in list_ocr_engine_info(
+                engine_config=config.engine_config,
+                credential_store=credential_store,
+            )
         ],
         "warning": warning,
         "next_safe_local_actions": list(

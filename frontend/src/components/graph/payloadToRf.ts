@@ -26,11 +26,21 @@ export interface GraphNode extends Omit<GeneratedGraphNode, 'source_ref' | 'evid
 export interface GraphEdge extends Omit<GeneratedGraphEdge, 'source_ref' | 'evidence_refs'> {
   source_ref?: SourceRef | null;
   evidence_refs?: EvidenceRef[] | null;
+  direction?: 'directed' | 'undirected';
 }
 
 export interface GraphPayloadV0 extends Omit<GeneratedGraphPayloadV0, 'nodes' | 'edges'> {
   nodes: GraphNode[];
   edges: GraphEdge[];
+}
+
+export type GraphViewportPayloadEdge = GraphEdge & {
+  direction: 'directed' | 'undirected';
+};
+
+export interface GraphViewportPayload {
+  nodes: GraphNode[];
+  edges: GraphViewportPayloadEdge[];
 }
 
 const NODE_TYPE_STYLE: Record<string, { background: string; border: string }> = {
@@ -206,39 +216,72 @@ function edgeStroke(relation: GraphEdge['relation']): string {
   return 'hsl(var(--outline) / 0.82)';
 }
 
+export function resolveGraphEdgeDirection(edge: GraphEdge): 'directed' | 'undirected' {
+  if (edge.direction === 'directed' || edge.direction === 'undirected') {
+    return edge.direction;
+  }
+  const metadataDirection = edge.metadata?.direction;
+  if (metadataDirection === 'directed' || metadataDirection === 'undirected') {
+    return metadataDirection;
+  }
+  return edge.relation === 'related' ? 'undirected' : 'directed';
+}
+
+/**
+ * Normalize the transport payload into the shared read-only viewport contract.
+ * Invalid dangling edges stay outside the canvas and every retained edge has an
+ * explicit direction, including legacy payloads that only encoded a relation.
+ */
+export function payloadToGraphViewport(payload: GraphPayloadV0): GraphViewportPayload {
+  const nodeIds = new Set(payload.nodes.map((node) => node.id));
+  const undirectedEdgeKeys = new Set<string>();
+  const edges = payload.edges
+    .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+    .map((edge): GraphViewportPayloadEdge => {
+      const direction = resolveGraphEdgeDirection(edge);
+      if (direction === 'directed' || edge.source <= edge.target) {
+        return { ...edge, direction };
+      }
+      return { ...edge, source: edge.target, target: edge.source, direction };
+    })
+    .filter((edge) => {
+      if (edge.direction === 'directed') return true;
+      const semanticKey = `${edge.relation}\u0000${edge.source}\u0000${edge.target}`;
+      if (undirectedEdgeKeys.has(semanticKey)) return false;
+      undirectedEdgeKeys.add(semanticKey);
+      return true;
+    });
+  return { nodes: payload.nodes, edges };
+}
+
 /**
  * Map a GraphPayload v0 into the shape React Flow consumes. dagre
  * runs separately (layoutWithDagre) so this stays free of side effects
  * and is trivially unit-testable.
  */
 export function payloadToRf(payload: GraphPayloadV0): { nodes: Node[]; edges: Edge[] } {
-  const nodeIds = new Set(payload.nodes.map((node) => node.id));
-  const graphEdges = payload.edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target));
-  const edges: Edge[] = graphEdges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    label: e.relation,
-    data: { raw: e },
-    type: 'smoothstep',
-    markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-    style: {
-      stroke: edgeStroke(e.relation),
-      strokeWidth: e.relation === 'supports' ? 1.8 : 1.3,
-    },
-    labelStyle: {
-      fill: 'hsl(var(--foreground) / 0.62)',
-      fontSize: 10,
-      fontWeight: 500,
-    },
-    labelBgStyle: {
-      fill: 'hsl(var(--surface-lowest) / 0.85)',
-    },
-    // Subtle styling — emphasise supports/contradicts visually.
-    animated: e.relation === 'supports' || e.relation === 'contradicts',
-  }));
+  const { nodes: graphNodes, edges: graphEdges } = payloadToGraphViewport(payload);
+  const edges: Edge[] = graphEdges.map((e) => {
+    const direction = e.direction;
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      data: { raw: e, direction },
+      type: 'bezier',
+      pathOptions: { curvature: 0.12 },
+      markerEnd: direction === 'directed'
+        ? { type: MarkerType.ArrowClosed, width: 12, height: 12 }
+        : undefined,
+      style: {
+        stroke: edgeStroke(e.relation),
+        strokeWidth: e.relation === 'supports' ? 1.8 : 1.3,
+      },
+      animated: false,
+    };
+  });
 
-  const nodes: Node[] = payload.nodes.map((n) => {
+  const nodes: Node[] = graphNodes.map((n) => {
     const weight = nodeWeight(n, graphEdges);
     return {
       id: n.id,

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { getApiBaseUrl } from './apiBaseUrl';
 import type { components } from '@/generated/openapi';
+import { isPdfBboxUnit, PDF_URL_BBOX_UNIT, type PdfBboxUnit } from '@/lib/pdfAnchor';
 
 // Import wire types directly from the generated OpenAPI bindings so the
 // service layer stays independent of any UI helper modules.
@@ -35,6 +36,7 @@ export type EvidenceGraphRelation =
   | 'mentions'
   | 'promoted_to'
   | 'related';
+export type EvidenceGraphDirection = 'directed' | 'undirected';
 export type EvidenceGraphStatus = 'trusted' | 'candidate' | 'rejected' | 'stale';
 export type EvidenceGraphCreatedBy =
   | 'parser'
@@ -59,6 +61,7 @@ export interface EvidenceGraphProvenanceRef {
   material_id?: string | null;
   page?: number | null;
   bbox?: number[] | null;
+  bbox_unit?: PdfBboxUnit | null;
   text_hash?: string | null;
   quote: string;
 }
@@ -78,6 +81,7 @@ export interface EvidenceGraphEdge {
   source: string;
   target: string;
   relation: EvidenceGraphRelation;
+  direction: EvidenceGraphDirection;
   status: EvidenceGraphStatus;
   confidence?: number | null;
   provenance_refs: EvidenceGraphProvenanceRef[];
@@ -106,8 +110,47 @@ export interface EvidenceGraphQuery {
   scope_kind?: EvidenceGraphScopeKind;
   scope_ref?: string;
   session_id?: string;
+  turn_id?: string;
+  filter?: string;
+  top_k?: number;
+  min_similarity?: number;
+}
+
+export interface ProjectEvidenceGraphQuery {
+  project_id: string;
+  top_k?: number;
+  min_similarity?: number;
+}
+
+export interface AnswerEvidenceGraphQuery {
+  session_id: string;
+  turn_id: string;
+}
+
+export interface WikiEvidenceGraphQuery {
+  scope_kind?: Exclude<EvidenceGraphScopeKind, 'smart_read_session'>;
+  scope_ref?: string;
   filter?: string;
 }
+
+export const EVIDENCE_GRAPH_DIRECT_NODE_LIMIT = 150;
+export const EVIDENCE_GRAPH_DIRECT_EDGE_LIMIT = 600;
+export const EVIDENCE_GRAPH_NODE_LIMIT = 300;
+export const EVIDENCE_GRAPH_EDGE_LIMIT = 1000;
+
+const EVIDENCE_GRAPH_RELATION_DIRECTIONS: Readonly<Record<EvidenceGraphRelation, EvidenceGraphDirection>> = {
+  contains: 'directed',
+  derived_from: 'directed',
+  cites: 'directed',
+  supports: 'directed',
+  contradicts: 'directed',
+  uses_method: 'directed',
+  uses_dataset: 'directed',
+  evaluated_by: 'directed',
+  mentions: 'directed',
+  promoted_to: 'directed',
+  related: 'undirected',
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -155,6 +198,10 @@ function isEvidenceRelation(value: unknown): value is EvidenceGraphRelation {
     || value === 'mentions'
     || value === 'promoted_to'
     || value === 'related';
+}
+
+function isEvidenceDirection(value: unknown): value is EvidenceGraphDirection {
+  return value === 'directed' || value === 'undirected';
 }
 
 function isEvidenceStatus(value: unknown): value is EvidenceGraphStatus {
@@ -217,6 +264,14 @@ function readBbox(value: unknown): number[] | null {
   return values;
 }
 
+function readBboxUnit(value: unknown, bbox: number[] | null): PdfBboxUnit | null {
+  if (value !== null && value !== undefined && !isPdfBboxUnit(value)) {
+    throw new Error('Invalid evidence graph response: bbox_unit must be a supported PDF coordinate unit or null');
+  }
+  if (bbox === null) return null;
+  return value ?? PDF_URL_BBOX_UNIT;
+}
+
 function parseEvidenceGraphScope(value: unknown): EvidenceGraphScope {
   if (!isRecord(value) || !isEvidenceScopeKind(value.kind)) {
     throw new Error('Invalid evidence graph response: scope is invalid');
@@ -231,6 +286,7 @@ function parseProvenanceRef(value: unknown): EvidenceGraphProvenanceRef {
   if (!isRecord(value)) {
     throw new Error('Invalid evidence graph response: provenance ref must be an object');
   }
+  const bbox = readBbox(value.bbox);
   return {
     source_id: readOptionalString(value.source_id, 'source_id'),
     source_vault_id: readOptionalString(value.source_vault_id, 'source_vault_id'),
@@ -238,7 +294,8 @@ function parseProvenanceRef(value: unknown): EvidenceGraphProvenanceRef {
     source_vault_chunk_id: readOptionalString(value.source_vault_chunk_id, 'source_vault_chunk_id'),
     material_id: readOptionalString(value.material_id, 'material_id'),
     page: readOptionalNumber(value.page, 'page'),
-    bbox: readBbox(value.bbox),
+    bbox,
+    bbox_unit: readBboxUnit(value.bbox_unit, bbox),
     text_hash: readOptionalString(value.text_hash, 'text_hash'),
     quote: typeof value.quote === 'string' ? value.quote : '',
   };
@@ -275,11 +332,29 @@ function parseEvidenceEdge(value: unknown): EvidenceGraphEdge {
   ) {
     throw new Error('Invalid evidence graph response: edge is invalid');
   }
+  const expectedDirection = EVIDENCE_GRAPH_RELATION_DIRECTIONS[value.relation];
+  const direction = value.direction === undefined
+    ? expectedDirection
+    : value.direction;
+  if (!isEvidenceDirection(direction)) {
+    throw new Error('Invalid evidence graph response: edge.direction must be directed or undirected');
+  }
+  if (direction !== expectedDirection) {
+    throw new Error(
+      `Invalid evidence graph response: ${value.relation} edges require direction=${expectedDirection}`,
+    );
+  }
+  let source = readString(value.source, 'edge.source');
+  let target = readString(value.target, 'edge.target');
+  if (direction === 'undirected' && target < source) {
+    [source, target] = [target, source];
+  }
   return {
     id: readString(value.id, 'edge.id'),
-    source: readString(value.source, 'edge.source'),
-    target: readString(value.target, 'edge.target'),
+    source,
+    target,
     relation: value.relation,
+    direction,
     status: value.status,
     confidence: readOptionalNumber(value.confidence, 'edge.confidence'),
     provenance_refs: parseProvenanceRefs(value.provenance_refs),
@@ -329,8 +404,92 @@ export async function getEvidenceGraph(query: EvidenceGraphQuery = {}): Promise<
       scope_kind: scopeKind,
       scope_ref: scopeRef,
       ...(query.session_id ? { session_id: query.session_id } : {}),
+      ...(query.turn_id ? { turn_id: query.turn_id } : {}),
       ...(query.filter ? { filter: query.filter } : {}),
+      ...(query.top_k !== undefined ? { top_k: query.top_k } : {}),
+      ...(query.min_similarity !== undefined ? { min_similarity: query.min_similarity } : {}),
     },
   });
-  return parseEvidenceGraphPayload(data);
+  return boundEvidenceGraphPayload(parseEvidenceGraphPayload(data));
+}
+
+function requiredQueryId(value: string, field: string): string {
+  const normalized = value.trim();
+  if (!normalized) throw new Error(`${field} must be a non-empty string`);
+  return normalized;
+}
+
+function withWarning(payload: EvidenceGraphPayload, warning: string): EvidenceGraphPayload {
+  return payload.warnings.includes(warning)
+    ? payload
+    : { ...payload, warnings: [...payload.warnings, warning] };
+}
+
+function boundEvidenceGraphPayload(payload: EvidenceGraphPayload): EvidenceGraphPayload {
+  if (payload.nodes.length <= EVIDENCE_GRAPH_NODE_LIMIT && payload.edges.length <= EVIDENCE_GRAPH_EDGE_LIMIT) {
+    if (
+      payload.nodes.length > EVIDENCE_GRAPH_DIRECT_NODE_LIMIT
+      || payload.edges.length > EVIDENCE_GRAPH_DIRECT_EDGE_LIMIT
+    ) {
+      return withWarning(
+        payload,
+        `图谱已进入性能模式（超过 ${EVIDENCE_GRAPH_DIRECT_NODE_LIMIT} 个节点或 ${EVIDENCE_GRAPH_DIRECT_EDGE_LIMIT} 条关系）。`,
+      );
+    }
+    return payload;
+  }
+
+  const nodes = payload.nodes.slice(0, EVIDENCE_GRAPH_NODE_LIMIT);
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const edges = payload.edges
+    .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+    .slice(0, EVIDENCE_GRAPH_EDGE_LIMIT);
+  const warning = `前端已将图谱限制为 ${EVIDENCE_GRAPH_NODE_LIMIT} 个节点和 ${EVIDENCE_GRAPH_EDGE_LIMIT} 条关系，以保持交互流畅。`;
+  return {
+    ...payload,
+    nodes,
+    edges,
+    warnings: payload.warnings.includes(warning) ? payload.warnings : [...payload.warnings, warning],
+  };
+}
+
+async function fetchEvidenceGraph(
+  path: string,
+  params: Readonly<Record<string, string | number>>,
+): Promise<EvidenceGraphPayload> {
+  const { data } = await axios.get<unknown>(`${API_BASE}${path}`, { params });
+  return boundEvidenceGraphPayload(parseEvidenceGraphPayload(data));
+}
+
+/** Read only the project graph domain; this endpoint cannot access Wiki or answer state. */
+export async function getProjectEvidenceGraph(
+  query: ProjectEvidenceGraphQuery,
+): Promise<EvidenceGraphPayload> {
+  const projectId = requiredQueryId(query.project_id, 'project_id');
+  return fetchEvidenceGraph('/api/graph/evidence/project', {
+    project_id: projectId,
+    ...(query.top_k !== undefined ? { top_k: query.top_k } : {}),
+    ...(query.min_similarity !== undefined ? { min_similarity: query.min_similarity } : {}),
+  });
+}
+
+/** Read exactly one persisted answer turn; question text is never accepted as a key. */
+export async function getAnswerEvidenceGraph(
+  query: AnswerEvidenceGraphQuery,
+): Promise<EvidenceGraphPayload> {
+  return fetchEvidenceGraph('/api/graph/evidence/answer', {
+    session_id: requiredQueryId(query.session_id, 'session_id'),
+    turn_id: requiredQueryId(query.turn_id, 'turn_id'),
+  });
+}
+
+/** Read only the Wiki graph domain; this endpoint cannot access project citation or answer stores. */
+export async function getWikiEvidenceGraph(
+  query: WikiEvidenceGraphQuery = {},
+): Promise<EvidenceGraphPayload> {
+  return fetchEvidenceGraph('/api/graph/evidence/wiki', {
+    scope_kind: query.scope_kind ?? 'project',
+    scope_ref: query.scope_ref ?? '',
+    ...(query.filter ? { filter: query.filter } : {}),
+  });
 }

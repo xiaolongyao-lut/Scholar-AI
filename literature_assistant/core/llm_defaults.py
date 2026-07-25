@@ -4,7 +4,7 @@ import os
 from typing import Any
 
 TASK_DEFAULTS: dict[str, dict[str, float | int]] = {
-    "chat": {"temperature": 0.35, "top_p": 0.8, "top_k": 40, "max_tokens": 1536},
+    "chat": {"temperature": 0.35, "top_p": 0.8, "top_k": 40, "max_tokens": 12000},
     "inspiration": {"temperature": 0.6, "top_p": 0.85, "top_k": 40, "max_tokens": 1024},
     "extraction": {"temperature": 0.05, "top_p": 0.5, "top_k": 20, "max_tokens": 1536},
     "summarization": {"temperature": 0.2, "top_p": 0.75, "top_k": 30, "max_tokens": 1024},
@@ -19,7 +19,9 @@ TASK_ALIASES = {
     "default": "chat",
 }
 
-MODEL_MAX_TOKENS = max(1, int(os.getenv("MODEL_MAX_TOKENS", "32768")))
+# This is an absolute validation guard, not the active answer budget. The
+# configured model context window supplies the runtime/frontend ceiling.
+MODEL_MAX_TOKENS = max(1, int(os.getenv("MODEL_MAX_TOKENS", "2000000")))
 _ALLOWED_KEYS = ("temperature", "top_p", "top_k", "max_tokens")
 
 

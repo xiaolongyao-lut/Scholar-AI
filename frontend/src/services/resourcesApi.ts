@@ -16,7 +16,6 @@
 import axios from 'axios';
 import { getApiBaseUrl } from './apiBaseUrl';
 import {
-  PDF_URL_BBOX_UNIT,
   isPdfBboxUnit,
   readPdfBbox,
   type PdfBbox,
@@ -54,21 +53,13 @@ function parseLocator(value: unknown): ChunkLocator | null {
     return null;
   }
   const hasBboxUnit = Object.prototype.hasOwnProperty.call(obj, 'bbox_unit');
-  const bboxUnit = hasBboxUnit && obj.bbox_unit !== null
-    ? (isPdfBboxUnit(obj.bbox_unit) ? obj.bbox_unit : null)
-    : bbox
-      ? PDF_URL_BBOX_UNIT
-      : null;
-  if (hasBboxUnit && obj.bbox_unit !== null && bboxUnit === null) {
-    return null;
-  }
+  const bboxUnit = hasBboxUnit && isPdfBboxUnit(obj.bbox_unit) ? obj.bbox_unit : null;
   return {
     material_id: obj.material_id,
     chunk_id: obj.chunk_id,
     page: obj.page,
     chunk_index: obj.chunk_index,
-    ...(hasBbox ? { bbox } : {}),
-    ...(bbox ? { bbox_unit: bboxUnit ?? PDF_URL_BBOX_UNIT } : hasBboxUnit ? { bbox_unit: null } : {}),
+    ...(bbox && bboxUnit ? { bbox, bbox_unit: bboxUnit } : {}),
   };
 }
 

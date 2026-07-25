@@ -1,6 +1,18 @@
-import { type ReactNode, type Ref } from 'react';
+import {
+  type Dispatch,
+  type ReactNode,
+  type Ref,
+  type SetStateAction,
+} from 'react';
 import { MessageRenderer, type ChatMessageData } from './MessageRenderer';
-import { ChatInput, type ChatInputHandle, type ChatInputSubmitPayload } from './ChatInput';
+import {
+  ChatInput,
+  type ChatAttachment,
+  type ChatInputHandle,
+  type ChatInputSubmitPayload,
+  type IdentifiedChatSelectionContext,
+  type ChatSelectionContext,
+} from './ChatInput';
 import type { EvidenceRefLike } from '@/components/evidence/EvidencePill';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +40,8 @@ interface ConversationProps {
   responding?: boolean;
   /** Cancel the active model request. */
   onStop?: () => void;
+  /** Visible label for stop semantics. */
+  stopLabel?: string;
   /** Edit a sent user message by branching from that point. */
   onEditMessage?: (message: ChatMessageData) => void;
   /** Fork the visible conversation from a message. */
@@ -37,8 +51,28 @@ interface ConversationProps {
   submitKey?: 'enter' | 'cmd-enter';
   /** Footer hint shown under the composer. */
   composerHint?: string;
+  /** Stable accessible composer name. */
+  composerAriaLabel?: string;
+  /** Focus the composer when the conversation mounts. */
+  autoFocusComposer?: boolean;
   /** Image attachment capability — opt-in. See ChatInput. */
   enableAttachments?: boolean;
+  /** Optional controlled attachment draft. */
+  attachments?: ChatAttachment[];
+  /** Controlled attachment draft change callback. */
+  onAttachmentsChange?: Dispatch<SetStateAction<ChatAttachment[]>>;
+  /** Parent-owned pending image-read count, retained across composer remounts. */
+  pendingAttachmentReads?: number;
+  /** Functional setter paired with `pendingAttachmentReads`. */
+  onPendingAttachmentReadsChange?: Dispatch<SetStateAction<number>>;
+  /** Typed PDF selection displayed by the composer without a screenshot preview. */
+  selectionContext?: ChatSelectionContext | null;
+  /** Clears the parent-owned PDF selection. */
+  onClearSelectionContext?: () => void;
+  /** Canonical ordered PDF selections displayed without screenshot previews. */
+  selectionContexts?: readonly IdentifiedChatSelectionContext[];
+  /** Removes one canonical PDF selection by its stable id. */
+  onRemoveSelectionContext?: (id: string) => void;
   /** Composer textarea rows. */
   composerRows?: number;
   /** Current-request project reasoning-bias toggle rendered above composer. */
@@ -55,6 +89,8 @@ interface ConversationProps {
   contextChips?: ReactNode;
   /** Optional controls rendered next to the composer, such as retrieval scope. */
   composerContext?: ReactNode;
+  /** Optional per-message footer, e.g. a page-specific action for the latest answer. */
+  messageFooter?: (message: ChatMessageData) => ReactNode;
   /** Optional row beneath the transcript and above the composer
    *  (e.g. typing indicator, error banner). */
   transcriptFooter?: ReactNode;
@@ -86,16 +122,28 @@ export function Conversation({
   disabled,
   responding,
   onStop,
+  stopLabel,
   onEditMessage,
   onForkMessage,
   submitKey,
   composerHint,
+  composerAriaLabel,
+  autoFocusComposer,
   enableAttachments,
+  attachments,
+  onAttachmentsChange,
+  pendingAttachmentReads,
+  onPendingAttachmentReadsChange,
+  selectionContext,
+  onClearSelectionContext,
+  selectionContexts,
+  onRemoveSelectionContext,
   composerRows,
   projectReasoningBias,
   emptyState,
   contextChips,
   composerContext,
+  messageFooter,
   transcriptFooter,
   inputRef,
   className,
@@ -119,6 +167,7 @@ export function Conversation({
                 navigateEvidenceAfterSelect={navigateEvidenceAfterSelect}
                 onEditMessage={onEditMessage}
                 onForkMessage={onForkMessage}
+                footer={messageFooter?.(m)}
               />
             ))}
         {transcriptFooter}
@@ -135,9 +184,20 @@ export function Conversation({
           disabled={disabled}
           responding={responding}
           onStop={onStop}
+          stopLabel={stopLabel}
           submitKey={submitKey}
           rows={composerRows}
+          ariaLabel={composerAriaLabel}
+          autoFocus={autoFocusComposer}
           enableAttachments={enableAttachments}
+          attachments={attachments}
+          onAttachmentsChange={onAttachmentsChange}
+          pendingAttachmentReads={pendingAttachmentReads}
+          onPendingAttachmentReadsChange={onPendingAttachmentReadsChange}
+          selectionContext={selectionContext}
+          onClearSelectionContext={onClearSelectionContext}
+          selectionContexts={selectionContexts}
+          onRemoveSelectionContext={onRemoveSelectionContext}
           hint={composerHint}
           projectReasoningBias={projectReasoningBias}
         />

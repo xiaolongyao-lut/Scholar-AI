@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from chunk_hashing import compute_chunk_hashes
+from chunk_hashing import CHUNK_HASH_VERSION, SUPPORTED_CHUNK_HASH_VERSIONS, compute_chunk_hashes
 
 
 IndexConsistencyStatus = Literal[
@@ -189,12 +189,14 @@ def build_chunk_truth_records(
     *,
     project_id: str,
     store: Mapping[str, Sequence[Mapping[str, Any]]],
+    hash_version: str = CHUNK_HASH_VERSION,
 ) -> dict[tuple[str, str], ChunkTruthRecord]:
     """Build truth records from the current chunk store.
 
     Args:
         project_id: Non-empty project id owning the chunk store.
         store: Mapping of material ids to chunk mappings.
+        hash_version: Canonical hash contract used by the owning manifest.
 
     Returns:
         Truth records keyed by ``(material_id, chunk_id)``.
@@ -207,6 +209,8 @@ def build_chunk_truth_records(
     normalized_project_id = _require_non_empty_string(project_id, name="project_id")
     if not isinstance(store, Mapping):
         raise TypeError("store must be a mapping of material ids to chunk sequences")
+    if hash_version not in SUPPORTED_CHUNK_HASH_VERSIONS:
+        raise ValueError("unsupported chunk hash version")
 
     records: dict[tuple[str, str], ChunkTruthRecord] = {}
     for raw_material_id, chunks in sorted(store.items(), key=lambda item: str(item[0])):
@@ -217,7 +221,11 @@ def build_chunk_truth_records(
             if not isinstance(chunk, Mapping):
                 raise TypeError("store chunks must be mappings")
             chunk_id = _require_non_empty_string(_bounded_text(chunk.get("chunk_id")), name="chunk_id")
-            hashes = compute_chunk_hashes(chunk, material_id_hint=material_id)
+            hashes = compute_chunk_hashes(
+                chunk,
+                material_id_hint=material_id,
+                hash_version=hash_version,
+            )
             record = ChunkTruthRecord(
                 project_id=normalized_project_id,
                 material_id=material_id,
@@ -322,6 +330,7 @@ def gate_chunk_index_consistency(
     index_records: Sequence[Mapping[str, Any] | IndexedChunkRecord],
     ledger_entries: Sequence[Mapping[str, Any]],
     expected_contract_hash: str,
+    hash_version: str = CHUNK_HASH_VERSION,
 ) -> IndexConsistencyReport:
     """Validate derived-index rows against chunk-store truth and ledger state.
 
@@ -331,6 +340,7 @@ def gate_chunk_index_consistency(
         index_records: Derived-index metadata rows or typed records.
         ledger_entries: Backfill ledger rows for the same project.
         expected_contract_hash: Current embedding contract hash for dense rows.
+        hash_version: Canonical hash contract used by the owning manifest.
 
     Returns:
         A report whose ``valid_indexes`` are the only safe rows for recall.
@@ -341,7 +351,11 @@ def gate_chunk_index_consistency(
     if isinstance(index_records, (str, bytes)) or not isinstance(index_records, Sequence):
         raise TypeError("index_records must be a sequence")
 
-    truth_by_key = build_chunk_truth_records(project_id=normalized_project_id, store=store)
+    truth_by_key = build_chunk_truth_records(
+        project_id=normalized_project_id,
+        store=store,
+        hash_version=hash_version,
+    )
     normalized_indexes = tuple(
         row
         if isinstance(row, IndexedChunkRecord)

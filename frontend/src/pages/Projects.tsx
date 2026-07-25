@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Folder, Clock, Loader2, Search, X, Trash2, CheckSquare, Square, FolderOpen } from 'lucide-react';
+import { Plus, Folder, Clock, Loader2, RefreshCw, Search, X, Trash2, CheckSquare, Square, FolderOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
@@ -75,6 +75,8 @@ export function Projects() {
   const [newDesc, setNewDesc] = useState('');
   const [newFolder, setNewFolder] = useState('');
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsLoadError, setProjectsLoadError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -161,6 +163,8 @@ export function Projects() {
   };
 
   const loadProjects = useCallback(async () => {
+    setProjectsLoading(true);
+    setProjectsLoadError('');
     try {
       const svc = getWritingBackendService();
       const list = await svc.listProjects();
@@ -173,9 +177,11 @@ export function Projects() {
         updatedAt: p.updated_at ? new Date(p.updated_at).toISOString().slice(0, 10) : '',
         description: p.description || '',
       })));
-    } catch {
-      // Keep empty state when backend list is unavailable
-      setProjects([]);
+    } catch (error: unknown) {
+      // A request failure does not prove that the user's projects were deleted.
+      setProjectsLoadError(formatProjectActionError(error, '项目列表暂时不可用，请稍后重试。'));
+    } finally {
+      setProjectsLoading(false);
     }
   }, []);
 
@@ -304,6 +310,16 @@ export function Projects() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-auto px-6 py-4">
+
+      {projectsLoadError && projects.length > 0 ? (
+        <div role="alert" className="mb-4 flex shrink-0 items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/30 dark:text-amber-200">
+          <span>{projectsLoadError}</span>
+          <button type="button" onClick={() => void loadProjects()} className="inline-flex shrink-0 items-center gap-1 font-medium underline underline-offset-2">
+            <RefreshCw size={12} />
+            重试
+          </button>
+        </div>
+      ) : null}
 
       {/* Create Project Dialog */}
       <AnimatePresence>
@@ -458,7 +474,33 @@ export function Projects() {
       </div>
 
       {/* Project grid */}
-      {filtered.length === 0 ? (
+      {projectsLoading && projects.length === 0 ? (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+          className="flex min-h-[220px] flex-1 items-center justify-center gap-2 rounded-lg border border-outline-variant/40 bg-surface-lowest px-4 py-12 text-sm text-foreground/50"
+        >
+          <Loader2 size={16} className="animate-spin" />
+          正在加载项目
+        </div>
+      ) : projectsLoadError && projects.length === 0 ? (
+        <EmptyState
+          title="项目加载失败"
+          description={projectsLoadError}
+          icon={<X size={40} />}
+          action={
+            <button
+              type="button"
+              onClick={() => void loadProjects()}
+              className="inline-flex items-center gap-2 rounded-lg border border-outline-variant/60 bg-surface-low px-3 py-2 text-sm font-medium text-foreground/70 transition-colors hover:border-primary/35 hover:text-primary"
+            >
+              <RefreshCw size={14} />
+              重新加载
+            </button>
+          }
+        />
+      ) : filtered.length === 0 ? (
         <EmptyState
           title={t('projects.empty_title')}
           description={t('projects.empty_description')}

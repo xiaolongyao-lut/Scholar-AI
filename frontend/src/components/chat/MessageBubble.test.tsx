@@ -58,12 +58,20 @@ function getEvidenceButton(name: RegExp | string): HTMLElement {
 }
 
 describe('MessageBubble openMaterial locator wiring', () => {
-  it('uses the page already on the EvidenceReference and skips the locator', async () => {
+  it('adds locator bbox to a page-level evidence reference', async () => {
+    locateChunkMock.mockResolvedValueOnce({
+      material_id: 'mat_a',
+      chunk_id: 'mat_a_chunk_3',
+      page: 7,
+      chunk_index: 3,
+      bbox: [0.12, 0.24, 0.5, 0.08],
+      bbox_unit: 'normalized_ratio',
+    });
     render(
       <MemoryRouter>
         <MessageBubble
           role="assistant"
-          content="answer"
+          content="answer [1]"
           evidenceRefs={[refWithPage()]}
           projectId="proj-1"
         />
@@ -71,7 +79,7 @@ describe('MessageBubble openMaterial locator wiring', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(getEvidenceButton(/Paper A/));
+    fireEvent.click(getEvidenceButton(/\[1\]/));
     await waitFor(() => {
       const url = screen.getByTestId('location').textContent ?? '';
       const parsed = parseLocationUrl(url);
@@ -82,8 +90,9 @@ describe('MessageBubble openMaterial locator wiring', () => {
       expect(parsed.searchParams.get('project_id')).toBe('proj-1');
       expect(parsed.searchParams.get('page')).toBe('7');
       expect(parsed.searchParams.get('chunk')).toBe('mat_a_chunk_3');
+      expect(parsed.searchParams.get('bbox')).toBe('0.12,0.24,0.5,0.08');
     });
-    expect(locateChunkMock).not.toHaveBeenCalled();
+    expect(locateChunkMock).toHaveBeenCalledWith('mat_a_chunk_3', 'proj-1');
   });
 
   it('calls locateChunk and uses the resolved page when EvidenceReference has chunk_id but no page', async () => {
@@ -97,7 +106,7 @@ describe('MessageBubble openMaterial locator wiring', () => {
       <MemoryRouter>
         <MessageBubble
           role="assistant"
-          content="answer"
+          content="answer [1]"
           evidenceRefs={[refWithoutPage()]}
           projectId="proj-1"
         />
@@ -105,7 +114,7 @@ describe('MessageBubble openMaterial locator wiring', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(getEvidenceButton(/Paper B/));
+    fireEvent.click(getEvidenceButton(/\[1\]/));
     await waitFor(() => {
       const url = screen.getByTestId('location').textContent ?? '';
       const parsed = parseLocationUrl(url);
@@ -127,7 +136,7 @@ describe('MessageBubble openMaterial locator wiring', () => {
       <MemoryRouter>
         <MessageBubble
           role="assistant"
-          content="answer"
+          content="answer [1]"
           evidenceRefs={[refWithoutPage()]}
           projectId="proj-1"
         />
@@ -135,7 +144,7 @@ describe('MessageBubble openMaterial locator wiring', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(getEvidenceButton(/Paper B/));
+    fireEvent.click(getEvidenceButton(/\[1\]/));
     await waitFor(() => {
       const url = screen.getByTestId('location').textContent ?? '';
       const parsed = parseLocationUrl(url);
@@ -150,7 +159,7 @@ describe('MessageBubble openMaterial locator wiring', () => {
     expect(locateChunkMock).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to page=1 when locator returns page=null', async () => {
+  it('omits the page param when locator returns page=null', async () => {
     locateChunkMock.mockResolvedValueOnce({
       material_id: 'mat_b',
       chunk_id: 'mat_b_chunk_5',
@@ -161,7 +170,7 @@ describe('MessageBubble openMaterial locator wiring', () => {
       <MemoryRouter>
         <MessageBubble
           role="assistant"
-          content="answer"
+          content="answer [1]"
           evidenceRefs={[refWithoutPage()]}
           projectId="proj-1"
         />
@@ -169,7 +178,7 @@ describe('MessageBubble openMaterial locator wiring', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(getEvidenceButton(/Paper B/));
+    fireEvent.click(getEvidenceButton(/\[1\]/));
     await waitFor(() => {
       const url = screen.getByTestId('location').textContent ?? '';
       expect(url).not.toContain('page=');
@@ -181,14 +190,14 @@ describe('MessageBubble openMaterial locator wiring', () => {
       <MemoryRouter>
         <MessageBubble
           role="assistant"
-          content="answer"
+          content="answer [1]"
           evidenceRefs={[refWithoutPage()]}
         />
         <LocationProbe />
       </MemoryRouter>,
     );
 
-    fireEvent.click(getEvidenceButton(/Paper B/));
+    fireEvent.click(getEvidenceButton(/\[1\]/));
     await waitFor(() => {
       const url = screen.getByTestId('location').textContent ?? '';
       const parsed = parseLocationUrl(url);
@@ -212,7 +221,7 @@ describe('MessageBubble openMaterial locator wiring', () => {
       <MemoryRouter>
         <MessageBubble
           role="assistant"
-          content="answer"
+          content="answer [1]"
           evidenceRefs={[refWithoutPage()]}
           projectId="proj-1"
         />
@@ -220,7 +229,7 @@ describe('MessageBubble openMaterial locator wiring', () => {
       </MemoryRouter>,
     );
 
-    const button = getEvidenceButton(/Paper B/);
+    const button = getEvidenceButton(/\[1\]/);
     fireEvent.click(button);
     await waitFor(() => {
       expect(screen.getByTestId('location').textContent).toContain('page=12');

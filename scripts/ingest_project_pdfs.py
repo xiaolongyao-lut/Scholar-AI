@@ -80,19 +80,32 @@ def _ingest_one_pdf(
     if material_id is None:
         material_id = f"mat_{uuid4().hex[:12]}"
 
-    payload = _rr._extract_document_payload_from_path(pdf_path.name, pdf_path)
+    existing_doc_store = _rr._load_doc_store(project_id)
+    existing_row = existing_doc_store.get(material_id)
+    existing_source_relative_path = ""
+    if isinstance(existing_row, dict):
+        existing_source_relative_path = str(existing_row.get("source_relative_path") or "").strip()
+
+    payload = _rr._extract_document_payload_from_path(
+        pdf_path.name,
+        pdf_path,
+        project_id=project_id,
+    )
     content = _rr._truncate_document_content(payload.content)
     result = _rr._write_material_document_content(
         project_id,
         material_id,
         pdf_path.name,
         content,
-        source_relative_path=pdf_path.name,
+        source_relative_path=existing_source_relative_path or pdf_path.name,
         source_fingerprint=_file_fingerprint(pdf_path),
         source_size=pdf_path.stat().st_size,
         source_mtime=pdf_path.stat().st_mtime,
         blocks=payload.blocks,
         markdown_full=payload.markdown_full,
+        parser_provenance=payload.parser_provenance,
+        parser_output_sha256=payload.parser_output_sha256,
+        ocr_report=payload.ocr_report,
     )
     return {
         "pdf": str(pdf_path),
@@ -137,13 +150,20 @@ def main() -> int:
     )
     project_dir = projects_root / args.project_id
     source_dir = project_dir / "source_files"
-    if not source_dir.is_dir():
-        print(f"[FATAL] source_files dir missing: {source_dir}")
-        return 2
 
     if args.pdf:
-        pdfs = [Path(args.pdf)]
+        explicit_pdf = Path(args.pdf).expanduser()
+        if not explicit_pdf.is_file():
+            print(f"[FATAL] explicit PDF missing: {explicit_pdf}")
+            return 2
+        if explicit_pdf.suffix.lower() != ".pdf":
+            print(f"[FATAL] explicit path is not a PDF: {explicit_pdf}")
+            return 2
+        pdfs = [explicit_pdf]
     else:
+        if not source_dir.is_dir():
+            print(f"[FATAL] source_files dir missing: {source_dir}")
+            return 2
         pdfs = sorted(p for p in source_dir.glob("*.pdf") if p.is_file())
 
     if not pdfs:

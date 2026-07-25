@@ -35,6 +35,33 @@ def _install_subprocess_spy(monkeypatch: Any, module: Any) -> list[dict[str, Any
     return calls
 
 
+def test_pywebview_launcher_import_does_not_load_dotenv() -> None:
+    """Importing launcher utilities must not inject provider credentials."""
+
+    assert start_desktop._STARTUP_DOTENV_LOADED_KEYS is None
+
+
+def test_pywebview_launcher_loads_dotenv_only_during_startup(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """Real desktop startup can opt into repo .env without import-time leakage."""
+
+    env_path = tmp_path / ".env"
+    env_path.write_text("SCHOLAR_AI_TEST_DOTENV_LOAD=first\n", encoding="utf-8")
+    monkeypatch.delenv("SCHOLAR_AI_TEST_DOTENV_LOAD", raising=False)
+    monkeypatch.setattr(start_desktop, "ROOT", tmp_path)
+    monkeypatch.setattr(start_desktop, "_STARTUP_DOTENV_LOADED_KEYS", None)
+
+    assert start_desktop._load_startup_dotenv_once() == 1
+    assert os.environ["SCHOLAR_AI_TEST_DOTENV_LOAD"] == "first"
+
+    env_path.write_text("SCHOLAR_AI_TEST_DOTENV_LOAD=second\n", encoding="utf-8")
+
+    assert start_desktop._load_startup_dotenv_once() == 1
+    assert os.environ["SCHOLAR_AI_TEST_DOTENV_LOAD"] == "first"
+
+
 def test_pywebview_launcher_builds_frontend_without_shell(tmp_path: Path, monkeypatch: Any) -> None:
     """The pywebview launcher should invoke npm by argv, not through shell parsing."""
     root = _prepare_frontend_root(tmp_path)
@@ -143,6 +170,9 @@ def test_desktop_initial_path_accepts_only_root_relative_spa_paths() -> None:
         "//example.com/wiki",
         "wiki",
         "/../settings",
+        "/agent-sidebar",
+        "/agent-sidebar?project_id=proj_93fda911ed2b",
+        "/agent-sidebar/nested",
         "/wiki#fragment",
         "/wiki\\settings",
         "/wiki\nsettings",

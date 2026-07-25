@@ -6,7 +6,7 @@
  */
 
 import type { components } from "../generated/openapi";
-import type { PdfBboxUnit } from "@/lib/pdfAnchor";
+import type { PdfBbox, PdfBboxUnit } from "@/lib/pdfAnchor";
 
 export enum ProjectStatus {
   DRAFT = "draft",
@@ -102,6 +102,21 @@ export interface MaterialChunksResponse {
   material_id: string;
   total_chunks: number;
   chunks: ProjectChunkResource[];
+}
+
+export interface FormulaCandidateResource {
+  candidate_id: string;
+  page: number;
+  bbox: PdfBbox;
+  bbox_unit: 'normalized_ratio';
+  chunk_id?: string | null;
+  text?: string | null;
+}
+
+export interface FormulaCandidatesResponse {
+  project_id: string;
+  material_id: string;
+  candidates: FormulaCandidateResource[];
 }
 
 export type FigureTableCandidateResource =

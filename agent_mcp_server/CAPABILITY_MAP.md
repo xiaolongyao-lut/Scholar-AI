@@ -11,7 +11,7 @@
 1. **注册口**：`agent_mcp_server/src/lit_assistant_mcp/server.py`，搜 `name="<工具名>"`，看签名与一句话 docstring。
 2. **委托实现**：按前缀分流——
    - `source.*` → `tools/source.py`（只读源码检查，不碰后端）
-   - `literature.*` → `tools/runtime.py`（HTTP 调后端）/ 实验类在 `tools/experimental.py`
+   - `literature.*` → 通常在 `tools/runtime.py`（HTTP 调后端）；MCP App/resource 壳在 `server.py`；实验类在 `tools/experimental.py`
    - `workflow.* / artifact.*` → `tools/workflow.py` + `workflow_runtime/`
 3. **后端真源**：`literature.*` 落到 `runtime.py` 里的 `endpoint=`，对应 FastAPI 路由在 `literature_assistant/core/`（用 `source.inspect_routes` 反查）。
 
@@ -37,6 +37,14 @@ literature.launch_desktop       # 打开或附着源码桌面窗口 `文献助�
 
 MCP stdio wrapper 自己保持隐藏和协议干净；只有这个显式工具调用负责弹出终端。关闭逻辑保持用户手动关闭窗口或终端；MCP 不提供关闭工具。用户关掉窗口后，普通 MCP 重连不会偷偷重开；只有用户再次明确要求启动时才调用 `literature.launch_desktop`。
 
+如果用户说“打开 Codex 侧栏 / 打开 `/agent-sidebar`”，先调用：
+
+```text
+literature.agent_sidebar_url     # 读当前 runtime 端口，返回 /agent-sidebar 真实 URL
+```
+
+该 URL 复用当前 Scholar AI 后端；若 `8000` 被占用而桌面端动态切到其他端口，返回值会跟随实际端口，不要手写固定 `http://127.0.0.1:8000/agent-sidebar`。
+
 后端没起时 `literature.*` 会返回有界的 "backend unavailable" 或可启动提示；`source.*` 不依赖后端，始终可用。
 
 ## 结果信封与截断边界
@@ -54,7 +62,9 @@ MCP stdio wrapper 自己保持隐藏和协议干净；只有这个显式工具�
 | 动作 | 工具链 |
 |---|---|
 | 入库 | `literature.project_scan_folder` → `literature.list_materials` → `literature.get_material_chunks` |
+| 合规获取 | `literature.acquisition_status` → `literature.acquisition_search` → `literature.acquisition_search_run` → `literature.acquisition_download_queue` → `literature.acquisition_download_run` → `literature.acquisition_artifact_import` → `literature.acquisition_import_receipt` |
 | 问答取证 | `literature.search_refs` → `literature.evidence_pack_build` → `literature.evidence_integrity_gate` |
+| qrels 候选复审 | `literature.evidence_pack_build` → `literature.qrels_review_bundle`（candidate-only，不提升 canonical） |
 | 写作 | `evidence_pack_build` → `literature.outline_generate` → `literature.academic_writing_lint` → `literature.figures_generate` → `literature.export_docx` |
 | 引用核对 | `literature.citations_sources` → `literature.citations_detect_overlap` |
 | 读源码 | `source.inspect_routes` → `source.read_symbols` → `source.read_file` → `source.find_references` |
@@ -146,8 +156,12 @@ literature.source_vault_status           # Source Vault manifest/status
 
 | 工具 | 作用 | 后端 |
 |---|---|---|
+| `literature.agent_sidebar_url` | 返回 Codex side browser 应打开的 `/agent-sidebar` 当前 URL；读 runtime descriptor / base_url，不启动新后端 | `local:runtime_descriptor:/agent-sidebar` |
 | `literature.launch_desktop` | 打开/附着源码桌面 `文献助手`；缺运行时时开可见 PowerShell 终端跑 `start_desktop.py`；用户手动关闭窗口/终端 | `local:start_desktop.py` |
 | `literature.config_status` | 后端健康 | `GET /health` |
+| `literature.sidebar_app_status` | 侧栏桥状态；默认指向 Codex side-browser URL，MCP Apps 壳仍 host-gated | `literature.agent_sidebar_url + literature.config_status` |
+| `literature.codex_handoff_widget` | Scholar AI 主栏交接控件；用同一 `agent_request` / receipt / evidence refs，把接手指令经宿主 widget 按钮发送到 Codex 主栏 | `ui://scholar-ai/native-handoff-probe` |
+| `literature.native_handoff_widget_probe` | 兼容旧会话的原生 MCP widget 探针名；验证边界同上，不替代 `/agent-sidebar` | `ui://scholar-ai/native-handoff-probe` |
 | `literature.health_check` | 被动 workflow 就绪诊断 | `/api/health/check` |
 | `literature.zotero_attachment_health` | 只读 Zotero 附件健康 | `/api/zotero/attachment-health` |
 
@@ -161,16 +175,41 @@ literature.source_vault_status           # Source Vault manifest/status
 | `literature.get_material_chunks` | 读材料分块 | `/resources/material/{id}/chunks` |
 | `literature.project_scan_folder` | 提交项目源文件夹入库为 runtime job（scan_mode=fast/legacy） | 见 runtime.py |
 
-### 4. 检索与证据（核心问答链）
+### 4. 合规文献获取（`/api/acquisition/*`，仅 full profile）
+
+外部动作保持显式分步：搜索不会自动排队或下载，排队不会自动联网，下载完成也不会自动导入。
+无精确 `AccessEvidence` 不得排队；遇到登录、验证码、付费墙或其他访问门时停止，由用户在可见界面完成，随后才可用
+`confirm_user_completed=true` 解析 gate。工具不会接收或绕过站点凭证。
+
+| 工具 | 作用 | 后端 |
+|---|---|---|
+| `literature.acquisition_status` | 读取来源 allowlist、有限下载任务和人工 gate | `GET /api/acquisition/status` |
+| `literature.acquisition_search` | 显式查询 allowlisted 元数据源并持久化 bounded SearchRun | `POST /api/acquisition/search` |
+| `literature.acquisition_search_run` | 按 `candidate_offset` / `candidate_limit` 读取持久 SearchRun 候选页 | `GET /api/acquisition/search-runs/{run_id}` |
+| `literature.acquisition_download_queue` | 用候选和精确 OA 证据幂等创建 DownloadJob | `POST /api/acquisition/downloads` |
+| `literature.acquisition_download_run` | 显式运行或重试一个任务；下载、hash/PDF 校验后生成 artifact | `POST /api/acquisition/downloads/{job_id}/run` |
+| `literature.acquisition_download_control` | 显式 pause / resume / cancel，不隐式启动联网 | `POST /api/acquisition/downloads/{job_id}/control` |
+| `literature.acquisition_gate_resolve` | 用户确认可见访问步骤完成后解析 gate 并重新排队 | `POST /api/acquisition/gates/{gate_id}/resolve` |
+| `literature.acquisition_artifact_import` | 幂等复验并走现有 material/chunk/index 入库链，返回 ImportReceipt | `POST /api/acquisition/artifacts/{artifact_id}/import` |
+| `literature.acquisition_import_receipt` | 读取持久 ImportReceipt，并投影异步材料处理的最终状态 | `GET /api/acquisition/receipts/{receipt_id}` |
+
+若任务进入 `human_required`，恢复顺序是：用户完成可见步骤 →
+`literature.acquisition_gate_resolve(confirm_user_completed=true)` → `literature.acquisition_download_run`。
+不应把 resolve 当成验证码、登录、机构授权或付费墙绕过器。
+
+### 5. 检索与证据（核心问答链）
 
 | 工具 | 作用 | 后端 |
 |---|---|---|
 | `literature.search_refs` | 检索分块、只回 refs | `/resources/chunks/search-refs` |
 | `literature.evidence_pack_build` | 构建证据包 | `/api/evidence-pack/build` |
+| `literature.qrels_review_bundle` | 从证据包生成 candidate-only qrels 复审包，`next_action.kind=review_qrels` | `/api/evidence-pack/qrels-review-bundle` |
 | `literature.evidence_integrity_gate` | 读证据完整性投影（按 session/job/project 过滤） | 见 runtime.py |
 | `literature.knowledge_context_receipt` | 知识上下文回执 | `/api/knowledge/context-receipt` |
+| `literature.chat_ask_persisting` | 走持久化 SmartRead 路径并保存 sidebar answer receipt；`tier` 接受 `fast/balanced/thorough` 或 SmartRead UX 档 `low/medium/high/xhigh/max` | `/api/chat` |
+| `literature.answer_receipt_list` / `literature.answer_receipt_read` / `literature.answer_receipt_markdown` / `literature.answer_receipt_revalidate` | 列出/读取项目 answer receipt、staleness 投影、prompt/tool bridge Markdown 投影，并 dry-run/apply revalidate | `/api/chat/answer-receipts*` |
 
-### 5. 知识库 / Wiki / 词典 / 评分规则（`/api/knowledge/*`、`/api/wiki/*`）
+### 6. 知识库 / Wiki / 词典 / 评分规则（`/api/knowledge/*`、`/api/wiki/*`）
 
 | 工具 | 作用 |
 |---|---|
@@ -183,14 +222,14 @@ literature.source_vault_status           # Source Vault manifest/status
 | `literature.scoring_rules_status` / `scoring_rules_read` / `scoring_rules_search` | 评分规则 |
 | `literature.product_docs_status` / `product_docs_read` / `product_docs_search` | 产品文档 |
 
-### 6. OCR（`/api/pdf-backend/ocr-*`，部分实验门控）
+### 7. OCR（`/api/pdf-backend/ocr-*`，部分实验门控）
 
 | 工具 | 作用 |
 |---|---|
 | `literature.ocr_status` / `ocr_engines` / `ocr_health` / `ocr_execution_probe` | OCR 状态 / 引擎 / 健康 / 执行探针 |
 | `literature.ocr_material` | 对材料跑 OCR（实验门控） |
 
-### 7. 图表 / 引用 / 写作 / 导出
+### 8. 图表 / 引用 / 写作 / 导出
 
 | 工具 | 作用 |
 |---|---|
@@ -202,7 +241,7 @@ literature.source_vault_status           # Source Vault manifest/status
 | `literature.export_annotations_markdown` / `export_docx` / `export_project_pack` | 导出批注 / DOCX / 项目包 |
 | `literature.translate_pack` / `prepare_visual_review` | 翻译包 / 视觉复审（实验门控） |
 
-### 8. Agent 桥接与协作（`/api/agent-bridge/*`）
+### 9. Agent 桥接与协作（`/api/agent-bridge/*`）
 
 | 工具 | 作用 |
 |---|---|
@@ -210,11 +249,11 @@ literature.source_vault_status           # Source Vault manifest/status
 | `literature.agent_workspace_status` / `agent_workspace_requirement` | agent 工作区状态 / 需求 |
 | `literature.agent_request_create` / `agent_request_list` / `agent_request_read` | 请求创建 / 列表 / 读取 |
 | `literature.agent_resource_read` | 读桥接资源 |
-| `literature.agent_progress` / `agent_result` / `agent_fail` | 进度 / 结果 / 失败上报 |
+| `literature.agent_progress` / `agent_result` / `agent_fail` | 进度 / 结果 / 失败上报；`sidebar_answer` 结果写回 SmartRead answer receipt |
 | `literature.agent_handoff_card` | 交接卡 |
 | `literature.single_paper_task_create` / `single_paper_completion_check` | 单篇任务创建 / 完成检查 |
 
-### 9. Workflow 护栏与回放
+### 10. Workflow 护栏与回放
 
 | 工具 | 作用 |
 |---|---|
@@ -224,7 +263,7 @@ literature.source_vault_status           # Source Vault manifest/status
 | `literature.research_action_lifecycle` | 研究动作生命周期 |
 | `literature.behavior_eval_pack` | 行为评测包 |
 
-### 10. 工作流引擎与产物（`tools/workflow.py`）
+### 11. 工作流引擎与产物（`tools/workflow.py`）
 
 | 工具 | 作用 |
 |---|---|
@@ -244,6 +283,19 @@ artifact.write_markdown
 literature.academic_english_search
 literature.academic_english_status
 literature.academic_writing_lint
+literature.acquisition_artifact_import
+literature.acquisition_download_control
+literature.acquisition_download_queue
+literature.acquisition_download_run
+literature.acquisition_gate_resolve
+literature.acquisition_import_receipt
+literature.acquisition_search
+literature.acquisition_search_run
+literature.acquisition_status
+literature.answer_receipt_list
+literature.answer_receipt_read
+literature.answer_receipt_markdown
+literature.answer_receipt_revalidate
 literature.agent_bridge_status
 literature.agent_fail
 literature.agent_handoff_card
@@ -253,14 +305,17 @@ literature.agent_request_list
 literature.agent_request_read
 literature.agent_resource_read
 literature.agent_result
+literature.agent_sidebar_url
 literature.agent_workspace_requirement
 literature.agent_workspace_status
 literature.behavior_eval_pack
 literature.bridge_lexicon_read
 literature.bridge_lexicon_search
 literature.bridge_lexicon_status
+literature.chat_ask_persisting
 literature.citations_detect_overlap
 literature.citations_sources
+literature.codex_handoff_widget
 literature.config_status
 literature.evidence_integrity_gate
 literature.evidence_pack_build
@@ -279,6 +334,7 @@ literature.knowledge_runtime_conformance
 literature.launch_desktop
 literature.list_materials
 literature.list_projects
+literature.native_handoff_widget_probe
 literature.ocr_engines
 literature.ocr_execution_probe
 literature.ocr_health
@@ -290,12 +346,14 @@ literature.product_docs_read
 literature.product_docs_search
 literature.product_docs_status
 literature.project_scan_folder
+literature.qrels_review_bundle
 literature.read_material
 literature.research_action_lifecycle
 literature.scoring_rules_read
 literature.scoring_rules_search
 literature.scoring_rules_status
 literature.search_refs
+literature.sidebar_app_status
 literature.single_paper_completion_check
 literature.single_paper_task_create
 literature.skill_package_search
@@ -333,3 +391,5 @@ workflow.write_json_workflow
 不得通过 MCP/source/workflow 读取或导出：`.env*`、credential stores、runtime state、logs、
 browser profiles、rollback snapshots、`.claude/`、`.codex/`。实验类工具（OCR 生成、视觉复审、
 翻译包、项目包、Python 沙箱）由 `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1` 门控。
+合规获取工具仅在 full profile 暴露，并且只能使用来源 allowlist 与精确 AccessEvidence；遇到凭证、
+验证码、付费墙、登录、robots 或其他访问门必须停止，不得自动绕过。

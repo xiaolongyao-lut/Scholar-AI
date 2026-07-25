@@ -6,7 +6,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import re
+import subprocess
+import sys
+import time
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
@@ -29,9 +35,10 @@ from literature_assistant.core.source_vault import (
     bounded_text,
 )
 from literature_assistant.core.skill_package_knowledge import read_skill_package_resource
-from literature_assistant.core.project_paths import wiki_generated_root
+from literature_assistant.core.project_paths import REPO_ROOT, desktop_runtime_file_path, runtime_state_path, wiki_generated_root
 from literature_assistant.core.wiki.page_store import AUTO_END, AUTO_START, WikiPageStore
 from literature_assistant.core.wiki.source_registry import derive_chunk_id
+from chat.history_store import ChatHistoryStore, default_chat_history_db_path
 
 
 router = APIRouter(prefix="/api/agent-bridge", tags=["Agent Bridge"])
@@ -45,6 +52,282 @@ MAX_WIKI_CAPTURE_BODY_CHARS = 40000
 SINGLE_PAPER_TASK_SCHEMA_VERSION = "scholar-ai-single-paper-task/v1"
 SINGLE_PAPER_COMPLETION_SCHEMA_VERSION = "scholar-ai-single-paper-completion-check/v1"
 SINGLE_PAPER_TASK_SENTINEL = "待补充"
+DESKTOP_OPEN_SCHEMA_VERSION = "scholar-ai-agent-sidebar-desktop-open/v1"
+CODEX_HANDOFF_LATEST_SCHEMA_VERSION = "scholar-ai-codex-handoff-latest/v1"
+DESKTOP_OPEN_WAIT_SECONDS = 8.0
+_AGENT_RESULT_CONTENT_KEYS: frozenset[str] = frozenset(
+    {
+        "text",
+        "kind",
+        "request_id",
+        "answer_origin",
+        "answer_model",
+        "answer_model_origin",
+        "generated_in",
+        "evidence_origin",
+        "evidence_pack_ref",
+        "evidence_refs",
+        "wiki_refs",
+        "graph_patch_refs",
+        "qrels_status",
+        "evidence_gate_status",
+        "retrieval_diagnostics",
+        "output_language",
+        "lifecycle_state",
+        "title",
+        "tags",
+        "metadata",
+        "tool_outcome_refs",
+        "knowledge_consumer_refs",
+        "workflow_passport_ref",
+        "workflow_refs",
+        "research_action_lifecycle_ref",
+        "agent_handoff_card_ref",
+        "workflow_replay_lineage_ref",
+        "workflow_replay_index_ref",
+    }
+)
+_AGENT_RESULT_METADATA_KEYS: frozenset[str] = frozenset(
+    {
+        "artifact_id",
+        "artifact_kind",
+        "artifact_path",
+        "answer_model",
+        "answer_model_origin",
+        "docx_artifact_path",
+        "generated_via",
+        "generated_in",
+        "evidence_origin",
+        "evidence_pack_ref",
+        "qrels_status",
+        "evidence_gate_status",
+        "retrieval_diagnostics",
+        "output_language",
+        "lifecycle_state",
+        "title",
+        "tags",
+        "tool_outcome_refs",
+        "knowledge_consumer_refs",
+        "workflow_passport_ref",
+        "workflow_refs",
+        "research_action_lifecycle_ref",
+        "agent_handoff_card_ref",
+        "workflow_replay_lineage_ref",
+        "workflow_replay_index_ref",
+        "notes",
+    }
+)
+_AGENT_RESULT_DENIED_KEY_PARTS: tuple[str, ...] = (
+    "api_key",
+    "authorization",
+    "bearer",
+    "chain_of_thought",
+    "cookie",
+    "credential",
+    "private_reasoning",
+    "provider_payload",
+    "raw_payload",
+    "secret",
+    "token",
+)
+
+
+def _is_loopback_http_url(value: str) -> bool:
+    parsed = urllib.parse.urlparse(str(value or "").strip())
+    return parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost"} and parsed.port is not None
+
+
+def _pid_exists(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+            if not handle:
+                return False
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        except Exception:
+            return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _health_ok(base_url: str, timeout_sec: float = 1.5) -> bool:
+    if not _is_loopback_http_url(base_url):
+        return False
+    try:
+        with urllib.request.urlopen(f"{base_url.rstrip('/')}/health", timeout=timeout_sec) as response:
+            return 200 <= int(getattr(response, "status", 0)) < 300
+    except OSError:
+        return False
+
+
+def _read_running_desktop_runtime() -> dict[str, Any] | None:
+    descriptor = desktop_runtime_file_path()
+    if not descriptor.is_file():
+        return None
+    try:
+        payload = json.loads(descriptor.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("process_kind") != "desktop" or payload.get("ready") is not True:
+        return None
+    pid_raw = payload.get("pid")
+    pid = int(pid_raw) if not isinstance(pid_raw, bool) and (isinstance(pid_raw, int) or (isinstance(pid_raw, str) and pid_raw.isdigit())) else 0
+    base_url = str(payload.get("base_url") or "").rstrip("/")
+    if not _is_loopback_http_url(base_url) or not _pid_exists(pid):
+        return None
+    if pid != os.getpid() and not _health_ok(base_url):
+        return None
+    return {
+        "pid": pid,
+        "base_url": base_url,
+        "window_title": str(payload.get("window_title") or "文献助手"),
+    }
+
+
+def _desktop_launch_command() -> tuple[list[str], dict[str, str]]:
+    start_script = REPO_ROOT / "start_desktop.py"
+    if not start_script.is_file():
+        raise RuntimeError("start_desktop.py not found")
+    env = dict(os.environ)
+    env["LITERATURE_ASSISTANT_REPO_ROOT"] = str(REPO_ROOT)
+    pythonw = REPO_ROOT / ".venv-1" / "Scripts" / "pythonw.exe"
+    python_exe = REPO_ROOT / ".venv-1" / "Scripts" / "python.exe"
+    executable = pythonw if sys.platform == "win32" and pythonw.is_file() else python_exe if python_exe.is_file() else Path(sys.executable)
+    return [str(executable), str(start_script)], env
+
+
+def _focus_current_pywebview_window() -> bool:
+    """Best-effort raise for the in-process pywebview desktop window."""
+
+    try:
+        import webview
+
+        windows = getattr(webview, "windows", None)
+        if not windows:
+            return False
+        window = windows[0]
+        try:
+            window.restore()
+        except Exception:
+            pass
+        try:
+            window.show()
+        except Exception:
+            pass
+        try:
+            window.on_top = True
+            time.sleep(0.05)
+            window.on_top = False
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+def _focus_windows_desktop_window(pid: int | None, window_title: str | None) -> bool:
+    """Best-effort raise for a running Windows desktop window by process id."""
+
+    if sys.platform != "win32" or pid is None or pid <= 0:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        matching_hwnds: list[int] = []
+        expected_title = str(window_title or "").strip()
+        enum_windows_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+        def _enum_window(hwnd: int, _lparam: int) -> bool:
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            process_id = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+            if int(process_id.value) != pid:
+                return True
+            length = int(user32.GetWindowTextLengthW(hwnd))
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buffer, length + 1)
+            title = buffer.value
+            if expected_title and expected_title not in title:
+                return True
+            matching_hwnds.append(int(hwnd))
+            return False
+
+        user32.EnumWindows(enum_windows_proc(_enum_window), 0)
+        if not matching_hwnds:
+            return False
+        hwnd = matching_hwnds[0]
+        sw_restore = 9
+        user32.ShowWindow(hwnd, sw_restore)
+        user32.BringWindowToTop(hwnd)
+        user32.SetForegroundWindow(hwnd)
+        return True
+    except Exception:
+        return False
+
+
+def _raise_running_desktop(runtime: dict[str, Any]) -> bool:
+    """Raise the current or recorded native desktop window when possible."""
+
+    if _focus_current_pywebview_window():
+        return True
+    pid = runtime.get("pid")
+    title = runtime.get("window_title")
+    return _focus_windows_desktop_window(pid if isinstance(pid, int) else None, str(title or "文献助手"))
+
+
+def _launch_desktop_if_needed() -> dict[str, Any]:
+    existing = _read_running_desktop_runtime()
+    if existing is not None:
+        focused = _raise_running_desktop(existing)
+        return {**existing, "status": "running", "started": False, "focused": focused}
+
+    command, env = _desktop_launch_command()
+    log_root = runtime_state_path("desktop_autostart")
+    log_root.mkdir(parents=True, exist_ok=True)
+    stdout_path = log_root / "agent_sidebar_desktop_open.stdout.log"
+    stderr_path = log_root / "agent_sidebar_desktop_open.stderr.log"
+    with stdout_path.open("ab") as stdout_file, stderr_path.open("ab") as stderr_file:
+        subprocess.Popen(
+            command,
+            cwd=REPO_ROOT,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+            close_fds=False,
+        )
+
+    deadline = time.monotonic() + DESKTOP_OPEN_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        attached = _read_running_desktop_runtime()
+        if attached is not None:
+            focused = _raise_running_desktop(attached)
+            return {**attached, "status": "running", "started": True, "focused": focused}
+        time.sleep(0.4)
+    return {
+        "status": "starting",
+        "started": True,
+        "focused": False,
+        "window_title": "文献助手",
+        "base_url": None,
+        "pid": None,
+    }
 
 
 class AgentResourceRef(BaseModel):
@@ -57,6 +340,20 @@ class AgentResourceRef(BaseModel):
     summary: str | None = Field(default=None, max_length=2000)
     read_endpoint: str | None = Field(default=None, max_length=500)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentSidebarDesktopOpenResponse(BaseModel):
+    """Bounded response for opening or confirming the native desktop window."""
+
+    schema_version: str = DESKTOP_OPEN_SCHEMA_VERSION
+    status: Literal["running", "starting"]
+    started: bool
+    product_name: str = "Scholar AI"
+    window_title: str = "文献助手"
+    base_url: str | None = None
+    pid: int | None = None
+    focused: bool = False
+    message: str
 
 
 class AgentContextBudget(BaseModel):
@@ -115,6 +412,8 @@ class AgentProgressRequest(BaseModel):
 class AgentResultRequest(BaseModel):
     """Final result payload written by an external agent."""
 
+    model_config = ConfigDict(extra="forbid")
+
     text: str = Field(default="", max_length=MAX_RESULT_TEXT_CHARS)
     content: dict[str, Any] | None = None
     evidence_refs: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
@@ -129,6 +428,53 @@ class AgentResultRequest(BaseModel):
         if len(text) > MAX_RESULT_TEXT_CHARS:
             raise ValueError("text exceeds max length")
         return text
+
+    @staticmethod
+    def _reject_unsafe_mapping_keys(value: dict[str, Any], *, allowed: frozenset[str], field_name: str) -> dict[str, Any]:
+        unknown: list[str] = []
+        unsafe: list[str] = []
+        for key in value:
+            normalized_key = str(key or "").strip()
+            lowered = normalized_key.lower()
+            if normalized_key not in allowed:
+                unknown.append(normalized_key)
+            if any(part in lowered for part in _AGENT_RESULT_DENIED_KEY_PARTS):
+                unsafe.append(normalized_key)
+        if unknown:
+            raise ValueError(f"{field_name} contains unsupported keys: {', '.join(sorted(unknown)[:8])}")
+        if unsafe:
+            raise ValueError(f"{field_name} contains unsafe keys: {', '.join(sorted(unsafe)[:8])}")
+        return value
+
+    @field_validator("content")
+    @classmethod
+    def _validate_result_content(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Reject provider-private payloads at the external-agent result boundary."""
+
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError("content must be an object")
+        checked = cls._reject_unsafe_mapping_keys(value, allowed=_AGENT_RESULT_CONTENT_KEYS, field_name="content")
+        nested_metadata = checked.get("metadata")
+        if nested_metadata is not None:
+            if not isinstance(nested_metadata, dict):
+                raise ValueError("content.metadata must be an object")
+            checked["metadata"] = cls._reject_unsafe_mapping_keys(
+                nested_metadata,
+                allowed=_AGENT_RESULT_METADATA_KEYS,
+                field_name="content.metadata",
+            )
+        return checked
+
+    @field_validator("metadata")
+    @classmethod
+    def _validate_result_metadata(cls, value: dict[str, Any]) -> dict[str, Any]:
+        """Keep result metadata to receipt-safe fields only."""
+
+        if not isinstance(value, dict):
+            raise ValueError("metadata must be an object")
+        return cls._reject_unsafe_mapping_keys(value, allowed=_AGENT_RESULT_METADATA_KEYS, field_name="metadata")
 
 
 class AgentFailRequest(BaseModel):
@@ -145,6 +491,21 @@ class AgentBridgeRequestPayload(BaseModel):
     job: JobPayload
     poll: dict[str, str]
     envelope: AgentRequestEnvelope
+
+
+class CodexHandoffLatestPayload(BaseModel):
+    """Small projection used by the host-rendered Codex handoff widget."""
+
+    schema_version: str = CODEX_HANDOFF_LATEST_SCHEMA_VERSION
+    found: bool
+    request_id: str | None = None
+    project_id: str | None = None
+    receipt_id: str | None = None
+    ref_count: int | None = Field(default=None, ge=0, le=50)
+    job_id: str | None = None
+    job_status: str | None = None
+    created_at: str | None = None
+    message: str
 
 
 class AgentBridgeStatusPayload(BaseModel):
@@ -349,6 +710,36 @@ async def get_agent_bridge_status(limit: int = Query(default=20, ge=1, le=100)) 
     )
 
 
+@router.post("/desktop/open", response_model=AgentSidebarDesktopOpenResponse)
+async def open_agent_sidebar_desktop() -> AgentSidebarDesktopOpenResponse:
+    """Launch or confirm the native 文献助手 desktop used for full review."""
+
+    try:
+        status = _launch_desktop_if_needed()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    running = status.get("status") == "running"
+    started = bool(status.get("started"))
+    focused = bool(status.get("focused"))
+    if running and started:
+        message = "已启动文献助手桌面端。"
+    elif running and focused:
+        message = "已切换到文献助手桌面端。"
+    elif running:
+        message = "文献助手桌面端已在运行。"
+    else:
+        message = "正在启动文献助手桌面端。"
+    return AgentSidebarDesktopOpenResponse(
+        status="running" if running else "starting",
+        started=started,
+        window_title=str(status.get("window_title") or "文献助手"),
+        base_url=str(status.get("base_url") or "") or None,
+        pid=int(status["pid"]) if isinstance(status.get("pid"), int) else None,
+        focused=focused,
+        message=message,
+    )
+
+
 @router.post("/request", response_model=AgentBridgeRequestPayload)
 async def create_agent_request(envelope: AgentRequestEnvelope) -> AgentBridgeRequestPayload:
     """Create a runtime-visible job for external agent work."""
@@ -521,6 +912,27 @@ async def list_agent_requests(
     return [JobPayload(**job.to_dict()) for job in jobs[:limit]]
 
 
+@router.get("/codex-handoff/latest", response_model=CodexHandoffLatestPayload)
+async def get_latest_codex_handoff(
+    project_id: str | None = Query(default=None, max_length=200),
+) -> CodexHandoffLatestPayload:
+    """Return the newest unresolved Codex sidebar handoff request.
+
+    The response is a projection of existing ``agent_request`` runtime jobs. It
+    does not create a second handoff store; the host widget still reads and
+    completes the request through ``agent_request_read`` and ``agent_result``.
+    """
+
+    runtime, _ = get_runtime()
+    job = _latest_codex_handoff_job(runtime, project_id=project_id)
+    if job is None:
+        return CodexHandoffLatestPayload(
+            found=False,
+            message="No unresolved Codex sidebar handoff request was found.",
+        )
+    return _codex_handoff_projection(job)
+
+
 @router.get("/request/{request_id}", response_model=JobPayload)
 async def get_agent_request(request_id: str) -> JobPayload:
     """Return the runtime job linked to an agent request id."""
@@ -625,12 +1037,29 @@ async def write_agent_result(request_id: str, request: AgentResultRequest) -> Ag
     content.setdefault("wiki_refs", request.wiki_refs)
     content.setdefault("graph_patch_refs", request.graph_patch_refs)
     content.setdefault("metadata", request.metadata)
+    content = AgentResultRequest._reject_unsafe_mapping_keys(
+        content,
+        allowed=_AGENT_RESULT_CONTENT_KEYS,
+        field_name="content",
+    )
     routing_metadata = _agent_result_metadata(request_id, job, request, content)
-    runtime.update_job_metadata(job.job_id, routing_metadata)
-    await runtime.complete_job(job.job_id, result=content, artifact_metadata=routing_metadata)
     consumer_metadata = _consume_agent_result(request_id, runtime, job.job_id, routing_metadata, content)
     if consumer_metadata:
-        runtime.update_job_metadata(job.job_id, {"knowledge_consumers": consumer_metadata})
+        routing_metadata["knowledge_consumers"] = consumer_metadata
+    try:
+        smart_read_conversation = _persist_agent_result_to_chat_history(
+            request_id=request_id,
+            job=job,
+            routing_metadata=routing_metadata,
+            request=request,
+            content=content,
+        )
+    except Exception as exc:
+        logger.exception("Failed to persist sidebar agent result for request %s", request_id)
+        smart_read_conversation = {"status": "failed", "error_class": type(exc).__name__}
+    routing_metadata["smart_read_conversation"] = smart_read_conversation
+    runtime.update_job_metadata(job.job_id, routing_metadata)
+    await runtime.complete_job(job.job_id, result=content, artifact_metadata=routing_metadata)
     try:
         runtime.build_agent_handoff_card(job.job_id, persist=True)
     except ValueError:
@@ -670,6 +1099,426 @@ def _request_title(envelope: AgentRequestEnvelope) -> str:
     return f"智能体任务: {intent}"
 
 
+def _agent_output_targets(envelope: AgentRequestEnvelope) -> dict[str, Any]:
+    """Return intent-aware output targets for runtime routing."""
+
+    targets = envelope.output_targets.model_dump(mode="json")
+    if envelope.intent == "sidebar_answer":
+        targets.update(
+            {
+                "runtime_job": True,
+                "smart_read_conversation": True,
+                "wiki_candidate": False,
+                "graph_candidate": False,
+                "evolution_capture": False,
+            }
+        )
+    return targets
+
+
+def _content_mapping(content: dict[str, Any], key: str) -> dict[str, Any]:
+    value = content.get(key)
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _as_mapping(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _metadata_value_is_blank(value: Any) -> bool:
+    return value is None or value == "" or value == {} or value == []
+
+
+def _overlay_mapping(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    result = dict(base)
+    for key, value in override.items():
+        if _metadata_value_is_blank(value):
+            continue
+        existing = result.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            result[key] = _overlay_mapping(existing, value)
+        else:
+            result[key] = value
+    return result
+
+
+def _merged_mapping_values(*values: Any) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    for value in reversed(values):
+        if isinstance(value, dict):
+            merged = _overlay_mapping(merged, value)
+    return merged
+
+
+def _metadata_value(key: str, *mappings: dict[str, Any]) -> Any:
+    for mapping in mappings:
+        value = mapping.get(key)
+        if value is None or value == "":
+            continue
+        return value
+    return None
+
+
+def _metadata_mapping(key: str, *mappings: dict[str, Any]) -> dict[str, Any]:
+    value = _metadata_value(key, *mappings)
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _metadata_mappings(key: str, *mappings: dict[str, Any]) -> list[dict[str, Any]]:
+    values: list[dict[str, Any]] = []
+    for mapping in mappings:
+        value = mapping.get(key)
+        if isinstance(value, dict):
+            values.append(dict(value))
+    return values
+
+
+def _resource_ref_metadata(job_metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    metadata_items: list[dict[str, Any]] = []
+    resource_refs = job_metadata.get("resource_refs")
+    if not isinstance(resource_refs, list):
+        return metadata_items
+    for item in resource_refs:
+        if not isinstance(item, dict):
+            continue
+        resource_metadata = _as_mapping(item.get("metadata"))
+        for key in (
+            "evidence_pack_ref",
+            "retrieval_diagnostics",
+            "qrels_status",
+            "evidence_gate_status",
+            "output_language",
+            "answer_model",
+            "answer_model_origin",
+            "evidence_origin",
+            "workflow_passport_ref",
+            "workflow_refs",
+            "research_action_lifecycle_ref",
+            "agent_handoff_card_ref",
+            "workflow_replay_lineage_ref",
+            "workflow_replay_index_ref",
+        ):
+            if key in item and key not in resource_metadata:
+                resource_metadata[key] = item[key]
+        if resource_metadata:
+            metadata_items.append(resource_metadata)
+    return metadata_items
+
+
+def _runtime_ref_query(
+    *,
+    job_id: str,
+    session_id: str,
+    project_id: str | None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    query: dict[str, Any] = {"job_id": job_id}
+    if session_id:
+        query["session_id"] = session_id
+    if project_id:
+        query["project_id"] = project_id
+    if limit is not None:
+        query["limit"] = limit
+    return query
+
+
+def _runtime_projection_ref(
+    *,
+    ref_type: str,
+    endpoint: str,
+    query: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    ref: dict[str, Any] = {
+        "ref_type": ref_type,
+        "endpoint": endpoint,
+        "read_only": True,
+    }
+    if query:
+        ref["query"] = query
+    return ref
+
+
+def _sidebar_workflow_refs(
+    *,
+    request_id: str,
+    job: Any,
+    project_id: str | None,
+    evidence_pack_ref: str,
+) -> dict[str, Any]:
+    """Return compact read-only runtime lookup keys for a sidebar answer."""
+
+    job_id = str(getattr(job, "job_id", "") or "").strip()
+    if not job_id:
+        return {}
+    session_id = str(getattr(job, "session_id", "") or "").strip()
+    workflow_query = _runtime_ref_query(
+        job_id=job_id,
+        session_id=session_id,
+        project_id=project_id,
+        limit=500,
+    )
+    lifecycle_query = _runtime_ref_query(
+        job_id=job_id,
+        session_id=session_id,
+        project_id=project_id,
+        limit=100,
+    )
+    replay_index_query: dict[str, Any] = {"limit": 10}
+    if session_id:
+        replay_index_query["session_id"] = session_id
+    if project_id:
+        replay_index_query["project_id"] = project_id
+    return {
+        "read_only": True,
+        "agent_request_id": request_id,
+        "runtime_job_id": job_id,
+        "runtime_session_id": session_id or None,
+        "project_id": project_id,
+        "evidence_pack_ref": evidence_pack_ref or None,
+        "workflow_passport_ref": _runtime_projection_ref(
+            ref_type="workflow_passport_projection",
+            endpoint="/runtime/workflow-passport",
+            query=workflow_query,
+        ),
+        "research_action_lifecycle_ref": _runtime_projection_ref(
+            ref_type="research_action_lifecycle_projection",
+            endpoint="/runtime/research-action-lifecycle",
+            query=lifecycle_query,
+        ),
+        "agent_handoff_card_ref": _runtime_projection_ref(
+            ref_type="agent_handoff_card_projection",
+            endpoint=f"/runtime/job/{job_id}/agent-handoff-card",
+        ),
+        "workflow_replay_lineage_ref": _runtime_projection_ref(
+            ref_type="workflow_replay_lineage_projection",
+            endpoint=f"/runtime/job/{job_id}/workflow-replay-lineage",
+            query={"limit": 12},
+        ),
+        "workflow_replay_index_ref": _runtime_projection_ref(
+            ref_type="workflow_replay_index_projection",
+            endpoint="/runtime/workflow-replay-index",
+            query=replay_index_query,
+        ),
+    }
+
+
+def _knowledge_consumer_refs(
+    *,
+    request_id: str,
+    job: Any,
+    project_id: str | None,
+    consumers: dict[str, Any],
+) -> dict[str, Any]:
+    """Return bounded read-only lookup refs for Wiki/graph capture outputs."""
+
+    if not consumers:
+        return {}
+    job_id = str(getattr(job, "job_id", "") or "").strip()
+    if not job_id:
+        return {}
+    session_id = str(getattr(job, "session_id", "") or "").strip()
+    refs: dict[str, Any] = {
+        "read_only": True,
+        "agent_request_id": request_id,
+        "runtime_job_id": job_id,
+        "runtime_session_id": session_id or None,
+        "project_id": project_id,
+    }
+    wiki = _as_mapping(consumers.get("wiki"))
+    if wiki.get("status") == "created":
+        page_path = str(wiki.get("page_path") or "").strip()
+        slug = str(wiki.get("slug") or "").strip()
+        review_item_id = str(wiki.get("review_item_id") or "").strip()
+        if page_path:
+            wiki_ref_id = f"wiki:{page_path}"
+            refs["wiki_candidate_ref"] = {
+                "ref_type": "wiki_candidate_review_page",
+                "ref_id": wiki_ref_id,
+                "read_endpoint": f"/api/agent-bridge/resource/{wiki_ref_id}",
+                "page_endpoint": f"/api/wiki/pages/{slug}" if slug else None,
+                "page_path": page_path,
+                "slug": slug or None,
+                "status": "draft",
+                "read_only": True,
+            }
+        if review_item_id:
+            refs["wiki_review_item_ref"] = {
+                "ref_type": "wiki_review_queue_item",
+                "endpoint": "/api/wiki/review",
+                "item_id": review_item_id,
+                "read_only": True,
+            }
+    graph = _as_mapping(consumers.get("graph"))
+    graph_status = str(graph.get("status") or "").strip()
+    if graph_status and graph_status != "skipped":
+        refs["graph_candidate_ref"] = {
+            "ref_type": "graph_candidate",
+            "status": graph_status,
+            "graph_patch_ref_count": int(graph.get("graph_patch_ref_count") or 0),
+            "wiki_slug": str(graph.get("wiki_slug") or "").strip() or None,
+            "read_endpoint": refs.get("wiki_candidate_ref", {}).get("read_endpoint") or "/api/wiki/graph",
+            "read_only": True,
+        }
+    evolution = _as_mapping(consumers.get("evolution"))
+    if evolution.get("status") == "scheduled":
+        refs["evolution_capture_ref"] = _runtime_projection_ref(
+            ref_type="research_action_lifecycle_projection",
+            endpoint="/runtime/research-action-lifecycle",
+            query=_runtime_ref_query(
+                job_id=job_id,
+                session_id=session_id,
+                project_id=project_id,
+                limit=100,
+            ),
+        )
+    return refs if any(key.endswith("_ref") for key in refs) else {}
+
+
+def _persist_agent_result_to_chat_history(
+    *,
+    request_id: str,
+    job: Any,
+    routing_metadata: dict[str, Any],
+    request: AgentResultRequest,
+    content: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist a host-agent sidebar answer through the existing chat history path."""
+
+    output_targets = dict(routing_metadata.get("output_targets") or {})
+    if not output_targets.get("smart_read_conversation"):
+        return {"status": "skipped", "reason": "smart_read_conversation target disabled"}
+    project_id = str(routing_metadata.get("project_id") or "").strip() or None
+    chat_session_id = str(routing_metadata.get("chat_session_id") or "").strip() or f"sidebar_{request_id}"
+    now = utc_now_iso_z()
+    user_text = str(getattr(job, "input_text", "") or "").strip()
+    result_text = str(content.get("text") or request.text or "").strip()
+    job_metadata = _as_mapping(getattr(job, "metadata", {}) or {})
+    original_request_metadata = _as_mapping(job_metadata.get("metadata"))
+    resource_ref_metadata = _resource_ref_metadata(job_metadata)
+    metadata = _content_mapping(content, "metadata")
+    fallback_mappings = (metadata, request.metadata, original_request_metadata, *resource_ref_metadata)
+    evidence_pack_ref = str(
+        content.get("evidence_pack_ref")
+        or _metadata_value("evidence_pack_ref", *fallback_mappings)
+        or ""
+    ).strip()
+    retrieval_diagnostics = _merged_mapping_values(
+        _content_mapping(content, "retrieval_diagnostics"),
+        *_metadata_mappings("retrieval_diagnostics", *fallback_mappings),
+    )
+    qrels_status = _merged_mapping_values(
+        _content_mapping(content, "qrels_status"),
+        _as_mapping(retrieval_diagnostics.get("qrels_status")),
+        *_metadata_mappings("qrels_status", *fallback_mappings),
+    )
+    if qrels_status:
+        retrieval_diagnostics = dict(retrieval_diagnostics)
+        retrieval_diagnostics["qrels_status"] = qrels_status
+    evidence_gate_status = _merged_mapping_values(
+        _content_mapping(content, "evidence_gate_status"),
+        *_metadata_mappings("evidence_gate_status", *fallback_mappings),
+    )
+    answer_model = str(
+        content.get("answer_model") or _metadata_value("answer_model", *fallback_mappings) or "host_agent"
+    )[:120]
+    output_language = str(
+        content.get("output_language") or _metadata_value("output_language", *fallback_mappings) or "zh"
+    )[:20]
+    raw_evidence_refs = request.evidence_refs or content.get("evidence_refs") or []
+    workflow_refs = (
+        _content_mapping(content, "workflow_refs")
+        or _metadata_mapping("workflow_refs", *fallback_mappings)
+        or _sidebar_workflow_refs(
+            request_id=request_id,
+            job=job,
+            project_id=project_id,
+            evidence_pack_ref=evidence_pack_ref,
+        )
+    )
+    workflow_passport_ref = (
+        _content_mapping(content, "workflow_passport_ref")
+        or _metadata_mapping("workflow_passport_ref", *fallback_mappings)
+        or _as_mapping(workflow_refs.get("workflow_passport_ref"))
+    )
+    research_action_lifecycle_ref = (
+        _content_mapping(content, "research_action_lifecycle_ref")
+        or _metadata_mapping("research_action_lifecycle_ref", *fallback_mappings)
+        or _as_mapping(workflow_refs.get("research_action_lifecycle_ref"))
+    )
+    agent_handoff_card_ref = (
+        _content_mapping(content, "agent_handoff_card_ref")
+        or _metadata_mapping("agent_handoff_card_ref", *fallback_mappings)
+        or _as_mapping(workflow_refs.get("agent_handoff_card_ref"))
+    )
+    workflow_replay_lineage_ref = (
+        _content_mapping(content, "workflow_replay_lineage_ref")
+        or _metadata_mapping("workflow_replay_lineage_ref", *fallback_mappings)
+        or _as_mapping(workflow_refs.get("workflow_replay_lineage_ref"))
+    )
+    workflow_replay_index_ref = (
+        _content_mapping(content, "workflow_replay_index_ref")
+        or _metadata_mapping("workflow_replay_index_ref", *fallback_mappings)
+        or _as_mapping(workflow_refs.get("workflow_replay_index_ref"))
+    )
+    knowledge_consumer_refs = (
+        _content_mapping(content, "knowledge_consumer_refs")
+        or _metadata_mapping("knowledge_consumer_refs", *fallback_mappings)
+        or _knowledge_consumer_refs(
+            request_id=request_id,
+            job=job,
+            project_id=project_id,
+            consumers=_as_mapping(routing_metadata.get("knowledge_consumers")),
+        )
+    )
+    session = {
+        "session_id": chat_session_id,
+        "project_id": project_id,
+        "created_at": now,
+        "updated_at": now,
+        "mode": "literature_qa",
+        "generated_in": "mcp_sidebar",
+        "messages": [
+            {
+                "id": f"{chat_session_id}_user_{request_id}",
+                "role": "user",
+                "content": user_text,
+                "timestamp": now,
+            },
+            {
+                "id": f"{chat_session_id}_assistant_{request_id}",
+                "role": "assistant",
+                "content": result_text,
+                "timestamp": now,
+                "generated_in": "mcp_sidebar",
+                "answer_origin": "external_agent",
+                "answer_model_origin": "external_agent",
+                "answer_model": answer_model,
+                "evidence_origin": "scholar_ai_mcp",
+                "evidence_pack_ref": evidence_pack_ref or None,
+                "evidence_refs": [dict(item) for item in raw_evidence_refs if isinstance(item, dict)],
+                "retrieval_diagnostics": retrieval_diagnostics,
+                "qrels_status": qrels_status,
+                "evidence_gate_status": evidence_gate_status,
+                "output_language": output_language,
+                "workflow_refs": workflow_refs,
+                "workflow_passport_ref": workflow_passport_ref,
+                "research_action_lifecycle_ref": research_action_lifecycle_ref,
+                "agent_handoff_card_ref": agent_handoff_card_ref,
+                "workflow_replay_lineage_ref": workflow_replay_lineage_ref,
+                "workflow_replay_index_ref": workflow_replay_index_ref,
+                "knowledge_consumer_refs": knowledge_consumer_refs,
+            },
+        ],
+    }
+    store = ChatHistoryStore(default_chat_history_db_path())
+    result = store.import_legacy_session(session)
+    return {
+        "status": "persisted",
+        "conversation_id": result.get("conversation_id"),
+        "message_count": result.get("messages"),
+    }
+
+
 def _agent_job_metadata(request_id: str, envelope: AgentRequestEnvelope) -> dict[str, Any]:
     return {
         "source": envelope.source,
@@ -682,7 +1531,7 @@ def _agent_job_metadata(request_id: str, envelope: AgentRequestEnvelope) -> dict
         "route": envelope.route,
         "resource_refs": [item.model_dump(mode="json") for item in envelope.resource_refs],
         "context_budget": envelope.context_budget.model_dump(mode="json"),
-        "output_targets": envelope.output_targets.model_dump(mode="json"),
+        "output_targets": _agent_output_targets(envelope),
         "metadata": envelope.metadata,
     }
 
@@ -1549,6 +2398,8 @@ def _agent_result_metadata(
         "agent_bridge": True,
         "agent_result_ready": True,
         "agent_request_id": request_id,
+        "job_id": str(getattr(job, "job_id", "") or ""),
+        "runtime_session_id": str(getattr(job, "session_id", "") or ""),
         "agent_host": metadata.get("agent_host"),
         "intent": metadata.get("intent"),
         "project_id": metadata.get("project_id"),
@@ -1631,7 +2482,12 @@ def _create_wiki_candidate_from_agent_result(
         import routers.wiki_router as wiki_router
         from wiki.models import WikiPageKind, WikiPageStatus
         from wiki.permissions import DEFAULT_WIKI_OWNER, WikiPagePermissions, WikiPageVisibility, set_permissions
-        from wiki.review_queue import ReviewItemKind, ReviewQueue, make_review_item
+        from literature_assistant.core.wiki.review_queue import (
+            ReviewItemKind,
+            ReviewQueue,
+            make_review_item,
+            make_wiki_page_revision_review_target,
+        )
         from wiki.service import get_wiki_service
     except ImportError as exc:
         return {"status": "unavailable", "error": _bounded_text(str(exc), 300)}
@@ -1678,6 +2534,9 @@ def _create_wiki_candidate_from_agent_result(
 
     page_relative_path = f"{page.kind.value}/{page.stable_slug}.md"
     try:
+        page_content = service.page_store.read_page(Path(page_relative_path))
+        if page_content is None:
+            raise ValueError(f"review target page not found: {page_relative_path}")
         queue = ReviewQueue(_wiki_review_queue_path(wiki_router))
         existing_ids = {item.item_id for item in queue.list_items()}
         candidate_id = f"agent-capture-{page.stable_slug}"
@@ -1700,11 +2559,17 @@ def _create_wiki_candidate_from_agent_result(
                     "kind": page.kind.value,
                     "graph_candidate": bool(extra.get("graph_candidate")),
                 },
+                target=make_wiki_page_revision_review_target(
+                    page_id=page.stable_slug,
+                    page_path=page_relative_path,
+                    expected_content_hash=hashlib.sha256(str(page_content).encode("utf-8")).hexdigest(),
+                    expected_status=WikiPageStatus.draft.value,
+                ),
             )
         )
     except (ValueError, OSError) as exc:
         try:
-            service.delete_page(page.stable_slug)
+            service.purge_page(page.stable_slug)
         except (ValueError, OSError):
             pass
         return {"status": "failed", "error": _bounded_text(str(exc), 300)}
@@ -2199,6 +3064,60 @@ def _agent_jobs(runtime: Any, *, limit: int) -> list[Any]:
         )
     jobs.sort(key=lambda item: item.created_at, reverse=True)
     return jobs[:limit]
+
+
+def _latest_codex_handoff_job(runtime: Any, *, project_id: str | None = None) -> Any | None:
+    normalized_project_id = str(project_id or "").strip()
+    active_statuses = {
+        JobStatus.CREATED,
+        JobStatus.QUEUED,
+        JobStatus.STARTED,
+        JobStatus.IN_PROGRESS,
+        JobStatus.PAUSED,
+        JobStatus.APPROVAL_PENDING,
+    }
+    for job in _agent_jobs(runtime, limit=500):
+        metadata = getattr(job, "metadata", {})
+        if not isinstance(metadata, dict):
+            continue
+        if job.status not in active_statuses:
+            continue
+        if str(metadata.get("source") or metadata.get("agent_source") or "") != "agent_sidebar":
+            continue
+        if str(metadata.get("agent_host") or "") != "codex":
+            continue
+        if str(metadata.get("intent") or "") != "sidebar_answer":
+            continue
+        if normalized_project_id and str(metadata.get("project_id") or "") != normalized_project_id:
+            continue
+        return job
+    return None
+
+
+def _codex_handoff_projection(job: Any) -> CodexHandoffLatestPayload:
+    metadata = getattr(job, "metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    envelope_metadata = metadata.get("metadata")
+    if not isinstance(envelope_metadata, dict):
+        envelope_metadata = {}
+    resource_refs = metadata.get("resource_refs")
+    ref_count = len(resource_refs) if isinstance(resource_refs, list) else None
+    bounded_ref_count = min(ref_count, 50) if isinstance(ref_count, int) else None
+    request_id = str(metadata.get("agent_request_id") or "").strip() or None
+    project_id = str(metadata.get("project_id") or "").strip() or None
+    receipt_id = str(envelope_metadata.get("source_conversation_id") or metadata.get("chat_session_id") or "").strip()
+    return CodexHandoffLatestPayload(
+        found=request_id is not None,
+        request_id=request_id,
+        project_id=project_id,
+        receipt_id=receipt_id or None,
+        ref_count=bounded_ref_count,
+        job_id=str(getattr(job, "job_id", "") or "") or None,
+        job_status=str(getattr(getattr(job, "status", None), "value", getattr(job, "status", "")) or "") or None,
+        created_at=str(getattr(job, "created_at", "") or "") or None,
+        message="Latest unresolved Codex sidebar handoff request is ready.",
+    )
 
 
 def _find_request_job(runtime: Any, request_id: str) -> Any | None:

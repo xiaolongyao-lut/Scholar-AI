@@ -19,6 +19,13 @@ from literature_assistant.core.config_knowledge import search_scoring_rules
 from literature_assistant.core import product_docs_knowledge
 from literature_assistant.core.skill_package_knowledge import search_skill_package
 from literature_assistant.core.source_vault import SourceChunkInput, SourceVault, derive_chunk_id
+from models import (
+    EvidencePackBuildResponse,
+    EvidencePackIntegrityGateResponse,
+    EvidencePackReferencePayload,
+    EvidenceRetrievalDiagnosticsPayload,
+    RetrievalQrelsStatusPayload,
+)
 import routers.agent_bridge_router as agent_bridge_router
 import routers.runtime_router as runtime_router
 from writing_runtime import SessionMode, WritingRuntime
@@ -43,6 +50,95 @@ def _client(monkeypatch: Any) -> TestClient:
 
 def _capability_headers() -> dict[str, str]:
     return {server.LOCAL_API_CAPABILITY_HEADER: server.get_local_api_capability_token()}
+
+
+def test_running_desktop_runtime_skips_self_health_probe(monkeypatch: Any, tmp_path: Path) -> None:
+    """Desktop-hosted API must not synchronously probe its own health endpoint."""
+
+    descriptor = tmp_path / "desktop-runtime.json"
+    descriptor.write_text(
+        json.dumps(
+            {
+                "process_kind": "desktop",
+                "ready": True,
+                "pid": 4321,
+                "base_url": "http://127.0.0.1:8000",
+                "window_title": "文献助手",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def _unexpected_health_probe(_base_url: str, timeout_sec: float = 1.5) -> bool:
+        raise AssertionError("same-process desktop runtime should not call /health")
+
+    monkeypatch.setattr(agent_bridge_router, "desktop_runtime_file_path", lambda: descriptor)
+    monkeypatch.setattr(agent_bridge_router.os, "getpid", lambda: 4321)
+    monkeypatch.setattr(agent_bridge_router, "_pid_exists", lambda _pid: True)
+    monkeypatch.setattr(agent_bridge_router, "_health_ok", _unexpected_health_probe)
+
+    runtime = agent_bridge_router._read_running_desktop_runtime()
+
+    assert runtime == {
+        "pid": 4321,
+        "base_url": "http://127.0.0.1:8000",
+        "window_title": "文献助手",
+    }
+
+
+def test_desktop_open_focuses_existing_runtime_without_relaunch(monkeypatch: Any) -> None:
+    """Existing desktop runtime should be raised instead of launching another copy."""
+
+    existing = {
+        "pid": 1234,
+        "base_url": "http://127.0.0.1:8000",
+        "window_title": "文献助手",
+    }
+    raised: list[dict[str, Any]] = []
+
+    def _raise_existing(runtime: dict[str, Any]) -> bool:
+        raised.append(dict(runtime))
+        return True
+
+    def _unexpected_launch() -> tuple[list[str], dict[str, str]]:
+        raise AssertionError("existing desktop runtime should not trigger launch")
+
+    monkeypatch.setattr(agent_bridge_router, "_read_running_desktop_runtime", lambda: existing)
+    monkeypatch.setattr(agent_bridge_router, "_raise_running_desktop", _raise_existing)
+    monkeypatch.setattr(agent_bridge_router, "_desktop_launch_command", _unexpected_launch)
+
+    status = agent_bridge_router._launch_desktop_if_needed()
+
+    assert status["started"] is False
+    assert status["focused"] is True
+    assert status["status"] == "running"
+    assert raised == [existing]
+
+
+def test_agent_sidebar_desktop_open_reports_focused_running_desktop(monkeypatch: Any) -> None:
+    """Desktop-open route should tell the sidebar when an existing window was raised."""
+
+    client = _client(monkeypatch)
+    monkeypatch.setattr(
+        agent_bridge_router,
+        "_launch_desktop_if_needed",
+        lambda: {
+            "status": "running",
+            "started": False,
+            "focused": True,
+            "pid": 1234,
+            "base_url": "http://127.0.0.1:8000",
+            "window_title": "文献助手",
+        },
+    )
+
+    response = client.post("/api/agent-bridge/desktop/open", headers=_capability_headers())
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["focused"] is True
+    assert payload["started"] is False
+    assert payload["message"] == "已切换到文献助手桌面端。"
 
 
 def _seed_academic_english_output(root: Path) -> None:
@@ -222,6 +318,649 @@ def test_agent_bridge_request_progress_and_result_are_runtime_visible(monkeypatc
     assert "job_completed" in event_types
 
 
+def test_codex_handoff_latest_projects_unresolved_sidebar_request(monkeypatch: Any) -> None:
+    """Codex handoff latest should be derived from existing agent request jobs."""
+
+    _isolated_runtime(monkeypatch)
+    client = _client(monkeypatch)
+
+    created = client.post(
+        "/api/agent-bridge/request",
+        headers=_capability_headers(),
+        json={
+            "source": "agent_sidebar",
+            "agent_host": "codex",
+            "intent": "sidebar_answer",
+            "user_text": "What does the evidence say?",
+            "project_id": "proj_demo",
+            "route": "/agent-sidebar",
+            "resource_refs": [
+                {
+                    "ref_id": "chunk:1",
+                    "kind": "chunk",
+                    "project_id": "proj_demo",
+                    "title": "Demo Evidence",
+                    "summary": "bounded summary",
+                }
+            ],
+            "metadata": {
+                "source_conversation_id": "sidebar_agentreq_demo",
+                "evidence_pack_ref": "evidence_pack:demo",
+            },
+        },
+    )
+
+    assert created.status_code == 200
+    request_id = created.json()["request_id"]
+
+    latest = client.get(
+        "/api/agent-bridge/codex-handoff/latest",
+        headers=_capability_headers(),
+        params={"project_id": "proj_demo"},
+    )
+
+    assert latest.status_code == 200
+    payload = latest.json()
+    assert payload["schema_version"] == "scholar-ai-codex-handoff-latest/v1"
+    assert payload["found"] is True
+    assert payload["request_id"] == request_id
+    assert payload["project_id"] == "proj_demo"
+    assert payload["receipt_id"] == "sidebar_agentreq_demo"
+    assert payload["ref_count"] == 1
+    assert payload["job_status"] == "started"
+
+    other_project = client.get(
+        "/api/agent-bridge/codex-handoff/latest",
+        headers=_capability_headers(),
+        params={"project_id": "proj_other"},
+    )
+    assert other_project.status_code == 200
+    assert other_project.json()["found"] is False
+
+
+def test_agent_bridge_sidebar_answer_disables_capture_side_effects(monkeypatch: Any) -> None:
+    """Pure sidebar QA requests should not schedule Wiki/graph/evolution capture."""
+
+    runtime = _isolated_runtime(monkeypatch)
+    client = _client(monkeypatch)
+
+    created = client.post(
+        "/api/agent-bridge/request",
+        headers=_capability_headers(),
+        json={
+            "source": "mcp",
+            "agent_host": "codex",
+            "intent": "sidebar_answer",
+            "project_id": "proj_sidebar",
+        },
+    )
+
+    assert created.status_code == 200
+    job = runtime.get_job(created.json()["job"]["job_id"])
+    assert job is not None
+    targets = job.metadata["output_targets"]
+    assert targets["runtime_job"] is True
+    assert targets["smart_read_conversation"] is True
+    assert targets["wiki_candidate"] is False
+    assert targets["graph_candidate"] is False
+    assert targets["evolution_capture"] is False
+
+
+def test_agent_bridge_result_rejects_provider_private_payload(monkeypatch: Any) -> None:
+    """Agent result write-back accepts only whitelisted answer fields."""
+
+    _isolated_runtime(monkeypatch)
+    client = _client(monkeypatch)
+    created = client.post(
+        "/api/agent-bridge/request",
+        headers=_capability_headers(),
+        json={"intent": "sidebar_answer", "project_id": "proj_sidebar"},
+    )
+    request_id = created.json()["request_id"]
+
+    result = client.post(
+        f"/api/agent-bridge/request/{request_id}/result",
+        headers=_capability_headers(),
+        json={
+            "content": {
+                "text": "final answer",
+                "provider_payload": {"raw": "must not land"},
+            }
+        },
+    )
+
+    assert result.status_code == 422
+    assert "provider_payload" in result.text
+
+
+def test_agent_bridge_sidebar_result_persists_answer_receipt(monkeypatch: Any, tmp_path: Path) -> None:
+    """Host-agent sidebar answers should land in the existing SmartRead history store."""
+
+    runtime = _isolated_runtime(monkeypatch)
+    history_db = tmp_path / "chat_history.db"
+    session_store = tmp_path / "sessions.json"
+    session_store.write_text(json.dumps({"sessions": {}}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(agent_bridge_router, "default_chat_history_db_path", lambda: history_db)
+
+    import routers.evidence_router as evidence_router
+    import routers.intelligent_chat_router as intelligent_chat_router
+
+    monkeypatch.setattr(intelligent_chat_router, "_SESSION_STORE_PATH", session_store)
+    monkeypatch.setattr(intelligent_chat_router, "default_chat_history_db_path", lambda: history_db)
+
+    qrels_hash = "sha256:" + "d" * 64
+    gate_hash = "sha256:" + "e" * 64
+
+    class _QrelsStatus:
+        qrels_content_hash = qrels_hash
+
+    monkeypatch.setattr(evidence_router, "_project_qrels_status", lambda _project_id: _QrelsStatus())
+    monkeypatch.setattr(evidence_router, "_evidence_pack_gate_config_hash", lambda: gate_hash)
+    restore_calls: list[dict[str, Any]] = []
+
+    def _restore_evidence_pack_build(**kwargs: Any) -> object | None:
+        restore_calls.append(dict(kwargs))
+        if kwargs.get("query") == "":
+            return object()
+        return None
+
+    monkeypatch.setattr(evidence_router, "_restore_evidence_pack_build", _restore_evidence_pack_build)
+
+    client = _client(monkeypatch)
+    created = client.post(
+        "/api/agent-bridge/request",
+        headers=_capability_headers(),
+        json={
+            "source": "mcp",
+            "agent_host": "codex",
+            "intent": "sidebar_answer",
+            "user_text": "Which evidence supports the weld appearance claim?",
+            "project_id": "proj_sidebar_receipt",
+            "chat_session_id": "session_sidebar_receipt",
+        },
+    )
+    assert created.status_code == 200
+    request_id = created.json()["request_id"]
+
+    result = client.post(
+        f"/api/agent-bridge/request/{request_id}/result",
+        headers=_capability_headers(),
+        json={
+            "content": {
+                "text": "The bounded evidence supports the appearance claim.",
+                "answer_model": "codex-host",
+                "evidence_pack_ref": "evidence_pack:sidebar",
+                "retrieval_diagnostics": {
+                    "retrieval_method": "hybrid",
+                    "rerank_status": "active",
+                },
+                "qrels_status": {"qrels_content_hash": qrels_hash},
+                "evidence_gate_status": {"gate_config_hash": gate_hash},
+                "output_language": "en",
+            },
+            "evidence_refs": [{"ref_id": "chunk:1", "chunk_hash": "sha256:" + "f" * 64}],
+        },
+    )
+
+    assert result.status_code == 200
+    job_id = created.json()["job"]["job_id"]
+    job = runtime.get_job(job_id)
+    assert job is not None
+    assert job.metadata["smart_read_conversation"]["status"] == "persisted"
+    assert job.metadata["smart_read_conversation"]["conversation_id"] == "session_sidebar_receipt"
+
+    read = client.get(
+        "/api/chat/answer-receipts/session_sidebar_receipt",
+        headers=_capability_headers(),
+    )
+    assert read.status_code == 200
+    payload = read.json()
+    receipt = payload["receipt"]
+    assert payload["answer"] == "The bounded evidence supports the appearance claim."
+    assert receipt["generated_in"] == "mcp_sidebar"
+    assert receipt["answer_origin"] == "host_agent"
+    assert receipt["answer_model"] == "codex-host"
+    assert receipt["evidence_pack_ref"] == "evidence_pack:sidebar"
+    assert receipt["question"] == "Which evidence supports the weld appearance claim?"
+    assert receipt["qrels_status"]["qrels_content_hash"] == qrels_hash
+    assert receipt["receipt_fingerprint_inputs"]["qrels_content_hash"] == qrels_hash
+    workflow_refs = receipt["workflow_refs"]
+    assert workflow_refs["read_only"] is True
+    assert workflow_refs["agent_request_id"] == request_id
+    assert workflow_refs["runtime_job_id"] == job_id
+    assert workflow_refs["project_id"] == "proj_sidebar_receipt"
+    assert workflow_refs["workflow_passport_ref"]["endpoint"] == "/runtime/workflow-passport"
+    assert workflow_refs["research_action_lifecycle_ref"]["endpoint"] == "/runtime/research-action-lifecycle"
+    assert workflow_refs["agent_handoff_card_ref"]["endpoint"] == f"/runtime/job/{job_id}/agent-handoff-card"
+    assert workflow_refs["workflow_replay_lineage_ref"]["endpoint"] == f"/runtime/job/{job_id}/workflow-replay-lineage"
+    assert workflow_refs["workflow_replay_index_ref"]["endpoint"] == "/runtime/workflow-replay-index"
+    assert receipt["workflow_passport_ref"] == workflow_refs["workflow_passport_ref"]
+    assert receipt["research_action_lifecycle_ref"] == workflow_refs["research_action_lifecycle_ref"]
+    assert payload["staleness"]["status"] == "saved"
+    assert restore_calls == [
+        {
+            "project_id": "proj_sidebar_receipt",
+            "query": "Which evidence supports the weld appearance claim?",
+            "evidence_pack_ref": "evidence_pack:sidebar",
+        },
+        {
+            "project_id": "proj_sidebar_receipt",
+            "query": "",
+            "evidence_pack_ref": "evidence_pack:sidebar",
+        },
+    ]
+
+    sessions = client.get("/api/chat/sessions", headers=_capability_headers())
+    assert sessions.status_code == 200
+    session_rows = sessions.json()["sessions"]
+    sidebar_row = next(
+        item for item in session_rows if item["session_id"] == "session_sidebar_receipt"
+    )
+    assert sidebar_row["project_id"] == "proj_sidebar_receipt"
+    assert sidebar_row["preview"] == "The bounded evidence supports the appearance claim."
+    assert sidebar_row["source"] == "mcp_sidebar"
+
+    resume = client.post(
+        "/api/chat/resume",
+        headers=_capability_headers(),
+        json={"session_id": "session_sidebar_receipt", "limit": 100},
+    )
+    assert resume.status_code == 200
+    resumed = resume.json()
+    assert resumed["project_id"] == "proj_sidebar_receipt"
+    assert [message["role"] for message in resumed["messages"]] == ["user", "assistant"]
+    assert resumed["messages"][0]["content"] == "Which evidence supports the weld appearance claim?"
+    assert resumed["messages"][1]["content"] == "The bounded evidence supports the appearance claim."
+    assert resumed["messages"][1]["generated_in"] == "mcp_sidebar"
+    assert resumed["messages"][1]["answer_origin"] == "external_agent"
+    assert resumed["messages"][1]["evidence_pack_ref"] == "evidence_pack:sidebar"
+
+
+def test_agent_bridge_sidebar_result_falls_back_to_request_metadata(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """Sidebar handoff results should not drop receipt metadata carried by the request."""
+
+    runtime = _isolated_runtime(monkeypatch)
+    history_db = tmp_path / "chat_history.db"
+    session_store = tmp_path / "sessions.json"
+    session_store.write_text(json.dumps({"sessions": {}}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(agent_bridge_router, "default_chat_history_db_path", lambda: history_db)
+
+    import routers.evidence_router as evidence_router
+    import routers.intelligent_chat_router as intelligent_chat_router
+
+    monkeypatch.setattr(intelligent_chat_router, "_SESSION_STORE_PATH", session_store)
+    monkeypatch.setattr(intelligent_chat_router, "default_chat_history_db_path", lambda: history_db)
+
+    qrels_hash = "sha256:" + "a" * 64
+    gate_hash = "sha256:" + "b" * 64
+    pack_ref = "evidence_pack:from-request"
+
+    class _QrelsStatus:
+        qrels_content_hash = qrels_hash
+
+    restore_calls: list[dict[str, Any]] = []
+
+    def _restore_evidence_pack_build(**kwargs: Any) -> object | None:
+        restore_calls.append(dict(kwargs))
+        if kwargs.get("evidence_pack_ref") == pack_ref:
+            return object()
+        return None
+
+    monkeypatch.setattr(evidence_router, "_project_qrels_status", lambda _project_id: _QrelsStatus())
+    monkeypatch.setattr(evidence_router, "_evidence_pack_gate_config_hash", lambda: gate_hash)
+    monkeypatch.setattr(evidence_router, "_restore_evidence_pack_build", _restore_evidence_pack_build)
+
+    client = _client(monkeypatch)
+    created = client.post(
+        "/api/agent-bridge/request",
+        headers=_capability_headers(),
+        json={
+            "source": "codex_side_browser",
+            "agent_host": "codex",
+            "intent": "sidebar_answer",
+            "user_text": "Summarize the bounded evidence.",
+            "project_id": "proj_sidebar_request_fallback",
+            "chat_session_id": "session_sidebar_request_fallback",
+            "metadata": {
+                "evidence_pack_ref": pack_ref,
+                "answer_model": "codex-request-model",
+                "output_language": "en",
+            },
+            "resource_refs": [
+                {
+                    "ref_id": "chunk:request-fallback",
+                    "kind": "evidence_chunk",
+                    "project_id": "proj_sidebar_request_fallback",
+                    "metadata": {
+                        "evidence_pack_ref": pack_ref,
+                        "retrieval_diagnostics": {
+                            "retrieval_method": "lexical",
+                            "rerank_status": "skipped",
+                        },
+                        "qrels_status": {"qrels_content_hash": qrels_hash},
+                        "evidence_gate_status": {"gate_config_hash": gate_hash},
+                    },
+                }
+            ],
+        },
+    )
+    assert created.status_code == 200
+    request_id = created.json()["request_id"]
+
+    result = client.post(
+        f"/api/agent-bridge/request/{request_id}/result",
+        headers=_capability_headers(),
+        json={
+            "content": {
+                "text": "The answer uses the request-scoped evidence metadata.",
+                "retrieval_diagnostics": {
+                    "retrieval_method": "hybrid_rerank",
+                    "qrels_status": {"status": "candidate"},
+                },
+                "qrels_status": {
+                    "schema_version": "retrieval-qrels-status/v1",
+                    "status": "candidate",
+                    "semantic_quality_claim_allowed": False,
+                },
+                "evidence_gate_status": {"status": "passed"},
+            },
+            "evidence_refs": [{"ref_id": "chunk:request-fallback", "chunk_hash": "sha256:" + "c" * 64}],
+        },
+    )
+
+    assert result.status_code == 200
+    job = runtime.get_job(created.json()["job"]["job_id"])
+    assert job is not None
+    assert job.metadata["smart_read_conversation"]["status"] == "persisted"
+
+    read = client.get(
+        "/api/chat/answer-receipts/session_sidebar_request_fallback",
+        headers=_capability_headers(),
+    )
+    assert read.status_code == 200
+    receipt = read.json()["receipt"]
+    assert receipt["evidence_pack_ref"] == pack_ref
+    assert receipt["answer_model"] == "codex-request-model"
+    assert receipt["output_language"] == "en"
+    assert receipt["retrieval_diagnostics"]["retrieval_method"] == "hybrid_rerank"
+    assert receipt["retrieval_diagnostics"]["rerank_status"] == "skipped"
+    assert receipt["retrieval_diagnostics"]["qrels_status"]["qrels_content_hash"] == qrels_hash
+    assert receipt["qrels_status"]["status"] == "candidate"
+    assert receipt["qrels_status"]["semantic_quality_claim_allowed"] is False
+    assert receipt["qrels_status"]["qrels_content_hash"] == qrels_hash
+    assert receipt["receipt_fingerprint_inputs"]["qrels_content_hash"] == qrels_hash
+    assert receipt["evidence_gate_status"]["status"] == "passed"
+    assert receipt["evidence_gate_status"]["gate_config_hash"] == gate_hash
+    assert receipt["receipt_fingerprint_inputs"]["gate_config_hash"] == gate_hash
+    assert receipt["workflow_refs"]["agent_request_id"] == request_id
+    assert receipt["workflow_refs"]["runtime_job_id"] == created.json()["job"]["job_id"]
+    assert receipt["workflow_passport_ref"]["endpoint"] == "/runtime/workflow-passport"
+    assert receipt["agent_handoff_card_ref"]["endpoint"].endswith("/agent-handoff-card")
+    assert read.json()["staleness"]["status"] == "saved"
+    assert restore_calls == [
+        {
+            "project_id": "proj_sidebar_request_fallback",
+            "query": "Summarize the bounded evidence.",
+            "evidence_pack_ref": pack_ref,
+        }
+    ]
+
+
+def test_smart_read_external_agent_chat_imports_sidebar_answer_receipt(monkeypatch: Any, tmp_path: Path) -> None:
+    """Persisting SmartRead turns should import sidebar receipt metadata."""
+
+    _isolated_runtime(monkeypatch)
+    history_db = tmp_path / "chat_history.db"
+    session_store = tmp_path / "sessions.json"
+    session_store.write_text(json.dumps({"sessions": {}}, ensure_ascii=False), encoding="utf-8")
+
+    import routers.intelligent_chat_router as intelligent_chat_router
+    import routers.evidence_router as evidence_router
+
+    monkeypatch.setattr(intelligent_chat_router, "_SESSION_STORE_PATH", session_store)
+    monkeypatch.setattr(intelligent_chat_router, "default_chat_history_db_path", lambda: history_db)
+    monkeypatch.setattr(intelligent_chat_router, "runtime_state_path", lambda: tmp_path / "runtime_state")
+    monkeypatch.setattr(evidence_router, "_restore_evidence_pack_build", lambda **_kwargs: object())
+
+    class _ProjectStore:
+        def get_project(self, project_id: str) -> dict[str, str] | None:
+            if project_id == "proj_sidebar_receipt":
+                return {"project_id": project_id}
+            return None
+
+    async def _build_project_context_chunks(*_args: Any, **_kwargs: Any) -> tuple[list[Any], bool]:
+        return (
+            [
+                intelligent_chat_router.ContextChunkPayload(
+                    index=1,
+                    source="Sidebar Receipt Source",
+                    content="A bounded evidence chunk for the shared receipt import path.",
+                    relevance_score=0.91,
+                    chunk_id="chunk-sidebar-receipt",
+                    material_id="mat-sidebar",
+                    source_labels=["local_context"],
+                    page=3,
+                    rerank_score=0.82,
+                )
+            ],
+            False,
+        )
+
+    monkeypatch.setattr(intelligent_chat_router, "get_writing_resource_store", lambda: _ProjectStore())
+    monkeypatch.setattr(intelligent_chat_router, "_build_project_context_chunks", _build_project_context_chunks)
+
+    client = _client(monkeypatch)
+    asked = client.post(
+        "/api/chat",
+        headers=_capability_headers(),
+        json={
+            "project_id": "proj_sidebar_receipt",
+            "session_id": "session_smartread_sidebar_receipt",
+            "query": "Which bounded evidence should the host agent use?",
+            "tier": "balanced",
+            "mode": "literature_qa",
+            "answer_origin": "external_agent",
+            "generated_in": "mcp_sidebar",
+            "evidence_pack_ref": "evidence_pack:smartread-sidebar",
+        },
+    )
+
+    assert asked.status_code == 200
+    assert asked.json()["session_id"] == "session_smartread_sidebar_receipt"
+
+    read = client.get(
+        "/api/chat/answer-receipts/session_smartread_sidebar_receipt",
+        headers=_capability_headers(),
+    )
+    assert read.status_code == 200
+    payload = read.json()
+    receipt = payload["receipt"]
+    assert receipt["generated_in"] == "mcp_sidebar"
+    assert receipt["answer_origin"] == "host_agent"
+    assert receipt["evidence_pack_ref"] == "evidence_pack:smartread-sidebar"
+    assert receipt["question"] == "Which bounded evidence should the host agent use?"
+    assert receipt["retrieval_diagnostics"]["retrieval_method"] == "legacy_project_retrieval"
+    assert payload["staleness"]["status"] == "saved"
+
+    resume = client.post(
+        "/api/chat/resume",
+        headers=_capability_headers(),
+        json={"session_id": "session_smartread_sidebar_receipt", "limit": 20},
+    )
+    assert resume.status_code == 200
+    assistant = resume.json()["messages"][1]
+    assert assistant["generated_in"] == "mcp_sidebar"
+    assert assistant["answer_origin"] == "external_agent"
+    assert assistant["evidence_pack_ref"] == "evidence_pack:smartread-sidebar"
+
+
+def test_answer_receipt_revalidate_dry_run_and_apply(monkeypatch: Any, tmp_path: Path) -> None:
+    """Receipt revalidate should dry-run first and update only existing receipt metadata."""
+
+    _isolated_runtime(monkeypatch)
+    history_db = tmp_path / "chat_history.db"
+    session_store = tmp_path / "sessions.json"
+    session_store.write_text(json.dumps({"sessions": {}}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(agent_bridge_router, "default_chat_history_db_path", lambda: history_db)
+
+    import routers.evidence_router as evidence_router
+    import routers.intelligent_chat_router as intelligent_chat_router
+
+    monkeypatch.setattr(intelligent_chat_router, "_SESSION_STORE_PATH", session_store)
+    monkeypatch.setattr(intelligent_chat_router, "default_chat_history_db_path", lambda: history_db)
+
+    old_qrels_hash = "sha256:" + "1" * 64
+    new_qrels_hash = "sha256:" + "2" * 64
+    old_gate_hash = "sha256:" + "3" * 64
+    new_gate_hash = "sha256:" + "4" * 64
+
+    class _QrelsStatus:
+        qrels_content_hash = new_qrels_hash
+
+    evidence_ref = EvidencePackReferencePayload(
+        project_id="proj_sidebar_revalidate",
+        ref_id="chunk:1",
+        read_endpoint="/api/agent-bridge/resource/chunk:1",
+        chunk_id="chunk-1",
+        material_id="mat-1",
+        page=1,
+        lexical_score=1.0,
+        citation_anchor="mat_1_chunk_1",
+        summary="Bounded evidence summary.",
+        source_title="Source A",
+    )
+    diagnostics = EvidenceRetrievalDiagnosticsPayload(
+        retrieval_method="hybrid",
+        embedding_status="active",
+        rerank_status="active",
+        qrels_status=RetrievalQrelsStatusPayload(
+            status="candidate",
+            candidate_qrels_count=1,
+            qrels_content_hash=new_qrels_hash,
+            semantic_quality_claim_allowed=False,
+            quality_claim="candidate_qrels_review_required",
+        ),
+    )
+    pack = EvidencePackBuildResponse(
+        evidence_pack_ref="evidence_pack:sidebar",
+        project_id="proj_sidebar_revalidate",
+        query="Which evidence supports the weld appearance claim?",
+        retrieval_method="hybrid",
+        rerank_status="active",
+        total=1,
+        retrieval_diagnostics=diagnostics,
+        evidence_refs=[evidence_ref],
+    )
+    gate = EvidencePackIntegrityGateResponse(
+        generated_at="2026-07-07T00:00:00+00:00",
+        gate_config_hash=new_gate_hash,
+        project_id="proj_sidebar_revalidate",
+        evidence_pack_ref="evidence_pack:sidebar",
+        query="Which evidence supports the weld appearance claim?",
+        status="passed",
+        summary={"gate_config_hash": new_gate_hash, "evidence_ref_count": 1},
+    )
+
+    async def _build_evidence_pack(request: Any) -> EvidencePackBuildResponse:
+        assert request.project_id == "proj_sidebar_revalidate"
+        assert request.query == "Which evidence supports the weld appearance claim?"
+        assert request.top_k == 7
+        return pack
+
+    monkeypatch.setattr(evidence_router, "build_evidence_pack", _build_evidence_pack)
+    monkeypatch.setattr(evidence_router, "_build_evidence_pack_integrity_gate", lambda _request: gate)
+    monkeypatch.setattr(evidence_router, "_restore_evidence_pack_build", lambda **_kwargs: pack)
+    monkeypatch.setattr(evidence_router, "_project_qrels_status", lambda _project_id: _QrelsStatus())
+    monkeypatch.setattr(evidence_router, "_evidence_pack_gate_config_hash", lambda: new_gate_hash)
+
+    client = _client(monkeypatch)
+    created = client.post(
+        "/api/agent-bridge/request",
+        headers=_capability_headers(),
+        json={
+            "source": "mcp",
+            "agent_host": "codex",
+            "intent": "sidebar_answer",
+            "user_text": "Which evidence supports the weld appearance claim?",
+            "project_id": "proj_sidebar_revalidate",
+            "chat_session_id": "session_sidebar_revalidate",
+        },
+    )
+    assert created.status_code == 200
+    request_id = created.json()["request_id"]
+
+    result = client.post(
+        f"/api/agent-bridge/request/{request_id}/result",
+        headers=_capability_headers(),
+        json={
+            "content": {
+                "text": "The bounded evidence supports the appearance claim.",
+                "answer_model": "codex-host",
+                "evidence_pack_ref": "evidence_pack:sidebar",
+                "retrieval_diagnostics": {
+                    "retrieval_method": "hybrid",
+                    "rerank_status": "active",
+                },
+                "qrels_status": {"qrels_content_hash": old_qrels_hash},
+                "evidence_gate_status": {"gate_config_hash": old_gate_hash},
+                "output_language": "en",
+            },
+            "evidence_refs": [{"ref_id": "chunk:1"}],
+        },
+    )
+    assert result.status_code == 200
+
+    import_calls: list[str] = []
+
+    async def _unexpected_import_chat_history() -> Any:
+        import_calls.append("called")
+        raise AssertionError("durable answer receipts should not force legacy history import")
+
+    monkeypatch.setattr(intelligent_chat_router, "import_chat_history", _unexpected_import_chat_history)
+
+    dry_run = client.post(
+        "/api/chat/answer-receipts/session_sidebar_revalidate/revalidate",
+        headers=_capability_headers(),
+        json={"top_k": 7},
+    )
+    assert dry_run.status_code == 200
+    dry_payload = dry_run.json()
+    assert dry_payload["applied"] is False
+    assert dry_payload["apply_allowed"] is True
+    assert dry_payload["status"] == "ready"
+    assert dry_payload["receipt"]["qrels_status"]["qrels_content_hash"] == new_qrels_hash
+    assert dry_payload["receipt"]["evidence_gate_status"]["gate_config_hash"] == new_gate_hash
+
+    after_dry_run = client.get(
+        "/api/chat/answer-receipts/session_sidebar_revalidate",
+        headers=_capability_headers(),
+    )
+    assert after_dry_run.json()["receipt"]["qrels_status"]["qrels_content_hash"] == old_qrels_hash
+
+    applied = client.post(
+        "/api/chat/answer-receipts/session_sidebar_revalidate/revalidate",
+        headers=_capability_headers(),
+        json={"apply": True, "top_k": 7},
+    )
+    assert applied.status_code == 200
+    applied_payload = applied.json()
+    assert applied_payload["applied"] is True
+    assert applied_payload["status"] == "revalidated"
+    assert applied_payload["revalidated_staleness"]["status"] == "saved"
+
+    read = client.get(
+        "/api/chat/answer-receipts/session_sidebar_revalidate",
+        headers=_capability_headers(),
+    )
+    receipt = read.json()["receipt"]
+    assert receipt["lifecycle_state"] == "revalidated"
+    assert receipt["qrels_status"]["qrels_content_hash"] == new_qrels_hash
+    assert receipt["evidence_gate_status"]["gate_config_hash"] == new_gate_hash
+    assert import_calls == []
+
+
 def test_agent_bridge_result_consumes_wiki_and_graph_candidates(monkeypatch: Any, tmp_path: Path) -> None:
     """Agent result flags should create reviewable local knowledge artifacts."""
 
@@ -230,7 +969,7 @@ def test_agent_bridge_result_consumes_wiki_and_graph_candidates(monkeypatch: Any
 
     import routers.wiki_router as wiki_router
     from wiki.page_store import WikiPageStore
-    from wiki.review_queue import ReviewQueue
+    from literature_assistant.core.wiki.review_queue import ReviewQueue
     from wiki.service import WikiService
 
     wiki_root = tmp_path / "wiki"
@@ -245,6 +984,14 @@ def test_agent_bridge_result_consumes_wiki_and_graph_candidates(monkeypatch: Any
     import wiki.service as flat_wiki_service
 
     monkeypatch.setattr(flat_wiki_service, "get_wiki_service", _service)
+    appended_item_modules: list[str] = []
+    original_append = ReviewQueue.append
+
+    def record_canonical_queue_append(queue: ReviewQueue, item: Any) -> Any:
+        appended_item_modules.append(type(item).__module__)
+        return original_append(queue, item)
+
+    monkeypatch.setattr(ReviewQueue, "append", record_canonical_queue_append)
 
     created = client.post(
         "/api/agent-bridge/request",
@@ -286,6 +1033,7 @@ def test_agent_bridge_result_consumes_wiki_and_graph_candidates(monkeypatch: Any
     assert consumers["graph"]["status"] == "attached_to_wiki_candidate"
     assert consumers["graph"]["graph_patch_ref_count"] == 1
     assert consumers["evolution"]["status"] == "scheduled"
+    assert appended_item_modules == ["literature_assistant.core.wiki.review_queue"]
 
     page = _service().get_page(consumers["wiki"]["slug"])
     assert page is not None
@@ -301,6 +1049,136 @@ def test_agent_bridge_result_consumes_wiki_and_graph_candidates(monkeypatch: Any
     assert review_items[0].source == "agent_bridge"
     assert review_items[0].metadata["agent_request_id"] == request_id
     assert review_items[0].metadata["graph_candidate"] is True
+
+
+def test_agent_bridge_receipt_links_wiki_and_graph_consumer_refs(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """Saved answer receipts should expose read-only Wiki/graph candidate refs."""
+
+    runtime = _isolated_runtime(monkeypatch)
+    history_db = tmp_path / "chat_history.db"
+    session_store = tmp_path / "sessions.json"
+    session_store.write_text(json.dumps({"sessions": {}}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(agent_bridge_router, "default_chat_history_db_path", lambda: history_db)
+
+    import routers.evidence_router as evidence_router
+    import routers.intelligent_chat_router as intelligent_chat_router
+    import routers.wiki_router as wiki_router
+    from wiki.page_store import WikiPageStore
+    from literature_assistant.core.wiki.review_queue import ReviewQueue
+    from wiki.service import WikiService
+
+    monkeypatch.setattr(intelligent_chat_router, "_SESSION_STORE_PATH", session_store)
+    monkeypatch.setattr(intelligent_chat_router, "default_chat_history_db_path", lambda: history_db)
+
+    wiki_root = tmp_path / "wiki"
+    review_path = tmp_path / "runtime" / "review_queue.jsonl"
+    monkeypatch.setattr(wiki_router, "wiki_enabled", lambda: True)
+    monkeypatch.setattr(wiki_router, "wiki_generated_root", lambda: wiki_root)
+    monkeypatch.setattr(wiki_router, "wiki_review_queue_path", lambda: review_path)
+    monkeypatch.setattr(agent_bridge_router, "wiki_generated_root", lambda *parts: wiki_root.joinpath(*parts))
+
+    def _service() -> WikiService:
+        return WikiService(WikiPageStore(wiki_root, create=True))
+
+    import wiki.service as flat_wiki_service
+
+    monkeypatch.setattr(flat_wiki_service, "get_wiki_service", _service)
+
+    pack_ref = "evidence_pack:wiki-graph-continuity"
+    qrels_hash = "sha256:" + "8" * 64
+    gate_hash = "sha256:" + "9" * 64
+
+    class _QrelsStatus:
+        qrels_content_hash = qrels_hash
+
+    monkeypatch.setattr(evidence_router, "_project_qrels_status", lambda _project_id: _QrelsStatus())
+    monkeypatch.setattr(evidence_router, "_evidence_pack_gate_config_hash", lambda: gate_hash)
+    monkeypatch.setattr(evidence_router, "_restore_evidence_pack_build", lambda **_kwargs: object())
+
+    client = _client(monkeypatch)
+    created = client.post(
+        "/api/agent-bridge/request",
+        headers=_capability_headers(),
+        json={
+            "source": "codex_side_browser",
+            "agent_host": "codex",
+            "intent": "write_review_intro",
+            "user_text": "Turn the bounded evidence into a reviewable claim.",
+            "project_id": "proj_wiki_graph_continuity",
+            "chat_session_id": "session_wiki_graph_continuity",
+            "output_targets": {
+                "runtime_job": True,
+                "smart_read_conversation": True,
+                "agent_workspace": True,
+                "wiki_candidate": True,
+                "graph_candidate": True,
+                "evolution_capture": True,
+            },
+        },
+    )
+    assert created.status_code == 200
+    request_id = created.json()["request_id"]
+    job_id = created.json()["job"]["job_id"]
+
+    result = client.post(
+        f"/api/agent-bridge/request/{request_id}/result",
+        headers=_capability_headers(),
+        json={
+            "content": {
+                "text": "孔隙证据可作为 Wiki 候选条目，并由图谱候选关系回看。",
+                "answer_model": "codex-host",
+                "evidence_pack_ref": pack_ref,
+                "retrieval_diagnostics": {"retrieval_method": "hybrid"},
+                "qrels_status": {"qrels_content_hash": qrels_hash},
+                "evidence_gate_status": {"gate_config_hash": gate_hash},
+                "output_language": "zh",
+            },
+            "evidence_refs": [{"ref_id": "chunk:abc", "summary": "孔隙影响疲劳裂纹萌生"}],
+            "graph_patch_refs": [{"node": "AlSi10Mg", "relation": "affects", "target": "fatigue"}],
+        },
+    )
+
+    assert result.status_code == 200
+    job = runtime.get_job(job_id)
+    assert job is not None
+    consumers = job.metadata["knowledge_consumers"]
+    assert consumers["wiki"]["status"] == "created"
+    assert consumers["graph"]["status"] == "attached_to_wiki_candidate"
+
+    read = client.get(
+        "/api/chat/answer-receipts/session_wiki_graph_continuity",
+        headers=_capability_headers(),
+    )
+    assert read.status_code == 200
+    receipt = read.json()["receipt"]
+    assert receipt["evidence_pack_ref"] == pack_ref
+    assert receipt["top_evidence_refs"][0]["ref_id"] == "chunk:abc"
+    consumer_refs = receipt["knowledge_consumer_refs"]
+    assert consumer_refs["read_only"] is True
+    assert consumer_refs["agent_request_id"] == request_id
+    assert consumer_refs["runtime_job_id"] == job_id
+    wiki_ref = consumer_refs["wiki_candidate_ref"]
+    assert wiki_ref["ref_type"] == "wiki_candidate_review_page"
+    assert wiki_ref["read_endpoint"].startswith("/api/agent-bridge/resource/wiki:synthesis/")
+    assert wiki_ref["page_path"] == consumers["wiki"]["page_path"]
+    assert consumer_refs["wiki_review_item_ref"]["item_id"] == consumers["wiki"]["review_item_id"]
+    graph_ref = consumer_refs["graph_candidate_ref"]
+    assert graph_ref["status"] == "attached_to_wiki_candidate"
+    assert graph_ref["graph_patch_ref_count"] == 1
+    assert graph_ref["wiki_slug"] == consumers["wiki"]["slug"]
+
+    resource_response = client.get(wiki_ref["read_endpoint"], headers=_capability_headers())
+    assert resource_response.status_code == 200
+    resource_payload = resource_response.json()
+    assert resource_payload["kind"] == "wiki"
+    assert resource_payload["metadata"]["page_path"] == consumers["wiki"]["page_path"]
+    assert "孔隙证据可作为 Wiki 候选条目" in resource_payload["content"]
+    assert "chunk:abc" in resource_payload["content"]
+
+    review_items = ReviewQueue(review_path).list_items()
+    assert [item.item_id for item in review_items] == [consumers["wiki"]["review_item_id"]]
 
 
 def test_agent_bridge_lists_and_fails_request(monkeypatch: Any) -> None:

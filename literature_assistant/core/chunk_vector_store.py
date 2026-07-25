@@ -653,6 +653,7 @@ async def _batch_embed(
     concurrency: int | None = None,
     stage: str | None = None,
     credential_pool: Any | None = None,
+    strict_contract: bool = False,
 ) -> list[list[float]]:
     """Public embed entry — API-first with local sentence-encoder fallback.
 
@@ -685,6 +686,8 @@ async def _batch_embed(
             credential_pool=credential_pool,
         )
     except EmbeddingAPIError as api_exc:
+        if strict_contract:
+            raise api_exc
         try:
             from local_embedding_adapter import aencode_texts, is_available
         except ImportError as import_exc:
@@ -727,11 +730,14 @@ async def batch_embed_texts(
     batch_size: int | None = None,
     concurrency: int | None = None,
     stage: str | None = None,
+    strict_contract: bool = False,
 ) -> list[list[float]]:
     """Public helper for provider-aware text embedding outside ChunkVectorStore.
 
     Reuses the same embedding resolution, batching, token guards, and
-    credential failover path as the vector-store build/query flows.
+    credential failover path as the vector-store build/query flows. Set
+    ``strict_contract`` for backfills or migrations where a failed configured
+    provider/model must not silently swap to a different vector space.
     """
     resolved_key, resolved_base, resolved_model = resolve_embedding_config(
         api_key,
@@ -744,13 +750,15 @@ async def batch_embed_texts(
     if not resolved_key:
         raise EmbeddingAPIError("No embedding credential available")
 
-    embedding_pool = _make_embedding_failover_pool(
-        api_key=api_key,
-        base_url=base_url,
-        model=model,
-        default_base_url=base_url,
-        default_model=model,
-    )
+    embedding_pool = None
+    if not strict_contract:
+        embedding_pool = _make_embedding_failover_pool(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            default_base_url=base_url,
+            default_model=model,
+        )
 
     return await _batch_embed(
         texts,
@@ -761,6 +769,7 @@ async def batch_embed_texts(
         concurrency=concurrency,
         stage=stage,
         credential_pool=embedding_pool,
+        strict_contract=strict_contract,
     )
 
 

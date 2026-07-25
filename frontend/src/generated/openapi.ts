@@ -64,6 +64,310 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/acquisition/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifact
+         * @description Read one validated PDF artifact without importing it.
+         */
+        get: operations["get_api_acquisition_artifacts_artifact_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/artifacts/{artifact_id}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Artifact
+         * @description Revalidate and import one PDF through the existing material pipeline.
+         */
+        post: operations["post_api_acquisition_artifacts_artifact_id_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue Download
+         * @description Queue one PDF only from exact allowlisted open-access evidence.
+         */
+        post: operations["post_api_acquisition_downloads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/downloads/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Download Job
+         * @description Read one durable download job without starting network work.
+         */
+        get: operations["get_api_acquisition_downloads_job_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/downloads/{job_id}/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Control Download
+         * @description Pause, resume, or cancel one job without hidden external work.
+         */
+        post: operations["post_api_acquisition_downloads_job_id_control"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/downloads/{job_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Download
+         * @description Explicitly run or retry one queued download job.
+         */
+        post: operations["post_api_acquisition_downloads_job_id_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/gates/{gate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Gate
+         * @description Read one durable human-access gate without resolving it.
+         */
+        get: operations["get_api_acquisition_gates_gate_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/gates/{gate_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Gate
+         * @description Acknowledge a completed visible user access step and requeue its job.
+         */
+        post: operations["post_api_acquisition_gates_gate_id_resolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/receipts/{receipt_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Import Receipt
+         * @description Read one durable import receipt without repeating ingestion.
+         */
+        get: operations["get_api_acquisition_receipts_receipt_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Literature
+         * @description Run one explicit allowlisted metadata search.
+         */
+        post: operations["post_api_acquisition_search"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/search-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Search Run
+         * @description Read one durable search manifest without external work.
+         */
+        get: operations["get_api_acquisition_search_runs_run_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/search-runs/{run_id}/identity-ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Search Run Identity Ledger
+         * @description Read persisted search identity evidence without recomputing decisions.
+         */
+        get: operations["get_api_acquisition_search_runs_run_id_identity_ledger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Acquisition Status
+         * @description Read enabled sources plus bounded jobs and user-owned gates.
+         */
+        get: operations["get_api_acquisition_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-bridge/codex-handoff/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Latest Codex Handoff
+         * @description Return the newest unresolved Codex sidebar handoff request.
+         *
+         *     The response is a projection of existing ``agent_request`` runtime jobs. It
+         *     does not create a second handoff store; the host widget still reads and
+         *     completes the request through ``agent_request_read`` and ``agent_result``.
+         */
+        get: operations["get_api_agent_bridge_codex_handoff_latest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-bridge/desktop/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Agent Sidebar Desktop
+         * @description Launch or confirm the native 文献助手 desktop used for full review.
+         */
+        post: operations["post_api_agent_bridge_desktop_open"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent-bridge/request": {
         parameters: {
             query?: never;
@@ -411,6 +715,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/annotations/{material_id}/notes/eligible": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Eligible Notes
+         * @description Read one material's explicitly enabled notes for a single consumer.
+         */
+        get: operations["get_api_annotations_material_id_notes_eligible"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/annotations/{material_id}/notes/{note_id}": {
         parameters: {
             query?: never;
@@ -424,6 +748,26 @@ export interface paths {
         post?: never;
         /** Delete Note */
         delete: operations["delete_api_annotations_material_id_notes_note_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/annotations/{material_id}/notes/{note_id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Note Usage
+         * @description Explicitly authorize a note for selected downstream source scopes.
+         */
+        put: operations["put_api_annotations_material_id_notes_note_id_usage"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -463,6 +807,249 @@ export interface paths {
          * @description Answer a literature-grounded frontend chat request.
          */
         post: operations["post_api_chat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/answer-receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Answer Receipts
+         * @description List saved answer receipts for one Scholar AI project.
+         */
+        get: operations["get_api_chat_answer_receipts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/answer-receipts/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Answer Receipt
+         * @description Read one saved answer receipt and compute its current staleness state.
+         */
+        get: operations["get_api_chat_answer_receipts_conversation_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/answer-receipts/{conversation_id}/revalidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revalidate Answer Receipt
+         * @description Re-check a saved answer receipt without generating a new answer.
+         */
+        post: operations["post_api_chat_answer_receipts_conversation_id_revalidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/citation-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Citation Candidates
+         * @description List bounded directed citation candidates without graph mutation.
+         */
+        get: operations["get_api_chat_citation_candidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/citation-candidates/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Citation Candidate
+         * @description Read one project-scoped directed citation candidate.
+         */
+        get: operations["get_api_chat_citation_candidates_candidate_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/citation-candidates/{candidate_id}/transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transition Citation Candidate
+         * @description Commit one explicit citation-candidate lifecycle transition.
+         *
+         *     The controller only changes the project-scoped citation ledger. It does not
+         *     promote a candidate to Wiki, graph facts, qrels, or answer evidence.
+         */
+        post: operations["post_api_chat_citation_candidates_candidate_id_transition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/citation-capture-receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Citation Capture Receipts
+         * @description List bounded scheduled and terminal citation capture receipts.
+         */
+        get: operations["get_api_chat_citation_capture_receipts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/citation-capture-receipts/{receipt_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Citation Capture Receipt
+         * @description Read one project-scoped citation capture receipt.
+         */
+        get: operations["get_api_chat_citation_capture_receipts_receipt_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/citation-mentions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Citation Mentions
+         * @description List all structured citation outcomes, including non-edge records.
+         */
+        get: operations["get_api_chat_citation_mentions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/citation-mentions/{mention_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Citation Mention
+         * @description Read one project-scoped citation mention outcome.
+         */
+        get: operations["get_api_chat_citation_mentions_mention_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/citation-source-revisions/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Citation Source Revision
+         * @description Apply one exact impact set and stale linked reviewed provenance.
+         */
+        post: operations["post_api_chat_citation_source_revisions_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/citation-source-revisions/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preflight Citation Source Revision
+         * @description List only exact project-scoped citation candidates affected by a revision.
+         */
+        post: operations["post_api_chat_citation_source_revisions_preflight"];
         delete?: never;
         options?: never;
         head?: never;
@@ -519,7 +1106,7 @@ export interface paths {
         get: operations["get_api_chat_context_compression"];
         /**
          * Put Chat Context Compression
-         * @description Update SmartRead long-session compression settings.
+         * @description Update answer-model budgets while accepting the legacy trigger alias.
          */
         put: operations["put_api_chat_context_compression"];
         post?: never;
@@ -814,6 +1401,146 @@ export interface paths {
          * @description Probe and persist native OpenAI-compatible chat tool-call capability.
          */
         post: operations["post_api_chat_tool_capability_test"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/visual-observation-lifecycle-receipts/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Visual Observation Lifecycle Receipt
+         * @description Read one durable explicit visual lifecycle receipt.
+         */
+        get: operations["get_api_chat_visual_observation_lifecycle_receipts_operation_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/visual-observation-source-revision-receipts/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Visual Observation Source Revision Receipt
+         * @description Read one durable aggregate visual source-revision receipt.
+         */
+        get: operations["get_api_chat_visual_observation_source_revision_receipts_operation_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/visual-observation-source-revisions/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Visual Observation Source Revision
+         * @description Atomically apply one exact visual source revision impact set.
+         */
+        post: operations["post_api_chat_visual_observation_source_revisions_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/visual-observation-source-revisions/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preflight Visual Observation Source Revision
+         * @description Return the exact project-scoped visual source revision impact set.
+         */
+        post: operations["post_api_chat_visual_observation_source_revisions_preflight"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/visual-observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Visual Observations
+         * @description List bounded visual candidates for one session or exact turn.
+         */
+        get: operations["get_api_chat_visual_observations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/visual-observations/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Visual Observation
+         * @description Read one derived visual candidate without exposing stored pixels.
+         */
+        get: operations["get_api_chat_visual_observations_candidate_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/visual-observations/{candidate_id}/transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transition Visual Observation
+         * @description Atomically transition one candidate axis without promoting content.
+         */
+        post: operations["post_api_chat_visual_observations_candidate_id_transition"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1854,6 +2581,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evidence-pack/qrels-review-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build Evidence Pack Qrels Review Bundle
+         * @description Generate a candidate-only qrels review bundle from a selected pack.
+         */
+        post: operations["post_api_evidence_pack_qrels_review_bundle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/evidence_refs": {
         parameters: {
             query?: never;
@@ -2040,6 +2787,66 @@ export interface paths {
          * @description Return the reusable Evidence Graph v1 payload.
          */
         get: operations["get_api_graph_evidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph/evidence/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Answer Evidence Graph Payload
+         * @description Return one answer-turn graph isolated by session_id and turn_id.
+         */
+        get: operations["get_api_graph_evidence_answer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph/evidence/project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Evidence Graph Payload
+         * @description Return project TF-IDF and citation candidates without Wiki mutation.
+         */
+        get: operations["get_api_graph_evidence_project"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph/evidence/wiki": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wiki Evidence Graph Payload
+         * @description Return a Wiki-only graph projection with no project or answer access.
+         */
+        get: operations["get_api_graph_evidence_wiki"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3246,6 +4053,186 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reviewed-knowledge/facts/mark-stale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Accepted Graph Fact Stale
+         * @description Mark one active fresh fact stale using exact source-revision evidence.
+         */
+        post: operations["post_api_reviewed_knowledge_facts_mark_stale"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviewed-knowledge/facts/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote Accepted Graph Fact
+         * @description Explicitly promote one separately accepted candidate into the fact ledger.
+         */
+        post: operations["post_api_reviewed_knowledge_facts_promote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviewed-knowledge/facts/revalidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revalidate Accepted Graph Fact
+         * @description Revalidate one stale fact using the complete provenance locator set.
+         */
+        post: operations["post_api_reviewed_knowledge_facts_revalidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviewed-knowledge/facts/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Accepted Graph Fact
+         * @description Withdraw one fact while retaining all revisions and receipts.
+         */
+        post: operations["post_api_reviewed_knowledge_facts_withdraw"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviewed-knowledge/projects/{project_id}/facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accepted Graph Facts
+         * @description List a bounded project-scoped current-fact page.
+         */
+        get: operations["get_api_reviewed_knowledge_projects_project_id_facts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviewed-knowledge/projects/{project_id}/facts/{fact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Accepted Graph Fact
+         * @description Read one project-scoped current fact without invoking Wiki or graph code.
+         */
+        get: operations["get_api_reviewed_knowledge_projects_project_id_facts_fact_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviewed-knowledge/projects/{project_id}/facts/{fact_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accepted Graph Fact Revisions
+         * @description List immutable revisions for one project-scoped fact.
+         */
+        get: operations["get_api_reviewed_knowledge_projects_project_id_facts_fact_id_revisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviewed-knowledge/projects/{project_id}/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reviewed Knowledge Receipts
+         * @description List bounded durable mutation receipts for one project.
+         */
+        get: operations["get_api_reviewed_knowledge_projects_project_id_receipts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviewed-knowledge/projects/{project_id}/receipts/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Reviewed Knowledge Receipt
+         * @description Read one durable mutation receipt by project and idempotency key.
+         */
+        get: operations["get_api_reviewed_knowledge_projects_project_id_receipts_operation_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -3453,6 +4440,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/wiki/graph/review/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wiki Graph Review Apply
+         * @description Apply a graph review operation to wiki page frontmatter with snapshots.
+         */
+        post: operations["post_api_wiki_graph_review_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/graph/review/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wiki Graph Review Undo
+         * @description Restore exact page snapshots returned by graph review apply.
+         */
+        post: operations["post_api_wiki_graph_review_undo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/wiki/import": {
         parameters: {
             query?: never;
@@ -3555,7 +4582,7 @@ export interface paths {
         post?: never;
         /**
          * Wiki Page Delete
-         * @description Delete a wiki page (G2 2026-05-26).
+         * @description Archive a wiki page while retaining its file and receipt.
          */
         delete: operations["delete_api_wiki_pages_slug"];
         options?: never;
@@ -3580,6 +4607,46 @@ export interface paths {
          * @description Update permissions for a wiki page (G14 2026-05-26).
          */
         put: operations["put_api_wiki_pages_slug_permissions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/pages/{slug}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wiki Page Restore
+         * @description Restore an archived page with explicit receipt and content CAS.
+         */
+        post: operations["post_api_wiki_pages_slug_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/pages/{slug}/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wiki Page Retention
+         * @description Read a page's persisted archive/restore receipt and current CAS hash.
+         */
+        get: operations["get_api_wiki_pages_slug_retention"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -3627,6 +4694,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/wiki/revalidation/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wiki Revalidation Apply
+         * @description Rebuild the query index after an explicit manifest-hash CAS check.
+         */
+        post: operations["post_api_wiki_revalidation_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/revalidation/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wiki Revalidation Preflight
+         * @description Inspect Wiki source/index drift without writing pages or index state.
+         */
+        post: operations["post_api_wiki_revalidation_preflight"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/wiki/review": {
         parameters: {
             query?: never;
@@ -3638,6 +4745,26 @@ export interface paths {
         get: operations["get_api_wiki_review"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/review/annotations/enqueue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wiki Annotation Review Enqueue
+         * @description Submit one exact, explicitly authorized annotation note for review.
+         */
+        post: operations["post_api_wiki_review_annotations_enqueue"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3657,9 +4784,9 @@ export interface paths {
          * Wiki Review Approve
          * @description Approve a pending review item.
          *
-         *     Capture flow (2026-06-14): when the item points at an existing wiki page,
-         *     approval first promotes the page to ``final`` and only then marks the
-         *     queue item ``approved``. A promotion failure leaves the queue pending.
+         *     Page approvals first persist a deterministic promotion intent. Replaying
+         *     the same request can then finish either the page write or the queue commit
+         *     after a process interruption without letting read-only routes mutate Wiki.
          */
         post: operations["post_api_wiki_review_item_id_approve"];
         delete?: never;
@@ -3679,6 +4806,26 @@ export interface paths {
         put?: never;
         /** Wiki Review Reject */
         post: operations["post_api_wiki_review_item_id_reject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wiki/review/{item_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wiki Review Withdraw Promotion
+         * @description Withdraw an unapplied page promotion without rejecting its candidate.
+         */
+        post: operations["post_api_wiki_review_item_id_withdraw"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4069,9 +5216,49 @@ export interface paths {
         post?: never;
         /**
          * Delete Project Alias
-         * @description Delete a writing project (alias to /resources/project/{id}).
+         * @description Archive a writing project through the resources API alias.
          */
         delete: operations["delete_api_writing_projects_project_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/projects/{project_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Project Alias
+         * @description Restore an archived project through the writing API alias.
+         */
+        post: operations["post_api_writing_projects_project_id_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/writing/projects/{project_id}/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Retention Alias
+         * @description Read persisted archive/restore receipts through the writing API.
+         */
+        get: operations["get_api_writing_projects_project_id_retention"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5507,6 +6694,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/resources/material/{material_id}/formula-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Material Formula Candidates
+         * @description List atomic formula targets for one project-owned PDF material.
+         *
+         *     This route is intentionally synchronous so FastAPI runs the bounded
+         *     PyMuPDF text-layer scan in its worker threadpool instead of blocking the
+         *     async event loop. It never repairs source metadata or persists candidates.
+         *     Reliable structured formula chunks are merged with conservative line-level
+         *     detection, preserving existing parser output while filling local gaps.
+         */
+        get: operations["get_resources_material_material_id_formula_candidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/resources/material/{material_id}/suggested-questions": {
         parameters: {
             query?: never;
@@ -5600,7 +6813,7 @@ export interface paths {
         };
         /**
          * Get Project
-         * @description Get a project by ID.
+         * @description Get a project by ID, including an archived tombstone.
          */
         get: operations["get_resources_project_project_id"];
         /**
@@ -5611,7 +6824,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Project
-         * @description Delete a project and all its associated resources.
+         * @description Archive a project without deleting its resources or workspace files.
          */
         delete: operations["delete_resources_project_project_id"];
         options?: never;
@@ -5677,6 +6890,46 @@ export interface paths {
          * @description Return a structured optimization suggestion without persisting anything.
          */
         post: operations["post_resources_project_project_id_reasoning_bias_optimize"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/project/{project_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Project
+         * @description Restore an archived project using its exact persisted archive receipt.
+         */
+        post: operations["post_resources_project_project_id_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resources/project/{project_id}/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Retention
+         * @description Read the persisted project archive/restore receipt after a restart.
+         */
+        get: operations["get_resources_project_project_id_retention"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5780,7 +7033,7 @@ export interface paths {
         };
         /**
          * List Projects
-         * @description List all projects, optionally filtered by user. Supports pagination via query params.
+         * @description List active projects by default, with opt-in archived tombstones.
          */
         get: operations["get_resources_projects"];
         put?: never;
@@ -7428,6 +8681,141 @@ export interface components {
             /** Score */
             score: number;
         };
+        /**
+         * AcceptedCandidateReview
+         * @description External evidence that a typed candidate was explicitly accepted.
+         */
+        AcceptedCandidateReview: {
+            /** Candidate Id */
+            candidate_id: string;
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+            /** Decided By */
+            decided_by: string;
+            /**
+             * Decision
+             * @default accepted
+             * @constant
+             */
+            decision: "accepted";
+            /** Decision Receipt Id */
+            decision_receipt_id: string;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Target Kind
+             * @enum {string}
+             */
+            target_kind: "citation" | "visual_observation" | "graph_relation" | "wiki_review" | "annotation";
+        };
+        /**
+         * AcceptedGraphFact
+         * @description Canonical reviewed fact owned by the independent knowledge ledger.
+         */
+        AcceptedGraphFact: {
+            accepted_review: components["schemas"]["AcceptedCandidateReview"];
+            /**
+             * Availability Status
+             * @default active
+             * @enum {string}
+             */
+            availability_status: "active" | "withdrawn";
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Fact Id */
+            fact_id: string;
+            /**
+             * Freshness Status
+             * @default fresh
+             * @enum {string}
+             */
+            freshness_status: "fresh" | "stale";
+            /** Object Ref */
+            object_ref: string;
+            /** Predicate */
+            predicate: string;
+            /** Project Id */
+            project_id: string;
+            /** Provenance */
+            provenance: components["schemas"]["FactSourceRevision"][];
+            /**
+             * Schema Version
+             * @default scholar-ai-accepted-graph-fact/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-accepted-graph-fact/v1";
+            stale_source_revision?: components["schemas"]["FactSourceRevision"] | null;
+            /** State Sha256 */
+            state_sha256: string;
+            /** Statement */
+            statement: string;
+            /** Subject Ref */
+            subject_ref: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * AccessEvidence
+         * @description Explicit evidence that one exact PDF route is lawfully downloadable.
+         */
+        AccessEvidence: {
+            access_route: components["schemas"]["AccessRoute"];
+            /** Candidate Id */
+            candidate_id: string;
+            /** Evidence Id */
+            evidence_id: string;
+            kind: components["schemas"]["AccessEvidenceKind"];
+            /** License */
+            license?: string | null;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at?: string;
+            /** Pdf Url */
+            pdf_url: string;
+            /** Source Platform */
+            source_platform: string;
+            /** Statement */
+            statement: string;
+        };
+        /**
+         * AccessEvidenceKind
+         * @description Evidence classes accepted by source policy.
+         * @enum {string}
+         */
+        AccessEvidenceKind: "official_repository" | "oa_api" | "manual_review";
+        /**
+         * AccessRoute
+         * @description How full text may lawfully be accessed.
+         * @enum {string}
+         */
+        AccessRoute: "open_access" | "institution_browser" | "manual_review" | "unavailable";
+        /**
+         * AcquisitionStatusResponse
+         * @description Bounded read model for desktop and MCP acquisition controls.
+         */
+        AcquisitionStatusResponse: {
+            /** Download Jobs */
+            download_jobs: components["schemas"]["DownloadJob"][];
+            /** Gates */
+            gates: components["schemas"]["HumanAccessGate"][];
+            /** Sources */
+            sources: components["schemas"]["SourcePolicy"][];
+        };
         /** AddHighlightRequest */
         AddHighlightRequest: {
             highlight: components["schemas"]["Highlight"];
@@ -7821,6 +9209,45 @@ export interface components {
          * @enum {string}
          */
         AgentRole: "proponent" | "opponent" | "reviewer" | "moderator";
+        /**
+         * AgentSidebarDesktopOpenResponse
+         * @description Bounded response for opening or confirming the native desktop window.
+         */
+        AgentSidebarDesktopOpenResponse: {
+            /** Base Url */
+            base_url?: string | null;
+            /**
+             * Focused
+             * @default false
+             */
+            focused: boolean;
+            /** Message */
+            message: string;
+            /** Pid */
+            pid?: number | null;
+            /**
+             * Product Name
+             * @default Scholar AI
+             */
+            product_name: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-agent-sidebar-desktop-open/v1
+             */
+            schema_version: string;
+            /** Started */
+            started: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "starting";
+            /**
+             * Window Title
+             * @default 文献助手
+             */
+            window_title: string;
+        };
         /**
          * AgentThoughtTracePayload
          * @description Backward-compatible rich wrapper for visible agent reasoning summaries.
@@ -8804,6 +10231,170 @@ export interface components {
             /** Warning */
             warning?: string | null;
         };
+        /** AnnotationNoteReviewTargetPayload */
+        AnnotationNoteReviewTargetPayload: {
+            /** Expected Content Hash */
+            expected_content_hash: string;
+            /** Expected Updated At */
+            expected_updated_at: string;
+            /** Material Id */
+            material_id: string;
+            /** Note Id */
+            note_id: string;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Required Scope
+             * @constant
+             */
+            required_scope: "wiki_review";
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: "scholar-ai-annotation-note-review-target/v1";
+            /**
+             * Type
+             * @constant
+             */
+            type: "annotation_note";
+        };
+        /**
+         * AnnotationUseScope
+         * @description Explicit downstream uses a user may authorize for one note.
+         * @enum {string}
+         */
+        AnnotationUseScope: "project_retrieval" | "wiki_review" | "writing_source";
+        /**
+         * AnswerReceiptListResponse
+         * @description Read-only answer receipt list for a Scholar AI project.
+         */
+        AnswerReceiptListResponse: {
+            /** Project Id */
+            project_id: string;
+            /** Receipts */
+            receipts?: components["schemas"]["AnswerReceiptSummaryPayload"][];
+        };
+        /**
+         * AnswerReceiptReadResponse
+         * @description One saved answer receipt plus read-time staleness projection.
+         */
+        AnswerReceiptReadResponse: {
+            /**
+             * Answer
+             * @default
+             */
+            answer: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Receipt */
+            receipt: {
+                [key: string]: unknown;
+            };
+            /** Staleness */
+            staleness?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * AnswerReceiptRevalidateRequest
+         * @description Dry-run-first request to re-check one saved answer receipt.
+         */
+        AnswerReceiptRevalidateRequest: {
+            /**
+             * Apply
+             * @default false
+             */
+            apply: boolean;
+            /**
+             * Top K
+             * @default 10
+             */
+            top_k: number;
+        };
+        /**
+         * AnswerReceiptRevalidateResponse
+         * @description Revalidation projection for a saved answer receipt.
+         */
+        AnswerReceiptRevalidateResponse: {
+            /**
+             * Applied
+             * @default false
+             */
+            applied: boolean;
+            /**
+             * Apply Allowed
+             * @default false
+             */
+            apply_allowed: boolean;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Evidence Pack */
+            evidence_pack?: {
+                [key: string]: unknown;
+            };
+            /** Gate */
+            gate?: {
+                [key: string]: unknown;
+            };
+            /** Previous Staleness */
+            previous_staleness?: {
+                [key: string]: unknown;
+            };
+            /** Project Id */
+            project_id: string;
+            /** Receipt */
+            receipt?: {
+                [key: string]: unknown;
+            };
+            /** Revalidated Staleness */
+            revalidated_staleness?: {
+                [key: string]: unknown;
+            };
+            /** Status */
+            status: string;
+            /** Top Ref Delta */
+            top_ref_delta?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * AnswerReceiptSummaryPayload
+         * @description Project-scoped saved answer receipt summary without answer body text.
+         */
+        AnswerReceiptSummaryPayload: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Created At */
+            created_at: string;
+            /**
+             * Lifecycle State
+             * @default saved
+             */
+            lifecycle_state: string;
+            /** Mode */
+            mode: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Receipt */
+            receipt?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Staleness Status
+             * @default unchecked
+             */
+            staleness_status: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+        };
         /**
          * ApplyFixesRequest
          * @description 应用修复请求。
@@ -9617,6 +11208,67 @@ export interface components {
             total: number;
         };
         /**
+         * CandidateManifest
+         * @description Normalized candidate with merged source and access provenance.
+         */
+        CandidateManifest: {
+            /** Abstract */
+            abstract?: string | null;
+            /** Arxiv Id */
+            arxiv_id?: string | null;
+            /**
+             * Authors
+             * @default []
+             */
+            authors: string[];
+            /** Candidate Id */
+            candidate_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /** Doi */
+            doi?: string | null;
+            /**
+             * Landing Urls
+             * @default []
+             */
+            landing_urls: string[];
+            /**
+             * Merged From Candidate Ids
+             * @default []
+             */
+            merged_from_candidate_ids: string[];
+            /**
+             * Pdf Candidates
+             * @default []
+             */
+            pdf_candidates: components["schemas"]["PdfCandidate"][];
+            /** Project Id */
+            project_id: string;
+            /** Published Date */
+            published_date?: string | null;
+            /** Run Id */
+            run_id: string;
+            /** Source Platforms */
+            source_platforms: string[];
+            /**
+             * Source Records
+             * @default []
+             */
+            source_records: components["schemas"]["CandidateSourceRecord"][];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at?: string;
+            /** Year */
+            year?: number | null;
+        };
+        /**
          * CandidateMemoryType
          * @enum {string}
          */
@@ -9647,6 +11299,20 @@ export interface components {
          */
         CandidateRiskLevel: "low" | "medium" | "high";
         /**
+         * CandidateSourceRecord
+         * @description Exact source record identity retained across candidate merges.
+         */
+        CandidateSourceRecord: {
+            /** @default unknown */
+            publication_stage: components["schemas"]["PublicationStage"];
+            /** Source Platform */
+            source_platform: string;
+            /** Source Record Id */
+            source_record_id: string;
+            /** Source Revision */
+            source_revision?: string | null;
+        };
+        /**
          * CandidateSourceType
          * @enum {string}
          */
@@ -9656,6 +11322,31 @@ export interface components {
          * @enum {string}
          */
         CandidateStatus: "captured" | "pending" | "accepted" | "rejected" | "snoozed" | "expired" | "promoted_to_memory" | "promoted_to_skill_draft" | "rolled_back" | "blocked";
+        /**
+         * CandidateVersionRelation
+         * @description Persisted directed relation between two retained candidate versions.
+         */
+        CandidateVersionRelation: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /** Evidence */
+            evidence: string[];
+            evidence_kind: components["schemas"]["VersionRelationEvidenceKind"];
+            /** Project Id */
+            project_id: string;
+            relation: components["schemas"]["VersionRelationType"];
+            /** Relation Id */
+            relation_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Source Candidate Id */
+            source_candidate_id: string;
+            /** Target Candidate Id */
+            target_candidate_id: string;
+        };
         /**
          * CapabilityPayload
          * @description Capability payload advertised to the frontend.
@@ -9710,7 +11401,7 @@ export interface components {
         };
         /**
          * ChatContextCompressionPayload
-         * @description SmartRead long-session compression settings.
+         * @description Answer-model context, compaction, and tool-output budgets.
          */
         ChatContextCompressionPayload: {
             /**
@@ -9724,13 +11415,28 @@ export interface components {
              */
             keep_recent_turns: number;
             /**
+             * Model Auto Compact Token Limit
+             * @default 150000
+             */
+            model_auto_compact_token_limit: number;
+            /**
+             * Model Context Window
+             * @default 258400
+             */
+            model_context_window: number;
+            /**
              * Target Tokens
              * @default 2000
              */
             target_tokens: number;
             /**
+             * Tool Output Token Limit
+             * @default 8000
+             */
+            tool_output_token_limit: number;
+            /**
              * Trigger Tokens
-             * @default 24000
+             * @default 150000
              */
             trigger_tokens: number;
             /**
@@ -9935,14 +11641,26 @@ export interface components {
          */
         ChatResumeMessagePayload: {
             analysis_chain?: components["schemas"]["models__analysis_chain__AnalysisChainPayload"] | null;
+            /** Answer Model Origin */
+            answer_model_origin?: ("scholar_ai_configured_chat" | "external_agent") | null;
+            /** Answer Origin */
+            answer_origin?: ("internal_smartread" | "external_agent") | null;
             /** Content */
             content: string;
             context_metadata?: components["schemas"]["ContextMetadataPayload"] | null;
+            /** Evidence Pack Ref */
+            evidence_pack_ref?: string | null;
             /** Evidence Refs */
             evidence_refs?: components["schemas"]["EvidenceReferencePayload"][];
+            /** Generated In */
+            generated_in?: ("smart_read" | "mcp_sidebar") | null;
             /** Id */
             id: string;
             inspiration_context?: components["schemas"]["InspirationContextPayload"] | null;
+            /** Research Selections */
+            research_selections?: components["schemas"]["ResearchSelectionPayload"][];
+            /** Retrieval Provider */
+            retrieval_provider?: "scholar_ai" | null;
             /**
              * Role
              * @enum {string}
@@ -9953,6 +11671,12 @@ export interface components {
             /** Timestamp */
             timestamp: string;
             tokens_used?: components["schemas"]["TokenUsagePayload"] | null;
+            /** Turn Id */
+            turn_id?: string | null;
+            /** Visual Evidence Refs */
+            visual_evidence_refs?: components["schemas"]["EvidenceReferencePayload"][];
+            /** Visual Observation Refs */
+            visual_observation_refs?: components["schemas"]["VisualObservationReference"][];
         };
         /**
          * ChatResumeRequest
@@ -10184,10 +11908,10 @@ export interface components {
         ChunkLocatorPayload: {
             /**
              * Bbox
-             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
              */
             bbox?: number[] | null;
-            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
             bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id: string;
@@ -10221,26 +11945,42 @@ export interface components {
          *             whole chunk body.
          *         image_paths: Project-relative chunk image assets already produced by
          *             ingestion; never generated by this response model.
+         *         quote: Optional bounded exact text selector. This is not the full
+         *             chunk body and is present only for text anchors.
          */
         ChunkSearchRefMetadataPayload: {
+            /** Anchor Kind */
+            anchor_kind?: ("text" | "visual") | null;
+            /** Chunk Hash */
+            chunk_hash?: string | null;
             /** Chunk Type */
             chunk_type?: string | null;
+            /** Content Hash */
+            content_hash?: string | null;
+            /** Embedding Input Hash */
+            embedding_input_hash?: string | null;
             /** Figure Candidate */
             figure_candidate?: string | null;
             /** Figure Candidate Detail */
             figure_candidate_detail?: {
                 [key: string]: unknown;
             } | null;
+            /** Hash Version */
+            hash_version?: string | null;
             /** Image Paths */
             image_paths?: string[];
             /** Locator */
             locator?: {
                 [key: string]: unknown;
             } | null;
+            /** Locator Hash */
+            locator_hash?: string | null;
             /** Material Id */
             material_id: string;
             /** Page */
             page?: number | null;
+            /** Quote */
+            quote?: string | null;
             /** Source Labels */
             source_labels?: string[];
             /** Source Relative Path */
@@ -10250,7 +11990,7 @@ export interface components {
         };
         /**
          * ChunkSearchRefPayload
-         * @description Small search hit returned to MCP clients without source text content.
+         * @description Small search hit returned to MCP clients without the full source body.
          *
          *     Args:
          *         chunk_id: Stable chunk identifier in the project chunk store.
@@ -10316,6 +12056,285 @@ export interface components {
             startOffset: number;
             /** Token */
             token: string;
+        };
+        /** CitationCandidateTransitionRequest */
+        CitationCandidateTransitionRequest: {
+            /** Changed By */
+            changed_by: string;
+            /** Expected Freshness Status */
+            expected_freshness_status?: ("fresh" | "stale") | null;
+            /** Expected Review Status */
+            expected_review_status?: ("candidate" | "accepted" | "rejected") | null;
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason: string;
+            /** Target Freshness Status */
+            target_freshness_status?: ("fresh" | "stale") | null;
+            /** Target Review Status */
+            target_review_status?: ("accepted" | "rejected") | null;
+        };
+        /** CitationCandidateTransitionResponse */
+        CitationCandidateTransitionResponse: {
+            candidate: components["schemas"]["CitesCandidate"];
+            /** Changed */
+            changed: boolean;
+            event: components["schemas"]["CitationLifecycleEvent"];
+            mention: components["schemas"]["CitationMention"];
+            /**
+             * Previous Freshness Status
+             * @enum {string}
+             */
+            previous_freshness_status: "fresh" | "stale";
+            /**
+             * Previous Review Status
+             * @enum {string}
+             */
+            previous_review_status: "candidate" | "accepted" | "rejected";
+        };
+        /**
+         * CitationCaptureReceipt
+         * @description Durable status for one asynchronous local citation capture batch.
+         */
+        CitationCaptureReceipt: {
+            /** Batch Id */
+            batch_id: string;
+            /** Capture Sha256 */
+            capture_sha256: string;
+            /** Completed At */
+            completed_at?: string | null;
+            /**
+             * Created Candidate Count
+             * @default 0
+             */
+            created_candidate_count: number;
+            /**
+             * Created Mention Count
+             * @default 0
+             */
+            created_mention_count: number;
+            /** Error Code */
+            error_code?: string | null;
+            /** Expected Candidate Count */
+            expected_candidate_count: number;
+            /** Expected Mention Count */
+            expected_mention_count: number;
+            /** Project Id */
+            project_id: string;
+            /** Receipt Id */
+            receipt_id: string;
+            /**
+             * Reused Candidate Count
+             * @default 0
+             */
+            reused_candidate_count: number;
+            /**
+             * Reused Mention Count
+             * @default 0
+             */
+            reused_mention_count: number;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            scheduled_at: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-citation-capture-receipt/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-citation-capture-receipt/v1";
+            /** Session Id */
+            session_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "scheduled" | "succeeded" | "failed";
+            /**
+             * Stored Candidate Count
+             * @default 0
+             */
+            stored_candidate_count: number;
+            /**
+             * Stored Mention Count
+             * @default 0
+             */
+            stored_mention_count: number;
+            /** Turn Id */
+            turn_id: string;
+        };
+        /**
+         * CitationLifecycleEvent
+         * @description One durable audit event for a candidate lifecycle transition.
+         */
+        CitationLifecycleEvent: {
+            /**
+             * Axis
+             * @enum {string}
+             */
+            axis: "review" | "freshness";
+            /** Batch Id */
+            batch_id: string;
+            /** Candidate Id */
+            candidate_id: string;
+            /** Changed By */
+            changed_by: string;
+            /** Event Id */
+            event_id: string;
+            /**
+             * From Status
+             * @enum {string}
+             */
+            from_status: "candidate" | "accepted" | "rejected" | "fresh" | "stale";
+            /** Mention Id */
+            mention_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-citation-lifecycle-event/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-citation-lifecycle-event/v1";
+            source_revision_identity?: components["schemas"]["CitationSourceRevisionIdentity"] | null;
+            /** Source Revision Impact Fingerprint */
+            source_revision_impact_fingerprint?: string | null;
+            /** Source Revision Operation */
+            source_revision_operation?: ("mark_stale" | "revalidate") | null;
+            /** Source Revision Receipt Id */
+            source_revision_receipt_id?: string | null;
+            /**
+             * To Status
+             * @enum {string}
+             */
+            to_status: "candidate" | "accepted" | "rejected" | "fresh" | "stale";
+        };
+        /**
+         * CitationMention
+         * @description One durable citation marker and its structured resolution outcome.
+         *
+         *     ``outcome`` records matched, unmatched, ambiguous, over-limit, and failed
+         *     results. Only a unique ``matched`` record may be projected to a
+         *     :class:`CitesCandidate`; persistence alone never accepts the record.
+         */
+        CitationMention: {
+            /** Batch Id */
+            batch_id: string;
+            /** Candidate Material Ids */
+            candidate_material_ids?: string[];
+            /** Confidence */
+            confidence?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /** Extractor Fingerprint */
+            extractor_fingerprint?: string | null;
+            /** Extractor Version */
+            extractor_version: string;
+            /**
+             * Freshness Status
+             * @default fresh
+             * @enum {string}
+             */
+            freshness_status: "fresh" | "stale";
+            /**
+             * Marker
+             * @default
+             */
+            marker: string;
+            /**
+             * Match Method
+             * @default none
+             * @enum {string}
+             */
+            match_method: "doi" | "normalized_title" | "author_year" | "none";
+            /** Mention Id */
+            mention_id: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "matched" | "unmatched" | "ambiguous" | "over_limit" | "failed";
+            /** Parser Fingerprint */
+            parser_fingerprint?: string | null;
+            /** Parser Version */
+            parser_version: string;
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason?: string | null;
+            /** Reference Bbox */
+            reference_bbox?: number[] | null;
+            reference_bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Reference Chunk Id */
+            reference_chunk_id?: string | null;
+            /** Reference Fingerprint */
+            reference_fingerprint?: string | null;
+            /** Reference Number */
+            reference_number?: number | null;
+            /** Reference Page */
+            reference_page?: number | null;
+            /**
+             * Reference Text
+             * @default
+             */
+            reference_text: string;
+            /** Resolver Fingerprint */
+            resolver_fingerprint?: string | null;
+            /** Resolver Version */
+            resolver_version: string;
+            /**
+             * Review Status
+             * @default candidate
+             * @enum {string}
+             */
+            review_status: "candidate" | "accepted" | "rejected";
+            /**
+             * Schema Version
+             * @default scholar-ai-citation-mention/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-citation-mention/v1";
+            /** Selection Id */
+            selection_id?: string | null;
+            /** Session Id */
+            session_id: string;
+            /** Source Bbox */
+            source_bbox?: number[] | null;
+            source_bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Source Chunk Id */
+            source_chunk_id?: string | null;
+            /** Source Fingerprint */
+            source_fingerprint: string;
+            /** Source Material Id */
+            source_material_id: string;
+            /** Source Page */
+            source_page?: number | null;
+            /** Source Version */
+            source_version: string;
+            /** Target Fingerprint */
+            target_fingerprint?: string | null;
+            /** Target Material Id */
+            target_material_id?: string | null;
+            /** Target Material Title */
+            target_material_title?: string | null;
+            /** Turn Id */
+            turn_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at?: string;
         };
         /**
          * CitationOverlapPayload
@@ -10390,6 +12409,147 @@ export interface components {
             year?: number | null;
         };
         /**
+         * CitationSourceRevisionApplyReceipt
+         * @description Aggregate response backed by durable per-candidate lifecycle events.
+         */
+        CitationSourceRevisionApplyReceipt: {
+            /** Candidate Ids */
+            candidate_ids: string[];
+            current_identity: components["schemas"]["CitationSourceRevisionIdentity"];
+            /** Events */
+            events: components["schemas"]["CitationLifecycleEvent"][];
+            /** Impact Fingerprint */
+            impact_fingerprint: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "mark_stale" | "revalidate";
+            /** Project Id */
+            project_id: string;
+            /** Receipt Id */
+            receipt_id: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-citation-source-revision-receipt/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-citation-source-revision-receipt/v1";
+        };
+        /**
+         * CitationSourceRevisionApplyRequest
+         * @description CAS-bound citation source revision mutation request.
+         */
+        CitationSourceRevisionApplyRequest: {
+            /** Changed By */
+            changed_by: string;
+            current_identity: components["schemas"]["CitationSourceRevisionIdentity"];
+            /** Expected Impact Fingerprint */
+            expected_impact_fingerprint: string;
+            /**
+             * Operation
+             * @default mark_stale
+             * @enum {string}
+             */
+            operation: "mark_stale" | "revalidate";
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason: string;
+            /** Validated Candidate Ids */
+            validated_candidate_ids?: string[];
+        };
+        /**
+         * CitationSourceRevisionIdentity
+         * @description Caller-observed identity for one current project material revision.
+         */
+        CitationSourceRevisionIdentity: {
+            /** Extractor Version */
+            extractor_version: string;
+            /** Material Id */
+            material_id: string;
+            /** Parser Version */
+            parser_version: string;
+            /** Source Fingerprint */
+            source_fingerprint: string;
+            /** Source Version */
+            source_version: string;
+        };
+        /**
+         * CitationSourceRevisionImpact
+         * @description One CAS-bound citation candidate selected by a source revision preflight.
+         */
+        CitationSourceRevisionImpact: {
+            /** Candidate Id */
+            candidate_id: string;
+            /**
+             * Expected Freshness Status
+             * @enum {string}
+             */
+            expected_freshness_status: "fresh" | "stale";
+            /**
+             * Expected Updated At
+             * Format: date-time
+             */
+            expected_updated_at: string;
+            /**
+             * Material Role
+             * @enum {string}
+             */
+            material_role: "source" | "target";
+            /** Mention Id */
+            mention_id: string;
+            /**
+             * Mismatch Fields
+             * @default []
+             */
+            mismatch_fields: ("source_fingerprint" | "source_version" | "extractor_version" | "parser_version" | "target_fingerprint")[];
+        };
+        /**
+         * CitationSourceRevisionPreflight
+         * @description Bounded read-only impact set whose digest is reused as apply CAS.
+         */
+        CitationSourceRevisionPreflight: {
+            current_identity: components["schemas"]["CitationSourceRevisionIdentity"];
+            /** Impact Fingerprint */
+            impact_fingerprint: string;
+            /** Impacts */
+            impacts: components["schemas"]["CitationSourceRevisionImpact"][];
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "mark_stale" | "revalidate";
+            /** Project Id */
+            project_id: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-citation-source-revision-preflight/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-citation-source-revision-preflight/v1";
+        };
+        /**
+         * CitationSourceRevisionPreflightRequest
+         * @description Read-only citation impact query for one current material revision.
+         */
+        CitationSourceRevisionPreflightRequest: {
+            current_identity: components["schemas"]["CitationSourceRevisionIdentity"];
+            /**
+             * Operation
+             * @default mark_stale
+             * @enum {string}
+             */
+            operation: "mark_stale" | "revalidate";
+            /** Project Id */
+            project_id: string;
+        };
+        /**
          * CitationSourceUpdate
          * @description Editable bibliographic metadata for a citation source.
          *
@@ -10456,10 +12616,10 @@ export interface components {
         CitationVerificationAnchorPayload: {
             /**
              * Bbox
-             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
              */
             bbox?: number[] | null;
-            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
             bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id?: string | null;
@@ -10561,6 +12721,132 @@ export interface components {
              */
             total: number;
         };
+        /**
+         * CitesCandidate
+         * @description One directed, reviewable source-material to target-material edge.
+         */
+        CitesCandidate: {
+            /** Batch Id */
+            batch_id: string;
+            /** Candidate Id */
+            candidate_id: string;
+            /** Candidate Material Ids */
+            candidate_material_ids?: string[];
+            /** Confidence */
+            confidence: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /**
+             * Direction
+             * @default directed
+             * @constant
+             */
+            direction: "directed";
+            /** Extractor Fingerprint */
+            extractor_fingerprint?: string | null;
+            /** Extractor Version */
+            extractor_version: string;
+            /**
+             * Freshness Status
+             * @default fresh
+             * @enum {string}
+             */
+            freshness_status: "fresh" | "stale";
+            /**
+             * Marker
+             * @default
+             */
+            marker: string;
+            /**
+             * Match Method
+             * @enum {string}
+             */
+            match_method: "doi" | "normalized_title" | "author_year";
+            /** Mention Id */
+            mention_id: string;
+            /**
+             * Outcome
+             * @default matched
+             * @constant
+             */
+            outcome: "matched";
+            /** Parser Fingerprint */
+            parser_fingerprint?: string | null;
+            /** Parser Version */
+            parser_version: string;
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason?: string | null;
+            /** Reference Bbox */
+            reference_bbox?: number[] | null;
+            reference_bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Reference Chunk Id */
+            reference_chunk_id?: string | null;
+            /** Reference Fingerprint */
+            reference_fingerprint: string;
+            /** Reference Number */
+            reference_number?: number | null;
+            /** Reference Page */
+            reference_page?: number | null;
+            /** Reference Text */
+            reference_text: string;
+            /**
+             * Relation
+             * @default cites
+             * @constant
+             */
+            relation: "cites";
+            /** Resolver Fingerprint */
+            resolver_fingerprint?: string | null;
+            /** Resolver Version */
+            resolver_version: string;
+            /**
+             * Review Status
+             * @default candidate
+             * @enum {string}
+             */
+            review_status: "candidate" | "accepted" | "rejected";
+            /**
+             * Schema Version
+             * @default scholar-ai-cites-candidate/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-cites-candidate/v1";
+            /** Selection Id */
+            selection_id?: string | null;
+            /** Session Id */
+            session_id: string;
+            /** Source Bbox */
+            source_bbox?: number[] | null;
+            source_bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Source Chunk Id */
+            source_chunk_id?: string | null;
+            /** Source Fingerprint */
+            source_fingerprint: string;
+            /** Source Material Id */
+            source_material_id: string;
+            /** Source Page */
+            source_page: number;
+            /** Source Version */
+            source_version: string;
+            /** Target Fingerprint */
+            target_fingerprint: string;
+            /** Target Material Id */
+            target_material_id: string;
+            /** Target Material Title */
+            target_material_title?: string | null;
+            /** Turn Id */
+            turn_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at?: string;
+        };
         /** CleanupRequest */
         CleanupRequest: {
             /**
@@ -10580,6 +12866,35 @@ export interface components {
              * @default false
              */
             remove_orphan_project_dirs: boolean;
+        };
+        /**
+         * CodexHandoffLatestPayload
+         * @description Small projection used by the host-rendered Codex handoff widget.
+         */
+        CodexHandoffLatestPayload: {
+            /** Created At */
+            created_at?: string | null;
+            /** Found */
+            found: boolean;
+            /** Job Id */
+            job_id?: string | null;
+            /** Job Status */
+            job_status?: string | null;
+            /** Message */
+            message: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Receipt Id */
+            receipt_id?: string | null;
+            /** Ref Count */
+            ref_count?: number | null;
+            /** Request Id */
+            request_id?: string | null;
+            /**
+             * Schema Version
+             * @default scholar-ai-codex-handoff-latest/v1
+             */
+            schema_version: string;
         };
         /**
          * ConfigPayload
@@ -10606,6 +12921,11 @@ export interface components {
              * @default
              */
             model: string;
+            /**
+             * Protocol
+             * @default
+             */
+            protocol: string;
             /**
              * Provider
              * @default
@@ -10674,6 +12994,8 @@ export interface components {
             base_url?: string | null;
             /** Model */
             model?: string | null;
+            /** Protocol */
+            protocol?: string | null;
             /** Provider */
             provider?: string | null;
         };
@@ -10682,33 +13004,55 @@ export interface components {
          * @description Single context chunk disclosed under an assistant message.
          */
         ContextChunkPayload: {
+            /** Anchor Kind */
+            anchor_kind?: ("text" | "visual") | null;
             /**
              * Bbox
-             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
              */
             bbox?: number[] | null;
-            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
             bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Chunk Hash */
+            chunk_hash?: string | null;
             /** Chunk Id */
             chunk_id?: string | null;
             /** Content */
             content: string;
+            /** Content Hash */
+            content_hash?: string | null;
+            /** Embedding Input Hash */
+            embedding_input_hash?: string | null;
+            /**
+             * Evidence Role
+             * @default project_context
+             * @enum {string}
+             */
+            evidence_role: "selected_content" | "current_material" | "cited_project_material" | "project_context";
             /** Figure Candidate */
             figure_candidate?: string | null;
             /** Figure Candidate Detail */
             figure_candidate_detail?: {
                 [key: string]: unknown;
             } | null;
+            /** Hash Version */
+            hash_version?: string | null;
             /** Image Paths */
             image_paths?: string[];
             /** Index */
             index: number;
+            /** Locator Hash */
+            locator_hash?: string | null;
             /** Material Id */
             material_id?: string | null;
             /** Page */
             page?: number | string | null;
+            /** Quote */
+            quote?: string | null;
             /** Relevance Score */
             relevance_score?: number | null;
+            /** Rerank Score */
+            rerank_score?: number | null;
             /** Retrieval Gateway Diagnostics */
             retrieval_gateway_diagnostics?: {
                 [key: string]: unknown;
@@ -10828,10 +13172,10 @@ export interface components {
         CreateEvidenceRefRequest: {
             /**
              * Bbox
-             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
              */
             bbox?: number[] | null;
-            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
             bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id: string;
@@ -11205,10 +13549,10 @@ export interface components {
         CurrentPdfContextPayload: {
             /**
              * Bbox
-             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
              */
             bbox?: number[] | null;
-            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
             bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id?: string | null;
@@ -11226,6 +13570,9 @@ export interface components {
             page_label?: string | null;
             /** Selected Text */
             selected_text?: string | null;
+            selection?: components["schemas"]["PdfContentSelectionPayload"] | null;
+            /** Selections */
+            selections?: components["schemas"]["PdfContentSelectionPayload"][];
             /** Source Labels */
             source_labels?: string[];
         };
@@ -11803,6 +14150,87 @@ export interface components {
             }[];
         };
         /**
+         * DownloadControlRequest
+         * @description Explicit local lifecycle transition for one download job.
+         */
+        DownloadControlRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "pause" | "resume" | "cancel";
+        };
+        /**
+         * DownloadJob
+         * @description Persisted, resumable download intent and lifecycle.
+         */
+        DownloadJob: {
+            /** Access Evidence Id */
+            access_evidence_id: string;
+            /** Artifact Id */
+            artifact_id?: string | null;
+            /** Artifact Path */
+            artifact_path: string;
+            /**
+             * Attempts
+             * @default 0
+             */
+            attempts: number;
+            /**
+             * Bytes Downloaded
+             * @default 0
+             */
+            bytes_downloaded: number;
+            /** Candidate Id */
+            candidate_id: string;
+            /** Completed At */
+            completed_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Gate Id */
+            gate_id?: string | null;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Max Bytes
+             * @default 104857600
+             */
+            max_bytes: number;
+            /** Project Id */
+            project_id: string;
+            /** Source Platform */
+            source_platform: string;
+            /** Source Url */
+            source_url: string;
+            /** Started At */
+            started_at?: string | null;
+            /** @default queued */
+            status: components["schemas"]["DownloadJobStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at?: string;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * DownloadJobStatus
+         * @description Durable download lifecycle with explicit user-owned gates.
+         * @enum {string}
+         */
+        DownloadJobStatus: "queued" | "running" | "paused" | "human_required" | "validating" | "completed" | "failed" | "cancelled";
+        /**
          * DraftPayload
          * @description Writing draft response.
          */
@@ -11886,7 +14314,7 @@ export interface components {
         };
         /**
          * EvidenceGraphEdge
-         * @description Directed relation in the reusable evidence graph payload.
+         * @description Relation in the reusable evidence graph payload with explicit direction.
          */
         EvidenceGraphEdge: {
             /** Confidence */
@@ -11896,6 +14324,12 @@ export interface components {
              * @enum {string}
              */
             created_by: "parser" | "wiki_frontmatter" | "llm_extraction" | "user_action" | "migration" | "runtime_capture" | "wiki_graph" | "source_vault";
+            /**
+             * Direction
+             * @description First-class edge direction. Legacy inputs that omit it are upgraded from the controlled relation vocabulary before validation.
+             * @enum {string}
+             */
+            direction?: "directed" | "undirected";
             /** Id */
             id: string;
             /** Metadata */
@@ -11983,10 +14417,10 @@ export interface components {
         EvidenceGraphProvenanceRef: {
             /**
              * Bbox
-             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
              */
             bbox?: number[] | null;
-            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
             bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id?: string | null;
@@ -12410,6 +14844,8 @@ export interface components {
             checks?: components["schemas"]["EvidencePackIntegrityCheckPayload"][];
             /** Evidence Pack Ref */
             evidence_pack_ref?: string | null;
+            /** Gate Config Hash */
+            gate_config_hash: string;
             /** Generated At */
             generated_at: string;
             /** Next Actions */
@@ -12479,18 +14915,30 @@ export interface components {
          *         source_title: Optional display title for non-project resources.
          *         source_path: Optional bounded source path for non-project resources.
          *         joint_score: Optional fused project/wiki score from weighted RRF.
+         *         quote: Optional bounded exact selector for a project text anchor. It is
+         *             independent from summary and never contains a visual caption.
          */
         EvidencePackReferencePayload: {
+            /** Anchor Kind */
+            anchor_kind?: ("text" | "visual") | null;
+            /** Chunk Hash */
+            chunk_hash?: string | null;
             /** Chunk Id */
             chunk_id: string;
             /** Citation Anchor */
             citation_anchor: string;
+            /** Content Hash */
+            content_hash?: string | null;
+            /** Embedding Input Hash */
+            embedding_input_hash?: string | null;
             /** Figure Candidate */
             figure_candidate?: string | null;
             /** Figure Candidate Detail */
             figure_candidate_detail?: {
                 [key: string]: unknown;
             } | null;
+            /** Hash Version */
+            hash_version?: string | null;
             /** Image Paths */
             image_paths?: string[];
             /** Joint Score */
@@ -12501,12 +14949,16 @@ export interface components {
             locator?: {
                 [key: string]: unknown;
             } | null;
+            /** Locator Hash */
+            locator_hash?: string | null;
             /** Material Id */
             material_id: string;
             /** Page */
             page?: number | null;
             /** Project Id */
             project_id: string;
+            /** Quote */
+            quote?: string | null;
             /** Read Endpoint */
             read_endpoint: string;
             /** Ref Id */
@@ -12533,14 +14985,120 @@ export interface components {
             /** Summary */
             summary: string;
         };
+        /**
+         * EvidenceQrelsReviewBundleRequest
+         * @description Request to generate a candidate-only qrels review bundle from an evidence pack.
+         *
+         *     Args:
+         *         project_id: Project that owns the selected evidence pack.
+         *         evidence_pack_ref: Stable pack id returned by the evidence-pack builder.
+         *         query: Optional query guard. When supplied, the restored pack must match.
+         *         max_chunks_per_section: Candidate qrels cap per generated review query.
+         */
+        EvidenceQrelsReviewBundleRequest: {
+            /** Evidence Pack Ref */
+            evidence_pack_ref: string;
+            /**
+             * Max Chunks Per Section
+             * @default 5
+             */
+            max_chunks_per_section: number;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Query
+             * @default
+             */
+            query: string;
+        };
+        /**
+         * EvidenceQrelsReviewBundleResponse
+         * @description Candidate-only qrels review bundle generated from a restored evidence pack.
+         *
+         *     Args:
+         *         schema_version: Stable response contract identifier.
+         *         generated_at: UTC timestamp for the bundle generation.
+         *         project_id: Project that owns the bundle.
+         *         evidence_pack_ref: Restored source evidence-pack id.
+         *         query: Query from the restored evidence pack.
+         *         bundle_id: Stable local bundle id derived from the pack ref.
+         *         candidate_only: True because this endpoint never promotes qrels.
+         *         output_dir: Local directory containing generated review files.
+         *         package_path: Local source chunk package used by the review toolchain.
+         *         quality_report_path: Chunk package quality report path.
+         *         goldset_proposal_path: Candidate goldset proposal path.
+         *         qrels_candidate_path: Candidate TREC qrels path.
+         *         judgment_template_path: Manual review JSONL path.
+         *         standards_markdown_path: Review standard Markdown path.
+         *         query_count: Number of generated candidate review queries.
+         *         candidate_qrels_count: Number of candidate qrels rows.
+         *         qrels_status: Project qrels read projection after writing the bundle.
+         *         review_queue_item: Review queue item created or updated for humans.
+         *         outcome: ToolOutcome with next_action.kind=review_qrels.
+         *         provenance: Bounded generation/audit metadata.
+         */
+        EvidenceQrelsReviewBundleResponse: {
+            /** Bundle Id */
+            bundle_id: string;
+            /**
+             * Candidate Only
+             * @default true
+             */
+            candidate_only: boolean;
+            /** Candidate Qrels Count */
+            candidate_qrels_count: number;
+            /** Evidence Pack Ref */
+            evidence_pack_ref: string;
+            /** Generated At */
+            generated_at: string;
+            /** Goldset Proposal Path */
+            goldset_proposal_path: string;
+            /** Judgment Template Path */
+            judgment_template_path: string;
+            outcome: components["schemas"]["ToolOutcome"];
+            /** Output Dir */
+            output_dir: string;
+            /** Package Path */
+            package_path: string;
+            /** Project Id */
+            project_id: string;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Qrels Candidate Path */
+            qrels_candidate_path: string;
+            qrels_status?: components["schemas"]["RetrievalQrelsStatusPayload"];
+            /** Quality Report Path */
+            quality_report_path: string;
+            /**
+             * Query
+             * @default
+             */
+            query: string;
+            /** Query Count */
+            query_count: number;
+            /** Review Queue Item */
+            review_queue_item?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Schema Version
+             * @default scholar-ai-qrels-review-bundle/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-qrels-review-bundle/v1";
+            /** Standards Markdown Path */
+            standards_markdown_path: string;
+        };
         /** EvidenceRef */
         EvidenceRef: {
             /**
              * Bbox
-             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
              */
             bbox?: number[] | null;
-            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
             bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id?: string | null;
@@ -12560,10 +15118,10 @@ export interface components {
         EvidenceRefPayload: {
             /**
              * Bbox
-             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
              */
             bbox?: number[] | null;
-            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
             bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id: string;
@@ -12612,21 +15170,37 @@ export interface components {
          * @description Machine-readable provenance reference for context used in a response.
          */
         EvidenceReferencePayload: {
+            /** Anchor Kind */
+            anchor_kind?: ("text" | "visual") | null;
             /**
              * Bbox
-             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
              */
             bbox?: number[] | null;
-            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
             bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Chunk Hash */
+            chunk_hash?: string | null;
             /** Chunk Id */
             chunk_id: string;
+            /** Content Hash */
+            content_hash?: string | null;
+            /** Embedding Input Hash */
+            embedding_input_hash?: string | null;
+            /**
+             * Evidence Role
+             * @default project_context
+             * @enum {string}
+             */
+            evidence_role: "selected_content" | "current_material" | "cited_project_material" | "project_context";
             /** Figure Candidate */
             figure_candidate?: string | null;
             /** Figure Candidate Detail */
             figure_candidate_detail?: {
                 [key: string]: unknown;
             } | null;
+            /** Hash Version */
+            hash_version?: string | null;
             /** Image Paths */
             image_paths?: string[];
             /**
@@ -12634,6 +15208,8 @@ export interface components {
              * @default context
              */
             label: string;
+            /** Locator Hash */
+            locator_hash?: string | null;
             /** Material Id */
             material_id?: string | null;
             /** Page */
@@ -12644,6 +15220,8 @@ export interface components {
             quote: string;
             /** Rank */
             rank?: number | null;
+            /** Rerank Score */
+            rerank_score?: number | null;
             /** Score */
             score?: number | null;
             /** Source */
@@ -12942,6 +15520,24 @@ export interface components {
             /** Success */
             success: boolean;
         };
+        /**
+         * FactSourceRevision
+         * @description One provenance locator bound to an exact source and parser identity.
+         */
+        FactSourceRevision: {
+            /** Extractor Version */
+            extractor_version: string;
+            /** Locator */
+            locator: string;
+            /** Material Id */
+            material_id: string;
+            /** Parser Version */
+            parser_version: string;
+            /** Source Fingerprint */
+            source_fingerprint: string;
+            /** Source Version */
+            source_version: string;
+        };
         /** FeatureFlagEntry */
         FeatureFlagEntry: {
             /** Current */
@@ -13025,6 +15621,7 @@ export interface components {
          *         chunk_id: Source chunk identifier for provenance lookup.
          *         chunk_index: Source chunk ordinal when available.
          *         bbox: Optional source layout box reserved for PDF layout extraction.
+         *         bbox_unit: Coordinate unit paired atomically with ``bbox``.
          *         asset_path: Optional extracted asset path reserved for image/table crops.
          *         source: Candidate extraction source. ``chunk_text`` means text-only,
          *             ``pdf_crop`` means a generated preview image was rendered from the
@@ -13034,8 +15631,13 @@ export interface components {
         FigureTableCandidatePayload: {
             /** Asset Path */
             asset_path?: string | null;
-            /** Bbox */
+            /**
+             * Bbox
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
+             */
             bbox?: number[] | null;
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Caption */
             caption: string;
             /** Chunk Id */
@@ -13070,6 +15672,54 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /**
+         * FormulaCandidatePayload
+         * @description One atomic whole-formula target for the PDF reader.
+         */
+        FormulaCandidatePayload: {
+            /** Bbox */
+            bbox: number[];
+            /**
+             * Bbox Unit
+             * @default normalized_ratio
+             * @constant
+             */
+            bbox_unit: "normalized_ratio";
+            /** Candidate Id */
+            candidate_id: string;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /** Page */
+            page: number;
+            /** Text */
+            text?: string | null;
+        };
+        /**
+         * FormulaCandidatesResponse
+         * @description Bounded material-scoped formula candidate collection.
+         */
+        FormulaCandidatesResponse: {
+            /** Candidates */
+            candidates?: components["schemas"]["FormulaCandidatePayload"][];
+            /** Material Id */
+            material_id: string;
+            /** Project Id */
+            project_id: string;
+        };
+        /**
+         * GateResolutionResponse
+         * @description Resolved user gate and the requeued download when one is attached.
+         */
+        GateResolutionResponse: {
+            download_job?: components["schemas"]["DownloadJob"] | null;
+            gate: components["schemas"]["HumanAccessGate"];
+        };
+        /**
+         * GateStatus
+         * @description Human access gate state.
+         * @enum {string}
+         */
+        GateStatus: "open" | "resolved";
         /**
          * GenerateFigureAssetsRequest
          * @description Request to generate local figure/table assets from existing candidates.
@@ -13373,6 +16023,91 @@ export interface components {
             y: number;
         };
         /**
+         * HumanAccessGate
+         * @description User-owned browser/access gate; automatic workers must stop here.
+         */
+        HumanAccessGate: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /** Gate Id */
+            gate_id: string;
+            /**
+             * Gate Type
+             * @enum {string}
+             */
+            gate_type: "login" | "captcha" | "paywall" | "robots" | "sso" | "two_factor" | "cloudflare" | "http_401" | "http_403" | "http_407" | "http_429" | "http_503" | "html_instead_of_pdf";
+            /** Job Id */
+            job_id?: string | null;
+            /** Message */
+            message: string;
+            /** Next Action */
+            next_action: string;
+            /** Platform */
+            platform: string;
+            /** Project Id */
+            project_id: string;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** @default queued */
+            resume_status: components["schemas"]["DownloadJobStatus"];
+            /** @default open */
+            status: components["schemas"]["GateStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at?: string;
+            /** Url */
+            url: string;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * IdentityDecisionOutcome
+         * @description Whether one compared candidate was merged into the canonical record.
+         * @enum {string}
+         */
+        IdentityDecisionOutcome: "match" | "distinct";
+        /**
+         * IdentityMatchMethod
+         * @description Strength-ordered candidate identity methods.
+         * @enum {string}
+         */
+        IdentityMatchMethod: "doi" | "arxiv_id" | "title_year" | "distinct";
+        /**
+         * IdentityMergeReceipt
+         * @description Audit record for one deterministic candidate identity decision.
+         */
+        IdentityMergeReceipt: {
+            /** Canonical Candidate Id */
+            canonical_candidate_id: string;
+            /** Compared Candidate Id */
+            compared_candidate_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /** Evidence */
+            evidence: string[];
+            /** Merge Id */
+            merge_id: string;
+            /** Merged */
+            merged: boolean;
+            method: components["schemas"]["IdentityMatchMethod"];
+            outcome: components["schemas"]["IdentityDecisionOutcome"];
+            /** Project Id */
+            project_id: string;
+            /** Run Id */
+            run_id: string;
+        };
+        /**
          * ImageAttachmentPayload
          * @description Browser-provided image attachment accepted by `/api/chat`.
          *
@@ -13389,6 +16124,144 @@ export interface components {
             /** Size */
             size: number;
         };
+        /**
+         * ImportPublicationEvidence
+         * @description Strict proof that one material is fully published and retrieval-visible.
+         */
+        ImportPublicationEvidence: {
+            /** Chunk Hash Version */
+            chunk_hash_version: string;
+            /** Chunk Manifest Sha256 */
+            chunk_manifest_sha256: string;
+            /**
+             * Chunk Manifest Version
+             * @default 2
+             * @constant
+             */
+            chunk_manifest_version: 2;
+            /** Chunk Store Version */
+            chunk_store_version: string;
+            /** Document Content Sha256 */
+            document_content_sha256: string;
+            /**
+             * Evidence Fingerprint
+             * @default
+             */
+            evidence_fingerprint: string;
+            /** Fts Chunk Store Version */
+            fts_chunk_store_version: string;
+            /** Fts Indexed Count */
+            fts_indexed_count: number;
+            /** Fts Material Indexed Count */
+            fts_material_indexed_count: number;
+            /** Fts Schema Version */
+            fts_schema_version: string;
+            /** Fts Skipped Count */
+            fts_skipped_count: number;
+            /** Material Chunk Count */
+            material_chunk_count: number;
+            /** Material Chunk File Sha256 */
+            material_chunk_file_sha256: string;
+            /** Material Chunk Root Sha256 */
+            material_chunk_root_sha256: string;
+            /** Material Id */
+            material_id: string;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Revision Applied At
+             * Format: date-time
+             */
+            revision_applied_at: string;
+            /** Revision Fingerprint */
+            revision_fingerprint: string;
+            /** Revision Receipt Id */
+            revision_receipt_id: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-import-publication-evidence/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-import-publication-evidence/v1";
+            /** Source Fingerprint */
+            source_fingerprint: string;
+            /** Source Size Bytes */
+            source_size_bytes: number;
+            /**
+             * Verified At
+             * Format: date-time
+             */
+            verified_at?: string;
+            /**
+             * Verifier Version
+             * @default scholar-ai-material-publication-verifier/v1
+             * @constant
+             */
+            verifier_version: "scholar-ai-material-publication-verifier/v1";
+        };
+        /**
+         * ImportPublicationState
+         * @description Publication-integrity state attached to one durable import receipt.
+         * @enum {string}
+         */
+        ImportPublicationState: "unverified_legacy" | "pending" | "verified" | "failed";
+        /**
+         * ImportReceipt
+         * @description Durable link from a validated artifact to the existing material path.
+         */
+        ImportReceipt: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Candidate Id */
+            candidate_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /** Error Message */
+            error_message?: string | null;
+            /** Material Id */
+            material_id: string;
+            /** Open Url */
+            open_url: string;
+            /** Project Id */
+            project_id: string;
+            publication_evidence?: components["schemas"]["ImportPublicationEvidence"] | null;
+            /** @default unverified_legacy */
+            publication_state: components["schemas"]["ImportPublicationState"];
+            /** Receipt Id */
+            receipt_id: string;
+            /**
+             * Receipt Schema Version
+             * @default scholar-ai-import-receipt/v1
+             * @enum {string}
+             */
+            receipt_schema_version: "scholar-ai-import-receipt/v1" | "scholar-ai-import-receipt/v2";
+            /** Runtime Job Id */
+            runtime_job_id?: string | null;
+            /** Runtime Session Id */
+            runtime_session_id?: string | null;
+            /** Source Fingerprint */
+            source_fingerprint: string;
+            status: components["schemas"]["ImportStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at?: string;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * ImportStatus
+         * @description Existing-project import lifecycle.
+         * @enum {string}
+         */
+        ImportStatus: "queued" | "completed" | "duplicate" | "failed";
         /**
          * ImportUserSkillManifestPayload
          * @description Minimal manifest summary returned after importing a user skill.
@@ -13554,6 +16427,13 @@ export interface components {
          * @description Request payload for the frontend Intelligent Chat endpoint.
          */
         IntelligentChatRequest: {
+            /**
+             * Answer Origin
+             * @description Selects where final answer generation happens. internal_smartread uses Scholar AI's configured chat provider; external_agent returns local evidence/context for Codex/Claude or another caller to generate the final answer.
+             * @default internal_smartread
+             * @enum {string}
+             */
+            answer_origin: "internal_smartread" | "external_agent";
             /** @description Browser reader state for the current PDF page or selected text. When material_id is also supplied, both material ids must match. */
             current_pdf_context?: components["schemas"]["CurrentPdfContextPayload"] | null;
             /**
@@ -13563,6 +16443,18 @@ export interface components {
              * @default false
              */
             direct_mode: boolean;
+            /**
+             * Evidence Pack Ref
+             * @description Optional evidence pack ref already built by Scholar AI MCP for this answer.
+             */
+            evidence_pack_ref?: string | null;
+            /**
+             * Generated In
+             * @description Surface that requested the persisted answer; sidebar saves use mcp_sidebar.
+             * @default smart_read
+             * @enum {string}
+             */
+            generated_in: "smart_read" | "mcp_sidebar";
             /** Images */
             images?: components["schemas"]["ImageAttachmentPayload"][];
             inspiration_context?: components["schemas"]["InspirationContextPayload"] | null;
@@ -13593,6 +16485,11 @@ export interface components {
             project_reasoning_bias_enabled?: boolean | null;
             /** Query */
             query: string;
+            /**
+             * Research Selections
+             * @description Optional durable selection identities supplied by new clients. They must match current_pdf_context.selections in the same order.
+             */
+            research_selections?: components["schemas"]["ResearchSelectionPayload"][] | null;
             /** Session Id */
             session_id?: string | null;
             /** Source Paths */
@@ -13603,6 +16500,8 @@ export interface components {
              * @enum {string}
              */
             tier: "fast" | "balanced" | "thorough";
+            /** Turn Id */
+            turn_id?: string | null;
             /**
              * Use Local Literature Tools
              * @description Expose the built-in guarded Literature Assistant source and writing tool surface to source-launched SmartRead.
@@ -13618,11 +16517,35 @@ export interface components {
             actual_sampling_params?: components["schemas"]["SamplingParamsPayload"] | null;
             /** @description Structured evidence-grounded reasoning summary for the completed assistant answer. Additive; old clients can ignore it. */
             analysis_chain?: components["schemas"]["models__analysis_chain__AnalysisChainPayload"] | null;
+            /**
+             * Answer Model Origin
+             * @default scholar_ai_configured_chat
+             * @enum {string}
+             */
+            answer_model_origin: "scholar_ai_configured_chat" | "external_agent";
+            /**
+             * Answer Origin
+             * @default internal_smartread
+             * @enum {string}
+             */
+            answer_origin: "internal_smartread" | "external_agent";
             /** Context Chunks Used */
             context_chunks_used: number;
             context_metadata?: components["schemas"]["ContextMetadataPayload"] | null;
+            /** Evidence Gate Status */
+            evidence_gate_status?: {
+                [key: string]: unknown;
+            } | null;
+            /** Evidence Pack Ref */
+            evidence_pack_ref?: string | null;
             /** Evidence Refs */
             evidence_refs?: components["schemas"]["EvidenceReferencePayload"][];
+            /**
+             * Generated In
+             * @default smart_read
+             * @enum {string}
+             */
+            generated_in: "smart_read" | "mcp_sidebar";
             /**
              * Mcp Run
              * @description Local/MCP tool-use transcript surfaced for SmartRead auditability. Populated only when the lower chat path executes guarded tools.
@@ -13630,9 +16553,27 @@ export interface components {
             mcp_run?: {
                 [key: string]: unknown;
             } | null;
+            /** Qrels Status */
+            qrels_status?: {
+                [key: string]: unknown;
+            } | null;
+            /** Receipt Retrieval Diagnostics */
+            receipt_retrieval_diagnostics?: {
+                [key: string]: unknown;
+            } | null;
+            /** Receipt Top Evidence Refs */
+            receipt_top_evidence_refs?: {
+                [key: string]: unknown;
+            }[];
             /** Response */
             response: string;
             retrieval_diagnostics?: components["schemas"]["SmartReadRetrievalDiagnosticsPayload"] | null;
+            /**
+             * Retrieval Provider
+             * @default scholar_ai
+             * @constant
+             */
+            retrieval_provider: "scholar_ai";
             /** Session Id */
             session_id: string;
             /**
@@ -13641,6 +16582,10 @@ export interface components {
              */
             tier_used: "fast" | "balanced" | "thorough";
             tokens_used: components["schemas"]["TokenUsagePayload"];
+            /** Visual Evidence Refs */
+            visual_evidence_refs?: components["schemas"]["EvidenceReferencePayload"][];
+            /** Visual Observation Refs */
+            visual_observation_refs?: components["schemas"]["VisualObservationReference"][];
         };
         /**
          * InvalidFactRequest
@@ -14345,7 +17290,7 @@ export interface components {
             base_url: string;
             /**
              * Max Tokens
-             * @default 4096
+             * @default 12000
              */
             max_tokens: number;
             /**
@@ -15705,6 +18650,10 @@ export interface components {
             input_sha256: string;
             /** Language */
             language: string;
+            /** Region Count */
+            region_count: number;
+            /** Region Samples */
+            region_samples?: components["schemas"]["OcrExecutionRegionSample"][];
             /** Requires Network */
             requires_network: boolean;
             /** Schema Version */
@@ -15715,6 +18664,23 @@ export interface components {
             text_preview: string;
             /** Text Sha256 */
             text_sha256: string;
+        };
+        /**
+         * OcrExecutionRegionSample
+         * @description Bounded coordinate sample from one structured OCR region.
+         */
+        OcrExecutionRegionSample: {
+            /** Bbox */
+            bbox: [
+                number,
+                number,
+                number,
+                number
+            ];
+            /** Block Type */
+            block_type: string;
+            /** Text Preview */
+            text_preview: string;
         };
         /**
          * OcrHealthRequest
@@ -15874,6 +18840,47 @@ export interface components {
          * @enum {string}
          */
         PdfBboxUnit: "normalized_ratio" | "normalized_1000" | "pdf_points" | "css_pixels";
+        /**
+         * PdfCandidate
+         * @description One exact PDF URL and its matching access evidence.
+         */
+        PdfCandidate: {
+            access_evidence: components["schemas"]["AccessEvidence"];
+            /** Pdf Url */
+            pdf_url: string;
+            /** Source Platform */
+            source_platform: string;
+        };
+        /**
+         * PdfContentSelectionPayload
+         * @description One user-selected PDF content object with a verified page anchor.
+         */
+        PdfContentSelectionPayload: {
+            /**
+             * Bbox
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
+             */
+            bbox?: number[] | null;
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Candidate Id */
+            candidate_id?: string | null;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /** Image Index */
+            image_index?: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "figure" | "table" | "formula" | "region";
+            /** Label */
+            label?: string | null;
+            /** Page */
+            page: number;
+            /** Text */
+            text?: string | null;
+        };
         /**
          * PipelineRequest
          * @description Pipeline execution request payload.
@@ -16537,10 +19544,10 @@ export interface components {
         ProjectExportSourceAnchorPayload: {
             /**
              * Bbox
-             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
              */
             bbox?: number[] | null;
-            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
             bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id?: string | null;
@@ -16783,6 +19790,48 @@ export interface components {
             scopes?: components["schemas"]["ProjectReasoningBiasScopes"];
         };
         /**
+         * PromoteAcceptedGraphFactRequest
+         * @description Explicit, idempotent promotion request with current-state CAS.
+         */
+        PromoteAcceptedGraphFactRequest: {
+            accepted_review: components["schemas"]["AcceptedCandidateReview"];
+            /** Expected State Sha256 */
+            expected_state_sha256?: string | null;
+            /** Expected Version */
+            expected_version: number;
+            /** Fact Id */
+            fact_id: string;
+            /** Object Ref */
+            object_ref: string;
+            /** Operation Id */
+            operation_id: string;
+            /** Predicate */
+            predicate: string;
+            /** Project Id */
+            project_id: string;
+            /** Provenance */
+            provenance: components["schemas"]["FactSourceRevision"][];
+            /** Reason */
+            reason: string;
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /** Requested By */
+            requested_by: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-promote-accepted-graph-fact-request/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-promote-accepted-graph-fact-request/v1";
+            /** Statement */
+            statement: string;
+            /** Subject Ref */
+            subject_ref: string;
+        };
+        /**
          * ProviderInfo
          * @description Provider with grouped models.
          */
@@ -16805,6 +19854,29 @@ export interface components {
             models: components["schemas"]["ModelInfo"][];
             /** Provider */
             provider: string;
+        };
+        /**
+         * PublicationStage
+         * @description Explicit source-reported stage used only for conservative version links.
+         * @enum {string}
+         */
+        PublicationStage: "unknown" | "preprint" | "published";
+        /**
+         * QueueDownloadRequest
+         * @description Exact OA evidence required to create one resumable download job.
+         */
+        QueueDownloadRequest: {
+            /** Access Evidence Id */
+            access_evidence_id: string;
+            /** Candidate Id */
+            candidate_id: string;
+            /**
+             * Max Bytes
+             * @default 104857600
+             */
+            max_bytes: number;
+            /** Project Id */
+            project_id: string;
         };
         /**
          * RecommendationEvidencePayload
@@ -17225,6 +20297,50 @@ export interface components {
             };
         };
         /**
+         * ResearchSelectionPayload
+         * @description Sanitized user selection persisted with one chat turn.
+         */
+        ResearchSelectionPayload: {
+            /**
+             * Bbox
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
+             */
+            bbox?: number[] | null;
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
+            /** Candidate Id */
+            candidate_id?: string | null;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /** Group Id */
+            group_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "figure" | "table" | "formula" | "region";
+            /** Label */
+            label?: string | null;
+            /** Material Id */
+            material_id: string;
+            /** Order */
+            order: number;
+            /** Page */
+            page: number;
+            /**
+             * Schema Version
+             * @default scholar-ai-research-selection/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-research-selection/v1";
+            /** Selection Id */
+            selection_id: string;
+            /** Text */
+            text?: string | null;
+            /** Turn Id */
+            turn_id: string;
+        };
+        /**
          * ResumeSessionPayload
          * @description Session resume response payload.
          */
@@ -17266,6 +20382,11 @@ export interface components {
             /** Notes */
             notes?: string[];
             /**
+             * Qrels Content Hash
+             * @default
+             */
+            qrels_content_hash: string;
+            /**
              * Quality Claim
              * @default no_qrels_available
              * @enum {string}
@@ -17293,6 +20414,114 @@ export interface components {
              * @enum {string}
              */
             status: "missing" | "candidate" | "reviewed" | "canonical";
+        };
+        /**
+         * ReviewedKnowledgeFreshnessRequest
+         * @description Explicit stale or revalidate request bound to one current fact state.
+         */
+        ReviewedKnowledgeFreshnessRequest: {
+            /** Changed By */
+            changed_by: string;
+            /** Expected State Sha256 */
+            expected_state_sha256: string;
+            /** Expected Version */
+            expected_version: number;
+            /** Fact Id */
+            fact_id: string;
+            observed_source_revision?: components["schemas"]["FactSourceRevision"] | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "mark_stale" | "revalidate";
+            /** Operation Id */
+            operation_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-reviewed-knowledge-freshness-request/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-reviewed-knowledge-freshness-request/v1";
+            /**
+             * Validated Provenance
+             * @default []
+             */
+            validated_provenance: components["schemas"]["FactSourceRevision"][];
+        };
+        /**
+         * ReviewedKnowledgeMutationResponse
+         * @description API result for a committed or idempotently replayed mutation.
+         */
+        ReviewedKnowledgeMutationResponse: {
+            fact: components["schemas"]["AcceptedGraphFact"];
+            receipt: components["schemas"]["ReviewedKnowledgeReceipt"];
+            /** Replayed */
+            replayed: boolean;
+        };
+        /**
+         * ReviewedKnowledgeReceipt
+         * @description Durable receipt for one explicit reviewed-knowledge mutation.
+         */
+        ReviewedKnowledgeReceipt: {
+            accepted_review?: components["schemas"]["AcceptedCandidateReview"] | null;
+            /** Changed By */
+            changed_by: string;
+            /** Fact Id */
+            fact_id: string;
+            observed_source_revision?: components["schemas"]["FactSourceRevision"] | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "promote" | "mark_stale" | "revalidate" | "withdraw";
+            /** Operation Id */
+            operation_id: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "created" | "revised" | "stale" | "revalidated" | "withdrawn";
+            /** Previous State Sha256 */
+            previous_state_sha256?: string | null;
+            /** Previous Version */
+            previous_version: number;
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason: string;
+            /** Receipt Id */
+            receipt_id: string;
+            /** Request Sha256 */
+            request_sha256: string;
+            /** Result State Sha256 */
+            result_state_sha256: string;
+            /** Result Version */
+            result_version: number;
+            /**
+             * Schema Version
+             * @default scholar-ai-reviewed-knowledge-receipt/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-reviewed-knowledge-receipt/v1";
+            /**
+             * Validated Provenance
+             * @default []
+             */
+            validated_provenance: components["schemas"]["FactSourceRevision"][];
         };
         /**
          * RevisionPayload
@@ -17812,6 +21041,92 @@ export interface components {
             /** Safe To Execute */
             safe_to_execute: boolean;
         };
+        /**
+         * SearchQuery
+         * @description One bounded, project-scoped literature search request.
+         */
+        SearchQuery: {
+            /**
+             * Max Results
+             * @default 20
+             */
+            max_results: number;
+            /** Project Id */
+            project_id: string;
+            /** Query */
+            query: string;
+            /** Sources */
+            sources: string[];
+            /** Year From */
+            year_from?: number | null;
+            /** Year To */
+            year_to?: number | null;
+        };
+        /**
+         * SearchRun
+         * @description Persisted result of one explicit multi-source search.
+         */
+        SearchRun: {
+            /**
+             * Attempted Sources
+             * @default []
+             */
+            attempted_sources: string[];
+            /**
+             * Candidates
+             * @default []
+             */
+            candidates: components["schemas"]["CandidateManifest"][];
+            /** Completed At */
+            completed_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            query: components["schemas"]["SearchQuery"];
+            /** Requested Sources */
+            requested_sources: string[];
+            /** Run Id */
+            run_id: string;
+            /**
+             * Source Errors
+             * @default []
+             */
+            source_errors: components["schemas"]["SourceError"][];
+            /** @default created */
+            status: components["schemas"]["SearchRunStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at?: string;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * SearchRunIdentityLedgerResponse
+         * @description Bounded persisted identity decisions and explicit version edges.
+         */
+        SearchRunIdentityLedgerResponse: {
+            /** Identity Receipts */
+            identity_receipts: components["schemas"]["IdentityMergeReceipt"][];
+            /** Project Id */
+            project_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Version Relations */
+            version_relations: components["schemas"]["CandidateVersionRelation"][];
+        };
+        /**
+         * SearchRunStatus
+         * @description Durable search-run lifecycle.
+         * @enum {string}
+         */
+        SearchRunStatus: "created" | "running" | "completed" | "partial" | "failed";
         /**
          * SectionPayload
          * @description Writing section response.
@@ -18800,6 +22115,18 @@ export interface components {
             top_final_rank_score?: number | null;
         };
         /**
+         * SourceError
+         * @description Bounded source-specific search failure.
+         */
+        SourceError: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Source Id */
+            source_id: string;
+        };
+        /**
          * SourceFolderRefPayload
          * @description Privacy-safe project source-folder binding metadata.
          *
@@ -18844,14 +22171,58 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
+        /**
+         * SourcePolicy
+         * @description Allowlisted capabilities and hosts for one source adapter.
+         */
+        SourcePolicy: {
+            /** Capabilities */
+            capabilities: ("search" | "download")[];
+            /**
+             * Download Hosts
+             * @default []
+             */
+            download_hosts: string[];
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Evidence Kinds */
+            evidence_kinds: components["schemas"]["AccessEvidenceKind"][];
+            /**
+             * Max Results Per Query
+             * @default 50
+             */
+            max_results_per_query: number;
+            /**
+             * Metadata Hosts
+             * @default []
+             */
+            metadata_hosts: string[];
+            /**
+             * Min Interval Seconds
+             * @default 3
+             */
+            min_interval_seconds: number;
+            /**
+             * Requires Authentication
+             * @default false
+             */
+            requires_authentication: boolean;
+            /** Source Id */
+            source_id: string;
+            /** Terms Url */
+            terms_url: string;
+        };
         /** SourceRef */
         SourceRef: {
             /**
              * Bbox
-             * @description [x, y, width, height] when bbox_unit is normalized_ratio
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
              */
             bbox?: number[] | null;
-            /** @description Coordinate unit for bbox. Missing legacy values default to normalized_ratio. */
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
             bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Chunk Id */
             chunk_id?: string | null;
@@ -19406,6 +22777,16 @@ export interface components {
             /** Tags */
             tags?: string[];
         };
+        /**
+         * UpdateNoteUsageRequest
+         * @description Compare-and-set update for explicit downstream note authorization.
+         */
+        UpdateNoteUsageRequest: {
+            /** Enabled Scopes */
+            enabled_scopes?: components["schemas"]["AnnotationUseScope"][];
+            /** Expected Updated At */
+            expected_updated_at: string;
+        };
         /** UpdateProjectRequest */
         UpdateProjectRequest: {
             /** Description */
@@ -19436,6 +22817,39 @@ export interface components {
             /** Name */
             name?: string | null;
         };
+        /**
+         * ValidatedArtifact
+         * @description Validated immutable PDF ready for existing-project ingestion.
+         */
+        ValidatedArtifact: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Candidate Id */
+            candidate_id: string;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Media Type
+             * @default application/pdf
+             * @constant
+             */
+            media_type: "application/pdf";
+            /** Page Count */
+            page_count: number;
+            /** Project Id */
+            project_id: string;
+            /** Relative Path */
+            relative_path: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Validated At
+             * Format: date-time
+             */
+            validated_at?: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -19448,6 +22862,549 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * VersionRelationEvidenceKind
+         * @description Allowlisted evidence that can create a durable version edge.
+         * @enum {string}
+         */
+        VersionRelationEvidenceKind: "source_revision" | "doi_and_source_stage";
+        /**
+         * VersionRelationType
+         * @description Directed relation from one retained candidate version to another.
+         * @enum {string}
+         */
+        VersionRelationType: "revision_of" | "preprint_of";
+        /**
+         * VisualObservationCandidate
+         * @description One model-derived visual observation linked to a SmartRead turn.
+         */
+        VisualObservationCandidate: {
+            /** Cache Key Hash */
+            cache_key_hash?: string | null;
+            /**
+             * Cache Status
+             * @enum {string}
+             */
+            cache_status: "hit" | "miss" | "bypassed" | "unavailable";
+            /** Candidate Id */
+            candidate_id: string;
+            /** Created At */
+            created_at: string;
+            error?: components["schemas"]["VisualObservationError"] | null;
+            /**
+             * Freshness Status
+             * @default fresh
+             * @enum {string}
+             */
+            freshness_status: "fresh" | "stale";
+            /**
+             * Generation Status
+             * @enum {string}
+             */
+            generation_status: "succeeded" | "failed";
+            /** Image Inputs */
+            image_inputs?: components["schemas"]["VisualObservationImageInput"][];
+            /** Order */
+            order: number;
+            /**
+             * Output Scope
+             * @enum {string}
+             */
+            output_scope: "answer_joint" | "image_note";
+            /** Output Sha256 */
+            output_sha256?: string | null;
+            /** Output Text */
+            output_text?: string | null;
+            producer?: components["schemas"]["VisualObservationProducer"];
+            /** Project Id */
+            project_id?: string | null;
+            /** Request Sha256 */
+            request_sha256: string;
+            /**
+             * Review Status
+             * @default candidate
+             * @enum {string}
+             */
+            review_status: "candidate" | "accepted" | "rejected" | "withdrawn";
+            /**
+             * Route
+             * @enum {string}
+             */
+            route: "direct_model" | "vision_aux_mcp";
+            /** Run Id */
+            run_id: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-visual-observation/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-visual-observation/v1";
+            /** Selection Ids */
+            selection_ids?: string[];
+            /** Session Id */
+            session_id: string;
+            /** Source Fingerprints */
+            source_fingerprints?: string[];
+            /** Turn Id */
+            turn_id: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * VisualObservationError
+         * @description Sanitized failure metadata safe for durable local history.
+         */
+        VisualObservationError: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /**
+             * Recoverable
+             * @default true
+             */
+            recoverable: boolean;
+        };
+        /**
+         * VisualObservationImageInput
+         * @description One image identity without pixels, request indexes, or private paths.
+         */
+        VisualObservationImageInput: {
+            /** Artifact Sha256 */
+            artifact_sha256?: string | null;
+            /** Content Sha256 */
+            content_sha256: string;
+            /** Derived Artifact Ref */
+            derived_artifact_ref?: string | null;
+            /** Image Id */
+            image_id: string;
+            /** Mime */
+            mime: string;
+            /** Selection Ids */
+            selection_ids?: string[];
+            /** Size */
+            size: number;
+        };
+        /**
+         * VisualObservationLifecycleEvent
+         * @description Durable audit event for one committed visual lifecycle transition.
+         */
+        VisualObservationLifecycleEvent: {
+            /**
+             * Axis
+             * @enum {string}
+             */
+            axis: "review" | "freshness";
+            /** Candidate Id */
+            candidate_id: string;
+            /** Changed By */
+            changed_by: string;
+            /** Event Id */
+            event_id: string;
+            /**
+             * From Status
+             * @enum {string}
+             */
+            from_status: "candidate" | "accepted" | "rejected" | "withdrawn" | "fresh" | "stale";
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Operation Id */
+            operation_id: string;
+            /**
+             * Previous Freshness Status
+             * @enum {string}
+             */
+            previous_freshness_status: "fresh" | "stale";
+            /**
+             * Previous Review Status
+             * @enum {string}
+             */
+            previous_review_status: "candidate" | "accepted" | "rejected" | "withdrawn";
+            /** Project Id */
+            project_id?: string | null;
+            /** Reason */
+            reason: string;
+            /**
+             * Result Freshness Status
+             * @enum {string}
+             */
+            result_freshness_status: "fresh" | "stale";
+            /**
+             * Result Review Status
+             * @enum {string}
+             */
+            result_review_status: "candidate" | "accepted" | "rejected" | "withdrawn";
+            /**
+             * Schema Version
+             * @default scholar-ai-visual-lifecycle-event/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-visual-lifecycle-event/v1";
+            /** Session Id */
+            session_id: string;
+            source_revision?: components["schemas"]["VisualObservationSourceRevisionIdentity"] | null;
+            /** Source Revision Impact Fingerprint */
+            source_revision_impact_fingerprint?: string | null;
+            /** Source Revision Operation */
+            source_revision_operation?: ("mark_stale" | "revalidate") | null;
+            /** Source Revision Receipt Id */
+            source_revision_receipt_id?: string | null;
+            /**
+             * To Status
+             * @enum {string}
+             */
+            to_status: "candidate" | "accepted" | "rejected" | "withdrawn" | "fresh" | "stale";
+        };
+        /**
+         * VisualObservationLifecycleReceipt
+         * @description Durable idempotency receipt for one explicit candidate transition.
+         */
+        VisualObservationLifecycleReceipt: {
+            /**
+             * Axis
+             * @enum {string}
+             */
+            axis: "review" | "freshness";
+            /** Candidate Id */
+            candidate_id: string;
+            /** Changed By */
+            changed_by: string;
+            /** Event Id */
+            event_id: string;
+            /**
+             * From Status
+             * @enum {string}
+             */
+            from_status: "candidate" | "accepted" | "rejected" | "withdrawn" | "fresh" | "stale";
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Operation Id */
+            operation_id: string;
+            /**
+             * Previous Freshness Status
+             * @enum {string}
+             */
+            previous_freshness_status: "fresh" | "stale";
+            /**
+             * Previous Review Status
+             * @enum {string}
+             */
+            previous_review_status: "candidate" | "accepted" | "rejected" | "withdrawn";
+            /** Project Id */
+            project_id?: string | null;
+            /** Reason */
+            reason: string;
+            /** Receipt Id */
+            receipt_id: string;
+            /** Request Sha256 */
+            request_sha256: string;
+            /**
+             * Result Freshness Status
+             * @enum {string}
+             */
+            result_freshness_status: "fresh" | "stale";
+            /**
+             * Result Review Status
+             * @enum {string}
+             */
+            result_review_status: "candidate" | "accepted" | "rejected" | "withdrawn";
+            /**
+             * Schema Version
+             * @default scholar-ai-visual-lifecycle-receipt/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-visual-lifecycle-receipt/v1";
+            /** Session Id */
+            session_id: string;
+            /**
+             * To Status
+             * @enum {string}
+             */
+            to_status: "candidate" | "accepted" | "rejected" | "withdrawn" | "fresh" | "stale";
+        };
+        /**
+         * VisualObservationLifecycleRequest
+         * @description Strict idempotent transition request with dual-axis current-state CAS.
+         */
+        VisualObservationLifecycleRequest: {
+            /** Changed By */
+            changed_by: string;
+            /**
+             * Expected Freshness Status
+             * @enum {string}
+             */
+            expected_freshness_status: "fresh" | "stale";
+            /**
+             * Expected Review Status
+             * @enum {string}
+             */
+            expected_review_status: "candidate" | "accepted" | "rejected" | "withdrawn";
+            /** Operation Id */
+            operation_id: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-visual-observation-lifecycle-request/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-visual-observation-lifecycle-request/v1";
+            /** Target Freshness Status */
+            target_freshness_status?: ("fresh" | "stale") | null;
+            /** Target Review Status */
+            target_review_status?: ("accepted" | "rejected" | "withdrawn") | null;
+        };
+        /**
+         * VisualObservationMutationResponse
+         * @description Authoritative candidate, event, and receipt committed in one transaction.
+         */
+        VisualObservationMutationResponse: {
+            candidate: components["schemas"]["VisualObservationCandidate"];
+            event: components["schemas"]["VisualObservationLifecycleEvent"];
+            receipt: components["schemas"]["VisualObservationLifecycleReceipt"];
+            /** Replayed */
+            replayed: boolean;
+        };
+        /**
+         * VisualObservationProducer
+         * @description Bounded model/tool identity without credentials or provider URLs.
+         */
+        VisualObservationProducer: {
+            /** Fingerprint Version */
+            fingerprint_version?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Model Version */
+            model_version?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Server Fingerprint */
+            server_fingerprint?: string | null;
+            /** Server Id */
+            server_id?: string | null;
+            /** Server Slug */
+            server_slug?: string | null;
+            /** Tool Name */
+            tool_name?: string | null;
+            /** Tool Version */
+            tool_version?: string | null;
+        };
+        /**
+         * VisualObservationReference
+         * @description Compact reference safe for normal responses, history, and receipts.
+         */
+        VisualObservationReference: {
+            /** Cache Key Hash */
+            cache_key_hash?: string | null;
+            /**
+             * Cache Status
+             * @enum {string}
+             */
+            cache_status: "hit" | "miss" | "bypassed" | "unavailable";
+            /** Candidate Id */
+            candidate_id: string;
+            /**
+             * Generation Status
+             * @enum {string}
+             */
+            generation_status: "succeeded" | "failed";
+            /** Output Sha256 */
+            output_sha256?: string | null;
+            /** Read Endpoint */
+            read_endpoint: string;
+            /**
+             * Review Status
+             * @enum {string}
+             */
+            review_status: "candidate" | "accepted" | "rejected" | "withdrawn" | "stale";
+            /**
+             * Route
+             * @enum {string}
+             */
+            route: "direct_model" | "vision_aux_mcp";
+            /**
+             * Schema Version
+             * @default scholar-ai-visual-observation-ref/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-visual-observation-ref/v1";
+            /** Selection Ids */
+            selection_ids?: string[];
+            /** Turn Id */
+            turn_id: string;
+        };
+        /**
+         * VisualObservationSourceRevisionApplyReceipt
+         * @description Durable aggregate receipt for one atomic source revision application.
+         */
+        VisualObservationSourceRevisionApplyReceipt: {
+            /** Candidate Ids */
+            candidate_ids: string[];
+            /** Changed By */
+            changed_by: string;
+            /** Events */
+            events: components["schemas"]["VisualObservationLifecycleEvent"][];
+            /** Impact Fingerprint */
+            impact_fingerprint: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "mark_stale" | "revalidate";
+            /** Operation Id */
+            operation_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason: string;
+            /** Receipt Id */
+            receipt_id: string;
+            /** Request Sha256 */
+            request_sha256: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-visual-source-revision-receipt/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-visual-source-revision-receipt/v1";
+            source_revision: components["schemas"]["VisualObservationSourceRevisionIdentity"];
+        };
+        /**
+         * VisualObservationSourceRevisionApplyRequest
+         * @description Idempotent source-revision apply request bound to one exact preflight.
+         */
+        VisualObservationSourceRevisionApplyRequest: {
+            /** Changed By */
+            changed_by: string;
+            /** Expected Impact Fingerprint */
+            expected_impact_fingerprint: string;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "mark_stale" | "revalidate";
+            /** Operation Id */
+            operation_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-visual-source-revision-apply-request/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-visual-source-revision-apply-request/v1";
+            source_revision: components["schemas"]["VisualObservationSourceRevisionIdentity"];
+            /** Validated Candidate Ids */
+            validated_candidate_ids: string[];
+        };
+        /**
+         * VisualObservationSourceRevisionApplyResponse
+         * @description Aggregate receipt returned by an atomic source-revision apply.
+         */
+        VisualObservationSourceRevisionApplyResponse: {
+            receipt: components["schemas"]["VisualObservationSourceRevisionApplyReceipt"];
+            /** Replayed */
+            replayed: boolean;
+        };
+        /**
+         * VisualObservationSourceRevisionIdentity
+         * @description One caller-observed source hash replacement used for stale handling.
+         */
+        VisualObservationSourceRevisionIdentity: {
+            /** Current Source Fingerprint */
+            current_source_fingerprint: string;
+            /** Previous Source Fingerprint */
+            previous_source_fingerprint: string;
+        };
+        /**
+         * VisualObservationSourceRevisionImpact
+         * @description One candidate and exact current state selected by a read-only preflight.
+         */
+        VisualObservationSourceRevisionImpact: {
+            /** Candidate Id */
+            candidate_id: string;
+            /**
+             * Expected Freshness Status
+             * @enum {string}
+             */
+            expected_freshness_status: "fresh" | "stale";
+            /**
+             * Expected Review Status
+             * @enum {string}
+             */
+            expected_review_status: "candidate" | "accepted" | "rejected" | "withdrawn";
+            /**
+             * Expected Updated At
+             * Format: date-time
+             */
+            expected_updated_at: string;
+        };
+        /**
+         * VisualObservationSourceRevisionPreflight
+         * @description Complete project-scoped impact set whose digest is reused as apply CAS.
+         */
+        VisualObservationSourceRevisionPreflight: {
+            /** Impact Fingerprint */
+            impact_fingerprint: string;
+            /** Impacts */
+            impacts: components["schemas"]["VisualObservationSourceRevisionImpact"][];
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "mark_stale" | "revalidate";
+            /** Project Id */
+            project_id: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-visual-source-revision-preflight/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-visual-source-revision-preflight/v1";
+            source_revision: components["schemas"]["VisualObservationSourceRevisionIdentity"];
+        };
+        /**
+         * VisualObservationSourceRevisionPreflightRequest
+         * @description Read-only project source-revision impact query.
+         */
+        VisualObservationSourceRevisionPreflightRequest: {
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "mark_stale" | "revalidate";
+            /** Project Id */
+            project_id: string;
+            source_revision: components["schemas"]["VisualObservationSourceRevisionIdentity"];
+        };
+        /** WikiAnnotationReviewEnqueueRequest */
+        WikiAnnotationReviewEnqueueRequest: {
+            /** Expected Content Hash */
+            expected_content_hash: string;
+            /** Expected Updated At */
+            expected_updated_at: string;
+            /** Material Id */
+            material_id: string;
+            /** Note Id */
+            note_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Request Id */
+            request_id: string;
         };
         /** WikiCategoriesResponse */
         WikiCategoriesResponse: {
@@ -19558,6 +23515,112 @@ export interface components {
             graph?: {
                 [key: string]: unknown;
             };
+        };
+        /** WikiGraphReviewApplyRequest */
+        WikiGraphReviewApplyRequest: {
+            /**
+             * Decided By
+             * @default user
+             */
+            decided_by: string;
+            /** Edges */
+            edges?: components["schemas"]["WikiGraphReviewEdgeInput"][];
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Keep Node Id */
+            keep_node_id?: string | null;
+            /** Merge Node Ids */
+            merge_node_ids?: string[];
+            /** Nodes */
+            nodes?: components["schemas"]["WikiGraphReviewNodeInput"][];
+            /** Operation Kind */
+            operation_kind: string;
+            /**
+             * Review Item Key
+             * @default
+             */
+            review_item_key: string;
+        };
+        /** WikiGraphReviewApplyResponse */
+        WikiGraphReviewApplyResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Operation Id */
+            operation_id: string;
+            /** Operation Kind */
+            operation_kind: string;
+            /** Snapshots */
+            snapshots?: components["schemas"]["WikiGraphReviewPageSnapshotPayload"][];
+            /** Updated Page Paths */
+            updated_page_paths?: string[];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** WikiGraphReviewEdgeInput */
+        WikiGraphReviewEdgeInput: {
+            /**
+             * Edge Id
+             * @default
+             */
+            edge_id: string;
+            /** Frontmatter Field */
+            frontmatter_field?: string | null;
+            /** Relation */
+            relation: string;
+            /** Source */
+            source: string;
+            /** Source Path */
+            source_path: string;
+            /** Target */
+            target: string;
+            /** Target Path */
+            target_path?: string | null;
+        };
+        /** WikiGraphReviewNodeInput */
+        WikiGraphReviewNodeInput: {
+            /** Disambiguation */
+            disambiguation?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Node Id */
+            node_id: string;
+            /** Page Path */
+            page_path: string;
+        };
+        /** WikiGraphReviewPageSnapshotPayload */
+        WikiGraphReviewPageSnapshotPayload: {
+            /** Content */
+            content: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Expected Current Hash */
+            expected_current_hash: string;
+            /** Page Path */
+            page_path: string;
+        };
+        /** WikiGraphReviewUndoRequest */
+        WikiGraphReviewUndoRequest: {
+            /**
+             * Decided By
+             * @default user
+             */
+            decided_by: string;
+            /** Operation Id */
+            operation_id: string;
+            /**
+             * Operation Kind
+             * @default undo_graph_review
+             */
+            operation_kind: string;
+            /** Snapshots */
+            snapshots?: components["schemas"]["WikiGraphReviewPageSnapshotPayload"][];
         };
         /**
          * WikiImportItemPayload
@@ -19888,13 +23951,22 @@ export interface components {
          * @description Response for create/update/delete operations (G2 2026-05-26).
          */
         WikiPageMutationResponse: {
+            /** Current Content Hash */
+            current_content_hash?: string | null;
             /**
              * Message
              * @default
              */
             message: string;
+            /** Receipt Id */
+            receipt_id?: string | null;
             /** Slug */
             slug: string;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
             /** Success */
             success: boolean;
         };
@@ -19938,6 +24010,40 @@ export interface components {
             };
             /** Path */
             path: string;
+        };
+        /**
+         * WikiPageRestoreRequest
+         * @description CAS and receipt preconditions for restoring an archived page.
+         */
+        WikiPageRestoreRequest: {
+            /** Archive Receipt Id */
+            archive_receipt_id: string;
+            /** Expected Current Hash */
+            expected_current_hash: string;
+        };
+        /** WikiPageRevisionReviewTargetPayload */
+        WikiPageRevisionReviewTargetPayload: {
+            /** Expected Content Hash */
+            expected_content_hash: string;
+            /**
+             * Expected Status
+             * @enum {string}
+             */
+            expected_status: "draft" | "review";
+            /** Page Id */
+            page_id: string;
+            /** Page Path */
+            page_path: string;
+            /**
+             * Schema Version
+             * @enum {string}
+             */
+            schema_version: "scholar-ai-wiki-page-revision-target/v1" | "scholar-ai-wiki-page-revision-target/v2";
+            /**
+             * Type
+             * @constant
+             */
+            type: "wiki_page_revision";
         };
         /** WikiPageSummaryPayload */
         WikiPageSummaryPayload: {
@@ -20117,6 +24223,81 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /** WikiRevalidationApplyRequest */
+        WikiRevalidationApplyRequest: {
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm: boolean;
+            /** Expected Source Manifest Hash */
+            expected_source_manifest_hash: string;
+        };
+        /** WikiRevalidationResponse */
+        WikiRevalidationResponse: {
+            /**
+             * Applied
+             * @default false
+             */
+            applied: boolean;
+            /** Can Apply */
+            can_apply: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Indexed Page Count
+             * @default 0
+             */
+            indexed_page_count: number;
+            /** Indexed Source Manifest Hash */
+            indexed_source_manifest_hash: string;
+            /** Integrity Status */
+            integrity_status: string;
+            manifest_drilldown?: components["schemas"]["WikiManifestDrilldownPayload"];
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Source Manifest Hash */
+            source_manifest_hash: string;
+            /** Source Page Count */
+            source_page_count?: number | null;
+            /** Stale */
+            stale: boolean;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** WikiReviewDecisionPayload */
+        WikiReviewDecisionPayload: {
+            /** Decided At */
+            decided_at: string;
+            /** Decided By */
+            decided_by: string;
+            /**
+             * Expected Item Revision
+             * @default
+             */
+            expected_item_revision: string;
+            promotion_receipt?: components["schemas"]["WikiReviewPromotionReceiptPayload"] | null;
+            /** Reason */
+            reason: string;
+            /**
+             * Request Fingerprint
+             * @default
+             */
+            request_fingerprint: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "approved" | "rejected";
+        };
         /** WikiReviewDecisionRequest */
         WikiReviewDecisionRequest: {
             /**
@@ -20124,22 +24305,29 @@ export interface components {
              * @default user
              */
             decided_by: string;
+            /** Expected Item Revision */
+            expected_item_revision: string;
+            /** Expected Target Content Hash */
+            expected_target_content_hash?: string | null;
+            /** Reason */
+            reason: string;
             /**
-             * Reason
+             * Request Id
              * @default
              */
-            reason: string;
+            request_id: string;
         };
         /** WikiReviewItemPayload */
         WikiReviewItemPayload: {
+            /** Allowed Actions */
+            allowed_actions?: ("approve" | "reject" | "withdraw")[];
             /** Created At */
             created_at: string;
-            /** Decision */
-            decision?: {
-                [key: string]: unknown;
-            } | null;
+            decision?: components["schemas"]["WikiReviewDecisionPayload"] | null;
             /** Item Id */
             item_id: string;
+            /** Item Revision */
+            item_revision: string;
             /** Kind */
             kind: string;
             /** Metadata */
@@ -20148,12 +24336,19 @@ export interface components {
             };
             /** Page Path */
             page_path: string;
+            promotion_intent?: components["schemas"]["WikiReviewPromotionIntentPayload"] | null;
+            /** Promotion Withdrawal Receipts */
+            promotion_withdrawal_receipts?: components["schemas"]["WikiReviewPromotionWithdrawalReceiptPayload"][];
+            /** Schema Version */
+            schema_version: number;
             /** Source */
             source: string;
             /** Status */
             status: string;
             /** Summary */
             summary: string;
+            /** Target */
+            target?: components["schemas"]["WikiPageRevisionReviewTargetPayload"] | components["schemas"]["AnnotationNoteReviewTargetPayload"] | null;
             /** Title */
             title: string;
         };
@@ -20163,6 +24358,141 @@ export interface components {
             enabled: boolean;
             /** Items */
             items?: components["schemas"]["WikiReviewItemPayload"][];
+        };
+        /** WikiReviewPromotionIntentPayload */
+        WikiReviewPromotionIntentPayload: {
+            /** After Content Hash */
+            after_content_hash: string;
+            /** Before Content Hash */
+            before_content_hash: string;
+            /** Expected Item Revision */
+            expected_item_revision: string;
+            /** Operation Id */
+            operation_id: string;
+            /**
+             * Previous Status
+             * @enum {string}
+             */
+            previous_status: "draft" | "review";
+            /** Promoted At */
+            promoted_at: string;
+            /** Promoted By */
+            promoted_by: string;
+            /**
+             * Promoted Status
+             * @constant
+             */
+            promoted_status: "final";
+            /** Reason */
+            reason: string;
+            /** Request Fingerprint */
+            request_fingerprint: string;
+            /** Request Id */
+            request_id: string;
+            /** Review Item Id */
+            review_item_id: string;
+            /**
+             * Schema Version
+             * @enum {string}
+             */
+            schema_version: "scholar-ai-wiki-promotion-intent/v1" | "scholar-ai-wiki-promotion-intent/v2";
+            target: components["schemas"]["WikiPageRevisionReviewTargetPayload"];
+        };
+        /** WikiReviewPromotionReceiptPayload */
+        WikiReviewPromotionReceiptPayload: {
+            /** After Content Hash */
+            after_content_hash: string;
+            /** Before Content Hash */
+            before_content_hash: string;
+            /** Expected Item Revision */
+            expected_item_revision: string;
+            /**
+             * Outcome
+             * @constant
+             */
+            outcome: "promoted";
+            /**
+             * Previous Status
+             * @enum {string}
+             */
+            previous_status: "draft" | "review";
+            /** Promoted At */
+            promoted_at: string;
+            /** Promoted By */
+            promoted_by: string;
+            /**
+             * Promoted Status
+             * @constant
+             */
+            promoted_status: "final";
+            /** Receipt Id */
+            receipt_id: string;
+            /** Request Fingerprint */
+            request_fingerprint: string;
+            /** Request Id */
+            request_id: string;
+            /** Review Item Id */
+            review_item_id: string;
+            /**
+             * Schema Version
+             * @enum {string}
+             */
+            schema_version: "scholar-ai-wiki-promotion-receipt/v1" | "scholar-ai-wiki-promotion-receipt/v2";
+            target: components["schemas"]["WikiPageRevisionReviewTargetPayload"];
+        };
+        /** WikiReviewPromotionWithdrawRequest */
+        WikiReviewPromotionWithdrawRequest: {
+            /** Expected Item Revision */
+            expected_item_revision: string;
+            /** Expected Promotion Operation Id */
+            expected_promotion_operation_id: string;
+            /** Reason */
+            reason: string;
+        };
+        /** WikiReviewPromotionWithdrawResponse */
+        WikiReviewPromotionWithdrawResponse: {
+            item: components["schemas"]["WikiReviewItemPayload"];
+            withdrawal_receipt: components["schemas"]["WikiReviewPromotionWithdrawalReceiptPayload"];
+        };
+        /** WikiReviewPromotionWithdrawalReceiptPayload */
+        WikiReviewPromotionWithdrawalReceiptPayload: {
+            /** Before Content Hash */
+            before_content_hash: string;
+            /** Expected Item Revision */
+            expected_item_revision: string;
+            /**
+             * Outcome
+             * @constant
+             */
+            outcome: "withdrawn";
+            /** Planned After Content Hash */
+            planned_after_content_hash: string;
+            /** Promotion Operation Id */
+            promotion_operation_id: string;
+            /** Promotion Request Fingerprint */
+            promotion_request_fingerprint: string;
+            /** Promotion Request Id */
+            promotion_request_id: string;
+            /** Reason */
+            reason: string;
+            /** Receipt Id */
+            receipt_id: string;
+            /** Resulting Item Revision */
+            resulting_item_revision: string;
+            /** Review Item Id */
+            review_item_id: string;
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: "scholar-ai-wiki-promotion-withdrawal-receipt/v1";
+            target: components["schemas"]["WikiPageRevisionReviewTargetPayload"];
+            /** Withdrawal Request Fingerprint */
+            withdrawal_request_fingerprint: string;
+            /** Withdrawn At */
+            withdrawn_at: string;
+            /** Withdrawn By */
+            withdrawn_by: string;
         };
         /** WikiStatusResponse */
         WikiStatusResponse: {
@@ -20253,6 +24583,37 @@ export interface components {
             enabled: boolean;
             /** Tags */
             tags?: components["schemas"]["WikiTagPayload"][];
+        };
+        /**
+         * WithdrawAcceptedGraphFactRequest
+         * @description Explicit withdrawal request bound to one current fact state.
+         */
+        WithdrawAcceptedGraphFactRequest: {
+            /** Changed By */
+            changed_by: string;
+            /** Expected State Sha256 */
+            expected_state_sha256: string;
+            /** Expected Version */
+            expected_version: number;
+            /** Fact Id */
+            fact_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Operation Id */
+            operation_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Schema Version
+             * @default scholar-ai-withdraw-accepted-graph-fact-request/v1
+             * @constant
+             */
+            schema_version: "scholar-ai-withdraw-accepted-graph-fact-request/v1";
         };
         /**
          * WorkflowPassportGatePayload
@@ -21195,6 +25556,471 @@ export interface operations {
             };
         };
     };
+    get_api_acquisition_artifacts_artifact_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidatedArtifact"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_acquisition_artifacts_artifact_id_import: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_acquisition_downloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QueueDownloadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_acquisition_downloads_job_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_acquisition_downloads_job_id_control: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DownloadControlRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_acquisition_downloads_job_id_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_acquisition_gates_gate_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanAccessGate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_acquisition_gates_gate_id_resolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GateResolutionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_acquisition_receipts_receipt_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receipt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_acquisition_search: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchRun"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_acquisition_search_runs_run_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchRun"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_acquisition_search_runs_run_id_identity_ledger: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchRunIdentityLedgerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_acquisition_status: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcquisitionStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_agent_bridge_codex_handoff_latest: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexHandoffLatestPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_agent_bridge_desktop_open: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSidebarDesktopOpenResponse"];
+                };
+            };
+        };
+    };
     post_api_agent_bridge_request: {
         parameters: {
             query?: never;
@@ -21862,6 +26688,42 @@ export interface operations {
             };
         };
     };
+    get_api_annotations_material_id_notes_eligible: {
+        parameters: {
+            query: {
+                scope: components["schemas"]["AnnotationUseScope"];
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     put_api_annotations_material_id_notes_note_id: {
         parameters: {
             query?: never;
@@ -21930,6 +26792,44 @@ export interface operations {
             };
         };
     };
+    put_api_annotations_material_id_notes_note_id_usage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                material_id: string;
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNoteUsageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_budget_status: {
         parameters: {
             query?: never;
@@ -21970,6 +26870,419 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntelligentChatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_answer_receipts: {
+        parameters: {
+            query: {
+                project_id: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerReceiptListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_answer_receipts_conversation_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerReceiptReadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_answer_receipts_conversation_id_revalidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerReceiptRevalidateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerReceiptRevalidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_citation_candidates: {
+        parameters: {
+            query: {
+                project_id: string;
+                batch_id?: string | null;
+                session_id?: string | null;
+                turn_id?: string | null;
+                source_material_id?: string | null;
+                target_material_id?: string | null;
+                review_status?: ("candidate" | "accepted" | "rejected") | null;
+                freshness_status?: ("fresh" | "stale") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitesCandidate"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_citation_candidates_candidate_id: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitesCandidate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_citation_candidates_candidate_id_transition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CitationCandidateTransitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationCandidateTransitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_citation_capture_receipts: {
+        parameters: {
+            query: {
+                project_id: string;
+                session_id?: string | null;
+                turn_id?: string | null;
+                status?: ("scheduled" | "succeeded" | "failed") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationCaptureReceipt"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_citation_capture_receipts_receipt_id: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                receipt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationCaptureReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_citation_mentions: {
+        parameters: {
+            query: {
+                project_id: string;
+                batch_id?: string | null;
+                session_id?: string | null;
+                turn_id?: string | null;
+                outcome?: ("matched" | "unmatched" | "ambiguous" | "over_limit" | "failed") | null;
+                review_status?: ("candidate" | "accepted" | "rejected") | null;
+                freshness_status?: ("fresh" | "stale") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationMention"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_citation_mentions_mention_id: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                mention_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationMention"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_citation_source_revisions_apply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CitationSourceRevisionApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationSourceRevisionApplyReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_citation_source_revisions_preflight: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CitationSourceRevisionPreflightRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationSourceRevisionPreflight"];
                 };
             };
             /** @description Validation Error */
@@ -22590,6 +27903,233 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ToolCapabilityProbeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_visual_observation_lifecycle_receipts_operation_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualObservationLifecycleReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_visual_observation_source_revision_receipts_operation_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualObservationSourceRevisionApplyReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_visual_observation_source_revisions_apply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VisualObservationSourceRevisionApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualObservationSourceRevisionApplyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_visual_observation_source_revisions_preflight: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VisualObservationSourceRevisionPreflightRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualObservationSourceRevisionPreflight"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_visual_observations: {
+        parameters: {
+            query: {
+                session_id: string;
+                turn_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualObservationCandidate"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_chat_visual_observations_candidate_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualObservationCandidate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_chat_visual_observations_candidate_id_transition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VisualObservationLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualObservationMutationResponse"];
                 };
             };
             /** @description Validation Error */
@@ -24357,6 +29897,39 @@ export interface operations {
             };
         };
     };
+    post_api_evidence_pack_qrels_review_bundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceQrelsReviewBundleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceQrelsReviewBundleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_evidence_refs: {
         parameters: {
             query?: {
@@ -24661,11 +30234,123 @@ export interface operations {
             query?: {
                 /** @description Evidence graph scope kind. */
                 scope_kind?: "source" | "knowledge_item" | "insight" | "smart_read_session" | "question" | "project";
-                /** @description Scope id, question text, or project id. */
+                /** @description Scope id or project id. Answer graphs use turn_id as their key. */
                 scope_ref?: string;
                 /** @description SmartRead session id for smart_read_session or question scoped graphs. */
                 session_id?: string | null;
+                /** @description Exact persisted answer-turn id. Required for question scoped answer graphs. */
+                turn_id?: string | null;
                 /** @description Comma-separated node ids to keep; omit to use scope-driven projection. */
+                filter?: string | null;
+                /** @description Project graph neighbours per paper. */
+                top_k?: number;
+                /** @description Minimum project-paper lexical similarity. */
+                min_similarity?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceGraphPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_graph_evidence_answer: {
+        parameters: {
+            query: {
+                /** @description Exact persisted SmartRead session id. */
+                session_id: string;
+                /** @description Exact persisted answer-turn id; question text is not accepted as a key. */
+                turn_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceGraphPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_graph_evidence_project: {
+        parameters: {
+            query: {
+                /** @description Exact project id for the project-local graph projection. */
+                project_id: string;
+                /** @description Project graph neighbours per paper. */
+                top_k?: number;
+                /** @description Minimum project-paper lexical similarity. */
+                min_similarity?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceGraphPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_graph_evidence_wiki: {
+        parameters: {
+            query?: {
+                /** @description Wiki graph scope kind. */
+                scope_kind?: "source" | "knowledge_item" | "insight" | "question" | "project";
+                /** @description Wiki scope id or page identity. */
+                scope_ref?: string;
+                /** @description Comma-separated Wiki node ids to keep. */
                 filter?: string | null;
             };
             header?: never;
@@ -26663,6 +32348,308 @@ export interface operations {
             };
         };
     };
+    post_api_reviewed_knowledge_facts_mark_stale: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewedKnowledgeFreshnessRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewedKnowledgeMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_reviewed_knowledge_facts_promote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromoteAcceptedGraphFactRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewedKnowledgeMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_reviewed_knowledge_facts_revalidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewedKnowledgeFreshnessRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewedKnowledgeMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_reviewed_knowledge_facts_withdraw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WithdrawAcceptedGraphFactRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewedKnowledgeMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_reviewed_knowledge_projects_project_id_facts: {
+        parameters: {
+            query?: {
+                freshness_status?: ("fresh" | "stale") | null;
+                availability_status?: ("active" | "withdrawn") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptedGraphFact"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_reviewed_knowledge_projects_project_id_facts_fact_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                fact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptedGraphFact"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_reviewed_knowledge_projects_project_id_facts_fact_id_revisions: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                fact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptedGraphFact"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_reviewed_knowledge_projects_project_id_receipts: {
+        parameters: {
+            query?: {
+                fact_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewedKnowledgeReceipt"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_reviewed_knowledge_projects_project_id_receipts_operation_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewedKnowledgeReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_settings: {
         parameters: {
             query?: never;
@@ -27091,6 +33078,76 @@ export interface operations {
             };
         };
     };
+    post_api_wiki_graph_review_apply: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiGraphReviewApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiGraphReviewApplyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_wiki_graph_review_undo: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiGraphReviewUndoRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiGraphReviewApplyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_api_wiki_import: {
         parameters: {
             query?: {
@@ -27300,6 +33357,7 @@ export interface operations {
     delete_api_wiki_pages_slug: {
         parameters: {
             query?: {
+                expected_current_hash?: string | null;
                 user_id?: string | null;
             };
             header?: never;
@@ -27400,6 +33458,78 @@ export interface operations {
             };
         };
     };
+    post_api_wiki_pages_slug_restore: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiPageRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_wiki_pages_slug_retention: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_wiki_pages_slug_versions: {
         parameters: {
             query?: {
@@ -27468,6 +33598,72 @@ export interface operations {
             };
         };
     };
+    post_api_wiki_revalidation_apply: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiRevalidationApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiRevalidationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_wiki_revalidation_preflight: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiRevalidationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_api_wiki_review: {
         parameters: {
             query?: {
@@ -27500,9 +33696,44 @@ export interface operations {
             };
         };
     };
-    post_api_wiki_review_item_id_approve: {
+    post_api_wiki_review_annotations_enqueue: {
         parameters: {
             query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiAnnotationReviewEnqueueRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiReviewItemPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_wiki_review_item_id_approve: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
             header?: never;
             path: {
                 item_id: string;
@@ -27537,7 +33768,9 @@ export interface operations {
     };
     post_api_wiki_review_item_id_reject: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: string | null;
+            };
             header?: never;
             path: {
                 item_id: string;
@@ -27557,6 +33790,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WikiReviewItemPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_wiki_review_item_id_withdraw: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiReviewPromotionWithdrawRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiReviewPromotionWithdrawResponse"];
                 };
             };
             /** @description Validation Error */
@@ -28181,6 +34451,7 @@ export interface operations {
         parameters: {
             query?: {
                 user_id?: string | null;
+                include_archived?: boolean;
                 /** @description 页码 */
                 page?: number;
                 /** @description 每页条数 */
@@ -28278,7 +34549,10 @@ export interface operations {
     };
     delete_api_writing_projects_project_id: {
         parameters: {
-            query?: never;
+            query?: {
+                expected_updated_at?: string | null;
+                user_id?: string | null;
+            };
             header?: never;
             path: {
                 project_id: string;
@@ -28295,6 +34569,74 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_api_writing_projects_project_id_restore: {
+        parameters: {
+            query: {
+                archive_receipt_id: string;
+                expected_updated_at?: string | null;
+                user_id?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_writing_projects_project_id_retention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
                     };
                 };
             };
@@ -30653,6 +36995,40 @@ export interface operations {
             };
         };
     };
+    get_resources_material_material_id_formula_candidates: {
+        parameters: {
+            query: {
+                project_id: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormulaCandidatesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_resources_material_material_id_suggested_questions: {
         parameters: {
             query: {
@@ -30855,7 +37231,10 @@ export interface operations {
     };
     delete_resources_project_project_id: {
         parameters: {
-            query?: never;
+            query?: {
+                expected_updated_at?: string | null;
+                user_id?: string | null;
+            };
             header?: never;
             path: {
                 project_id: string;
@@ -31027,6 +37406,74 @@ export interface operations {
             };
         };
     };
+    post_resources_project_project_id_restore: {
+        parameters: {
+            query: {
+                archive_receipt_id: string;
+                expected_updated_at?: string | null;
+                user_id?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resources_project_project_id_retention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_resources_project_project_id_scan_folder: {
         parameters: {
             query?: {
@@ -31174,6 +37621,7 @@ export interface operations {
         parameters: {
             query?: {
                 user_id?: string | null;
+                include_archived?: boolean;
                 /** @description 页码 */
                 page?: number;
                 /** @description 每页条数 */

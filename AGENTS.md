@@ -33,8 +33,10 @@ cd <repo-root>
   active plan or ledger for the task, update it when reference reading or host
   testing changes direction, and close each slice with concrete evidence
   instead of relying on chat history.
-- Before nontrivial edits or runbooks, create rollback/audit records outside the
-  repository and check official or mature references.
+- Before nontrivial edits or runbooks, create rollback/audit records under the
+  Git-ignored `docs/plans/_rollback/` directory and check official or mature
+  references. Do not copy credentials, runtime databases, logs, browser
+  profiles, login state, or `.env*` files into a checkpoint.
 - Do not stage, commit, push, move tags, create releases, or rewrite history
   unless the user explicitly asks.
 

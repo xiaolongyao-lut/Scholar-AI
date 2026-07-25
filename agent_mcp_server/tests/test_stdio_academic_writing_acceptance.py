@@ -22,7 +22,6 @@ from mcp.client.stdio import stdio_client
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WRAPPER = REPO_ROOT / "agent_mcp_server" / "bin" / "lit-assistant-mcp.ps1"
-POWERSHELL_TIMEOUT_SEC = 12
 MCP_INITIALIZE_TIMEOUT_SEC = 75.0
 MCP_OPERATION_TIMEOUT_SEC = 30.0
 _ISOLATED_ENV_KEYS = {
@@ -105,27 +104,6 @@ def _wait_for_capability_file(path: Path, timeout_sec: float = 30.0) -> dict[str
             return _capability_headers(path)
         time.sleep(0.1)
     raise AssertionError(f"capability file was not created: {path}")
-
-
-def _stop_backend_on_port(port: int) -> None:
-    """Stop the test uvicorn process listening on ``port`` on Windows."""
-
-    if platform.system() != "Windows":
-        return
-    script = (
-        "$connections = Get-NetTCPConnection -LocalPort "
-        f"{port} -State Listen -ErrorAction SilentlyContinue; "
-        "$connections | Select-Object -ExpandProperty OwningProcess -Unique | "
-        "ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"
-    )
-    subprocess.run(
-        ["powershell", "-NoProfile", "-Command", script],
-        cwd=REPO_ROOT,
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=POWERSHELL_TIMEOUT_SEC,
-    )
 
 
 def _start_backend_process(
@@ -367,9 +345,6 @@ def test_stdio_mcp_agent_can_generate_academic_review_chain(tmp_path: Path) -> N
         return
 
     base_url = _unused_loopback_url()
-    parsed_port = urlparse(base_url).port
-    if parsed_port is None:
-        raise AssertionError("test backend URL must include a port")
 
     source_root = tmp_path / "AlSi10Mg_sources"
     source_root.mkdir()
@@ -411,6 +386,7 @@ def test_stdio_mcp_agent_can_generate_academic_review_chain(tmp_path: Path) -> N
                 "LITERATURE_ASSISTANT_REPO_ROOT": str(REPO_ROOT),
                 "LITERATURE_ASSISTANT_BASE_URL": base_url,
                 "LITASSIST_MCP_SKIP_BACKEND_AUTOSTART": "1",
+                "LITASSIST_MCP_TOOL_PROFILE": "full",
                 "LITERATURE_ASSISTANT_RUNTIME_STATE_ROOT": str(runtime_root),
                 "LITERATURE_ASSISTANT_USER_ROOT": str(user_root),
                 "LITASSIST_API_CAPABILITY_FILE": str(capability_file),
@@ -512,7 +488,7 @@ def test_stdio_mcp_agent_can_generate_academic_review_chain(tmp_path: Path) -> N
                     },
                 )
                 assert refs["refs"]
-                assert "content" not in str(refs["refs"][0])
+                assert "content" not in refs["refs"][0]
                 assert "read_endpoint" in refs["refs"][0]
 
                 evidence_pack = await _call_tool_ok(
@@ -529,7 +505,7 @@ def test_stdio_mcp_agent_can_generate_academic_review_chain(tmp_path: Path) -> N
                 assert evidence_pack["retrieval_method"] == "lexical"
                 assert evidence_pack["rerank_status"] == "unavailable"
                 assert len(evidence_pack["evidence_refs"]) >= 2
-                assert "content" not in str(evidence_pack["evidence_refs"][0])
+                assert "content" not in evidence_pack["evidence_refs"][0]
 
                 resource = await _call_tool_ok(
                     session,
@@ -675,4 +651,3 @@ def test_stdio_mcp_agent_can_generate_academic_review_chain(tmp_path: Path) -> N
         except subprocess.TimeoutExpired:
             backend_process.kill()
             backend_process.wait(timeout=10)
-        _stop_backend_on_port(parsed_port)

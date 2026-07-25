@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { ApiConfigSummaryRow, SETTINGS_NAV_TABS, SettingsPage } from './Settings';
@@ -6,6 +6,7 @@ import { buildSettingsSectionPath, resolveInitialSection } from './settingsSecti
 import { CredentialsSection } from '@/components/settings/CredentialsSection';
 import * as pdfBackendApi from '@/services/pdfBackendApi';
 import * as credentialsApi from '@/services/credentialsApi';
+import type { RuntimeCredentialPublic } from '@/services/credentialsApi';
 
 vi.mock('axios', () => {
   const get = vi.fn(async (url: string) => {
@@ -28,7 +29,10 @@ vi.mock('axios', () => {
       return {
         data: {
           enabled: true,
-          trigger_tokens: 24000,
+          model_auto_compact_token_limit: 150000,
+          trigger_tokens: 150000,
+          model_context_window: 258400,
+          tool_output_token_limit: 8000,
           target_tokens: 2000,
           keep_recent_turns: 6,
           updated_at: '2026-07-01T00:00:00+08:00',
@@ -363,9 +367,77 @@ vi.mock('@/services/pdfBackendApi', () => ({
     readiness_blockers: [],
     next_safe_local_actions: [],
   })),
+  runOcrExecutionProbe: vi.fn(async () => ({
+    schema_version: 'scholar-ai-ocr-execution-probe/v1',
+    confirmed: true,
+    engine: 'rapidocr',
+    engine_type: 'local',
+    requires_network: false,
+    language: 'en',
+    input_kind: 'image_base64',
+    input_bytes: 4096,
+    input_sha256: 'a'.repeat(64),
+    text_length: 45,
+    text_sha256: 'b'.repeat(64),
+    text_preview: 'SCHOLAR AI OCR TEST 2026\nPOSITION SAMPLE',
+    duration_ms: 128,
+    region_count: 1,
+    region_samples: [
+      {
+        block_type: 'text',
+        text_preview: 'POSITION SAMPLE',
+        bbox: [0.125, 0.25, 0.5, 0.125],
+      },
+    ],
+  })),
+  classifyOcrExecutionProbeError: vi.fn((error: unknown) => {
+    const status = typeof error === 'object' && error !== null && 'status' in error
+      ? (error as { status?: unknown }).status
+      : null;
+    if (status === 502) {
+      return {
+        category: 'provider',
+        title: 'OCR 服务执行失败',
+        detail: '请求已进入真实 OCR 执行链路，但服务端未完成识别。请检查凭证、配额和模型设置。',
+      };
+    }
+    return {
+      category: 'unexpected',
+      title: 'OCR 执行失败',
+      detail: '未能完成本次 OCR 执行测试，请稍后重试。',
+    };
+  }),
 }));
 
+function makeOcrCredential(): RuntimeCredentialPublic {
+  return {
+    credential_id: 'cred_ocr_1',
+    category: 'ocr',
+    provider: 'Mistral',
+    model: 'mistral-ocr-latest',
+    base_url: 'https://api.mistral.ai/v1',
+    protocol: 'ocr',
+    enabled: true,
+    priority: 100,
+    tags: [],
+    strategy_hint: 'medium',
+    trust_source: 'runtime_user_confirmed',
+    notes: '',
+    sampling_override: null,
+    api_key_masked: 'sk-****',
+    has_api_key: true,
+    fingerprint: 'fp',
+    fingerprint_version: 'v1',
+    created_at: '2026-07-01T00:00:00+08:00',
+    updated_at: '2026-07-01T00:00:00+08:00',
+  };
+}
+
 describe('Settings navigation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('keeps API-adjacent legacy sections out of the visible left navigation', () => {
     const visibleSectionIds = SETTINGS_NAV_TABS.map((tab) => tab.id);
 
@@ -470,6 +542,398 @@ describe('Settings navigation', () => {
     });
   });
 
+  it('runs a readable disposable image through OCR and displays structured execution proof', async () => {
+    const context = {
+      fillStyle: '',
+      font: '',
+      textBaseline: 'alphabetic',
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockImplementation(() => context);
+    const toDataUrl = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/png;base64,c3ludGhldGljLXBuZw==');
+
+    try {
+      window.history.replaceState(null, '', buildSettingsSectionPath('ocr'));
+      render(<SettingsPage />);
+
+      await screen.findByRole('heading', { name: 'OCR 设置' });
+      const executionButton = screen.getByRole('button', { name: '执行 OCR 测试' });
+      await waitFor(() => expect(executionButton).toBeEnabled());
+      fireEvent.click(executionButton);
+
+      await waitFor(() => {
+        expect(pdfBackendApi.runOcrExecutionProbe).toHaveBeenCalledWith({
+          confirm_execution: true,
+          image_base64: 'c3ludGhldGljLXBuZw==',
+          engine: 'rapidocr',
+          engine_config: {
+            timeout_seconds: 300,
+            language: 'en',
+          },
+          language: 'en',
+          preview_chars: 240,
+        });
+      });
+      expect(context.fillText).toHaveBeenCalledWith('SCHOLAR AI OCR TEST 2026', 48, 70);
+      expect(context.fillText).toHaveBeenCalledWith('POSITION SAMPLE', 48, 172);
+      expect(await screen.findByText('OCR 执行已确认')).toBeInTheDocument();
+      expect(screen.getByText((_, element) => (
+        element?.tagName === 'PRE'
+        && element.textContent === 'SCHOLAR AI OCR TEST 2026\nPOSITION SAMPLE'
+      ))).toBeInTheDocument();
+      expect(screen.getByText('识别区域：1')).toBeInTheDocument();
+      expect(screen.getByText(/x 0\.125 · y 0\.250 · 宽 0\.500 · 高 0\.125/)).toBeInTheDocument();
+    } finally {
+      getContext.mockRestore();
+      toDataUrl.mockRestore();
+    }
+  });
+
+  it('keeps the OCR execution action busy and prevents duplicate submissions', async () => {
+    const context = {
+      fillStyle: '',
+      font: '',
+      textBaseline: 'alphabetic',
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockImplementation(() => context);
+    const toDataUrl = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/png;base64,c3ludGhldGljLXBuZw==');
+    let resolveProbe: ((value: Awaited<ReturnType<typeof pdfBackendApi.runOcrExecutionProbe>>) => void) | undefined;
+    vi.mocked(pdfBackendApi.runOcrExecutionProbe).mockImplementationOnce(() => (
+      new Promise((resolve) => { resolveProbe = resolve; })
+    ));
+
+    try {
+      window.history.replaceState(null, '', buildSettingsSectionPath('ocr'));
+      render(<SettingsPage />);
+
+      await screen.findByRole('heading', { name: 'OCR 设置' });
+      const executionButton = screen.getByRole('button', { name: '执行 OCR 测试' });
+      await waitFor(() => expect(executionButton).toBeEnabled());
+      fireEvent.click(executionButton);
+
+      const busyButton = await screen.findByRole('button', { name: '正在执行 OCR 测试' });
+      expect(busyButton).toBeDisabled();
+      fireEvent.click(busyButton);
+      expect(pdfBackendApi.runOcrExecutionProbe).toHaveBeenCalledTimes(1);
+
+      resolveProbe?.({
+        schema_version: 'scholar-ai-ocr-execution-probe/v1',
+        confirmed: true,
+        engine: 'rapidocr',
+        engine_type: 'local',
+        requires_network: false,
+        language: 'en',
+        input_kind: 'image_base64',
+        input_bytes: 4096,
+        input_sha256: 'a'.repeat(64),
+        text_length: 45,
+        text_sha256: 'b'.repeat(64),
+        text_preview: 'SCHOLAR AI OCR TEST 2026\nPOSITION SAMPLE',
+        duration_ms: 128,
+        region_count: 0,
+        region_samples: [],
+      });
+      await screen.findByRole('button', { name: '执行 OCR 测试' });
+    } finally {
+      getContext.mockRestore();
+      toDataUrl.mockRestore();
+    }
+  });
+
+  it('shows a categorized provider failure without claiming the OCR token expired', async () => {
+    const context = {
+      fillStyle: '',
+      font: '',
+      textBaseline: 'alphabetic',
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockImplementation(() => context);
+    const toDataUrl = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/png;base64,c3ludGhldGljLXBuZw==');
+    vi.mocked(pdfBackendApi.runOcrExecutionProbe).mockRejectedValueOnce({ status: 502 });
+
+    try {
+      window.history.replaceState(null, '', buildSettingsSectionPath('ocr'));
+      render(<SettingsPage />);
+
+      await screen.findByRole('heading', { name: 'OCR 设置' });
+      const executionButton = screen.getByRole('button', { name: '执行 OCR 测试' });
+      await waitFor(() => expect(executionButton).toBeEnabled());
+      fireEvent.click(executionButton);
+
+      expect(await screen.findByText('OCR 服务执行失败')).toBeInTheDocument();
+      expect(screen.getByText(/请检查凭证、配额和模型设置/)).toBeInTheDocument();
+      expect(screen.queryByText(/过期/)).not.toBeInTheDocument();
+      expect(screen.queryByText('OCR 执行已确认')).not.toBeInTheDocument();
+    } finally {
+      getContext.mockRestore();
+      toDataUrl.mockRestore();
+    }
+  });
+
+  it('classifies an Axios provider response without claiming the OCR token expired', async () => {
+    const actualPdfBackendApi = await vi.importActual<typeof import('@/services/pdfBackendApi')>(
+      '@/services/pdfBackendApi',
+    );
+
+    expect(actualPdfBackendApi.classifyOcrExecutionProbeError({
+      response: { status: 502 },
+      isAxiosError: true,
+    })).toEqual(expect.objectContaining({
+      category: 'provider',
+      title: 'OCR 服务执行失败',
+    }));
+  });
+
+  it('classifies an Axios timeout without blaming the saved OCR credential', async () => {
+    const actualPdfBackendApi = await vi.importActual<typeof import('@/services/pdfBackendApi')>(
+      '@/services/pdfBackendApi',
+    );
+
+    expect(actualPdfBackendApi.classifyOcrExecutionProbeError({
+      code: 'ECONNABORTED',
+      isAxiosError: true,
+    })).toEqual(expect.objectContaining({
+      category: 'network',
+      title: 'OCR 执行连接失败',
+    }));
+  });
+
+  it('uses the visibly selected OCR credential when checking the remote engine', async () => {
+    const credential = makeOcrCredential();
+    vi.mocked(credentialsApi.listCredentials).mockResolvedValue([credential]);
+
+    window.history.replaceState(null, '', buildSettingsSectionPath('ocr'));
+    render(<SettingsPage />);
+
+    await screen.findByRole('heading', { name: 'OCR 设置' });
+    fireEvent.change(screen.getByLabelText('OCR 策略'), { target: { value: 'engine' } });
+    fireEvent.change(screen.getByLabelText('选择引擎'), { target: { value: 'remote_api' } });
+
+    const credentialPicker = await screen.findByLabelText('已保存 API');
+    await waitFor(() => expect(credentialPicker).toHaveValue(credential.credential_id));
+    fireEvent.click(screen.getByRole('button', { name: '检查当前引擎' }));
+
+    await waitFor(() => expect(pdfBackendApi.checkOcrHealth).toHaveBeenCalled());
+    const calls = vi.mocked(pdfBackendApi.checkOcrHealth).mock.calls;
+    const payload = calls[calls.length - 1]?.[0];
+    expect(payload?.engine_config).toEqual(expect.objectContaining({
+      credential_id: credential.credential_id,
+    }));
+    expect(payload?.engine_config).not.toHaveProperty('api_key');
+  });
+
+  it('keeps an applied OCR credential reference in health checks without exposing its API key', async () => {
+    const credential = makeOcrCredential();
+    const initialStatus: Awaited<ReturnType<typeof pdfBackendApi.fetchOcrStatus>> = {
+      policy: 'auto',
+      configured_engine: null,
+      selected_engine: 'rapidocr',
+      language: 'en',
+      source: 'default',
+      engine_config: {},
+      available_engines: [
+        {
+          name: 'rapidocr',
+          display_name: 'RapidOCR',
+          engine_type: 'local',
+          available: true,
+          requires_network: false,
+          unavailable_reason: null,
+          readiness_status: 'ready',
+          readiness_blockers: [],
+          next_safe_local_actions: [],
+        },
+        {
+          name: 'remote_api',
+          display_name: 'Remote OCR API',
+          engine_type: 'remote',
+          available: true,
+          requires_network: true,
+          unavailable_reason: null,
+          readiness_status: 'ready',
+          readiness_blockers: [],
+          next_safe_local_actions: [],
+        },
+      ],
+      warning: null,
+      next_safe_local_actions: [],
+    };
+    const appliedStatus: Awaited<ReturnType<typeof pdfBackendApi.fetchOcrStatus>> = {
+      ...initialStatus,
+      policy: 'engine',
+      configured_engine: 'remote_api',
+      selected_engine: 'remote_api',
+      source: 'config',
+      engine_config: {
+        credential_id: credential.credential_id,
+        provider: 'mistral',
+        base_url: credential.base_url,
+        endpoint_path: '/ocr',
+        model: credential.model,
+        allow_remote_upload: true,
+        allow_insecure_http: false,
+        timeout_seconds: 120,
+      },
+    };
+    vi.mocked(credentialsApi.listCredentials)
+      .mockResolvedValueOnce([credential])
+      .mockResolvedValueOnce([credential]);
+    vi.mocked(pdfBackendApi.fetchOcrStatus)
+      .mockResolvedValueOnce(initialStatus)
+      .mockResolvedValueOnce(appliedStatus);
+
+    window.history.replaceState(null, '', buildSettingsSectionPath('ocr'));
+    render(<SettingsPage />);
+
+    await screen.findByRole('heading', { name: 'OCR 设置' });
+    fireEvent.change(screen.getByLabelText('OCR 策略'), { target: { value: 'engine' } });
+    fireEvent.change(screen.getByLabelText('选择引擎'), { target: { value: 'remote_api' } });
+
+    const credentialPicker = await screen.findByLabelText('已保存 API');
+    await waitFor(() => expect(credentialPicker).toHaveValue(credential.credential_id));
+    fireEvent.click(screen.getByRole('button', { name: '应用' }));
+
+    await waitFor(() => {
+      expect(credentialsApi.applyCredentialToSubsystem).toHaveBeenCalledWith('ocr', credential.credential_id);
+      expect(screen.getByRole('button', { name: '检查当前引擎' })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole('button', { name: '检查当前引擎' }));
+
+    await waitFor(() => expect(pdfBackendApi.checkOcrHealth).toHaveBeenCalled());
+    const calls = vi.mocked(pdfBackendApi.checkOcrHealth).mock.calls;
+    const payload = calls[calls.length - 1]?.[0];
+    expect(payload).toBeDefined();
+    expect(payload?.engine).toBe('remote_api');
+    expect(payload?.engine_config).toEqual(expect.objectContaining({
+      credential_id: credential.credential_id,
+    }));
+    expect(payload?.engine_config).not.toHaveProperty('api_key');
+  });
+
+  it('keeps an applied PaddleOCR credential on the asynchronous jobs provider', async () => {
+    const credential: RuntimeCredentialPublic = {
+      ...makeOcrCredential(),
+      provider: 'PaddleOCR',
+      model: 'PaddleOCR-VL-1.6',
+      base_url: 'https://paddleocr.aistudio-app.com',
+    };
+    const availableEngines: Awaited<ReturnType<typeof pdfBackendApi.fetchOcrStatus>>['available_engines'] = [
+      {
+        name: 'rapidocr',
+        display_name: 'RapidOCR',
+        engine_type: 'local',
+        available: true,
+        requires_network: false,
+        unavailable_reason: null,
+        readiness_status: 'ready',
+        readiness_blockers: [],
+        next_safe_local_actions: [],
+      },
+      {
+        name: 'remote_api',
+        display_name: 'Remote OCR API',
+        engine_type: 'remote',
+        available: true,
+        requires_network: true,
+        unavailable_reason: null,
+        readiness_status: 'ready',
+        readiness_blockers: [],
+        next_safe_local_actions: [],
+      },
+    ];
+    vi.mocked(credentialsApi.listCredentials).mockResolvedValue([credential]);
+    vi.mocked(pdfBackendApi.fetchOcrStatus)
+      .mockResolvedValueOnce({
+        policy: 'auto',
+        configured_engine: null,
+        selected_engine: 'rapidocr',
+        language: 'zh',
+        source: 'default',
+        engine_config: {},
+        available_engines: availableEngines,
+        warning: null,
+        next_safe_local_actions: [],
+      })
+      .mockResolvedValueOnce({
+        policy: 'engine',
+        configured_engine: 'remote_api',
+        selected_engine: 'remote_api',
+        language: 'zh',
+        source: 'config',
+        engine_config: {
+          credential_id: credential.credential_id,
+          provider: 'paddle_jobs',
+          base_url: credential.base_url,
+          model: credential.model,
+          allow_remote_upload: true,
+          allow_insecure_http: false,
+          timeout_seconds: 60,
+        },
+        available_engines: availableEngines,
+        warning: null,
+        next_safe_local_actions: [],
+      });
+
+    window.history.replaceState(null, '', buildSettingsSectionPath('ocr'));
+    render(<SettingsPage />);
+
+    await screen.findByRole('heading', { name: 'OCR 设置' });
+    fireEvent.change(screen.getByLabelText('OCR 策略'), { target: { value: 'engine' } });
+    fireEvent.change(screen.getByLabelText('选择引擎'), { target: { value: 'remote_api' } });
+    const credentialPicker = await screen.findByLabelText('已保存 API');
+    await waitFor(() => expect(credentialPicker).toHaveValue(credential.credential_id));
+    fireEvent.click(screen.getByRole('button', { name: '应用' }));
+
+    await waitFor(() => expect(screen.getByLabelText('服务类型')).toHaveValue('paddle_jobs'));
+    fireEvent.click(screen.getByRole('button', { name: '检查当前引擎' }));
+
+    await waitFor(() => expect(pdfBackendApi.checkOcrHealth).toHaveBeenCalled());
+    const calls = vi.mocked(pdfBackendApi.checkOcrHealth).mock.calls;
+    const payload = calls[calls.length - 1]?.[0];
+    expect(payload?.engine_config).toEqual(expect.objectContaining({
+      credential_id: credential.credential_id,
+      provider: 'paddle_jobs',
+      base_url: credential.base_url,
+      model: credential.model,
+    }));
+    expect(payload?.engine_config).not.toHaveProperty('api_key');
+    expect(payload?.engine_config).not.toHaveProperty('endpoint_path');
+
+    fireEvent.click(screen.getByRole('button', { name: '保存 OCR 设置' }));
+    await waitFor(() => expect(pdfBackendApi.saveOcrEngineSelection).toHaveBeenCalled());
+    const saveCalls = vi.mocked(pdfBackendApi.saveOcrEngineSelection).mock.calls;
+    const savePayload = saveCalls[saveCalls.length - 1]?.[0];
+    expect(savePayload).toEqual(expect.objectContaining({
+      policy: 'engine',
+      engine: 'remote_api',
+      language: 'zh',
+      engine_config: expect.objectContaining({
+        credential_id: credential.credential_id,
+        provider: 'paddle_jobs',
+        base_url: credential.base_url,
+        model: credential.model,
+      }),
+    }));
+    expect(savePayload?.engine_config).not.toHaveProperty('api_key');
+    expect(savePayload?.engine_config).not.toHaveProperty('endpoint_path');
+  });
+
   it('shows the PaddleOCR python.exe field instead of implying a source folder is enough', async () => {
     window.history.replaceState(null, '', buildSettingsSectionPath('ocr'));
 
@@ -495,7 +959,12 @@ describe('Settings navigation', () => {
     expect(screen.getByText(/本地部署的 DeepSeek、Qwen、Llama 等模型/)).toBeInTheDocument();
     expect(screen.getByText(/设置页显示保存后的供应商、服务地址和模型名称/)).toBeInTheDocument();
     expect(screen.getByText(/“获取模型”只读取当前服务的模型列表接口/)).toBeInTheDocument();
-    expect(screen.getByLabelText('开始整理的长度')).toHaveAttribute('max', '128000');
+    expect(screen.getByLabelText('模型上下文窗口')).toHaveValue(258400);
+    expect(screen.getByLabelText('模型上下文窗口')).toHaveAttribute('max', '2000000');
+    expect(screen.getByLabelText('自动整理触发长度')).toHaveValue(150000);
+    expect(screen.getByLabelText('自动整理触发长度')).toHaveAttribute('max', '1000000');
+    expect(screen.getByLabelText('工具输出总上限')).toHaveValue(8000);
+    expect(screen.getByLabelText('工具输出总上限')).toHaveAttribute('max', '32000');
     expect(screen.getByLabelText('整理后的摘要长度')).toHaveAttribute('max', '16000');
     expect(screen.getByLabelText('最近对话保留轮数')).toHaveAttribute('max', '20');
   });
@@ -540,7 +1009,7 @@ describe('Settings navigation', () => {
   it('creates OCR credentials with provider presets and visible trust choices', async () => {
     render(<CredentialsSection />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /新增 API/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '新增' }));
     fireEvent.change(screen.getByLabelText('用途'), { target: { value: 'ocr' } });
 
     expect(screen.getByRole('button', { name: 'Mistral OCR' })).toBeInTheDocument();
@@ -570,5 +1039,16 @@ describe('Settings navigation', () => {
         trust_source: 'runtime_user_confirmed',
       }));
     });
+  });
+
+  it('describes OCR credential validation as a configuration check, not a connection test', async () => {
+    vi.mocked(credentialsApi.listCredentials).mockResolvedValueOnce([makeOcrCredential()]);
+
+    render(<CredentialsSection />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '测试 Mistral mistral-ocr-latest' }));
+
+    expect(await screen.findAllByText('配置检查通过 · 配置完整')).toHaveLength(2);
+    expect(screen.queryByText(/连接测试通过/)).not.toBeInTheDocument();
   });
 });

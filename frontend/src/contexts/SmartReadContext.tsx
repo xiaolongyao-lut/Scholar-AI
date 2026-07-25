@@ -13,6 +13,10 @@ import {
   streamIntelligentChatMessage,
   type ChatResumeMessage,
   type CurrentPdfContext,
+  type AnswerOrigin,
+  type EvidenceRole,
+  type GeneratedIn,
+  type SmartReadRetrievalDiagnostics,
   type IntelligentChatStreamEvent,
 } from '@/services/intelligentChatApi';
 import {
@@ -28,9 +32,21 @@ import type {
 } from '@/components/chat/MessageRenderer';
 import { formatChatVisibleError } from '@/components/chat/chatDisplay';
 import type { EvidenceRefLike } from '@/components/evidence/EvidencePill';
+import { relatedFiguresFromEvidenceRefs } from '@/components/chat/relatedFigures';
 import { readEnv } from '@/services/env';
+import { PDF_URL_BBOX_UNIT, isPdfBboxUnit, type PdfContentSelection } from '@/lib/pdfAnchor';
+import {
+  buildResearchSelections,
+  sanitizeResearchSelections,
+  type ResearchSelection,
+} from '@/types/researchSelection';
+import {
+  sanitizeVisualObservationReferences,
+  type VisualObservationReference,
+} from '@/types/visualObservation';
 
 const SMART_READ_DEBUG_ENABLED = readEnv('VITE_SMART_READ_DEBUG') === '1';
+let smartReadTurnSequence = 0;
 
 /**
  * Cross-route + cross-reload persistent state for the smart-read (RAG QA)
@@ -79,6 +95,9 @@ interface SendOptions {
   materialId?: string | null;
   currentPdfContext?: CurrentPdfContext | null;
   projectReasoningBiasEnabled?: boolean;
+  answerOrigin?: AnswerOrigin;
+  generatedIn?: GeneratedIn;
+  evidencePackRef?: string | null;
   tier?: SmartReadCostTier;
 }
 
@@ -148,6 +167,41 @@ function readSessionId(value: unknown): string | undefined {
   return raw && raw.length <= 256 ? raw : undefined;
 }
 
+function createSmartReadTurnId(): string {
+  smartReadTurnSequence += 1;
+  return `smart-read-turn-${Date.now().toString(36)}-${smartReadTurnSequence.toString(36)}`;
+}
+
+function researchSelectionsFromCurrentPdfContext(
+  context: CurrentPdfContext | null | undefined,
+  turnId: string,
+): ResearchSelection[] {
+  if (!context) return [];
+  const selections: PdfContentSelection[] = context.selections && context.selections.length > 0
+    ? context.selections
+    : context.selection
+      ? [context.selection]
+      : context.selected_text && context.page
+        ? [{
+            kind: 'text',
+            page: context.page,
+            text: context.selected_text,
+            ...(context.bbox && context.bbox_unit === PDF_URL_BBOX_UNIT
+              ? { bbox: context.bbox, bbox_unit: PDF_URL_BBOX_UNIT }
+              : {}),
+          }]
+        : [];
+  return buildResearchSelections({
+    turnId,
+    groupId: `${turnId}-group`,
+    selections: selections.map((selection, index) => ({
+      selectionId: `${turnId}-selection-${index + 1}`,
+      materialId: context.material_id,
+      selection,
+    })),
+  });
+}
+
 function readChatRole(value: unknown): ChatRole | null {
   if (value === 'user' || value === 'assistant' || value === 'system' || value === 'agent') {
     return value;
@@ -178,22 +232,73 @@ function readEvidencePage(value: unknown): number | null | undefined {
   return undefined;
 }
 
+function readEvidenceBbox(value: unknown): number[] | null | undefined {
+  if (value === null) return null;
+  if (!Array.isArray(value) || value.length !== 4) return undefined;
+  const bbox = value.filter((part): part is number => typeof part === 'number' && Number.isFinite(part));
+  return bbox.length === 4 ? bbox : undefined;
+}
+
+function readStringArray(value: unknown): string[] | null | undefined {
+  if (value === null) return null;
+  if (!Array.isArray(value)) return undefined;
+  const values = value.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean);
+  return values.length > 0 ? values : undefined;
+}
+
+function normalizeEvidenceRole(value: unknown): EvidenceRole {
+  return value === 'selected_content'
+    || value === 'current_material'
+    || value === 'cited_project_material'
+    || value === 'project_context'
+    ? value
+    : 'project_context';
+}
+
+type EvidenceBoundaryRef = EvidenceRefLike & { content?: string | null };
+
 function coerceEvidenceRefs(value: unknown): EvidenceRefLike[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const refs = value.flatMap((item): EvidenceRefLike[] => {
     if (!isRecord(item)) return [];
     const sourceKind = item.source_kind;
-    const ref: EvidenceRefLike = {
+    const sourceType = item.source_type;
+    const bboxUnit = isPdfBboxUnit(item.bbox_unit) ? item.bbox_unit : null;
+    const bbox = bboxUnit ? readEvidenceBbox(item.bbox) : null;
+    const content = readString(item.content);
+    const text = readString(item.text);
+    const quote = readString(item.quote);
+    const ref: EvidenceBoundaryRef = {
       evidence_id: readString(item.evidence_id) ?? readString(item.chunk_id) ?? null,
       material_id: readString(item.material_id) ?? null,
+      evidence_role: normalizeEvidenceRole(item.evidence_role),
       chunk_id: readString(item.chunk_id) ?? null,
       page: readEvidencePage(item.page) ?? null,
-      text: readString(item.text) ?? readString(item.quote) ?? null,
+      ...(bbox ? { bbox } : { bbox: null }),
+      ...(bbox ? { bbox_unit: bboxUnit } : { bbox_unit: null }),
+      text: text ?? null,
+      quote: quote ?? null,
       source: readString(item.source) ?? null,
       source_kind: sourceKind === 'web' || sourceKind === 'mcp' || sourceKind === 'local'
         ? sourceKind
         : 'local',
+      source_type: sourceType === 'wiki' ? 'wiki' : 'project',
+      source_title: readString(item.source_title) ?? null,
+      source_path: readString(item.source_path) ?? null,
+      joint_score: readFiniteNumber(item.joint_score) ?? null,
+      figure_candidate: readString(item.figure_candidate) ?? null,
+      figure_candidate_detail: isRecord(item.figure_candidate_detail) ? item.figure_candidate_detail : null,
+      image_paths: readStringArray(item.image_paths) ?? null,
+      source_labels: readStringArray(item.source_labels) ?? null,
+      ...(item.anchor_kind === 'text' || item.anchor_kind === 'visual'
+        ? { anchor_kind: item.anchor_kind }
+        : { anchor_kind: null }),
+      ...(content ? { content } : {}),
     };
+    for (const key of ['content_hash', 'locator_hash', 'chunk_hash', 'embedding_input_hash', 'hash_version'] as const) {
+      const hash = readString(item[key]);
+      if (hash) ref[key] = hash;
+    }
     return [ref];
   });
   return refs.length > 0 ? refs : undefined;
@@ -211,11 +316,23 @@ function coerceLegacyContextDiagnostics(value: unknown): ChatMessageDiagnostics[
     const source = readString(item.source);
     const content = readString(item.content);
     if (index === undefined || !source || !content) return [];
+    const bboxUnit = isPdfBboxUnit(item.bbox_unit) ? item.bbox_unit : null;
+    const bbox = bboxUnit ? readEvidenceBbox(item.bbox) : null;
     return [{
       index,
       source,
       content,
       relevance_score: readFiniteNumber(item.relevance_score),
+      chunk_id: readString(item.chunk_id) ?? null,
+      material_id: readString(item.material_id) ?? null,
+      evidence_role: normalizeEvidenceRole(item.evidence_role),
+      title: readString(item.title) ?? null,
+      section_title: readString(item.section_title) ?? null,
+      page: readEvidencePage(item.page) ?? null,
+      bbox: bbox ?? null,
+      bbox_unit: bbox ? bboxUnit : null,
+      source_labels: readStringArray(item.source_labels) ?? undefined,
+      source_hint: readString(item.source_hint) ?? null,
     }];
   });
   if (!chunks || chunks.length === 0) return undefined;
@@ -304,7 +421,46 @@ function coerceChatMessageData(value: unknown): ChatMessageData | null {
   const id = readString(value.id);
   const content = readContentString(value.content);
   if (!role || !id || content === undefined) return null;
-  return value as unknown as ChatMessageData;
+  const {
+    evidence: rawEvidence,
+    evidenceRefs: rawCamelEvidence,
+    evidence_refs: rawSnakeEvidence,
+    researchSelections: rawResearchSelections,
+    research_selections: rawSnakeCaseResearchSelections,
+    visualObservationRefs: rawVisualObservationRefs,
+    visual_observation_refs: rawSnakeCaseVisualObservationRefs,
+    turnId: rawTurnId,
+    turn_id: rawSnakeCaseTurnId,
+    ...legacyFields
+  } = value;
+  const researchSelections = sanitizeResearchSelections(
+    rawResearchSelections ?? rawSnakeCaseResearchSelections,
+  );
+  const visualObservationRefs = role === 'assistant' || role === 'agent'
+    ? sanitizeVisualObservationReferences(rawVisualObservationRefs ?? rawSnakeCaseVisualObservationRefs)
+    : [];
+  const turnId = readSessionId(rawTurnId ?? rawSnakeCaseTurnId)
+    ?? researchSelections[0]?.turn_id
+    ?? visualObservationRefs[0]?.turn_id;
+  const turnSelections = turnId
+    ? researchSelections.filter((selection) => selection.turn_id === turnId)
+    : [];
+  const turnObservationRefs = turnId
+    ? visualObservationRefs.filter((reference) => reference.turn_id === turnId)
+    : [];
+  const evidence = role === 'assistant' || role === 'agent'
+    ? coerceEvidenceRefs(rawEvidence ?? rawCamelEvidence ?? rawSnakeEvidence)
+    : undefined;
+  return {
+    ...(legacyFields as unknown as ChatMessageData),
+    id,
+    role,
+    content,
+    ...(turnId ? { turnId } : {}),
+    ...(turnSelections.length > 0 ? { researchSelections: turnSelections } : {}),
+    ...(turnObservationRefs.length > 0 ? { visualObservationRefs: turnObservationRefs } : {}),
+    ...(evidence ? { evidence } : {}),
+  };
 }
 
 function coercePersistedConversation(value: unknown): PersistedConversation | null {
@@ -419,35 +575,35 @@ function hasStreamingAssistantMessage(messages: ChatMessageData[]): boolean {
 }
 
 function evidenceFromStreamMetadata(metadata: SmartReadStreamMetadata | null): EvidenceRefLike[] | undefined {
-  const refs = metadata?.evidence_refs;
-  if (!refs || refs.length === 0) return undefined;
-  return refs.map((ref) => ({
-    evidence_id: ref.chunk_id,
-    material_id: ref.material_id ?? null,
-    chunk_id: ref.chunk_id ?? null,
-    page: readEvidencePage(ref.page) ?? null,
-    bbox: ref.bbox ?? null,
-    bbox_unit: ref.bbox_unit ?? null,
-    text: ref.text ?? ref.quote ?? null,
-    source: ref.source ?? null,
-    source_kind: ref.source_kind ?? 'local',
-  }));
+  return coerceEvidenceRefs(metadata?.evidence_refs);
 }
 
 function evidenceFromResumeMessage(message: ChatResumeMessage): EvidenceRefLike[] | undefined {
-  const refs = message.evidence_refs ?? [];
-  if (refs.length === 0) return undefined;
-  return refs.map((ref) => ({
-    evidence_id: ref.chunk_id,
-    material_id: ref.material_id ?? null,
-    chunk_id: ref.chunk_id ?? null,
-    page: readEvidencePage(ref.page) ?? null,
-    bbox: ref.bbox ?? null,
-    bbox_unit: ref.bbox_unit ?? null,
-    text: ref.text ?? ref.quote ?? null,
-    source: ref.source ?? null,
-    source_kind: ref.source_kind ?? 'local',
-  }));
+  return coerceEvidenceRefs(message.evidence_refs);
+}
+
+function visualEvidenceFromStreamMetadata(metadata: SmartReadStreamMetadata | null): EvidenceRefLike[] | undefined {
+  return coerceEvidenceRefs(metadata?.visual_evidence_refs);
+}
+
+function visualEvidenceFromResumeMessage(message: ChatResumeMessage): EvidenceRefLike[] | undefined {
+  return coerceEvidenceRefs(message.visual_evidence_refs);
+}
+
+function chatRetrievalDiagnosticsFromSmartRead(
+  value: SmartReadRetrievalDiagnostics | null | undefined,
+): ChatMessageDiagnostics['retrieval'] | undefined {
+  if (!value) return undefined;
+  return {
+    retrieval_method: value.retrieval_method,
+    embedding_status: value.embedding_status ?? undefined,
+    rerank_status: value.rerank_status ?? undefined,
+    lexical_only: value.lexical_only,
+    fallback_reasons: value.fallback_reasons,
+    gateway: value.gateway ?? undefined,
+    tolf: value.tolf ?? undefined,
+    qrels_status: value.qrels_status ?? undefined,
+  };
 }
 
 function diagnosticsFromResumeMessage(message: ChatResumeMessage): ChatMessageDiagnostics | undefined {
@@ -458,6 +614,10 @@ function diagnosticsFromResumeMessage(message: ChatResumeMessage): ChatMessageDi
   ).size;
   const diagnostics: ChatMessageDiagnostics = {
     tier: message.tier_used ?? undefined,
+    answerOrigin: message.answer_origin ?? undefined,
+    answerModelOrigin: message.answer_model_origin ?? undefined,
+    retrievalProvider: message.retrieval_provider ?? undefined,
+    retrieval: chatRetrievalDiagnosticsFromSmartRead(message.retrieval_diagnostics),
     context: chunks.length > 0
       ? {
           chunkCount: chunks.length,
@@ -467,6 +627,16 @@ function diagnosticsFromResumeMessage(message: ChatResumeMessage): ChatMessageDi
             source: chunk.source,
             content: chunk.content,
             relevance_score: chunk.relevance_score,
+            chunk_id: chunk.chunk_id,
+            material_id: chunk.material_id,
+            evidence_role: normalizeEvidenceRole(chunk.evidence_role),
+            title: chunk.title,
+            section_title: chunk.section_title,
+            page: chunk.page,
+            bbox: chunk.bbox,
+            bbox_unit: chunk.bbox_unit,
+            source_labels: chunk.source_labels,
+            source_hint: chunk.source_hint,
           })),
         }
       : undefined,
@@ -492,10 +662,32 @@ function messageFromResumeMessage(message: ChatResumeMessage): ChatMessageData |
     timestamp,
     status: 'done',
   };
+  const researchSelections = sanitizeResearchSelections(message.research_selections);
+  const turnId = readSessionId(message.turn_id) ?? researchSelections[0]?.turn_id;
+  const turnSelections = turnId
+    ? researchSelections.filter((selection) => selection.turn_id === turnId)
+    : [];
+  if (turnId) {
+    next.turnId = turnId;
+  }
+  if (turnSelections.length > 0) {
+    next.researchSelections = turnSelections;
+  }
+  const visualObservationRefs = message.role === 'assistant'
+    ? sanitizeVisualObservationReferences(message.visual_observation_refs)
+        .filter((reference) => !turnId || reference.turn_id === turnId)
+    : [];
+  if (visualObservationRefs.length > 0) {
+    next.visualObservationRefs = visualObservationRefs;
+  }
   const evidence = evidenceFromResumeMessage(message);
   const diagnostics = diagnosticsFromResumeMessage(message);
   if (evidence) {
     next.evidence = evidence;
+  }
+  const relatedFigures = relatedFiguresFromEvidenceRefs(visualEvidenceFromResumeMessage(message));
+  if (relatedFigures.length > 0) {
+    next.relatedFigures = relatedFigures;
   }
   if (diagnostics) {
     next.metadata = { diagnostics };
@@ -525,6 +717,10 @@ function diagnosticsFromStream(
   const tokenPayload = usage?.usage;
   const diagnostics: ChatMessageDiagnostics = {
     tier: metadata.tier_used,
+    answerOrigin: metadata.answer_origin,
+    answerModelOrigin: metadata.answer_model_origin,
+    retrievalProvider: metadata.retrieval_provider,
+    retrieval: chatRetrievalDiagnosticsFromSmartRead(metadata.retrieval_diagnostics),
     sampling: metadata.actual_sampling_params ?? undefined,
     context: chunks.length > 0
       ? {
@@ -535,6 +731,16 @@ function diagnosticsFromStream(
             source: chunk.source,
             content: chunk.content,
             relevance_score: chunk.relevance_score,
+            chunk_id: chunk.chunk_id,
+            material_id: chunk.material_id,
+            evidence_role: normalizeEvidenceRole(chunk.evidence_role),
+            title: chunk.title,
+            section_title: chunk.section_title,
+            page: chunk.page,
+            bbox: chunk.bbox,
+            bbox_unit: chunk.bbox_unit,
+            source_labels: chunk.source_labels,
+            source_hint: chunk.source_hint,
           })),
         }
       : undefined,
@@ -741,16 +947,24 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
   const sendMessage = useCallback(
     async (scope: string, text: string, opts: SendOptions): Promise<void> => {
       const normalizedScope = normalizeScope(scope);
+      const turnId = createSmartReadTurnId();
+      const researchSelections = researchSelectionsFromCurrentPdfContext(
+        opts.currentPdfContext,
+        turnId,
+      );
       const userMsg: ChatMessageData = {
-        id: `u-${Date.now()}`,
+        id: `u-${turnId}`,
         role: 'user',
+        turnId,
         content: text,
         timestamp: new Date().toISOString(),
+        ...(researchSelections.length > 0 ? { researchSelections } : {}),
       };
       const assistantId = `a-${Date.now()}`;
       const assistantDraft: ChatMessageData = {
         id: assistantId,
         role: 'assistant',
+        turnId,
         content: '',
         timestamp: new Date().toISOString(),
         status: 'streaming',
@@ -774,6 +988,8 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
         let metadata: SmartReadStreamMetadata | null = null;
         let usage: SmartReadUsageEvent | null = null;
         let analysisChain: SmartReadAnalysisChainEvent['analysis_chain'] | null = null;
+        let finalVisualEvidenceRefs: EvidenceRefLike[] | null = null;
+        let finalVisualObservationRefs: VisualObservationReference[] = [];
         let activeSessionId = startingSessionId;
         let streamedContent = '';
         const updateAssistant = (patch: Partial<ChatMessageData>) => {
@@ -799,11 +1015,16 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
         await streamIntelligentChatMessage(
           {
             query: text,
+            turn_id: turnId,
             session_id: startingSessionId,
             project_id: opts.projectId || undefined,
             project_reasoning_bias_enabled: opts.projectReasoningBiasEnabled,
             material_id: opts.materialId || undefined,
             current_pdf_context: opts.currentPdfContext || undefined,
+            research_selections: researchSelections.length > 0 ? researchSelections : undefined,
+            answer_origin: opts.answerOrigin ?? 'internal_smartread',
+            generated_in: opts.generatedIn,
+            evidence_pack_ref: opts.evidencePackRef || undefined,
             mode: 'literature_qa',
             tier: backendTierForCostTier(opts.tier ?? loadSmartReadCostTier('medium')),
           },
@@ -815,6 +1036,7 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
                 activeSessionId = event.session_id || activeSessionId;
                 updateAssistant({
                   evidence: evidenceFromStreamMetadata(metadata),
+                  relatedFigures: relatedFiguresFromEvidenceRefs(visualEvidenceFromStreamMetadata(metadata)),
                   metadata: { diagnostics: diagnosticsFromStream(metadata, usage) },
                 });
                 return;
@@ -843,6 +1065,18 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
               if (event.event === 'done') {
                 activeSessionId = event.session_id || activeSessionId;
                 streamedContent = event.response ?? streamedContent;
+                if (event.visual_evidence_refs !== undefined) {
+                  finalVisualEvidenceRefs = coerceEvidenceRefs(event.visual_evidence_refs) ?? [];
+                  updateAssistant({
+                    relatedFigures: relatedFiguresFromEvidenceRefs(finalVisualEvidenceRefs),
+                  });
+                }
+                if (event.visual_observation_refs !== undefined) {
+                  finalVisualObservationRefs = sanitizeVisualObservationReferences(
+                    event.visual_observation_refs,
+                  ).filter((reference) => reference.turn_id === turnId);
+                  updateAssistant({ visualObservationRefs: finalVisualObservationRefs });
+                }
               }
             },
           },
@@ -851,6 +1085,12 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
           content: streamedContent,
           status: 'done',
           evidence: evidenceFromStreamMetadata(metadata),
+          relatedFigures: relatedFiguresFromEvidenceRefs(
+            finalVisualEvidenceRefs ?? visualEvidenceFromStreamMetadata(metadata),
+          ),
+          ...(finalVisualObservationRefs.length > 0
+            ? { visualObservationRefs: finalVisualObservationRefs }
+            : {}),
           ...(analysisChain ? { analysis_chain: analysisChain } : {}),
           metadata: { diagnostics: diagnosticsFromStream(metadata, usage) },
         });
@@ -876,18 +1116,22 @@ export function SmartReadProvider({ children }: { children: ReactNode }) {
           return;
         }
         const detail = formatChatVisibleError(err);
-        const errMsg: ChatMessageData = {
-          id: assistantId,
-          role: 'assistant',
-          content: `回答失败：${detail}`,
-          timestamp: new Date().toISOString(),
-          status: 'error',
-        };
         setStore((prev) => ({
           ...prev,
           [normalizedScope]: {
             ...conversationSnapshot(
-              replaceOrAppendMessage(prev[normalizedScope]?.messages ?? [], errMsg),
+              replaceOrAppendMessage(
+                prev[normalizedScope]?.messages ?? [],
+                {
+                  ...(
+                    prev[normalizedScope]?.messages.find((message) => message.id === assistantId)
+                    ?? assistantDraft
+                  ),
+                  content: `回答失败：${detail}`,
+                  timestamp: new Date().toISOString(),
+                  status: 'error',
+                },
+              ),
               Date.now(),
               prev[normalizedScope]?.sessionId,
             ),

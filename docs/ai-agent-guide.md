@@ -26,7 +26,7 @@ operator memories, and no private run logs.
    tests, staging, committing, or giving commands.
 4. Before nontrivial edits, cleanup, config changes, architecture changes,
    startup/process changes, or public-doc changes, create a rollback snapshot
-   outside the repository.
+   under the Git-ignored `docs/plans/_rollback/` directory.
 5. Before changing architecture, packaging, startup, import behavior, desktop
    launch, process cleanup, MCP/tool contracts, or public docs, check official
    or mature references instead of relying on memory.
@@ -36,12 +36,14 @@ operator memories, and no private run logs.
    prior plan, continuing after compaction, or starting a new agent-host slice.
 8. Read target files before editing. Preserve unrelated user or agent changes.
 
-Rollback snapshots must not be created inside the repository. Use an external
-parent directory such as a sibling `_backups/Scholar-AI/<task>-<timestamp>/`.
-If this checkout lives under a local `tools` directory, put rollback/audit
-records under that external `tools/_backups/` tree. Do not copy credential,
-token, login-state, runtime database, log, or browser-profile files into a
-snapshot; record only path, size, timestamp, and intended action.
+Rollback snapshots and audit records for this checkout belong under
+`docs/plans/_rollback/<timestamp>-<task>/`. The entire `docs/` tree is ignored
+by the repository's current Git rules, so these local recovery records stay
+next to the active plans without entering a commit. Copy only the smallest
+source, test, config, and plan set needed for recovery. Do not copy credential,
+token, login-state, runtime database, log, browser-profile, project-data, or
+`.env*` files into a snapshot; record only path, size, timestamp, and intended
+action when one of those files is relevant.
 
 ## Session Continuity And Working Habits
 
@@ -56,7 +58,7 @@ files with `rg`. If the task involves the Codex/Claude sidebar bridge, read:
 - `docs/plans/codex-sidebar-widget-reference-ledger-2026-07-07.md`
 
 When reference reading, host testing, or user feedback changes direction,
-record the result in the active plan, reference ledger, or external audit
+record the result in the active plan, reference ledger, or repository-local audit
 before moving on. A useful record names the file, tool, command, screenshot,
 host surface, or behavior that supports the conclusion.
 
@@ -321,7 +323,8 @@ user-level agent memory.
 
 Include the required preflight in runbooks:
 
-1. Create rollback/audit records outside the repository.
+1. Create rollback/audit records under the Git-ignored
+   `docs/plans/_rollback/` directory.
 2. Check official or mature references for the risky part of the operation.
 3. Run commands from the repository root unless a command states otherwise.
 4. For frontend/UI verification, launch `.\.venv-1\Scripts\python.exe .\start_desktop.py`

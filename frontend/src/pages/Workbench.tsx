@@ -721,6 +721,9 @@ export function Workbench() {
                     return (
                       <EvidenceGraphPanel
                         query={priorQuery}
+                        answer={msg.content}
+                        sessionId={`workbench:${activeProjectId || 'default'}`}
+                        turnId={`workbench-turn:${msg.id}`}
                         sources={msg.sources}
                         projectId={activeProjectId}
                       />

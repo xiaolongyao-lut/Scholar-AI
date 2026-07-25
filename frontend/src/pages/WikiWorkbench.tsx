@@ -7,8 +7,8 @@ import { WikiImportMarkdownPanel } from '@/components/wiki/WikiImportMarkdownPan
 import { DoctorReportPanel } from '@/components/wiki/DoctorReportPanel';
 import { GraphDebugPanel } from '@/components/wiki/GraphDebugPanel';
 import { WikiGraphSegmentedView } from '@/components/graph/WikiGraphSegmentedView';
-import type { GraphPayloadV0 } from '@/components/graph/payloadToRf';
-import { getGraphPayload } from '@/services/graphApi';
+import { evidenceGraphToGraphPayload } from '@/components/knowledge/evidenceGraphAdapter';
+import { getWikiEvidenceGraph, type EvidenceGraphPayload } from '@/services/graphApi';
 import { WikiPagePreviewPanel } from '@/components/wiki/WikiPagePreviewPanel';
 import { ReviewQueuePanel } from '@/components/wiki/ReviewQueuePanel';
 import { WikiPageListPanel } from '@/components/wiki/WikiPageListPanel';
@@ -22,7 +22,12 @@ import {
   getWikiPageDetail,
   getWikiPages,
   getWikiReview,
+  approveWikiReviewItem,
+  rejectWikiReviewItem,
+  withdrawWikiReviewPromotion,
   getWikiStatus,
+  preflightWikiRevalidation,
+  applyWikiRevalidation,
   createWikiManualPage,
   runWikiCompileDryRun,
   searchWiki,
@@ -40,10 +45,14 @@ import type {
   WikiGraphModel,
   WikiPageDetailModel,
   WikiPageListModel,
+  WikiReviewDecisionInputModel,
+  WikiReviewPromotionWithdrawalInputModel,
+  WikiReviewItemModel,
   WikiReviewListModel,
   WikiSearchModel,
   WikiExportModel,
   WikiStatusModel,
+  WikiRevalidationModel,
 } from '@/types/wiki';
 import { cn } from '@/lib/utils';
 
@@ -74,12 +83,51 @@ interface WikiWorkbenchProps {
   embedded?: boolean;
 }
 
+type WikiReviewAction = 'approve' | 'reject';
+
+interface WikiReviewRetryEntry {
+  fingerprint: string;
+  requestId: string;
+}
+
+function createWikiReviewRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `wiki-review-${crypto.randomUUID()}`;
+  }
+  return `wiki-review-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function wikiReviewRequestFingerprint(
+  item: WikiReviewItemModel,
+  action: WikiReviewAction,
+  reason: string,
+): string {
+  const targetIdentity = item.target?.type === 'wiki_page_revision'
+    ? item.target.page_id
+    : item.target?.type === 'annotation_note'
+      ? `${item.target.project_id}:${item.target.material_id}:${item.target.note_id}`
+      : '';
+  return JSON.stringify({
+    action,
+    item_id: item.item_id,
+    item_revision: item.item_revision,
+    target_type: item.target?.type ?? 'unbound',
+    target_identity: targetIdentity,
+    target_content_hash: item.target?.expected_content_hash ?? '',
+    reason: reason.trim(),
+    decided_by: 'user',
+  });
+}
+
 export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [status, setStatus] = useState<WikiStatusModel | null>(null);
   const [isStatusLoading, setIsStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [revalidation, setRevalidation] = useState<WikiRevalidationModel | null>(null);
+  const [isRevalidationLoading, setIsRevalidationLoading] = useState(false);
+  const [revalidationError, setRevalidationError] = useState<string | null>(null);
   const [pageList, setPageList] = useState<WikiPageListModel | null>(null);
   const [isPagesLoading, setIsPagesLoading] = useState(true);
   const [pagesError, setPagesError] = useState<string | null>(null);
@@ -96,7 +144,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
   const [graph, setGraph] = useState<WikiGraphModel | null>(null);
   const [isGraphLoading, setIsGraphLoading] = useState(true);
   const [graphError, setGraphError] = useState<string | null>(null);
-  const [graphPayload, setGraphPayload] = useState<GraphPayloadV0 | null>(null);
+  const [graphPayload, setGraphPayload] = useState<EvidenceGraphPayload | null>(null);
   const [isGraphPayloadLoading, setIsGraphPayloadLoading] = useState(true);
   const [graphPayloadError, setGraphPayloadError] = useState<string | null>(null);
   const [compileResult, setCompileResult] = useState<WikiCompileDryRunModel | null>(null);
@@ -116,11 +164,16 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
   const manualCreateAbortRef = useRef<AbortController | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
+  const reviewRetryRef = useRef<Map<string, WikiReviewRetryEntry>>(new Map());
 
   const targetPagePath = useMemo(() => {
     const page = searchParams.get('page')?.trim();
     return page && page.length > 0 ? page : null;
   }, [searchParams]);
+  const graphViewerPayload = useMemo(
+    () => graphPayload ? evidenceGraphToGraphPayload(graphPayload) : null,
+    [graphPayload],
+  );
 
   const loadStatus = useCallback(async () => {
     setIsStatusLoading(true);
@@ -146,6 +199,32 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
     }
   }, []);
 
+  const handlePreflightRevalidation = useCallback(async (): Promise<void> => {
+    setIsRevalidationLoading(true);
+    setRevalidationError(null);
+    try {
+      setRevalidation(await preflightWikiRevalidation());
+    } catch (err: unknown) {
+      setRevalidationError(formatPanelError(err, '重新验证预检'));
+    } finally {
+      setIsRevalidationLoading(false);
+    }
+  }, []);
+
+  const handleApplyRevalidation = useCallback(async (expectedHash: string): Promise<void> => {
+    setIsRevalidationLoading(true);
+    setRevalidationError(null);
+    try {
+      const result = await applyWikiRevalidation(expectedHash);
+      setRevalidation(result);
+      await loadStatus();
+    } catch (err: unknown) {
+      setRevalidationError(formatPanelError(err, '重新验证'));
+    } finally {
+      setIsRevalidationLoading(false);
+    }
+  }, [loadStatus]);
+
   const loadDoctor = useCallback(async () => {
     setIsDoctorLoading(true);
     setDoctorError(null);
@@ -158,13 +237,15 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
     }
   }, []);
 
-  const loadReview = useCallback(async () => {
+  const loadReview = useCallback(async (): Promise<boolean> => {
     setIsReviewLoading(true);
     setReviewError(null);
     try {
       setReview(await getWikiReview());
+      return true;
     } catch (err: unknown) {
       setReviewError(formatPanelError(err, '复审队列'));
+      return false;
     } finally {
       setIsReviewLoading(false);
     }
@@ -186,7 +267,7 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
     setIsGraphPayloadLoading(true);
     setGraphPayloadError(null);
     try {
-      setGraphPayload(await getGraphPayload());
+      setGraphPayload(await getWikiEvidenceGraph());
     } catch (err: unknown) {
       setGraphPayloadError(formatPanelError(err, '知识图谱视图'));
     } finally {
@@ -223,6 +304,135 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
     }
     void loadPageDetail(selectedPagePath);
   }, [loadPageDetail, selectedPagePath]);
+
+  const handleGraphReviewApplied = useCallback(async () => {
+    await Promise.all([
+      loadPages(),
+      loadGraph(),
+      loadGraphPayload(),
+      selectedPagePath ? loadPageDetail(selectedPagePath) : Promise.resolve(),
+    ]);
+  }, [loadGraph, loadGraphPayload, loadPageDetail, loadPages, selectedPagePath]);
+
+  const refreshAfterReviewDecision = useCallback(async () => {
+    await Promise.all([
+      loadStatus(),
+      loadPages(),
+      loadReview(),
+      loadGraph(),
+      loadGraphPayload(),
+      selectedPagePath ? loadPageDetail(selectedPagePath) : Promise.resolve(),
+    ]);
+  }, [loadGraph, loadGraphPayload, loadPageDetail, loadPages, loadReview, loadStatus, selectedPagePath]);
+
+  const buildReviewDecisionInput = useCallback((
+    item: WikiReviewItemModel,
+    action: WikiReviewAction,
+    reason: string,
+  ): WikiReviewDecisionInputModel => {
+    if (action === 'approve' && item.promotion_intent) {
+      const intent = item.promotion_intent;
+      return {
+        target_type: 'wiki_page_revision',
+        item_id: item.item_id,
+        reason: intent.reason,
+        decided_by: 'user',
+        request_id: intent.request_id,
+        expected_item_revision: intent.expected_item_revision,
+        expected_target_content_hash: intent.target.expected_content_hash,
+      };
+    }
+    const cacheKey = `${action}:${item.item_id}`;
+    const fingerprint = wikiReviewRequestFingerprint(item, action, reason);
+    const cached = reviewRetryRef.current.get(cacheKey);
+    const requestId = cached?.fingerprint === fingerprint
+      ? cached.requestId
+      : createWikiReviewRequestId();
+    reviewRetryRef.current.set(cacheKey, { fingerprint, requestId });
+    const baseInput = {
+      item_id: item.item_id,
+      reason,
+      decided_by: 'user',
+      request_id: requestId,
+      expected_item_revision: item.item_revision,
+    };
+    if (item.target?.type === 'wiki_page_revision') {
+      return {
+        ...baseInput,
+        target_type: 'wiki_page_revision',
+        expected_target_content_hash: item.target.expected_content_hash,
+      };
+    }
+    if (item.target?.type === 'annotation_note') {
+      return {
+        ...baseInput,
+        target_type: 'annotation_note',
+        expected_target_content_hash: item.target.expected_content_hash,
+      };
+    }
+    return {
+      ...baseInput,
+      target_type: 'unbound',
+    };
+  }, []);
+
+  const refreshReviewAfterConflict = useCallback(async (
+    error: unknown,
+    item: WikiReviewItemModel,
+    action: WikiReviewAction | 'withdraw',
+  ): Promise<never> => {
+    if (!(error instanceof WikiApiError) || error.status !== 409) {
+      throw error;
+    }
+    if (action !== 'withdraw') {
+      reviewRetryRef.current.delete(`${action}:${item.item_id}`);
+    }
+    const refreshed = await loadReview();
+    if (!refreshed) {
+      throw new WikiApiError('审核项已发生变化，但读取最新版本失败；请手动刷新后重试。', 409);
+    }
+    throw new WikiApiError('审核项已发生变化，已刷新为最新版本；请核对后重试。', 409);
+  }, [loadReview]);
+
+  const handleApproveReview = useCallback(async (item: WikiReviewItemModel, reason: string): Promise<void> => {
+    try {
+      await approveWikiReviewItem(buildReviewDecisionInput(item, 'approve', reason));
+    } catch (error: unknown) {
+      await refreshReviewAfterConflict(error, item, 'approve');
+    }
+    await refreshAfterReviewDecision();
+  }, [buildReviewDecisionInput, refreshAfterReviewDecision, refreshReviewAfterConflict]);
+
+  const handleRejectReview = useCallback(async (item: WikiReviewItemModel, reason: string): Promise<void> => {
+    try {
+      await rejectWikiReviewItem(buildReviewDecisionInput(item, 'reject', reason));
+    } catch (error: unknown) {
+      await refreshReviewAfterConflict(error, item, 'reject');
+    }
+    await refreshAfterReviewDecision();
+  }, [buildReviewDecisionInput, refreshAfterReviewDecision, refreshReviewAfterConflict]);
+
+  const handleWithdrawReview = useCallback(async (
+    item: WikiReviewItemModel,
+    reason: string,
+  ): Promise<void> => {
+    const intent = item.promotion_intent;
+    if (!intent) {
+      throw new WikiApiError('当前没有可撤回的晋升操作，请刷新后重试。', 409);
+    }
+    const input: WikiReviewPromotionWithdrawalInputModel = {
+      item_id: item.item_id,
+      reason,
+      expected_item_revision: item.item_revision,
+      expected_promotion_operation_id: intent.operation_id,
+    };
+    try {
+      await withdrawWikiReviewPromotion(input);
+    } catch (error: unknown) {
+      await refreshReviewAfterConflict(error, item, 'withdraw');
+    }
+    await refreshAfterReviewDecision();
+  }, [refreshAfterReviewDecision, refreshReviewAfterConflict]);
 
   const handleRunCompileDryRun = useCallback(async (input: WikiCompileDryRunInputModel) => {
     const abortController = new AbortController();
@@ -475,6 +685,9 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
           onSearch={() => void handleSearch()}
           onStopSearch={handleStopSearch}
           onRefreshReview={() => void loadReview()}
+          onApproveReview={handleApproveReview}
+          onRejectReview={handleRejectReview}
+          onWithdrawReview={handleWithdrawReview}
           onRefreshPages={() => void loadPages()}
           onSelectPagePath={handleSelectPagePath}
           onRefreshSelectedPage={refreshSelectedPage}
@@ -571,15 +784,28 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
             </div>
             <div className="h-[420px]">
               <WikiGraphSegmentedView
-                payload={graphPayload}
+                payload={graphViewerPayload}
+                domain="wiki"
                 loading={isGraphPayloadLoading}
                 error={graphPayloadError}
+                variant="explorer"
+                onReviewApplied={handleGraphReviewApplied}
               />
             </div>
           </section>
 
           <section className="grid gap-4 xl:grid-cols-3">
-            <WikiStatusCard status={status} isLoading={isStatusLoading} error={statusError} onRefresh={() => void loadStatus()} />
+            <WikiStatusCard
+              status={status}
+              isLoading={isStatusLoading}
+              error={statusError}
+              onRefresh={() => void loadStatus()}
+              revalidation={revalidation}
+              isRevalidationLoading={isRevalidationLoading}
+              revalidationError={revalidationError}
+              onPreflightRevalidation={() => void handlePreflightRevalidation()}
+              onApplyRevalidation={(expectedHash) => void handleApplyRevalidation(expectedHash)}
+            />
             <DoctorReportPanel
               doctor={doctor}
               isLoading={isDoctorLoading}
@@ -645,6 +871,9 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
           isLoading={isReviewLoading}
           error={reviewError}
           onRefresh={() => void loadReview()}
+          onApprove={handleApproveReview}
+          onReject={handleRejectReview}
+          onWithdraw={handleWithdrawReview}
         />
         <WikiImportMarkdownPanel
           isWikiEnabled={status?.enabled ?? false}
@@ -691,9 +920,12 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
         </div>
         <div className="h-[420px]">
           <WikiGraphSegmentedView
-            payload={graphPayload}
+            payload={graphViewerPayload}
+            domain="wiki"
             loading={isGraphPayloadLoading}
             error={graphPayloadError}
+            variant="explorer"
+            onReviewApplied={handleGraphReviewApplied}
           />
         </div>
       </section>
@@ -728,7 +960,17 @@ export function WikiWorkbench({ embedded = false }: WikiWorkbenchProps = {}) {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-3">
-        <WikiStatusCard status={status} isLoading={isStatusLoading} error={statusError} onRefresh={() => void loadStatus()} />
+        <WikiStatusCard
+          status={status}
+          isLoading={isStatusLoading}
+          error={statusError}
+          onRefresh={() => void loadStatus()}
+          revalidation={revalidation}
+          isRevalidationLoading={isRevalidationLoading}
+          revalidationError={revalidationError}
+          onPreflightRevalidation={() => void handlePreflightRevalidation()}
+          onApplyRevalidation={(expectedHash) => void handleApplyRevalidation(expectedHash)}
+        />
         <DoctorReportPanel
           doctor={doctor}
           isLoading={isDoctorLoading}
@@ -994,6 +1236,9 @@ interface EmbeddedWikiSimpleViewProps {
   onSearch: () => void;
   onStopSearch: () => void;
   onRefreshReview: () => void;
+  onApproveReview: (item: WikiReviewItemModel, reason: string) => Promise<void>;
+  onRejectReview: (item: WikiReviewItemModel, reason: string) => Promise<void>;
+  onWithdrawReview: (item: WikiReviewItemModel, reason: string) => Promise<void>;
   onRefreshPages: () => void;
   onSelectPagePath: (pagePath: string) => void;
   onRefreshSelectedPage: () => void;
@@ -1034,6 +1279,9 @@ function EmbeddedWikiSimpleView({
   onSearch,
   onStopSearch,
   onRefreshReview,
+  onApproveReview,
+  onRejectReview,
+  onWithdrawReview,
   onRefreshPages,
   onSelectPagePath,
   onRefreshSelectedPage,
@@ -1186,6 +1434,9 @@ function EmbeddedWikiSimpleView({
           isLoading={isReviewLoading}
           error={reviewError}
           onRefresh={onRefreshReview}
+          onApprove={onApproveReview}
+          onReject={onRejectReview}
+          onWithdraw={onWithdrawReview}
         />
         <div className="grid gap-4">
           <WikiPageListPanel

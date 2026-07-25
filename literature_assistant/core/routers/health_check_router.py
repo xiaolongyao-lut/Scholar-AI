@@ -306,7 +306,8 @@ def _agent_bridge_check() -> HealthCheckItem:
     try:
         from writing_runtime import get_writing_runtime
 
-        runtime, _ = get_writing_runtime()
+        runtime_result = get_writing_runtime()
+        runtime = runtime_result[0] if isinstance(runtime_result, tuple) else runtime_result
         session_count = len(getattr(runtime, "_sessions", {}) or {})
         job_count = len(getattr(runtime, "_jobs", {}) or {})
     except Exception as exc:  # pragma: no cover - defensive startup guard

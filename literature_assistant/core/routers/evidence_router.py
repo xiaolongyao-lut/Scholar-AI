@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from pydantic import BaseModel, Field, ValidationError
 import csv
+import hashlib
 import io
 import json
 import os
@@ -18,7 +19,11 @@ import re
 import uuid
 
 import routers.resources_router as _resources_router
-from literature_assistant.core.chunk_package_quality import default_joint_recall_policy, weighted_rrf_fuse
+from literature_assistant.core.chunk_package_quality import (
+    default_joint_recall_policy,
+    weighted_rrf_fuse,
+    write_chunk_goldset_review_bundle,
+)
 from literature_assistant.core.academic_english_resources import search_academic_english
 from literature_assistant.core.config_knowledge import search_scoring_rules
 from literature_assistant.core.product_docs_knowledge import search_product_docs
@@ -29,26 +34,29 @@ from literature_assistant.core.source_vault import (
     build_source_vault_search_metadata,
 )
 from literature_assistant.core.skill_package_knowledge import ACADEMIC_ENGLISH_SKILL_PACKAGE_ID, search_skill_package
-from literature_assistant.core.project_paths import wiki_generated_root, wiki_query_index_path
+from literature_assistant.core.project_paths import wiki_generated_root, wiki_query_index_path, wiki_review_queue_path
 from literature_assistant.core.runtime_env import wiki_enabled
 from literature_assistant.core.wiki.page_store import WikiPageStore
+from literature_assistant.core.wiki.review_queue import ReviewItem, ReviewItemKind, ReviewQueue
+from literature_assistant.core.wiki.graph import parse_wiki_page
 from literature_assistant.core.wiki.query import WikiQueryIndex, build_knowledge_refs
 from project_paths import project_data_path, runtime_state_path
 from routers.resources_router.endpoints_search_upload import (
     build_locator_coverage,
+    _augment_chunks_with_linked_visual_assets,
     _augment_chunks_with_project_figure_assets,
     _chunk_to_search_ref,
     _flatten_chunk_store_for_search_refs,
+    _merge_visual_search_ref_chunks,
     _search_refs_visual_query_enabled,
     _select_search_ref_chunks,
+    _select_search_ref_chunks_fts_first,
     enrich_chunk_locator_with_pdf,
     find_chunk_locator,
 )
 from models import (
     PdfAnchorFields,
-    PdfBboxUnit,
     coerce_pdf_bbox,
-    pdf_bbox_matches_unit,
     SourceLabelPayload,
     CreateSourceLabelRequest,
     UpdateSourceLabelRequest,
@@ -61,6 +69,8 @@ from models import (
     EvidencePackIntegrityCheckPayload,
     EvidencePackIntegrityGateRequest,
     EvidencePackIntegrityGateResponse,
+    EvidenceQrelsReviewBundleRequest,
+    EvidenceQrelsReviewBundleResponse,
     EvidencePackReferencePayload,
     EvidenceRetrievalDiagnosticsPayload,
     RetrievalQrelsStatusPayload,
@@ -81,10 +91,13 @@ router = APIRouter(tags=["Evidence"])
 _source_labels_store: dict[str, SourceLabelPayload] = {}
 _evidence_refs_store: dict[str, EvidenceRefPayload] = {}
 _discussion_packs_store: dict[str, DiscussionEvidencePackPayload] = {}
+_evidence_pack_builds_store: dict[str, EvidencePackBuildResponse] = {}
 _citation_verifications_store: dict[str, CitationVerificationPayload] = {}
 _SOURCE_LABELS_VERSION = 1
 _EVIDENCE_REFS_VERSION = 1
 _DISCUSSION_EVIDENCE_PACKS_VERSION = 1
+_EVIDENCE_PACK_BUILDS_VERSION = 1
+_EVIDENCE_PACK_BUILD_STORE_LIMIT = 128
 _CITATION_VERIFICATIONS_VERSION = 1
 _EVIDENCE_REFS_EXPORT_VERSION = 1
 _EVIDENCE_PACK_SUMMARY_CHARS = 300
@@ -151,6 +164,7 @@ _EVIDENCE_PACK_IMAGE_ASSET_KEYS: frozenset[str] = frozenset(
         "thumbnail_paths",
     }
 )
+_EVIDENCE_PACK_INTEGRITY_GATE_POLICY_VERSION = "evidence-pack-integrity-gate-config/v1"
 _CANDIDATE_QRELS_FILENAMES: tuple[str, ...] = (
     "qrels_candidate.trec",
     "candidate.qrels",
@@ -167,6 +181,8 @@ _CANONICAL_QRELS_FILENAMES: tuple[str, ...] = (
     "qrels.trec",
     "goldset.qrels",
 )
+_CANDIDATE_QRELS_BUNDLE_DIR = "candidate_review_bundles"
+_QRELS_BUNDLE_SCAN_LIMIT = 100
 KnowledgeRefSourceType = Literal[
     "product_docs",
     "scoring_rules",
@@ -182,6 +198,30 @@ _EVIDENCE_PACK_KNOWLEDGE_REF_KINDS: tuple[KnowledgeRefSourceType, ...] = (
     "skill_package",
     "source_vault",
 )
+
+
+class _FinalWikiPageStore(WikiPageStore):
+    """Read-only Wiki view for evidence-pack joint recall.
+
+    Evidence packs are reusable citation inputs, so draft/review pages must not
+    enter the pack just because a local FTS index can see them.
+    """
+
+    def read_page(self, relative_path: Path) -> str | None:
+        content = super().read_page(relative_path)
+        if content is None:
+            return None
+        try:
+            parsed = parse_wiki_page(str(content))
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return None
+        status = str(parsed.frontmatter.get("status") or "").strip().lower()
+        if status != "final":
+            return None
+        return content
+
+    def list_pages(self, kind_dir: str | None = None) -> list[Path]:
+        return [page_path for page_path in super().list_pages(kind_dir) if self.read_page(page_path) is not None]
 _EVIDENCE_PACK_MAX_KNOWLEDGE_REFS = len(_EVIDENCE_PACK_KNOWLEDGE_REF_KINDS)
 
 
@@ -231,11 +271,64 @@ def _sum_named_files(root: Path, filenames: tuple[str, ...], counter: Any) -> in
     """Count rows from direct known files without recursive workspace scans."""
 
     total = 0
-    for filename in filenames:
-        candidate = root / filename
+    for candidate in _iter_qrels_named_file_candidates(root, filenames):
         if candidate.is_file():
             total += int(counter(candidate))
     return total
+
+
+def _iter_qrels_named_file_candidates(root: Path, filenames: tuple[str, ...]) -> list[Path]:
+    """Return direct qrels files plus known candidate bundle files.
+
+    The bundle scan is intentionally bounded to one controlled directory level
+    so project qrels status can see generated review bundles without walking
+    arbitrary runtime trees.
+    """
+
+    candidates = [root / filename for filename in filenames]
+    bundle_root = root / _CANDIDATE_QRELS_BUNDLE_DIR
+    try:
+        bundle_dirs = [
+            child
+            for child in bundle_root.iterdir()
+            if child.is_dir() and child.name == Path(child.name).name
+        ]
+    except OSError:
+        bundle_dirs = []
+    for bundle_dir in sorted(bundle_dirs, key=lambda item: item.name)[:_QRELS_BUNDLE_SCAN_LIMIT]:
+        candidates.extend(bundle_dir / filename for filename in filenames)
+    return candidates
+
+
+def _hash_named_qrels_files(root: Path) -> str:
+    """Return a content-derived hash for known project qrels sidecar files."""
+
+    digest = hashlib.sha256()
+    seen = False
+    for filename in (
+        *_CANDIDATE_QRELS_FILENAMES,
+        *_REVIEWED_QRELS_FILENAMES,
+        *_CANONICAL_QRELS_FILENAMES,
+    ):
+        for candidate in _iter_qrels_named_file_candidates(root, (filename,)):
+            if not candidate.is_file():
+                continue
+            try:
+                data = candidate.read_bytes()
+            except OSError:
+                continue
+            seen = True
+            try:
+                path_key = candidate.relative_to(root).as_posix()
+            except ValueError:
+                path_key = candidate.name
+            digest.update(path_key.encode("utf-8", errors="replace"))
+            digest.update(b"\0")
+            digest.update(data)
+            digest.update(b"\0")
+    if not seen:
+        digest.update(b"")
+    return f"sha256:{digest.hexdigest()}"
 
 
 def _project_qrels_status(project_id: str) -> RetrievalQrelsStatusPayload:
@@ -253,6 +346,7 @@ def _project_qrels_status(project_id: str) -> RetrievalQrelsStatusPayload:
     if not normalized_project_id:
         raise ValueError("project_id must be non-empty")
     qrels_root = project_data_path(normalized_project_id, "qrels")
+    qrels_content_hash = _hash_named_qrels_files(qrels_root)
     candidate_count = _sum_named_files(
         qrels_root,
         _CANDIDATE_QRELS_FILENAMES,
@@ -274,6 +368,7 @@ def _project_qrels_status(project_id: str) -> RetrievalQrelsStatusPayload:
             candidate_qrels_count=candidate_count,
             reviewed_qrels_count=reviewed_count,
             canonical_qrels_count=canonical_count,
+            qrels_content_hash=qrels_content_hash,
             semantic_quality_claim_allowed=True,
             quality_claim="canonical_qrels_available",
             notes=[
@@ -286,6 +381,7 @@ def _project_qrels_status(project_id: str) -> RetrievalQrelsStatusPayload:
             candidate_qrels_count=candidate_count,
             reviewed_qrels_count=reviewed_count,
             canonical_qrels_count=0,
+            qrels_content_hash=qrels_content_hash,
             semantic_quality_claim_allowed=False,
             quality_claim="reviewed_qrels_promotion_required",
             notes=[
@@ -298,6 +394,7 @@ def _project_qrels_status(project_id: str) -> RetrievalQrelsStatusPayload:
             candidate_qrels_count=candidate_count,
             reviewed_qrels_count=0,
             canonical_qrels_count=0,
+            qrels_content_hash=qrels_content_hash,
             semantic_quality_claim_allowed=False,
             quality_claim="candidate_qrels_review_required",
             notes=[
@@ -309,6 +406,7 @@ def _project_qrels_status(project_id: str) -> RetrievalQrelsStatusPayload:
         candidate_qrels_count=0,
         reviewed_qrels_count=0,
         canonical_qrels_count=0,
+        qrels_content_hash=qrels_content_hash,
         semantic_quality_claim_allowed=False,
         quality_claim="no_qrels_available",
         notes=[
@@ -361,6 +459,21 @@ def _write_json_payload(path: Path, payload: dict[str, Any]) -> None:
         os.replace(tmp_path, path)
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Evidence runtime store write failed: {exc}") from exc
+
+
+def _write_json_artifact(path: Path, payload: Any) -> None:
+    """Write a JSON review artifact atomically under an already validated root."""
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+        tmp_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        os.replace(tmp_path, path)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Evidence artifact write failed: {exc}") from exc
 
 
 def _load_source_labels() -> dict[str, SourceLabelPayload]:
@@ -845,22 +958,31 @@ def _chunk_locator_payload_from_store(project_id: str, chunk_id: str) -> ChunkLo
         )
     locator = enrich_chunk_locator_with_pdf(normalized_project_id, chunk_store, locator)
 
+    page = locator.get("page")
+    normalized_page = (
+        page
+        if isinstance(page, int) and not isinstance(page, bool) and page > 0
+        else None
+    )
+    try:
+        anchor = PdfAnchorFields.model_validate(
+            {
+                "bbox": locator.get("bbox") if normalized_page is not None else None,
+                "bbox_unit": locator.get("bbox_unit") if normalized_page is not None else None,
+            }
+        )
+    except ValidationError:
+        anchor = PdfAnchorFields()
+
     return ChunkLocatorPayload(
         chunk_id=str(locator["chunk_id"]),
         material_id=str(locator["material_id"]),
-        page=locator.get("page") if isinstance(locator.get("page"), int) else None,
+        page=normalized_page,
         chunk_index=locator.get("chunk_index") if isinstance(locator.get("chunk_index"), int) else None,
-        bbox=locator.get("bbox") if _is_normalized_ratio_bbox(locator.get("bbox")) else None,
-        bbox_unit=PdfBboxUnit.NORMALIZED_RATIO if _is_normalized_ratio_bbox(locator.get("bbox")) else None,
+        bbox=anchor.bbox,
+        bbox_unit=anchor.bbox_unit,
         text_preview=str(locator.get("text_preview") or ""),
     )
-
-
-def _is_normalized_ratio_bbox(value: Any) -> bool:
-    """Return true only for URL-compatible normalized PDF bbox values."""
-
-    bbox = coerce_pdf_bbox(value)
-    return bbox is not None and pdf_bbox_matches_unit(bbox, PdfBboxUnit.NORMALIZED_RATIO)
 
 
 @router.get("/api/chunk_to_page", response_model=ChunkLocatorPayload)
@@ -1014,6 +1136,462 @@ def _evidence_pack_ref(project_id: str, query: str, section_id: str | None) -> s
     return f"evidence_pack:{uuid.uuid5(uuid.NAMESPACE_URL, seed).hex}"
 
 
+def _evidence_pack_build_store_path() -> Path:
+    """Return the durable bounded evidence-pack build store path."""
+
+    return runtime_state_path("evidence_pack", "builds.json")
+
+
+def _evidence_pack_build_from_raw(raw_pack: Any) -> EvidencePackBuildResponse | None:
+    """Validate one persisted bounded evidence-pack build response."""
+
+    if not isinstance(raw_pack, dict):
+        return None
+    try:
+        pack = EvidencePackBuildResponse(**raw_pack)
+    except ValidationError:
+        return None
+    if not pack.evidence_pack_ref.strip():
+        return None
+    return pack
+
+
+def _load_evidence_pack_builds() -> dict[str, EvidencePackBuildResponse]:
+    """Load persisted bounded evidence-pack builds keyed by pack ref."""
+
+    path = _evidence_pack_build_store_path()
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    raw_packs = payload.get("packs") if isinstance(payload, dict) else payload
+    if not isinstance(raw_packs, list):
+        return {}
+
+    loaded: dict[str, EvidencePackBuildResponse] = {}
+    for raw_pack in raw_packs:
+        pack = _evidence_pack_build_from_raw(raw_pack)
+        if pack is not None:
+            loaded[pack.evidence_pack_ref] = pack
+    if len(loaded) <= _EVIDENCE_PACK_BUILD_STORE_LIMIT:
+        return loaded
+    return dict(list(loaded.items())[-_EVIDENCE_PACK_BUILD_STORE_LIMIT:])
+
+
+def _write_evidence_pack_builds(packs: dict[str, EvidencePackBuildResponse]) -> None:
+    """Persist bounded pack builds with tmp+replace semantics."""
+
+    path = _evidence_pack_build_store_path()
+    bounded_items = list(packs.items())[-_EVIDENCE_PACK_BUILD_STORE_LIMIT:]
+    payload = {
+        "version": _EVIDENCE_PACK_BUILDS_VERSION,
+        "packs": [pack.model_dump(mode="json") for _pack_ref, pack in bounded_items],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(".json.tmp")
+    tmp_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    os.replace(tmp_path, path)
+
+
+def _remember_evidence_pack_build(pack: EvidencePackBuildResponse) -> None:
+    """Remember the bounded build response so its pack ref can be rechecked."""
+
+    pack_ref = pack.evidence_pack_ref.strip()
+    if not pack_ref:
+        return
+    merged = _load_evidence_pack_builds()
+    merged.update(_evidence_pack_builds_store)
+    merged[pack_ref] = pack
+    bounded = dict(list(merged.items())[-_EVIDENCE_PACK_BUILD_STORE_LIMIT:])
+    _evidence_pack_builds_store.clear()
+    _evidence_pack_builds_store.update(bounded)
+    try:
+        _write_evidence_pack_builds(bounded)
+    except OSError:
+        return
+
+
+def _restore_evidence_pack_build(
+    *,
+    project_id: str,
+    query: str,
+    evidence_pack_ref: str | None,
+) -> EvidencePackBuildResponse | None:
+    """Restore a bounded build when project, query, and pack ref agree."""
+
+    pack_ref = str(evidence_pack_ref or "").strip()
+    normalized_project_id = str(project_id or "").strip()
+    normalized_query = str(query or "").strip()
+    if not pack_ref or not normalized_project_id:
+        return None
+
+    pack = _evidence_pack_builds_store.get(pack_ref)
+    if pack is None:
+        loaded = _load_evidence_pack_builds()
+        _evidence_pack_builds_store.update(loaded)
+        pack = loaded.get(pack_ref)
+    if pack is None:
+        return None
+    if pack.project_id.strip() != normalized_project_id:
+        return None
+    if normalized_query and pack.query.strip() != normalized_query:
+        return None
+    return pack
+
+
+def _ensure_child_path(parent: Path, child: Path, *, label: str) -> None:
+    """Raise if a generated qrels path escapes the intended project root."""
+
+    parent_resolved = parent.resolve()
+    child_resolved = child.resolve()
+    if child_resolved == parent_resolved or parent_resolved in child_resolved.parents:
+        return
+    raise ValueError(f"{label} must stay under project qrels root")
+
+
+def _qrels_review_bundle_id(project_id: str, evidence_pack_ref: str) -> str:
+    """Return a filesystem-safe local id for one candidate review bundle."""
+
+    seed = json.dumps(
+        {"project_id": project_id, "evidence_pack_ref": evidence_pack_ref},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return f"qrels_review_{hashlib.sha256(seed.encode('utf-8')).hexdigest()[:20]}"
+
+
+def _qrels_review_bundle_paths(project_id: str, evidence_pack_ref: str) -> tuple[str, Path, Path]:
+    """Return bundle id, source package dir, and review output dir."""
+
+    bundle_id = _qrels_review_bundle_id(project_id, evidence_pack_ref)
+    qrels_root = project_data_path(project_id, "qrels")
+    output_dir = qrels_root / _CANDIDATE_QRELS_BUNDLE_DIR / bundle_id
+    package_dir = output_dir / "source_chunk_package"
+    _ensure_child_path(qrels_root, output_dir, label="qrels review output_dir")
+    _ensure_child_path(qrels_root, package_dir, label="qrels review package_path")
+    return bundle_id, package_dir, output_dir
+
+
+def _bounded_qrels_review_text(value: Any, *, limit: int = 3000) -> str:
+    """Return a bounded one-line text excerpt for manual qrels review."""
+
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[: max(0, limit - 1)].rstrip()}…"
+
+
+def _chunk_text_for_qrels_review(chunk: dict[str, Any], ref: dict[str, Any]) -> str:
+    """Prefer indexed chunk text, falling back to bounded evidence summaries."""
+
+    for key in ("content", "raw_content", "text", "summary"):
+        text = _bounded_qrels_review_text(chunk.get(key))
+        if text:
+            return text
+    return _bounded_qrels_review_text(ref.get("summary") or ref.get("title") or "Evidence ref")
+
+
+def _source_chunk_for_evidence_ref(
+    *,
+    project_id: str,
+    chunk_lookup: dict[tuple[str, str], dict[str, Any]],
+    chunk_id_lookup: dict[str, dict[str, Any]],
+    ref: EvidencePackReferencePayload,
+) -> dict[str, Any] | None:
+    """Return one chunk-package row for a selected evidence ref."""
+
+    ref_payload = ref.model_dump(mode="json")
+    chunk_id = str(ref_payload.get("chunk_id") or "").strip()
+    if not chunk_id:
+        return None
+    material_id = str(ref_payload.get("material_id") or "").strip()
+    source_chunk = chunk_lookup.get((material_id, chunk_id)) if material_id else None
+    if source_chunk is None:
+        source_chunk = chunk_id_lookup.get(chunk_id)
+    if source_chunk is None:
+        source_chunk = {}
+    source_name = str(
+        ref_payload.get("title")
+        or source_chunk.get("source_name")
+        or source_chunk.get("title")
+        or material_id
+        or project_id
+    ).strip()
+    page = ref_payload.get("page") if ref_payload.get("page") is not None else source_chunk.get("page")
+    text = _chunk_text_for_qrels_review(source_chunk, ref_payload)
+    return {
+        "chunk_id": chunk_id,
+        "source_id": material_id or str(source_chunk.get("material_id") or project_id),
+        "material_id": material_id or str(source_chunk.get("material_id") or ""),
+        "source_name": _bounded_qrels_review_text(source_name, limit=240),
+        "title": _bounded_qrels_review_text(source_name, limit=240),
+        "page": page,
+        "page_start": source_chunk.get("page_start") or page,
+        "page_end": source_chunk.get("page_end") or page,
+        "chunk_type": str(source_chunk.get("chunk_type") or ref_payload.get("source_type") or "evidence")[:80],
+        "text": text,
+        "content": text,
+        "metadata": {
+            "project_id": project_id,
+            "ref_id": ref_payload.get("ref_id"),
+            "score": ref_payload.get("score"),
+            "rank": ref_payload.get("rank"),
+        },
+    }
+
+
+def _write_qrels_review_source_package(
+    *,
+    pack: EvidencePackBuildResponse,
+    package_dir: Path,
+) -> dict[str, Any]:
+    """Materialize a minimal chunk package for the existing review toolchain."""
+
+    chunk_store = _resources_router._load_chunk_store(pack.project_id)
+    all_chunks = _flatten_chunk_store_for_search_refs(chunk_store)
+    chunk_lookup: dict[tuple[str, str], dict[str, Any]] = {}
+    chunk_id_lookup: dict[str, dict[str, Any]] = {}
+    for chunk in all_chunks:
+        if not isinstance(chunk, dict):
+            continue
+        chunk_id = str(chunk.get("chunk_id") or "").strip()
+        material_id = str(chunk.get("material_id") or "").strip()
+        if chunk_id:
+            chunk_id_lookup.setdefault(chunk_id, chunk)
+        if material_id and chunk_id:
+            chunk_lookup.setdefault((material_id, chunk_id), chunk)
+
+    package_chunks: list[dict[str, Any]] = []
+    evidence_items: list[dict[str, Any]] = []
+    seen_chunk_ids: set[str] = set()
+    for index, ref in enumerate(pack.evidence_refs, start=1):
+        chunk_row = _source_chunk_for_evidence_ref(
+            project_id=pack.project_id,
+            chunk_lookup=chunk_lookup,
+            chunk_id_lookup=chunk_id_lookup,
+            ref=ref,
+        )
+        if chunk_row is None:
+            continue
+        chunk_id = str(chunk_row.get("chunk_id") or "").strip()
+        ref_payload = ref.model_dump(mode="json")
+        evidence_items.append(
+            {
+                "chunk_id": chunk_id,
+                "material_id": chunk_row.get("material_id"),
+                "ref_id": ref_payload.get("ref_id"),
+                "rank": ref_payload.get("rank") or index,
+                "score": ref_payload.get("score"),
+                "title": ref_payload.get("title"),
+                "page": ref_payload.get("page"),
+            }
+        )
+        if chunk_id not in seen_chunk_ids:
+            package_chunks.append(chunk_row)
+            seen_chunk_ids.add(chunk_id)
+
+    manifest_sources: dict[str, dict[str, Any]] = {}
+    for chunk in package_chunks:
+        source_id = str(chunk.get("source_id") or pack.project_id).strip()
+        manifest_sources.setdefault(
+            source_id,
+            {
+                "source_id": source_id,
+                "source_name": chunk.get("source_name") or source_id,
+                "project_id": pack.project_id,
+                "evidence_pack_ref": pack.evidence_pack_ref,
+            },
+        )
+
+    package_dir.mkdir(parents=True, exist_ok=True)
+    _write_json_artifact(package_dir / "manifest.json", list(manifest_sources.values()))
+    _write_json_artifact(package_dir / "chunks.json", package_chunks)
+    _write_json_artifact(package_dir / "evidence.json", {pack.query or "evidence_pack": evidence_items})
+    _write_json_artifact(
+        package_dir / "review_content.json",
+        {
+            "sections": [
+                {
+                    "title": pack.query,
+                    "text": _bounded_qrels_review_text(pack.query, limit=1000),
+                }
+            ],
+            "references": [
+                {
+                    "ref_id": item.get("ref_id"),
+                    "chunk_id": item.get("chunk_id"),
+                    "title": item.get("title"),
+                }
+                for item in evidence_items
+            ],
+        },
+    )
+    return {
+        "chunk_count": len(package_chunks),
+        "evidence_item_count": len(evidence_items),
+        "source_count": len(manifest_sources),
+    }
+
+
+def _upsert_qrels_review_queue_item(
+    *,
+    bundle_id: str,
+    project_id: str,
+    evidence_pack_ref: str,
+    output_dir: Path,
+    judgment_template_path: str,
+    candidate_qrels_count: int,
+) -> dict[str, Any]:
+    """Attach candidate qrels review to the existing local review queue."""
+
+    queue = ReviewQueue(wiki_review_queue_path())
+    item_id = f"qrels_review:{bundle_id}"
+    metadata = {
+        "project_id": project_id,
+        "evidence_pack_ref": evidence_pack_ref,
+        "bundle_id": bundle_id,
+        "output_dir": str(output_dir),
+        "judgment_template_path": judgment_template_path,
+        "candidate_qrels_count": candidate_qrels_count,
+        "candidate_only": True,
+        "allowed_judgments": ["relevant", "partial", "offtopic", "unknown"],
+        "requires_human_review_before_promotion": True,
+    }
+    existing = queue.get(item_id)
+    if existing is not None:
+        return queue.update_metadata(item_id, metadata).to_dict()
+    return queue.append(
+        ReviewItem(
+            item_id=item_id,
+            kind=ReviewItemKind.manual_edit,
+            title="Review candidate qrels",
+            page_path=judgment_template_path,
+            summary="Candidate qrels generated from a selected evidence pack; review before any canonical promotion.",
+            source="qrels",
+            metadata=metadata,
+        )
+    ).to_dict()
+
+
+def _qrels_review_bundle_outcome(
+    *,
+    project_id: str,
+    bundle_id: str,
+    candidate_qrels_count: int,
+    package_stats: dict[str, Any],
+    review_queue_status: str,
+) -> ToolOutcome:
+    """Return the required candidate-only review_qrels next action."""
+
+    status: Literal["success", "empty"] = "success" if candidate_qrels_count > 0 else "empty"
+    return ToolOutcome(
+        status=status,
+        quality="metadata_only",
+        reason=(
+            "Candidate qrels review bundle generated; human review is required before promotion."
+            if candidate_qrels_count > 0
+            else "Review bundle generated, but no valid candidate qrels rows were found."
+        ),
+        next_action=ToolNextAction(
+            kind="review_qrels",
+            message="Review goldset_review_template.jsonl before any canonical qrels promotion.",
+            tool_name="literature.qrels_review_bundle",
+            endpoint="/api/evidence-pack/qrels-review-bundle",
+            args={"project_id": project_id, "bundle_id": bundle_id},
+        ),
+        attempts=[
+            ToolAttempt(
+                stage="evidence_pack_restore",
+                status="success",
+                reason="Restored bounded evidence pack by evidence_pack_ref.",
+                metadata={"bundle_id": bundle_id},
+            ),
+            ToolAttempt(
+                stage="chunk_package_materialize",
+                status="success" if package_stats.get("chunk_count") else "degraded",
+                reason="Materialized a chunk package for qrels review.",
+                metadata=dict(package_stats),
+            ),
+            ToolAttempt(
+                stage="candidate_qrels_write",
+                status="success" if candidate_qrels_count > 0 else "skipped",
+                reason="Wrote candidate-only qrels review artifacts.",
+                metadata={"candidate_qrels_count": candidate_qrels_count},
+            ),
+            ToolAttempt(
+                stage="review_queue",
+                status="success" if review_queue_status == "pending" else "degraded",
+                reason="Attached the bundle to the local review queue.",
+                metadata={"review_queue_status": review_queue_status},
+            ),
+        ],
+    )
+
+
+def _build_qrels_review_bundle_response(
+    request: EvidenceQrelsReviewBundleRequest,
+    pack: EvidencePackBuildResponse,
+) -> EvidenceQrelsReviewBundleResponse:
+    """Generate a candidate-only qrels review bundle from a restored pack."""
+
+    bundle_id, package_dir, output_dir = _qrels_review_bundle_paths(pack.project_id, pack.evidence_pack_ref)
+    package_stats = _write_qrels_review_source_package(pack=pack, package_dir=package_dir)
+    bundle = write_chunk_goldset_review_bundle(
+        package_dir,
+        output_dir,
+        max_chunks_per_section=request.max_chunks_per_section,
+    )
+    review_item = _upsert_qrels_review_queue_item(
+        bundle_id=bundle_id,
+        project_id=pack.project_id,
+        evidence_pack_ref=pack.evidence_pack_ref,
+        output_dir=output_dir,
+        judgment_template_path=bundle.judgment_template_path,
+        candidate_qrels_count=bundle.candidate_qrels_count,
+    )
+    qrels_status = _project_qrels_status(pack.project_id)
+    outcome = _qrels_review_bundle_outcome(
+        project_id=pack.project_id,
+        bundle_id=bundle_id,
+        candidate_qrels_count=bundle.candidate_qrels_count,
+        package_stats=package_stats,
+        review_queue_status=str(review_item.get("status") or ""),
+    )
+    return EvidenceQrelsReviewBundleResponse(
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        project_id=pack.project_id,
+        evidence_pack_ref=pack.evidence_pack_ref,
+        query=pack.query,
+        bundle_id=bundle_id,
+        candidate_only=True,
+        output_dir=str(output_dir),
+        package_path=str(package_dir),
+        quality_report_path=bundle.quality_report_path,
+        goldset_proposal_path=bundle.goldset_proposal_path,
+        qrels_candidate_path=bundle.qrels_candidate_path,
+        judgment_template_path=bundle.judgment_template_path,
+        standards_markdown_path=bundle.standards_markdown_path,
+        query_count=bundle.query_count,
+        candidate_qrels_count=bundle.candidate_qrels_count,
+        qrels_status=qrels_status,
+        review_queue_item=review_item,
+        outcome=outcome,
+        provenance={
+            "source": "/api/evidence-pack/build",
+            "review_toolchain": "write_chunk_goldset_review_bundle",
+            "candidate_only": True,
+            "canonical_qrels_promoted": False,
+            "max_chunks_per_section": request.max_chunks_per_section,
+        },
+    )
+
+
 def _material_source_path_from_doc_store(project_id: str, material_id: str) -> str | None:
     """Return a bounded project-relative source path for a material.
 
@@ -1044,6 +1622,19 @@ def _material_source_path_from_doc_store(project_id: str, material_id: str) -> s
     return source_path[:240] or None
 
 
+def _fallback_source_labels(raw_labels: Any, fallback_labels: list[str]) -> list[str]:
+    """Return explicit source labels, or bounded deterministic fallback labels."""
+
+    if isinstance(raw_labels, (list, tuple, set)):
+        labels = [str(label).strip() for label in raw_labels if str(label).strip()]
+    else:
+        raw_label = str(raw_labels or "").strip()
+        labels = [raw_label] if raw_label else []
+    if labels:
+        return _bounded_unique_strings(labels, max_items=16, max_chars=80)
+    return _bounded_unique_strings(fallback_labels, max_items=16, max_chars=80)
+
+
 def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackReferencePayload | None:
     """Project one search ref into the evidence-pack contract.
 
@@ -1070,14 +1661,21 @@ def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackRefere
     source_path = str(getattr(ref.metadata, "source_relative_path", "") or "").strip()[:240] or None
     if source_path is None:
         source_path = _material_source_path_from_doc_store(project_id, material_id)
-    page = getattr(ref.metadata, "page", None)
     locator = getattr(ref.metadata, "locator", None)
     if not isinstance(locator, dict):
         locator = None
-    source_labels = getattr(ref.metadata, "source_labels", [])
-    if not isinstance(source_labels, list):
-        source_labels = []
-    source_labels = [str(label).strip() for label in source_labels if str(label).strip()][:16]
+    page = getattr(ref.metadata, "page", None)
+    if not isinstance(page, int) or isinstance(page, bool) or page <= 0:
+        locator_page = locator.get("page") if isinstance(locator, dict) else None
+        page = (
+            locator_page
+            if isinstance(locator_page, int) and not isinstance(locator_page, bool) and locator_page > 0
+            else None
+        )
+    source_labels = _fallback_source_labels(
+        getattr(ref.metadata, "source_labels", []),
+        ["lexical", "project_chunks"],
+    )
     figure_candidate = getattr(ref.metadata, "figure_candidate", None)
     figure_candidate = str(figure_candidate).strip()[:260] if figure_candidate is not None else None
     figure_candidate_detail = getattr(ref.metadata, "figure_candidate_detail", None)
@@ -1108,6 +1706,13 @@ def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackRefere
         suitable_for_body=bool(summary.strip()),
         source_title=source_title or None,
         source_path=source_path,
+        quote=getattr(ref.metadata, "quote", None),
+        anchor_kind=getattr(ref.metadata, "anchor_kind", None),
+        content_hash=getattr(ref.metadata, "content_hash", None),
+        locator_hash=getattr(ref.metadata, "locator_hash", None),
+        chunk_hash=getattr(ref.metadata, "chunk_hash", None),
+        embedding_input_hash=getattr(ref.metadata, "embedding_input_hash", None),
+        hash_version=getattr(ref.metadata, "hash_version", None),
     )
     locator_quality = getattr(ref, "_locator_quality", None)
     if isinstance(locator_quality, dict):
@@ -1180,6 +1785,38 @@ def _select_project_evidence_chunks(
             if len(selected) >= top_k:
                 break
         if selected:
+            if _search_refs_visual_query_enabled(normalized_query):
+                scored = _resources_router._score_chunks_for_query(all_chunks, normalized_query)
+                return _merge_visual_search_ref_chunks(
+                    normalized_query,
+                    selected,
+                    scored,
+                    top_k=top_k,
+                )
+            if len(selected) < top_k:
+                seen_keys = {
+                    (
+                        str(chunk.get("material_id") or "").strip(),
+                        str(chunk.get("chunk_id") or "").strip(),
+                    )
+                    for _score, chunk in selected
+                    if isinstance(chunk, dict)
+                }
+                for fallback_score, fallback_chunk in _select_search_ref_chunks(
+                    all_chunks,
+                    normalized_query,
+                    top_k=top_k,
+                ):
+                    fallback_key = (
+                        str(fallback_chunk.get("material_id") or "").strip(),
+                        str(fallback_chunk.get("chunk_id") or "").strip(),
+                    )
+                    if not fallback_key[1] or fallback_key in seen_keys:
+                        continue
+                    selected.append((fallback_score, fallback_chunk))
+                    seen_keys.add(fallback_key)
+                    if len(selected) >= top_k:
+                        break
             return selected
 
     return _select_search_ref_chunks(all_chunks, normalized_query, top_k=top_k)
@@ -1216,7 +1853,7 @@ def _resolve_wiki_joint_recall_searcher() -> Any | None:
         if limit < 1 or limit > 100:
             raise ValueError("limit must be between 1 and 100")
         index = WikiQueryIndex(index_path)
-        store = WikiPageStore(wiki_generated_root(), create=False)
+        store = _FinalWikiPageStore(wiki_generated_root(), create=False)
         try:
             results = index.search(query, limit=limit)
             refs = build_knowledge_refs(results, store, max_summary_chars=300)
@@ -1372,7 +2009,7 @@ def _wiki_hit_to_evidence_ref(project_id: str, hit: dict[str, Any]) -> EvidenceP
         rerank_score=None,
         citation_anchor=_citation_anchor_from_ref(ref_id, "wiki", stable_id),
         figure_candidate=None,
-        source_labels=[],
+        source_labels=_fallback_source_labels(hit.get("source_labels"), ["wiki_joint_recall"]),
         summary=summary,
         suitable_for_body=True,
         source_title=str(hit.get("title") or "")[:160] or None,
@@ -1428,7 +2065,10 @@ def _knowledge_hit_to_evidence_ref(
         rerank_score=None,
         citation_anchor=_citation_anchor_from_ref(ref_id, source_type, chunk_id),
         figure_candidate=None,
-        source_labels=[],
+        source_labels=_fallback_source_labels(
+            metadata.get("source_labels"),
+            ["knowledge_resource", source_type],
+        ),
         summary=summary,
         suitable_for_body=True,
         source_title=str(hit.get("title") or "")[:160] or None,
@@ -1766,6 +2406,25 @@ def _joint_recall_diagnostics(
     """Return wiki+project fusion diagnostics and fused evidence refs."""
 
     policy = default_joint_recall_policy()
+    if not project_refs:
+        return (
+            {
+                "enabled": True,
+                "status": "empty",
+                "reason": "Project evidence refs are required before wiki joint recall is attached.",
+                "fusion_method": policy["fusion"],
+                "project_weight": 1.0,
+                "wiki_weight": 0.0,
+                "project_hit_count": 0,
+                "wiki_hit_count": 0,
+                "wiki_share_after_fusion": 0.0,
+                "source_counts": {"project": 0, "wiki": 0},
+                "integrity_gate": {"status": "skipped", "reason": "no_project_refs"},
+                "top_doc_ids": [],
+                "wiki_summaries": [],
+            },
+            [],
+        )
     searcher = _resolve_wiki_joint_recall_searcher()
     if searcher is None:
         gate = _wiki_joint_recall_integrity_gate()
@@ -1802,6 +2461,24 @@ def _joint_recall_diagnostics(
     wiki_hits = searcher(query, max(top_k, int(policy.get("per_source_caps", {}).get("wiki", top_k))))
     if not isinstance(wiki_hits, list):
         wiki_hits = []
+    if not wiki_hits:
+        return (
+            {
+                "enabled": True,
+                "status": "empty",
+                "fusion_method": policy["fusion"],
+                "project_weight": 1.0,
+                "wiki_weight": 0.0,
+                "project_hit_count": len(project_refs),
+                "wiki_hit_count": 0,
+                "wiki_share_after_fusion": 0.0,
+                "source_counts": {"project": min(len(project_refs), top_k), "wiki": 0},
+                "integrity_gate": gate if isinstance(gate, dict) else {"status": "unchecked"},
+                "top_doc_ids": [ref.ref_id for ref in project_refs[: min(5, top_k)]],
+                "wiki_summaries": [],
+            },
+            project_refs[:top_k],
+        )
     fused = weighted_rrf_fuse(
         project_hits=_project_hits_for_joint_recall(project_refs),
         wiki_hits=[hit for hit in wiki_hits if isinstance(hit, dict)],
@@ -1901,6 +2578,7 @@ async def _build_hybrid_evidence_refs(
     query: str,
     top_k: int,
     all_chunks: list[dict[str, Any]],
+    chunk_store: dict[str, list[dict[str, Any]]],
 ) -> tuple[list[EvidencePackReferencePayload], EvidenceRetrievalDiagnosticsPayload] | None:
     """Try the existing hybrid retriever and return refs plus diagnostics.
 
@@ -1946,7 +2624,13 @@ async def _build_hybrid_evidence_refs(
         rerank_active = rerank_active or "rerank" in labels or hit.get("rerank_score") is not None
         rerank_fallback = rerank_fallback or "rerank_fallback" in labels
         score = float(hit.get("hybrid_score") or hit.get("rerank_score") or 0.0)
-        search_ref = _chunk_to_search_ref(project_id, score, hit)
+        search_ref = _chunk_to_search_ref(
+            project_id,
+            score,
+            hit,
+            chunk_store=chunk_store,
+            query=query,
+        )
         evidence_ref = _search_ref_to_evidence_ref(project_id, search_ref)
         if evidence_ref is None:
             continue
@@ -1955,7 +2639,7 @@ async def _build_hybrid_evidence_refs(
         evidence_refs.append(evidence_ref)
         if len(evidence_refs) >= top_k:
             break
-    if not evidence_refs or not (dense_used or rerank_active):
+    if not evidence_refs or not (dense_used or rerank_active or rerank_fallback):
         return None
 
     retrieval_method: Literal["hybrid", "hybrid_rerank"] = "hybrid_rerank" if rerank_active else "hybrid"
@@ -1963,11 +2647,16 @@ async def _build_hybrid_evidence_refs(
     rerank_status: Literal["active", "skipped", "unavailable"] = (
         "active" if rerank_active and not rerank_fallback else "skipped"
     )
+    fallback_reason = ""
+    if rerank_fallback:
+        fallback_reason = "Hybrid retrieval returned refs from rerank fallback; no active rerank model result was available."
+    elif rerank_status != "active":
+        fallback_reason = "Hybrid retrieval ran without an active rerank result."
     diagnostics = EvidenceRetrievalDiagnosticsPayload(
         retrieval_method=retrieval_method,
         embedding_status=embedding_status,
         rerank_status=rerank_status,
-        fallback_reason="" if rerank_status == "active" else "Hybrid retrieval ran without an active rerank result.",
+        fallback_reason=fallback_reason,
         project_weight=1.0,
         wiki_weight=0.0,
         reasoning_trace=[
@@ -1982,6 +2671,77 @@ async def _build_hybrid_evidence_refs(
         ],
     )
     return evidence_refs, diagnostics
+
+
+def _protect_visual_evidence_refs(
+    *,
+    project_id: str,
+    query: str,
+    top_k: int,
+    all_chunks: list[dict[str, Any]],
+    chunk_store: dict[str, list[dict[str, Any]]],
+    evidence_refs: list[EvidencePackReferencePayload],
+    diagnostics: EvidenceRetrievalDiagnosticsPayload,
+) -> list[EvidencePackReferencePayload]:
+    """Ensure visual evidence packs keep at least one pixel-backed ref."""
+
+    if (
+        not _search_refs_visual_query_enabled(query)
+        or top_k < 1
+        or not all_chunks
+        or any(_evidence_ref_image_assets(ref) for ref in evidence_refs)
+    ):
+        return evidence_refs[:top_k]
+
+    selected = _select_search_ref_chunks(all_chunks, query, top_k=max(top_k, 5))
+    protected_refs: list[EvidencePackReferencePayload] = []
+    seen_ref_ids = {ref.ref_id for ref in evidence_refs}
+    for score, chunk in selected:
+        search_ref = _chunk_to_search_ref(
+            project_id,
+            score,
+            chunk,
+            chunk_store=chunk_store,
+            query=query,
+        )
+        visual_ref = _search_ref_to_evidence_ref(project_id, search_ref)
+        if visual_ref is None or visual_ref.ref_id in seen_ref_ids:
+            continue
+        if not _evidence_ref_image_assets(visual_ref):
+            continue
+        if "visual_image_asset" not in visual_ref.source_labels:
+            visual_ref.source_labels = [*visual_ref.source_labels, "visual_image_asset"][:16]
+        protected_refs.append(visual_ref)
+        seen_ref_ids.add(visual_ref.ref_id)
+        break
+    if not protected_refs:
+        return evidence_refs[:top_k]
+
+    merged: list[EvidencePackReferencePayload] = []
+    protected_ref_ids = {ref.ref_id for ref in protected_refs}
+    for ref in evidence_refs:
+        if ref.ref_id in protected_ref_ids:
+            continue
+        if len(merged) >= max(top_k - len(protected_refs), 0):
+            break
+        merged.append(ref)
+    merged.extend(protected_refs)
+    for ref in evidence_refs:
+        if len(merged) >= top_k:
+            break
+        if ref.ref_id in {item.ref_id for item in merged}:
+            continue
+        merged.append(ref)
+
+    diagnostics.reasoning_trace = [
+        *diagnostics.reasoning_trace,
+        "Protected one pixel-backed visual ref for an image/appearance evidence query.",
+    ][:16]
+    diagnostics.notes = [
+        *diagnostics.notes,
+        "Visual protected refs come from chunk/figure assets and do not imply rerank ran on that ref.",
+    ][:12]
+    return merged[:top_k]
 
 
 def _lexical_evidence_diagnostics() -> EvidenceRetrievalDiagnosticsPayload:
@@ -2335,6 +3095,36 @@ def _evidence_pack_visual_intent(query: str) -> dict[str, Any]:
     }
 
 
+def _evidence_pack_gate_config_hash() -> str:
+    """Return the content-derived identifier for the integrity-gate policy."""
+
+    policy = {
+        "schema_version": "scholar_ai_evidence_pack_integrity_gate_v1",
+        "policy_version": _EVIDENCE_PACK_INTEGRITY_GATE_POLICY_VERSION,
+        "checks": [
+            "refs_present",
+            "source_locators",
+            "citation_identity",
+            "visual_image_evidence",
+            "image_asset_quality",
+        ],
+        "visual_terms": {
+            key: list(values)
+            for key, values in sorted(_EVIDENCE_PACK_VISUAL_TERMS.items())
+        },
+        "image_asset_keys": sorted(_EVIDENCE_PACK_IMAGE_ASSET_KEYS),
+        "whole_page_asset_patterns": [
+            "screenshot",
+            "whole_page",
+            "full_page",
+            "page_<number>.<image>",
+            "p<number>_page.<image>",
+        ],
+    }
+    serialized = json.dumps(policy, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return f"sha256:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
+
+
 def _looks_like_image_asset_key(key: str) -> bool:
     """Return whether a metadata key is allowed to contribute image paths."""
 
@@ -2537,8 +3327,26 @@ def _build_evidence_pack_integrity_gate(
     project_id = request.project_id.strip()
     if not project_id:
         raise ValueError("project_id must be non-empty")
+    query = request.query.strip()
     refs = list(request.evidence_refs)
-    visual_intent = _evidence_pack_visual_intent(request.query)
+    retrieval_diagnostics = request.retrieval_diagnostics
+    restored_pack: EvidencePackBuildResponse | None = None
+    restore_status = "not_requested"
+    if request.evidence_pack_ref:
+        restore_status = "supplied_refs" if refs else "not_found"
+    if not refs and request.evidence_pack_ref:
+        restored_pack = _restore_evidence_pack_build(
+            project_id=project_id,
+            query=query,
+            evidence_pack_ref=request.evidence_pack_ref,
+        )
+        if restored_pack is not None:
+            refs = list(restored_pack.evidence_refs)
+            query = query or restored_pack.query
+            if retrieval_diagnostics is None:
+                retrieval_diagnostics = restored_pack.retrieval_diagnostics
+            restore_status = "restored"
+    visual_intent = _evidence_pack_visual_intent(query)
 
     image_assets_by_ref: dict[str, list[str]] = {
         ref.ref_id: _evidence_ref_image_assets(ref)
@@ -2591,10 +3399,14 @@ def _build_evidence_pack_integrity_gate(
         "sample_duplicate_image_assets": duplicate_image_assets,
         "sample_whole_page_image_ref_ids": whole_page_ref_ids[:8],
     }
-    if request.retrieval_diagnostics is not None:
-        summary["retrieval_method"] = request.retrieval_diagnostics.retrieval_method
-        summary["rerank_status"] = request.retrieval_diagnostics.rerank_status
-        summary["embedding_status"] = request.retrieval_diagnostics.embedding_status
+    if request.evidence_pack_ref:
+        summary["evidence_pack_restore_status"] = restore_status
+    if retrieval_diagnostics is not None:
+        summary["retrieval_method"] = retrieval_diagnostics.retrieval_method
+        summary["rerank_status"] = retrieval_diagnostics.rerank_status
+        summary["embedding_status"] = retrieval_diagnostics.embedding_status
+    gate_config_hash = _evidence_pack_gate_config_hash()
+    summary["gate_config_hash"] = gate_config_hash
 
     checks: list[EvidencePackIntegrityCheckPayload] = []
     checks.append(
@@ -2734,9 +3546,10 @@ def _build_evidence_pack_integrity_gate(
     )
     return EvidencePackIntegrityGateResponse(
         generated_at=datetime.now(timezone.utc).isoformat(),
+        gate_config_hash=gate_config_hash,
         project_id=project_id,
         evidence_pack_ref=request.evidence_pack_ref,
-        query=request.query,
+        query=query,
         status=status,
         visual_intent=visual_intent,
         summary=summary,
@@ -2749,6 +3562,8 @@ def _build_evidence_pack_integrity_gate(
                 "/api/evidence-pack/integrity-gate",
             ],
             "read_only": True,
+            "gate_config_hash": gate_config_hash,
+            "restored_from_persisted_build": restored_pack is not None,
             "raw_chunk_text_exposed": False,
             "private_chain_of_thought_exposed": False,
             "policy": "Validate the supplied evidence pack, not workflow export readiness.",
@@ -2773,10 +3588,25 @@ async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePack
     if not query:
         raise HTTPException(status_code=422, detail="query must be non-empty")
 
-    chunk_store = _resources_router._load_chunk_store(project_id)
-    all_chunks = _flatten_chunk_store_for_search_refs(chunk_store)
-    if _search_refs_visual_query_enabled(query):
+    visual_query = _search_refs_visual_query_enabled(query)
+    fast_selection = None if visual_query else _select_search_ref_chunks_fts_first(
+        project_id=project_id,
+        query=query,
+        top_k=request.top_k,
+    )
+    preselected_chunks: list[tuple[float, dict[str, Any]]] | None = None
+    if fast_selection is None or not fast_selection[1]:
+        # A valid FTS index can legitimately return no rows. The evidence-pack
+        # contract still needs to distinguish "no query hit" from "no chunks";
+        # rescan the truth store once so lexical fallback and outcome metadata
+        # remain accurate. Query hits keep the bounded material-only path.
+        chunk_store = _resources_router._load_chunk_store(project_id)
+        all_chunks = _flatten_chunk_store_for_search_refs(chunk_store)
+    else:
+        chunk_store, all_chunks, preselected_chunks = fast_selection
+    if visual_query:
         all_chunks = _augment_chunks_with_project_figure_assets(project_id, chunk_store, all_chunks)
+        all_chunks = _augment_chunks_with_linked_visual_assets(chunk_store, all_chunks)
     evidence_refs: list[EvidencePackReferencePayload] = []
     positive_hit_count = 0
     retrieval_method: Literal["lexical", "hybrid", "hybrid_rerank"] = "lexical"
@@ -2788,24 +3618,42 @@ async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePack
             query=query,
             top_k=request.top_k,
             all_chunks=all_chunks,
+            chunk_store=chunk_store,
         )
         if hybrid_result is not None:
             evidence_refs, diagnostics = hybrid_result
+            evidence_refs = _protect_visual_evidence_refs(
+                project_id=project_id,
+                query=query,
+                top_k=request.top_k,
+                all_chunks=all_chunks,
+                chunk_store=chunk_store,
+                evidence_refs=evidence_refs,
+                diagnostics=diagnostics,
+            )
             retrieval_method = diagnostics.retrieval_method
             rerank_status = diagnostics.rerank_status
             positive_hit_count = len(evidence_refs)
         else:
             scored = _resources_router._score_chunks_for_query(all_chunks, query)
             positive_hit_count = len([score for score, _chunk in scored if score > 0])
-            selected_chunks = _select_project_evidence_chunks(
-                project_id=project_id,
-                all_chunks=all_chunks,
-                query=query,
-                top_k=request.top_k,
-            )
+            selected_chunks = preselected_chunks
+            if selected_chunks is None:
+                selected_chunks = _select_project_evidence_chunks(
+                    project_id=project_id,
+                    all_chunks=all_chunks,
+                    query=query,
+                    top_k=request.top_k,
+                )
             positive_hit_count = max(positive_hit_count, len(selected_chunks))
             for score, chunk in selected_chunks:
-                search_ref = _chunk_to_search_ref(project_id, score, chunk, chunk_store=chunk_store)
+                search_ref = _chunk_to_search_ref(
+                    project_id,
+                    score,
+                    chunk,
+                    chunk_store=chunk_store,
+                    query=query,
+                )
                 evidence_ref = _search_ref_to_evidence_ref(project_id, search_ref)
                 if evidence_ref is not None:
                     evidence_refs.append(evidence_ref)
@@ -2836,7 +3684,7 @@ async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePack
         qrels_status=qrels_status,
     )
 
-    return EvidencePackBuildResponse(
+    response = EvidencePackBuildResponse(
         evidence_pack_ref=_evidence_pack_ref(project_id, query, section_id),
         project_id=project_id,
         query=query,
@@ -2849,6 +3697,27 @@ async def build_evidence_pack(request: EvidencePackBuildRequest) -> EvidencePack
         outcome=outcome,
         evidence_refs=evidence_refs,
     )
+    _remember_evidence_pack_build(response)
+    return response
+
+
+@router.post("/api/evidence-pack/qrels-review-bundle", response_model=EvidenceQrelsReviewBundleResponse)
+async def build_evidence_pack_qrels_review_bundle(
+    request: EvidenceQrelsReviewBundleRequest,
+) -> EvidenceQrelsReviewBundleResponse:
+    """Generate a candidate-only qrels review bundle from a selected pack."""
+
+    pack = _restore_evidence_pack_build(
+        project_id=request.project_id,
+        query=request.query,
+        evidence_pack_ref=request.evidence_pack_ref,
+    )
+    if pack is None:
+        raise HTTPException(status_code=404, detail="evidence_pack_ref could not be restored for this project/query")
+    try:
+        return _build_qrels_review_bundle_response(request, pack)
+    except (FileNotFoundError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/api/evidence-pack/integrity-gate", response_model=EvidencePackIntegrityGateResponse)

@@ -102,9 +102,25 @@ def _load_dotenv_into_environ(env_path: Path) -> int:
     return loaded
 
 
-_DOTENV_LOADED_KEYS = _load_dotenv_into_environ(ROOT / ".env")
-if _DOTENV_LOADED_KEYS:
-    terminal_print("启动器", f".env 已加载 {_DOTENV_LOADED_KEYS} 项 (shell 已存在的 key 不覆盖)", level="ok")
+_STARTUP_DOTENV_LOADED_KEYS: int | None = None
+
+
+def _load_startup_dotenv_once() -> int:
+    """Load the repo desktop dotenv only during real launcher startup.
+
+    Why:
+        `start_desktop` is imported by tests and MCP helpers for pure utility
+        functions. Loading provider credentials at import time pollutes the
+        current Python process and can change unrelated retrieval behavior.
+    """
+
+    global _STARTUP_DOTENV_LOADED_KEYS
+    if _STARTUP_DOTENV_LOADED_KEYS is not None:
+        return _STARTUP_DOTENV_LOADED_KEYS
+    _STARTUP_DOTENV_LOADED_KEYS = _load_dotenv_into_environ(ROOT / ".env")
+    if _STARTUP_DOTENV_LOADED_KEYS:
+        terminal_print("启动器", f".env 已加载 {_STARTUP_DOTENV_LOADED_KEYS} 项 (shell 已存在的 key 不覆盖)", level="ok")
+    return _STARTUP_DOTENV_LOADED_KEYS
 
 DEFAULT_PORT = 8000
 WINDOW_TITLE = "文献助手"
@@ -696,6 +712,8 @@ def _normalize_desktop_initial_path(value: str | None) -> str:
         raise ValueError("desktop initial path must not contain a fragment")
     if not parsed.path.startswith("/") or parsed.path.startswith("//"):
         raise ValueError("desktop initial path must start with a single slash")
+    if parsed.path == "/agent-sidebar" or parsed.path.startswith("/agent-sidebar/"):
+        raise ValueError("desktop initial path must not use the Codex agent-sidebar route")
     parts = [part for part in parsed.path.split("/") if part]
     if any(part in {".", ".."} for part in parts):
         raise ValueError("desktop initial path must not contain traversal segments")
@@ -865,6 +883,8 @@ def main() -> None:
     if not _acquire_desktop_single_instance():
         terminal_print("启动器", "已有文献助手桌面实例在运行，本次启动退出", level="warn")
         return
+
+    _load_startup_dotenv_once()
 
     dpi_aware = _enable_windows_dpi_awareness()
     import webview

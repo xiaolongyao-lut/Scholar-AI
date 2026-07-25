@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -18,6 +19,7 @@ from literature_assistant.core.wiki.source_registry import derive_chunk_id
 
 _MANIFEST_DRILLDOWN_LIMIT = 10
 _SOURCE_MANIFEST_ENTRIES_KEY = "source_manifest_entries_json"
+_FTS5_QUERY_TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
 
 
 @dataclass(frozen=True)
@@ -270,27 +272,7 @@ class WikiQueryIndex:
         conn = self._get_conn()
         span_error: BaseException | None = None
         try:
-            cursor = conn.execute(
-                """
-                SELECT page_path, title, snippet(wiki_pages_fts, 2, '<b>', '</b>', '...', 64) as snippet, rank
-                FROM wiki_pages_fts
-                WHERE wiki_pages_fts MATCH ?
-                ORDER BY rank
-                LIMIT ?
-                """,
-                (query, limit),
-            )
-            results: list[WikiSearchResult] = []
-            for row in cursor:
-                results.append(
-                    WikiSearchResult(
-                        page_path=Path(row["page_path"]),
-                        title=row["title"],
-                        score=-row["rank"],
-                        snippet=row["snippet"],
-                        source="wiki_fts",
-                    )
-                )
+            results = self._search_with_fts5_query(conn, _fts5_safe_and_query(query), limit)
             if self.observability_sink is not None:
                 self.observability_sink.record_metric(
                     "wiki.query.index.hit_count",
@@ -308,6 +290,37 @@ class WikiQueryIndex:
                     span.__exit__(None, None, None)
                 else:
                     span.__exit__(type(span_error), span_error, span_error.__traceback__)
+
+    @staticmethod
+    def _search_with_fts5_query(
+        conn: sqlite3.Connection,
+        fts_query: str,
+        limit: int,
+    ) -> list[WikiSearchResult]:
+        if not fts_query.strip():
+            return []
+        cursor = conn.execute(
+            """
+            SELECT page_path, title, snippet(wiki_pages_fts, 2, '<b>', '</b>', '...', 64) as snippet, rank
+            FROM wiki_pages_fts
+            WHERE wiki_pages_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+            """,
+            (fts_query, limit),
+        )
+        results: list[WikiSearchResult] = []
+        for row in cursor:
+            results.append(
+                WikiSearchResult(
+                    page_path=Path(row["page_path"]),
+                    title=row["title"],
+                    score=-row["rank"],
+                    snippet=row["snippet"],
+                    source="wiki_fts",
+                )
+            )
+        return results
 
     def get_status(self, page_store: WikiPageStore | None = None) -> WikiRetrievalStatus:
         """Return retrieval index state, optionally checked against source pages.
@@ -512,6 +525,31 @@ def _parse_optional_int(value: str) -> int | None:
         return int(normalized)
     except ValueError:
         return None
+
+
+def _fts5_query_tokens(query: str) -> list[str]:
+    """Return deduplicated tokens that are safe to quote in FTS5 MATCH."""
+
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for match in _FTS5_QUERY_TOKEN_RE.finditer(str(query or "")):
+        token = match.group(0).strip()
+        if not token:
+            continue
+        key = token.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        tokens.append(token)
+    return tokens[:32]
+
+
+def _fts5_quote_token(token: str) -> str:
+    return '"' + token.replace('"', '""') + '"'
+
+
+def _fts5_safe_and_query(query: str) -> str:
+    return " ".join(_fts5_quote_token(token) for token in _fts5_query_tokens(query))
 
 
 def _encode_manifest_entries(manifest: WikiSourceManifest) -> str:

@@ -2,10 +2,11 @@
 
 import json
 import os
+import re
 import time
 from pathlib import Path
-from typing import Any, Protocol
-from urllib.parse import quote
+from typing import Any, Literal, Protocol
+from urllib.parse import quote, urlencode, urlparse
 from uuid import uuid4
 
 from ..audit import AuditLog
@@ -20,6 +21,9 @@ SUPPORTED_SKILL_PACKAGE_IDS = frozenset({"academic-english-discourse"})
 
 class BackendGetClient(Protocol):
     """Minimal HTTP client shape used by runtime tools."""
+
+    def current_base_url(self) -> str | None:
+        """Return the active backend base URL when the client can discover it."""
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Return a structured JSON response."""
@@ -72,6 +76,100 @@ class RuntimeTools:
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.config_status", {}, result, started, "/health")
 
+    def agent_sidebar_url(
+        self,
+        project_id: str | None = None,
+        conversation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Return the current Codex side-browser URL for the Scholar AI bridge.
+
+        Args:
+            project_id: Optional Scholar AI project id to preselect.
+            conversation_id: Optional saved answer receipt/conversation id.
+
+        Returns:
+            A read-only URL envelope based on the live desktop/backend runtime
+            port. The tool does not launch a new backend or duplicate answer
+            state.
+        """
+
+        started = time.perf_counter()
+        normalized_project_id = self._optional_identifier(project_id, "project_id", max_chars=160)
+        normalized_conversation_id = self._optional_identifier(
+            conversation_id,
+            "conversation_id",
+            max_chars=220,
+        )
+        args = {
+            "project_id": normalized_project_id,
+            "conversation_id": normalized_conversation_id,
+        }
+        endpoint = "local:runtime_descriptor:/agent-sidebar"
+        base_url = self.backend.current_base_url()
+        if not base_url:
+            result = safe_result(
+                self._agent_sidebar_url_payload(
+                    base_url=None,
+                    url=None,
+                    project_id=normalized_project_id,
+                    conversation_id=normalized_conversation_id,
+                    backend=None,
+                ),
+                error=True,
+                error_code="backend_unavailable",
+                message=(
+                    "Scholar AI backend is not attached. Start 文献助手 first, "
+                    "then reopen the Codex side browser URL returned by this tool."
+                ),
+            )
+            return self._finish("literature.agent_sidebar_url", args, result, started, endpoint)
+        if not self._is_loopback_base_url(base_url):
+            result = safe_result(
+                self._agent_sidebar_url_payload(
+                    base_url=base_url,
+                    url=None,
+                    project_id=normalized_project_id,
+                    conversation_id=normalized_conversation_id,
+                    backend=None,
+                ),
+                error=True,
+                error_code="backend_not_loopback",
+                message="Refusing to build an agent sidebar URL for a non-loopback backend.",
+            )
+            return self._finish("literature.agent_sidebar_url", args, result, started, endpoint)
+
+        backend_status = self._wrap_backend_result(self.backend.get("/health"))
+        if backend_status.get("is_error") is True:
+            result = safe_result(
+                self._agent_sidebar_url_payload(
+                    base_url=base_url,
+                    url=None,
+                    project_id=normalized_project_id,
+                    conversation_id=normalized_conversation_id,
+                    backend=backend_status,
+                ),
+                error=True,
+                error_code=backend_status.get("error_code") or "backend_unavailable",
+                message=backend_status.get("message") or "Scholar AI backend health check failed.",
+            )
+            return self._finish("literature.agent_sidebar_url", args, result, started, endpoint)
+
+        url = self._build_agent_sidebar_url(
+            base_url=base_url,
+            project_id=normalized_project_id,
+            conversation_id=normalized_conversation_id,
+        )
+        result = safe_result(
+            self._agent_sidebar_url_payload(
+                base_url=base_url,
+                url=url,
+                project_id=normalized_project_id,
+                conversation_id=normalized_conversation_id,
+                backend=backend_status,
+            )
+        )
+        return self._finish("literature.agent_sidebar_url", args, result, started, endpoint)
+
     def launch_desktop(
         self,
         initial_path: str | None = None,
@@ -103,6 +201,9 @@ class RuntimeTools:
                 raise ValueError("initial_path must be a root-relative path starting with /")
             if "\\" in normalized_initial_path or "#" in normalized_initial_path:
                 raise ValueError("initial_path must not contain backslashes or fragments")
+            parsed_initial_path = urlparse(normalized_initial_path)
+            if parsed_initial_path.path == "/agent-sidebar" or parsed_initial_path.path.startswith("/agent-sidebar/"):
+                raise ValueError("initial_path must not use the Codex agent-sidebar route")
         args = {
             "initial_path": normalized_initial_path,
             "startup_timeout_sec": startup_timeout_sec,
@@ -334,6 +435,288 @@ class RuntimeTools:
         if result.get("is_error") is not True:
             result = self._search_refs_result_for_mcp(result)
         return self._finish("literature.search_refs", args, result, started, endpoint)
+
+    def acquisition_status(
+        self,
+        project_id: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Read allowlisted sources plus bounded download jobs and access gates.
+
+        Args:
+            project_id: Optional Scholar AI project id used to filter jobs and gates.
+            limit: Maximum jobs and gates returned, 1 through 500.
+        """
+
+        started = time.perf_counter()
+        normalized_project_id = (
+            self._acquisition_identifier(project_id, "project_id")
+            if project_id is not None
+            else None
+        )
+        bounded_limit = self._bounded_int(limit, "limit", minimum=1, maximum=100)
+        params: dict[str, Any] = {"limit": bounded_limit}
+        if normalized_project_id is not None:
+            params["project_id"] = normalized_project_id
+        endpoint = "/api/acquisition/status"
+        result = self._wrap_backend_result(self.backend.get(endpoint, params=params))
+        return self._finish(
+            "literature.acquisition_status",
+            {"project_id": normalized_project_id, "limit": bounded_limit},
+            result,
+            started,
+            endpoint,
+        )
+
+    def acquisition_search(
+        self,
+        project_id: str,
+        query: str,
+        sources: list[str] | None = None,
+        max_results: int = 20,
+        year_from: int | None = None,
+        year_to: int | None = None,
+    ) -> dict[str, Any]:
+        """Run one explicit bounded metadata search against allowlisted sources.
+
+        Args:
+            project_id: Existing Scholar AI project id.
+            query: Literature metadata query, at most 1000 characters.
+            sources: One through eight allowlisted source ids; defaults to arXiv.
+            max_results: Maximum merged candidates, 1 through 200.
+            year_from: Optional inclusive lower publication year, 1800 through 2200.
+            year_to: Optional inclusive upper publication year, 1800 through 2200.
+        """
+
+        started = time.perf_counter()
+        normalized_project_id = self._acquisition_identifier(project_id, "project_id")
+        normalized_query = self._bounded_text(query, "query", max_chars=1000)
+        normalized_sources = self._bounded_text_list(
+            ["arxiv"] if sources is None else sources,
+            "sources",
+            maximum=8,
+            max_chars=64,
+        )
+        normalized_sources = list(dict.fromkeys(normalized_sources))
+        if not normalized_sources:
+            raise ValueError("sources must contain at least one source id")
+        if any(not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", item) for item in normalized_sources):
+            raise ValueError("sources contains an unsupported source id")
+        bounded_max_results = self._bounded_int(max_results, "max_results", minimum=1, maximum=200)
+        normalized_year_from = (
+            self._bounded_int(year_from, "year_from", minimum=1800, maximum=2200)
+            if year_from is not None
+            else None
+        )
+        normalized_year_to = (
+            self._bounded_int(year_to, "year_to", minimum=1800, maximum=2200)
+            if year_to is not None
+            else None
+        )
+        if (
+            normalized_year_from is not None
+            and normalized_year_to is not None
+            and normalized_year_to < normalized_year_from
+        ):
+            raise ValueError("year_to must be greater than or equal to year_from")
+        payload: dict[str, Any] = {
+            "project_id": normalized_project_id,
+            "query": normalized_query,
+            "sources": normalized_sources,
+            "max_results": bounded_max_results,
+        }
+        if normalized_year_from is not None:
+            payload["year_from"] = normalized_year_from
+        if normalized_year_to is not None:
+            payload["year_to"] = normalized_year_to
+        endpoint = "/api/acquisition/search"
+        result = self._acquisition_search_run_result(
+            self.backend.post_json(endpoint, payload=payload)
+        )
+        return self._finish(
+            "literature.acquisition_search",
+            {
+                "project_id": normalized_project_id,
+                "query_preview": normalized_query[:200],
+                "sources": normalized_sources,
+                "max_results": bounded_max_results,
+                "year_from": normalized_year_from,
+                "year_to": normalized_year_to,
+            },
+            result,
+            started,
+            endpoint,
+        )
+
+    def acquisition_download_queue(
+        self,
+        project_id: str,
+        candidate_id: str,
+        access_evidence_id: str,
+        max_bytes: int = 100 * 1024 * 1024,
+    ) -> dict[str, Any]:
+        """Queue one PDF only from exact allowlisted open-access evidence."""
+
+        started = time.perf_counter()
+        payload = {
+            "project_id": self._acquisition_identifier(project_id, "project_id"),
+            "candidate_id": self._acquisition_identifier(candidate_id, "candidate_id"),
+            "access_evidence_id": self._acquisition_identifier(
+                access_evidence_id, "access_evidence_id"
+            ),
+            "max_bytes": self._bounded_int(
+                max_bytes,
+                "max_bytes",
+                minimum=4096,
+                maximum=100 * 1024 * 1024,
+            ),
+        }
+        endpoint = "/api/acquisition/downloads"
+        result = self._wrap_backend_result(self.backend.post_json(endpoint, payload=payload))
+        return self._finish(
+            "literature.acquisition_download_queue",
+            payload,
+            result,
+            started,
+            endpoint,
+        )
+
+    def acquisition_download_run(self, job_id: str) -> dict[str, Any]:
+        """Explicitly run or retry one queued download job."""
+
+        started = time.perf_counter()
+        normalized_job_id = self._acquisition_identifier(job_id, "job_id")
+        endpoint = f"/api/acquisition/downloads/{quote(normalized_job_id, safe='')}/run"
+        result = self._wrap_backend_result(self.backend.post_json(endpoint, payload={}))
+        return self._finish(
+            "literature.acquisition_download_run",
+            {"job_id": normalized_job_id},
+            result,
+            started,
+            endpoint,
+        )
+
+    def acquisition_download_control(
+        self,
+        job_id: str,
+        action: Literal["pause", "resume", "cancel"],
+    ) -> dict[str, Any]:
+        """Explicitly pause, resume, or cancel one durable download job."""
+
+        started = time.perf_counter()
+        normalized_job_id = self._acquisition_identifier(job_id, "job_id")
+        if action not in {"pause", "resume", "cancel"}:
+            raise ValueError("action must be pause, resume, or cancel")
+        endpoint = f"/api/acquisition/downloads/{quote(normalized_job_id, safe='')}/control"
+        result = self._wrap_backend_result(
+            self.backend.post_json(endpoint, payload={"action": action})
+        )
+        return self._finish(
+            "literature.acquisition_download_control",
+            {"job_id": normalized_job_id, "action": action},
+            result,
+            started,
+            endpoint,
+        )
+
+    def acquisition_search_run(
+        self,
+        run_id: str,
+        candidate_offset: int = 0,
+        candidate_limit: int = 10,
+    ) -> dict[str, Any]:
+        """Read one compact page from a durable search run.
+
+        Args:
+            run_id: Durable acquisition search-run id.
+            candidate_offset: Zero-based candidate offset, 0 through 199.
+            candidate_limit: Maximum compact candidates returned, 1 through 10.
+        """
+
+        started = time.perf_counter()
+        normalized_run_id = self._acquisition_identifier(run_id, "run_id")
+        bounded_offset = self._bounded_int(
+            candidate_offset,
+            "candidate_offset",
+            minimum=0,
+            maximum=199,
+        )
+        bounded_limit = self._bounded_int(
+            candidate_limit,
+            "candidate_limit",
+            minimum=1,
+            maximum=10,
+        )
+        endpoint = f"/api/acquisition/search-runs/{quote(normalized_run_id, safe='')}"
+        result = self._acquisition_search_run_result(
+            self.backend.get(endpoint),
+            candidate_offset=bounded_offset,
+            candidate_limit=bounded_limit,
+        )
+        return self._finish(
+            "literature.acquisition_search_run",
+            {
+                "run_id": normalized_run_id,
+                "candidate_offset": bounded_offset,
+                "candidate_limit": bounded_limit,
+            },
+            result,
+            started,
+            endpoint,
+        )
+
+    def acquisition_gate_resolve(
+        self,
+        gate_id: str,
+        confirm_user_completed: bool = False,
+    ) -> dict[str, Any]:
+        """Requeue a gate only after the user confirms the visible access step is complete."""
+
+        started = time.perf_counter()
+        normalized_gate_id = self._acquisition_identifier(gate_id, "gate_id")
+        if confirm_user_completed is not True:
+            raise ValueError(
+                "confirm_user_completed must be true after the user explicitly confirms the visible access step"
+            )
+        endpoint = f"/api/acquisition/gates/{quote(normalized_gate_id, safe='')}/resolve"
+        result = self._wrap_backend_result(self.backend.post_json(endpoint, payload={}))
+        return self._finish(
+            "literature.acquisition_gate_resolve",
+            {"gate_id": normalized_gate_id, "confirm_user_completed": True},
+            result,
+            started,
+            endpoint,
+        )
+
+    def acquisition_artifact_import(self, artifact_id: str) -> dict[str, Any]:
+        """Import one validated PDF through the existing material/chunk/index path."""
+
+        started = time.perf_counter()
+        normalized_artifact_id = self._acquisition_identifier(artifact_id, "artifact_id")
+        endpoint = f"/api/acquisition/artifacts/{quote(normalized_artifact_id, safe='')}/import"
+        result = self._wrap_backend_result(self.backend.post_json(endpoint, payload={}))
+        return self._finish(
+            "literature.acquisition_artifact_import",
+            {"artifact_id": normalized_artifact_id},
+            result,
+            started,
+            endpoint,
+        )
+
+    def acquisition_import_receipt(self, receipt_id: str) -> dict[str, Any]:
+        """Read one durable import receipt without repeating ingestion."""
+
+        started = time.perf_counter()
+        normalized_receipt_id = self._acquisition_identifier(receipt_id, "receipt_id")
+        endpoint = f"/api/acquisition/receipts/{quote(normalized_receipt_id, safe='')}"
+        result = self._wrap_backend_result(self.backend.get(endpoint))
+        return self._finish(
+            "literature.acquisition_import_receipt",
+            {"receipt_id": normalized_receipt_id},
+            result,
+            started,
+            endpoint,
+        )
 
     def academic_english_status(self) -> dict[str, Any]:
         """Return academic-English knowledge manifest and artifact status."""
@@ -861,6 +1244,42 @@ class RuntimeTools:
         backend_result = self.backend.post_json(endpoint, payload=payload)
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.evidence_pack_build", args, result, started, endpoint)
+
+    def qrels_review_bundle(
+        self,
+        project_id: str,
+        evidence_pack_ref: str,
+        query: str | None = None,
+        max_chunks_per_section: int = 5,
+    ) -> dict[str, Any]:
+        """Generate a candidate-only qrels review bundle from an evidence pack."""
+
+        started = time.perf_counter()
+        project_id = self._require_non_empty(project_id, "project_id")
+        evidence_pack_ref = self._bounded_text(evidence_pack_ref, "evidence_pack_ref", max_chars=200)
+        max_chunks_per_section = self._bounded_int(
+            max_chunks_per_section,
+            "max_chunks_per_section",
+            minimum=1,
+            maximum=50,
+        )
+        payload: dict[str, Any] = {
+            "project_id": project_id,
+            "evidence_pack_ref": evidence_pack_ref,
+            "max_chunks_per_section": max_chunks_per_section,
+        }
+        if query is not None and str(query).strip():
+            payload["query"] = self._bounded_text(str(query), "query", max_chars=4096)
+        args = {
+            "project_id": project_id,
+            "evidence_pack_ref": evidence_pack_ref,
+            "query": str(payload.get("query") or "")[:200],
+            "max_chunks_per_section": max_chunks_per_section,
+        }
+        endpoint = "/api/evidence-pack/qrels-review-bundle"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.qrels_review_bundle", args, result, started, endpoint)
 
     def project_scan_folder(
         self,
@@ -1467,6 +1886,129 @@ class RuntimeTools:
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.chat_ask", args, result, started, endpoint)
 
+    def chat_ask_persisting(
+        self,
+        query: str,
+        project_id: str,
+        *,
+        session_id: str | None = None,
+        tier: str = "balanced",
+        answer_origin: str = "internal_smartread",
+        generated_in: str = "mcp_sidebar",
+        evidence_pack_ref: str | None = None,
+    ) -> dict[str, Any]:
+        """Call the persisting SmartRead chat path used by saved sidebar answers."""
+
+        started = time.perf_counter()
+        query = self._require_non_empty(query, "query")
+        project_id = self._require_non_empty(project_id, "project_id")
+        normalized_tier = self._smart_read_backend_tier(tier)
+        normalized_origin = str(answer_origin or "internal_smartread").strip()
+        if normalized_origin not in {"internal_smartread", "external_agent"}:
+            raise ValueError("answer_origin must be internal_smartread or external_agent")
+        normalized_generated_in = str(generated_in or "mcp_sidebar").strip()
+        if normalized_generated_in not in {"smart_read", "mcp_sidebar"}:
+            raise ValueError("generated_in must be smart_read or mcp_sidebar")
+        payload: dict[str, Any] = {
+            "query": query,
+            "project_id": project_id,
+            "tier": normalized_tier,
+            "answer_origin": normalized_origin,
+            "generated_in": normalized_generated_in,
+        }
+        args: dict[str, Any] = {
+            "query_preview": query[:200],
+            "project_id": project_id,
+            "tier": normalized_tier,
+            "answer_origin": normalized_origin,
+            "generated_in": normalized_generated_in,
+        }
+        if isinstance(session_id, str) and session_id.strip():
+            payload["session_id"] = self._bounded_text(session_id, "session_id", max_chars=200)
+            args["session_id"] = payload["session_id"]
+        if isinstance(evidence_pack_ref, str) and evidence_pack_ref.strip():
+            payload["evidence_pack_ref"] = self._bounded_text(evidence_pack_ref, "evidence_pack_ref", max_chars=200)
+            args["evidence_pack_ref"] = payload["evidence_pack_ref"]
+        endpoint = "/api/chat"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.chat_ask_persisting", args, result, started, endpoint)
+
+    def answer_receipt_list(self, project_id: str, limit: int = 100) -> dict[str, Any]:
+        """List project-scoped saved answer receipts through the backend."""
+
+        started = time.perf_counter()
+        project_id = self._require_non_empty(project_id, "project_id")
+        limit = self._bounded_int(limit, "limit", minimum=1, maximum=500)
+        args = {"project_id": project_id, "limit": limit}
+        endpoint = "/api/chat/answer-receipts"
+        backend_result = self.backend.get(endpoint, params=args)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.answer_receipt_list", args, result, started, endpoint)
+
+    def answer_receipt_read(self, conversation_id: str) -> dict[str, Any]:
+        """Read one saved answer receipt through the backend."""
+
+        started = time.perf_counter()
+        conversation_id = self._bounded_text(conversation_id, "conversation_id", max_chars=200)
+        args = {"conversation_id": conversation_id}
+        endpoint = f"/api/chat/answer-receipts/{quote(conversation_id, safe='')}"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.answer_receipt_read", args, result, started, endpoint)
+
+    def answer_receipt_markdown(self, conversation_id: str) -> dict[str, Any]:
+        """Render one saved answer receipt as the prompt/tool bridge Markdown view.
+
+        Args:
+            conversation_id: Durable SmartRead conversation id for the saved
+                answer receipt.
+
+        Returns:
+            A read-only Markdown projection plus the source receipt payload. The
+            projection is derived from ``scholar-ai-answer-receipt/v1`` and does
+            not introduce a separate persistence path.
+        """
+
+        started = time.perf_counter()
+        conversation_id = self._bounded_text(conversation_id, "conversation_id", max_chars=200)
+        args = {"conversation_id": conversation_id}
+        endpoint = f"/api/chat/answer-receipts/{quote(conversation_id, safe='')}"
+        backend_result = self.backend.get(endpoint)
+        result = self._wrap_backend_result(backend_result)
+        if result.get("is_error") is True:
+            return self._finish("literature.answer_receipt_markdown", args, result, started, endpoint)
+        data = result.get("data")
+        if not isinstance(data, dict):
+            invalid_result = safe_result(
+                None,
+                error=True,
+                error_code="invalid_answer_receipt_payload",
+                message="answer receipt backend response must be an object",
+            )
+            return self._finish("literature.answer_receipt_markdown", args, invalid_result, started, endpoint)
+        payload = self._answer_receipt_markdown_payload(data, conversation_id=conversation_id)
+        return self._finish("literature.answer_receipt_markdown", args, safe_result(payload), started, endpoint)
+
+    def answer_receipt_revalidate(
+        self,
+        conversation_id: str,
+        *,
+        apply: bool = False,
+        top_k: int = 10,
+    ) -> dict[str, Any]:
+        """Dry-run or apply revalidation for one saved answer receipt."""
+
+        started = time.perf_counter()
+        conversation_id = self._bounded_text(conversation_id, "conversation_id", max_chars=200)
+        top_k = self._bounded_int(top_k, "top_k", minimum=1, maximum=50)
+        payload = {"apply": bool(apply), "top_k": top_k}
+        args = {"conversation_id": conversation_id, **payload}
+        endpoint = f"/api/chat/answer-receipts/{quote(conversation_id, safe='')}/revalidate"
+        backend_result = self.backend.post_json(endpoint, payload=payload)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish("literature.answer_receipt_revalidate", args, result, started, endpoint)
+
     def agent_bridge_status(self, limit: int = 20) -> dict[str, Any]:
         """Read the backend agent bridge status without large context payloads."""
         started = time.perf_counter()
@@ -1545,6 +2087,11 @@ class RuntimeTools:
         max_chars = self._bounded_int(max_chars, "max_chars", minimum=100, maximum=40000)
         max_chunks = self._bounded_int(max_chunks, "max_chunks", minimum=1, maximum=50)
         refs = self._resource_refs(resource_refs)
+        if intent == "sidebar_answer":
+            smart_read_conversation = True
+            wiki_candidate = False
+            graph_candidate = False
+            evolution_capture = False
         payload: dict[str, Any] = {
             "source": self._bounded_text(source, "source", max_chars=80),
             "agent_host": self._bounded_text(agent_host, "agent_host", max_chars=80),
@@ -1774,6 +2321,33 @@ class RuntimeTools:
         backend_result = self.backend.get(endpoint, params=params)
         result = self._wrap_backend_result(backend_result)
         return self._finish("literature.agent_request_list", params, result, started, endpoint)
+
+    def codex_handoff_latest(self, project_id: str | None = None) -> dict[str, Any]:
+        """Read the latest unresolved Codex sidebar handoff projection.
+
+        Args:
+            project_id: Optional project filter. When omitted, the backend
+                returns the newest unresolved Codex handoff request across
+                projects.
+
+        Returns:
+            Safe result containing a small backend projection of the existing
+            agent request. This does not create a second handoff store.
+        """
+
+        started = time.perf_counter()
+        normalized_project_id = self._optional_identifier(project_id, "project_id", max_chars=200)
+        params = {"project_id": normalized_project_id} if normalized_project_id else None
+        endpoint = "/api/agent-bridge/codex-handoff/latest"
+        backend_result = self.backend.get(endpoint, params=params)
+        result = self._wrap_backend_result(backend_result)
+        return self._finish(
+            "literature.codex_handoff_latest",
+            {"project_id": normalized_project_id},
+            result,
+            started,
+            endpoint,
+        )
 
     def agent_request_read(self, request_id: str) -> dict[str, Any]:
         """Read one agent request job by request id."""
@@ -2177,6 +2751,166 @@ class RuntimeTools:
             )
         return safe_result(backend_result.get("data"))
 
+    def _acquisition_search_run_result(
+        self,
+        backend_result: dict[str, Any],
+        *,
+        candidate_offset: int = 0,
+        candidate_limit: int = 10,
+    ) -> dict[str, Any]:
+        """Project a SearchRun before generic result truncation can discard action ids."""
+
+        if backend_result.get("is_error") is True:
+            return self._wrap_backend_result(backend_result)
+        data = backend_result.get("data")
+        if not isinstance(data, dict):
+            return safe_result(
+                None,
+                error=True,
+                error_code="backend_openapi_mismatch",
+                message="Backend returned malformed acquisition search run",
+            )
+        candidates = data.get("candidates")
+        query = data.get("query")
+        source_errors = data.get("source_errors", [])
+        if not isinstance(candidates, list) or not isinstance(query, dict) or not isinstance(source_errors, list):
+            return safe_result(
+                None,
+                error=True,
+                error_code="backend_openapi_mismatch",
+                message="Backend returned malformed acquisition search run",
+            )
+
+        offset = self._bounded_int(candidate_offset, "candidate_offset", minimum=0, maximum=199)
+        limit = self._bounded_int(candidate_limit, "candidate_limit", minimum=1, maximum=10)
+        page = candidates[offset : offset + limit]
+        compact_candidates = [
+            self._compact_acquisition_candidate(candidate)
+            for candidate in page
+            if isinstance(candidate, dict)
+        ]
+        candidate_count = len(candidates)
+        next_offset = offset + len(page)
+        has_more = next_offset < candidate_count
+        compact_source_errors: list[dict[str, str]] = []
+        for item in source_errors[:32]:
+            if not isinstance(item, dict):
+                continue
+            compact_source_errors.append(
+                {
+                    "source_id": self._preview_text(item.get("source_id"), 64),
+                    "code": self._preview_text(item.get("code"), 80),
+                    "message": self._preview_text(item.get("message"), 500),
+                }
+            )
+
+        projected = {
+            "schema_version": "scholar-ai-mcp-acquisition-search-run/v1",
+            "run_id": data.get("run_id"),
+            "status": data.get("status"),
+            "version": data.get("version"),
+            "query": {
+                "project_id": query.get("project_id"),
+                "query": self._preview_text(query.get("query"), 1000),
+                "sources": query.get("sources"),
+                "max_results": query.get("max_results"),
+                "year_from": query.get("year_from"),
+                "year_to": query.get("year_to"),
+            },
+            "requested_sources": data.get("requested_sources"),
+            "attempted_sources": data.get("attempted_sources"),
+            "source_errors": compact_source_errors,
+            "created_at": data.get("created_at"),
+            "updated_at": data.get("updated_at"),
+            "completed_at": data.get("completed_at"),
+            "candidate_count": candidate_count,
+            "candidate_offset": offset,
+            "candidate_limit": limit,
+            "returned_count": len(compact_candidates),
+            "has_more": has_more,
+            "next_candidate_offset": next_offset if has_more else None,
+            "candidates": compact_candidates,
+        }
+        return safe_result(projected)
+
+    def _compact_acquisition_candidate(self, candidate: dict[str, Any]) -> dict[str, Any]:
+        """Return one bounded, actionable candidate projection for MCP callers."""
+
+        authors = candidate.get("authors") if isinstance(candidate.get("authors"), list) else []
+        landing_urls = (
+            candidate.get("landing_urls") if isinstance(candidate.get("landing_urls"), list) else []
+        )
+        pdf_candidates = (
+            candidate.get("pdf_candidates")
+            if isinstance(candidate.get("pdf_candidates"), list)
+            else []
+        )
+        evidence_refs: list[dict[str, Any]] = []
+        pdf_previews: list[dict[str, str]] = []
+        seen_evidence_ids: set[str] = set()
+        for pdf in pdf_candidates:
+            if not isinstance(pdf, dict):
+                continue
+            evidence = pdf.get("access_evidence")
+            if not isinstance(evidence, dict):
+                continue
+            evidence_id = self._preview_text(evidence.get("evidence_id"), 256)
+            if evidence_id and evidence_id not in seen_evidence_ids and len(evidence_refs) < 8:
+                seen_evidence_ids.add(evidence_id)
+                evidence_refs.append(
+                    {
+                        "evidence_id": evidence_id,
+                        "source_platform": self._preview_text(evidence.get("source_platform"), 64),
+                        "kind": evidence.get("kind"),
+                        "access_route": evidence.get("access_route"),
+                        "license": self._preview_text(evidence.get("license"), 120) or None,
+                        "observed_at": evidence.get("observed_at"),
+                    }
+                )
+            if len(pdf_previews) < 2:
+                pdf_previews.append(
+                    {
+                        "evidence_id": evidence_id,
+                        "pdf_url": self._preview_text(pdf.get("pdf_url"), 800),
+                        "statement": self._preview_text(evidence.get("statement"), 240),
+                    }
+                )
+
+        abstract = self._preview_text(candidate.get("abstract"), 20_000)
+        author_count = len(authors)
+        evidence_count = sum(
+            1
+            for pdf in pdf_candidates
+            if isinstance(pdf, dict) and isinstance(pdf.get("access_evidence"), dict)
+        )
+        return {
+            "candidate_id": candidate.get("candidate_id"),
+            "doi": candidate.get("doi"),
+            "arxiv_id": candidate.get("arxiv_id"),
+            "year": candidate.get("year"),
+            "published_date": candidate.get("published_date"),
+            "source_platforms": candidate.get("source_platforms"),
+            "pdf_candidate_count": len(pdf_candidates),
+            "access_evidence_refs": evidence_refs,
+            "access_evidence_returned_count": len(evidence_refs),
+            "access_evidence_omitted_count": max(0, evidence_count - len(evidence_refs)),
+            "title": self._preview_text(candidate.get("title"), 600),
+            "authors": [self._preview_text(author, 160) for author in authors[:8]],
+            "author_count": author_count,
+            "authors_omitted_count": max(0, author_count - 8),
+            "abstract_preview": abstract[:800],
+            "abstract_truncated": len(abstract) > 800,
+            "landing_urls": [self._preview_text(url, 800) for url in landing_urls[:2]],
+            "landing_urls_omitted_count": max(0, len(landing_urls) - 2),
+            "pdf_previews": pdf_previews,
+        }
+
+    @staticmethod
+    def _preview_text(value: object, max_chars: int) -> str:
+        """Normalize whitespace and bound backend-owned display text."""
+
+        return " ".join(str(value or "").split())[:max_chars]
+
     def _search_refs_result_for_mcp(self, result: dict[str, Any]) -> dict[str, Any]:
         """Return search refs with both explicit and conventional count fields."""
 
@@ -2212,6 +2946,193 @@ class RuntimeTools:
             "page": normalized_page,
         }
         return {**result, "data": enriched}
+
+    def _answer_receipt_markdown_payload(
+        self,
+        data: dict[str, Any],
+        *,
+        conversation_id: str,
+    ) -> dict[str, Any]:
+        """Return the bounded Markdown receipt projection for prompt/tool hosts."""
+
+        receipt = data.get("receipt") if isinstance(data.get("receipt"), dict) else {}
+        staleness = data.get("staleness") if isinstance(data.get("staleness"), dict) else {}
+        top_refs = receipt.get("top_evidence_refs")
+        evidence_refs = top_refs if isinstance(top_refs, list) else []
+        qrels = receipt.get("qrels_status") if isinstance(receipt.get("qrels_status"), dict) else {}
+        gate = (
+            receipt.get("evidence_gate_status")
+            if isinstance(receipt.get("evidence_gate_status"), dict)
+            else {}
+        )
+        diagnostics = (
+            receipt.get("retrieval_diagnostics")
+            if isinstance(receipt.get("retrieval_diagnostics"), dict)
+            else {}
+        )
+        answer = self._markdown_block_text(data.get("answer"), fallback="No saved answer text returned.")
+        evidence_pack_ref = self._markdown_inline(receipt.get("evidence_pack_ref") or "none", max_chars=220)
+        receipt_schema = self._markdown_inline(receipt.get("receipt_schema_version") or "unknown", max_chars=120)
+        gate_status = self._markdown_inline(gate.get("status") or "unknown", max_chars=80)
+        gate_reason = self._markdown_inline(
+            gate.get("reason") or gate.get("message") or gate.get("quality") or "",
+            max_chars=180,
+            allow_empty=True,
+        )
+        qrels_status = self._markdown_inline(qrels.get("status") or "unknown", max_chars=80)
+        quality_allowed = "yes" if qrels.get("semantic_quality_claim_allowed") is True else "no"
+        retrieval_parts = [
+            f"method={self._markdown_inline(diagnostics.get('retrieval_method') or 'unknown', max_chars=80)}",
+            f"provider={self._markdown_inline(diagnostics.get('retrieval_provider') or 'unknown', max_chars=80)}",
+            f"rerank={self._markdown_inline(diagnostics.get('rerank_status') or 'unknown', max_chars=80)}",
+            f"fallback={self._markdown_inline(diagnostics.get('fallback_reason') or 'none', max_chars=120)}",
+        ]
+        stale_status = self._markdown_inline(
+            staleness.get("status") or receipt.get("staleness_status") or "unknown",
+            max_chars=80,
+        )
+        stale_detail = self._receipt_staleness_detail(staleness)
+        runtime_ref_lines = self._answer_receipt_runtime_refs_markdown(receipt)
+        evidence_lines = self._answer_receipt_evidence_markdown(evidence_refs)
+        next_actions = self._answer_receipt_next_actions(receipt, evidence_refs)
+        lines = [
+            "### Answer",
+            answer,
+            "",
+            "### Evidence Status",
+            f"- receipt: `{self._markdown_inline(data.get('conversation_id') or conversation_id, max_chars=200)}` (`{receipt_schema}`)",
+            f"- evidence_pack_ref: `{evidence_pack_ref}`",
+            f"- gate: `{gate_status}`{f' - {gate_reason}' if gate_reason else ''}",
+            f"- qrels: `{qrels_status}`; quality claim allowed: {quality_allowed}",
+            f"- retrieval: {'; '.join(retrieval_parts)}",
+            f"- stale: `{stale_status}`{f' - {stale_detail}' if stale_detail else ''}",
+            "",
+            *runtime_ref_lines,
+            *([""] if runtime_ref_lines else []),
+            "### Evidence",
+            *evidence_lines,
+            "",
+            "### Next Actions",
+            *next_actions,
+        ]
+        return {
+            "projection_schema_version": "scholar-ai-answer-receipt-markdown/v1",
+            "conversation_id": str(data.get("conversation_id") or conversation_id),
+            "project_id": data.get("project_id"),
+            "markdown": "\n".join(lines).strip() + "\n",
+            "source_tool": "literature.answer_receipt_read",
+            "source_receipt": data,
+        }
+
+    def _answer_receipt_runtime_refs_markdown(self, receipt: dict[str, Any]) -> list[str]:
+        """Return compact runtime lookup refs when the receipt carries them."""
+
+        workflow_refs = (
+            receipt.get("workflow_refs")
+            if isinstance(receipt.get("workflow_refs"), dict)
+            else {}
+        )
+        ref_sources = {
+            "workflow passport": receipt.get("workflow_passport_ref") or workflow_refs.get("workflow_passport_ref"),
+            "action lifecycle": (
+                receipt.get("research_action_lifecycle_ref")
+                or workflow_refs.get("research_action_lifecycle_ref")
+            ),
+            "handoff card": receipt.get("agent_handoff_card_ref") or workflow_refs.get("agent_handoff_card_ref"),
+            "replay lineage": (
+                receipt.get("workflow_replay_lineage_ref")
+                or workflow_refs.get("workflow_replay_lineage_ref")
+            ),
+            "replay index": receipt.get("workflow_replay_index_ref") or workflow_refs.get("workflow_replay_index_ref"),
+        }
+        lines: list[str] = []
+        job_id = workflow_refs.get("runtime_job_id") if isinstance(workflow_refs, dict) else None
+        request_id = workflow_refs.get("agent_request_id") if isinstance(workflow_refs, dict) else None
+        project_id = workflow_refs.get("project_id") if isinstance(workflow_refs, dict) else None
+        if job_id or request_id or project_id:
+            parts = []
+            if request_id:
+                parts.append(f"request={self._markdown_inline(request_id, max_chars=120)}")
+            if job_id:
+                parts.append(f"job={self._markdown_inline(job_id, max_chars=120)}")
+            if project_id:
+                parts.append(f"project={self._markdown_inline(project_id, max_chars=120)}")
+            lines.append("### Runtime Refs")
+            lines.append(f"- scope: {'; '.join(parts)}")
+        for label, ref in ref_sources.items():
+            if not isinstance(ref, dict):
+                continue
+            endpoint = self._markdown_inline(ref.get("endpoint") or "", max_chars=180, allow_empty=True)
+            if not endpoint:
+                continue
+            read_only = "yes" if ref.get("read_only") is True else "unknown"
+            lines.append(f"- {label}: `{endpoint}`; read_only={read_only}")
+        return lines
+
+    def _answer_receipt_evidence_markdown(self, evidence_refs: list[Any]) -> list[str]:
+        """Return compact evidence rows without expanding raw chunks."""
+
+        lines: list[str] = []
+        for index, item in enumerate(evidence_refs[:10], start=1):
+            if not isinstance(item, dict):
+                continue
+            title = self._markdown_inline(
+                item.get("source_title") or item.get("title") or item.get("material_id") or "untitled source",
+                max_chars=160,
+            )
+            locator_parts = []
+            if item.get("page") not in (None, ""):
+                locator_parts.append(f"page {self._markdown_inline(item.get('page'), max_chars=40)}")
+            if item.get("section_id"):
+                locator_parts.append(f"section {self._markdown_inline(item.get('section_id'), max_chars=80)}")
+            if item.get("ref_id"):
+                locator_parts.append(self._markdown_inline(item.get("ref_id"), max_chars=120))
+            locator = ", ".join(locator_parts) if locator_parts else "locator unavailable"
+            lines.append(f"- [E{index}] {title}, {locator}")
+        return lines or ["- No bounded evidence refs were returned with this receipt."]
+
+    def _answer_receipt_next_actions(self, receipt: dict[str, Any], evidence_refs: list[Any]) -> list[str]:
+        """Return safe prompt/tool bridge follow-ups from the existing receipt."""
+
+        actions = ["- Revalidate this answer by re-reading the receipt and rerunning evidence/gate checks if stale."]
+        if evidence_refs:
+            actions.append("- Read E1 with a bounded evidence/resource tool before quoting more source text.")
+        if str(receipt.get("evidence_pack_ref") or "").strip():
+            actions.append("- Build a candidate qrels review bundle for this evidence pack.")
+        actions.append("- Send this bounded receipt markdown to the main column when handing off context.")
+        return actions
+
+    def _receipt_staleness_detail(self, staleness: dict[str, Any]) -> str:
+        """Return a one-line staleness trigger summary."""
+
+        mismatches = staleness.get("mismatches")
+        warnings = staleness.get("warnings")
+        if isinstance(mismatches, list) and mismatches:
+            return "mismatches=" + ", ".join(self._markdown_inline(item, max_chars=80) for item in mismatches[:4])
+        if isinstance(warnings, list) and warnings:
+            return "warnings=" + ", ".join(self._markdown_inline(item, max_chars=80) for item in warnings[:4])
+        return ""
+
+    def _markdown_block_text(self, value: Any, *, fallback: str, max_chars: int = 8000) -> str:
+        """Return bounded Markdown block text without preserving control chars."""
+
+        text = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+        if not text:
+            text = fallback
+        text = "\n".join(line.rstrip() for line in text.splitlines()).strip()
+        if len(text) > max_chars:
+            return f"{text[: max(0, max_chars - 16)].rstrip()}\n[truncated]"
+        return text
+
+    def _markdown_inline(self, value: Any, *, max_chars: int, allow_empty: bool = False) -> str:
+        """Return one-line text safe for compact Markdown rows."""
+
+        text = " ".join(str(value or "").replace("`", "'").split())
+        if not text and not allow_empty:
+            text = "unknown"
+        if len(text) > max_chars:
+            return f"{text[: max(0, max_chars - 3)].rstrip()}..."
+        return text
 
     def _project_list_for_mcp(self, data: Any) -> Any:
         """Return project list data without local source-folder paths."""
@@ -2257,6 +3178,68 @@ class RuntimeTools:
                 "After launch, call literature.config_status.",
             ],
         }
+
+    def _agent_sidebar_url_payload(
+        self,
+        *,
+        base_url: str | None,
+        url: str | None,
+        project_id: str | None,
+        conversation_id: str | None,
+        backend: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Return the side-browser launch envelope shared by MCP hosts."""
+
+        return {
+            "schema_version": "scholar-ai-agent-sidebar-url/v1",
+            "status": "ready" if url else "unavailable",
+            "delivery": "codex_side_browser_route",
+            "url": url,
+            "route": "/agent-sidebar",
+            "base_url": base_url,
+            "project_id": project_id,
+            "conversation_id": conversation_id,
+            "uses_existing_backend": True,
+            "launches_backend": False,
+            "port_conflict_policy": (
+                "The URL follows the current Scholar AI runtime port. "
+                "If another process occupies 8000, start_desktop.py may choose "
+                "a different free port and this tool will return that port."
+            ),
+            "next_safe_local_actions": [
+                "Open url in the Codex side browser / in-app browser.",
+                "Use literature.launch_desktop only when the Scholar AI desktop/backend is not already running.",
+                "Use literature.config_status to recheck backend health after launch.",
+            ],
+            "backend": backend,
+        }
+
+    def _build_agent_sidebar_url(
+        self,
+        *,
+        base_url: str,
+        project_id: str | None,
+        conversation_id: str | None,
+    ) -> str:
+        """Build the `/agent-sidebar` URL on the active loopback backend."""
+
+        params = {
+            key: value
+            for key, value in {
+                "project_id": project_id,
+                "conversation_id": conversation_id,
+            }.items()
+            if value
+        }
+        query = f"?{urlencode(params)}" if params else ""
+        return f"{base_url.rstrip('/')}/agent-sidebar{query}"
+
+    def _is_loopback_base_url(self, value: str) -> bool:
+        """Return whether a URL is safe to expose as a local sidebar route."""
+
+        parsed = urlparse(str(value or "").strip())
+        hostname = (parsed.hostname or "").lower()
+        return parsed.scheme == "http" and hostname in {"localhost", "127.0.0.1", "::1"}
 
     def _display_path(self, path: Path) -> str:
         """Return a non-secret path relative to repo_root when possible."""
@@ -2443,6 +3426,26 @@ class RuntimeTools:
             raise ValueError(f"{name} must be non-empty")
         return cleaned
 
+    def _optional_identifier(self, value: str | None, name: str, max_chars: int) -> str | None:
+        """Return a bounded query identifier or ``None`` for omitted input."""
+
+        if value is None:
+            return None
+        cleaned = self._bounded_text(str(value), name, max_chars=max_chars, allow_empty=True)
+        if not cleaned:
+            return None
+        if any(char in cleaned for char in "\\\r\n\t#"):
+            raise ValueError(f"{name} contains unsupported characters")
+        return cleaned
+
+    def _acquisition_identifier(self, value: str, name: str) -> str:
+        """Return an id matching the persisted acquisition record contract."""
+
+        cleaned = self._bounded_text(value, name, max_chars=256)
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:@+-]{0,255}", cleaned):
+            raise ValueError(f"{name} contains unsupported characters")
+        return cleaned
+
     def _bounded_int(self, value: int, name: str, minimum: int, maximum: int) -> int:
         if not isinstance(value, int) or isinstance(value, bool):
             raise ValueError(f"{name} must be an integer")
@@ -2475,6 +3478,24 @@ class RuntimeTools:
         if cleaned not in {"balanced", "aggressive", "quality"}:
             raise ValueError("ai_cost_profile must be balanced, aggressive, or quality")
         return cleaned
+
+    def _smart_read_backend_tier(self, value: str | None) -> str:
+        """Normalize SmartRead UX cost tiers to backend chat context tiers."""
+
+        cleaned = str(value or "balanced").strip().lower()
+        aliases = {
+            "low": "fast",
+            "medium": "balanced",
+            "high": "thorough",
+            "xhigh": "thorough",
+            "max": "thorough",
+        }
+        normalized = aliases.get(cleaned, cleaned)
+        if normalized not in {"fast", "balanced", "thorough"}:
+            raise ValueError(
+                "tier must be one of: fast, balanced, thorough, low, medium, high, xhigh, max"
+            )
+        return normalized
 
     def _figure_kind(self, value: str | None) -> str | None:
         if value is None:

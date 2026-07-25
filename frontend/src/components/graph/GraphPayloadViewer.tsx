@@ -1,22 +1,14 @@
 import { useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  ReactFlow,
-  ReactFlowProvider,
-  Background,
-  Controls,
-  type NodeMouseHandler,
-} from '@xyflow/react';
 
-import '@xyflow/react/dist/style.css';
-
-import { layoutWithDagre } from './layoutWithDagre';
+import { GraphViewport, type GraphViewportSelection } from './GraphViewport';
 import {
-  payloadToRf,
+  payloadToGraphViewport,
   resolveMaterialTarget,
   type MaterialTarget,
   type GraphNode,
   type GraphPayloadV0,
+  type GraphViewportPayload,
 } from './payloadToRf';
 import {
   formatWikiError,
@@ -142,44 +134,6 @@ function NodeDetailPanel({
   );
 }
 
-function NodeEvidencePreview({
-  node,
-}: {
-  node: GraphNode;
-}) {
-  const target = resolveMaterialTarget(node);
-  const evidenceRef = node.evidence_refs?.find((ref) => ref.text || ref.material_id) ?? null;
-  const meta = node.metadata ?? {};
-  const rawText = typeof meta.evidence_text === 'string'
-    ? meta.evidence_text
-    : evidenceRef?.text ?? '';
-  const safeLabel = sanitizeWikiVisibleText(node.label, '知识节点');
-  const safeText = rawText
-    ? sanitizeEvidencePreviewText(rawText, '证据内容已隐藏，避免显示内部路径或系统字段。')
-    : '';
-  return (
-    <div className="pointer-events-none absolute left-3 top-3 z-10 w-80 max-w-[calc(100%-1.5rem)] rounded-md border border-outline-variant/60 bg-surface-lowest/95 p-3 shadow-xl backdrop-blur">
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="truncate text-xs font-semibold text-foreground/75">{safeLabel}</span>
-        <span className="shrink-0 rounded border border-outline-variant/50 px-1.5 py-0.5 text-[10px] text-foreground/45">
-          {formatGraphNodeType(node.type)}
-        </span>
-      </div>
-      {target && (
-        <div className="mb-2 text-[11px] text-foreground/50">
-          {target.page ? `p.${target.page}` : '文献定位'}
-          {target.chunk_id ? ` · ${target.chunk_id}` : ''}
-        </div>
-      )}
-      {safeText ? (
-        <p className="line-clamp-4 text-xs leading-relaxed text-foreground/70">{safeText}</p>
-      ) : (
-        <p className="text-xs text-foreground/45">点击节点查看详情或打开对应文献。</p>
-      )}
-    </div>
-  );
-}
-
 function formatGraphNodeType(value: string): string {
   const labels: Record<string, string> = {
     claim: '断言',
@@ -204,19 +158,19 @@ export function GraphPayloadViewer({
   onNavigateTarget,
 }: GraphPayloadViewerProps) {
   const navigate = useNavigate();
-  const [selected, setSelected] = useState<GraphNode | null>(null);
-  const [hovered, setHovered] = useState<GraphNode | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  const { nodes, edges } = useMemo(() => {
-    if (!payload) return { nodes: [], edges: [] };
-    const rf = payloadToRf(payload);
-    return layoutWithDagre(rf.nodes, rf.edges, {
-      rankdir: payload.nodes.length > 18 ? 'TB' : 'LR',
-      ranksep: payload.nodes.length > 14 ? 132 : 112,
-      nodesep: payload.nodes.length > 14 ? 52 : 44,
-      staggerRankSiblings: true,
-    });
-  }, [payload]);
+  const viewportPayload = useMemo<GraphViewportPayload>(
+    () => payload ? payloadToGraphViewport(payload) : { nodes: [], edges: [] },
+    [payload],
+  );
+  const selected = selectedNodeId
+    ? viewportPayload.nodes.find((node) => node.id === selectedNodeId) ?? null
+    : null;
+  const selection = useMemo<GraphViewportSelection>(
+    () => selected ? { kind: 'node', id: selected.id } : null,
+    [selected],
+  );
 
   const navigateToMaterialTarget = useCallback(async (target: MaterialTarget) => {
     let page = typeof target.page === 'number' && target.page > 0 ? target.page : null;
@@ -265,74 +219,38 @@ export function GraphPayloadViewer({
     navigate(`/dialog?${params.toString()}`);
   }, [navigate, onNavigateTarget, projectId]);
 
-  const onNodeClick: NodeMouseHandler = useCallback((_, rfNode) => {
-    const raw = rfNode.data?.raw as GraphNode | undefined;
-    if (!raw) return;
-    const target = resolveMaterialTarget(raw);
+  const onNodeSelect = useCallback((node: GraphNode) => {
+    const target = resolveMaterialTarget(node);
     if (target) {
+      setSelectedNodeId(null);
       void navigateToMaterialTarget(target);
       return;
     }
-    // No material backing — surface the detail panel instead.
-    setSelected(raw);
+    setSelectedNodeId(node.id);
   }, [navigateToMaterialTarget]);
-  const onNodeMouseEnter: NodeMouseHandler = useCallback((_, rfNode) => {
-    const raw = rfNode.data?.raw as GraphNode | undefined;
-    setHovered(raw ?? null);
-  }, []);
-  const onNodeMouseLeave: NodeMouseHandler = useCallback(() => {
-    setHovered(null);
-  }, []);
-
-  if (loading) {
-    return (
-      <div className={`flex items-center justify-center h-full text-sm text-foreground/40 ${className ?? ''}`}>
-        加载图谱中...
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <div className={`flex items-center justify-center h-full text-sm text-red-500 ${className ?? ''}`}>
-        {formatWikiError(error, '加载图谱失败，请稍后重试。')}
-      </div>
-    );
-  }
-  if (!payload || payload.nodes.length === 0) {
-    return (
-      <div className={`flex items-center justify-center h-full text-sm text-foreground/40 ${className ?? ''}`}>
-        当前没有图谱数据
-      </div>
-    );
-  }
+  const viewportError = !loading && error
+    ? formatWikiError(error, '加载图谱失败，请稍后重试。')
+    : null;
 
   return (
     <div className={`relative h-full w-full ${className ?? ''}`}>
-      <ReactFlowProvider>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodeClick={onNodeClick}
-          onNodeMouseEnter={onNodeMouseEnter}
-          onNodeMouseLeave={onNodeMouseLeave}
-          fitView
-          fitViewOptions={{ padding: 0.22, minZoom: 0.35, maxZoom: 1.15 }}
-          minZoom={0.18}
-          maxZoom={1.8}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable
-          panOnScroll
-          zoomOnPinch
-          zoomOnDoubleClick
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background gap={16} />
-          <Controls showInteractive />
-        </ReactFlow>
-      </ReactFlowProvider>
-      {hovered && !selected && <NodeEvidencePreview node={hovered} />}
-      {selected && <NodeDetailPanel node={selected} onClose={() => setSelected(null)} />}
+      <GraphViewport
+        nodes={viewportPayload.nodes}
+        edges={viewportPayload.edges}
+        presentation="cards"
+        selection={selection}
+        layoutDirection={viewportPayload.nodes.length > 18 ? 'vertical' : 'horizontal'}
+        loading={loading}
+        error={viewportError}
+        emptyMessage="当前没有图谱数据"
+        ariaLabel="文献关系图谱"
+        fit={{ padding: 0.22, minZoom: 0.35, maxZoom: 1.15 }}
+        onNodeSelect={onNodeSelect}
+        onSelectionClear={() => setSelectedNodeId(null)}
+      />
+      {!loading && !viewportError && selected ? (
+        <NodeDetailPanel node={selected} onClose={() => setSelectedNodeId(null)} />
+      ) : null}
     </div>
   );
 }

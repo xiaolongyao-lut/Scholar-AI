@@ -10,9 +10,12 @@ from fastapi.testclient import TestClient
 import pytest
 from starlette.routing import Match
 
+import evolution.scheduler as evolution_scheduler_module
 from harness_protocols import JobKind, SessionMode
+import python_adapter_server as python_adapter_server_module
 import routers.agent_bridge_router as agent_bridge_router_module
 import routers.knowledge_router as knowledge_router_module
+import routers.resources_router as resources_router_module
 import routers.runtime_router as runtime_router_module
 from python_adapter_server import app, get_local_api_capability_token
 from source_vault import SourceChunkInput, SourceVault
@@ -170,6 +173,92 @@ def _assert_probe_endpoint_returns_http_success(
     _assert_full_app_get_route_exists(path)
     response = client.get(path, headers=dict(headers))
     assert response.status_code == 200, f"{path} returned {response.status_code}: {response.text}"
+
+
+@pytest.mark.asyncio
+async def test_app_lifespan_recovers_upload_extraction_and_coordinates_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The configured app lifespan must recover and safely interrupt upload jobs."""
+
+    events: list[str] = []
+    api_port_file = tmp_path / "api-port.json"
+    api_port_file.write_text("{}", encoding="utf-8")
+
+    class _Scheduler:
+        def start(self) -> bool:
+            events.append("scheduler.start")
+            return True
+
+        async def stop(self) -> None:
+            events.append("scheduler.stop")
+
+    async def _recover_upload_jobs() -> dict[str, int]:
+        events.append("uploads.recover")
+        return {"scanned": 2, "recovered": 1, "paused": 1, "skipped": 0}
+
+    async def _shutdown_upload_jobs() -> dict[str, int]:
+        events.append("uploads.shutdown")
+        return {"scanned": 2, "interrupted": 2, "completed_commit": 0}
+
+    def _delete_capability_file() -> None:
+        events.append("capability.cleanup")
+
+    def _delete_runtime_descriptor() -> None:
+        events.append("descriptor.cleanup")
+
+    monkeypatch.setenv("LITASSIST_DISABLE_ROUTE_DUMP", "1")
+    monkeypatch.setattr(python_adapter_server_module, "_write_api_port_from_argv", lambda: None)
+    monkeypatch.setattr(
+        python_adapter_server_module,
+        "_local_api_capability_auth_enabled",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        python_adapter_server_module,
+        "api_port_file_path",
+        lambda: api_port_file,
+    )
+    monkeypatch.setattr(
+        python_adapter_server_module,
+        "_delete_local_api_capability_file",
+        _delete_capability_file,
+    )
+    monkeypatch.setattr(
+        python_adapter_server_module,
+        "delete_desktop_runtime_descriptor",
+        _delete_runtime_descriptor,
+    )
+    monkeypatch.setattr(
+        evolution_scheduler_module,
+        "get_curator_scheduler",
+        lambda: _Scheduler(),
+    )
+    monkeypatch.setattr(
+        resources_router_module,
+        "recover_uploaded_document_extraction_jobs",
+        _recover_upload_jobs,
+    )
+    monkeypatch.setattr(
+        resources_router_module,
+        "shutdown_uploaded_document_extraction_jobs",
+        _shutdown_upload_jobs,
+    )
+
+    async with app.router.lifespan_context(app):
+        assert events == ["scheduler.start", "uploads.recover"]
+        assert api_port_file.exists()
+
+    assert events == [
+        "scheduler.start",
+        "uploads.recover",
+        "uploads.shutdown",
+        "scheduler.stop",
+        "capability.cleanup",
+        "descriptor.cleanup",
+    ]
+    assert not api_port_file.exists()
 
 
 def test_runtime_lifecycle_routes_are_registered_on_full_app() -> None:

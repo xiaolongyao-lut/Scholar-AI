@@ -79,7 +79,8 @@ describe('SparkEvidencePills', () => {
     expect(label).toContain('证据');
   });
 
-  it('navigates with the given page when ref already has page', async () => {
+  it('keeps the given page when bbox enrichment is unavailable', async () => {
+    locateChunkMock.mockResolvedValueOnce(null);
     render(
       <MemoryRouter>
         <SparkEvidencePills
@@ -101,7 +102,7 @@ describe('SparkEvidencePills', () => {
       expect(parsed.searchParams.get('page')).toBe('7');
       expect(parsed.searchParams.get('chunk')).toBe('c1');
     });
-    expect(locateChunkMock).not.toHaveBeenCalled();
+    expect(locateChunkMock).toHaveBeenCalledWith('c1', 'proj-1');
   });
 
   it('calls locateChunk when ref lacks page and uses resolved page', async () => {

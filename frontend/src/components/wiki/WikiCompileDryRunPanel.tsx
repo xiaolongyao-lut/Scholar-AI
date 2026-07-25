@@ -38,7 +38,6 @@ const MANUAL_KIND_OPTIONS: Array<{ value: WikiManualPageKind; label: string }> =
 const MANUAL_STATUS_OPTIONS: Array<{ value: WikiManualPageStatus; label: string }> = [
   { value: 'draft', label: '草稿' },
   { value: 'review', label: '待审' },
-  { value: 'final', label: '确认知识' },
 ];
 
 export function WikiCompileDryRunPanel({
@@ -60,7 +59,7 @@ export function WikiCompileDryRunPanel({
   const [allowWrite, setAllowWrite] = useState(false);
   const [manualTitle, setManualTitle] = useState('');
   const [manualKind, setManualKind] = useState<WikiManualPageKind>('concept');
-  const [manualStatus, setManualStatus] = useState<WikiManualPageStatus>('draft');
+  const [manualStatus, setManualStatus] = useState<WikiManualPageStatus>('review');
   const [manualBody, setManualBody] = useState('');
 
   const handleRun = () => {
@@ -80,7 +79,7 @@ export function WikiCompileDryRunPanel({
     });
   };
 
-  const compileActionLabel = allowWrite ? '写入知识页' : '预览沉淀';
+  const compileActionLabel = allowWrite ? '写入待审候选' : '预览沉淀';
 
   return (
     <section className="rounded-lg border border-outline-variant/60 bg-surface-lowest p-4 shadow-sm">
@@ -139,7 +138,7 @@ export function WikiCompileDryRunPanel({
                   onChange={(event) => setAllowWrite(event.target.checked)}
                   className="mt-0.5"
                 />
-                <span>直接写入知识页</span>
+                <span>写入待审候选（不会自动成为确认知识）</span>
               </label>
 
               {!isWikiEnabled ? (
@@ -160,7 +159,7 @@ export function WikiCompileDryRunPanel({
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2 text-foreground">
                 <FilePlus2 size={16} className="shrink-0 text-primary/65" />
-                <h3 className="font-headline text-sm font-semibold">手动录入确认知识</h3>
+                <h3 className="font-headline text-sm font-semibold">手动录入待审候选</h3>
               </div>
               <button
                 type="button"
@@ -213,7 +212,7 @@ export function WikiCompileDryRunPanel({
                   value={manualBody}
                   onChange={(event) => setManualBody(event.target.value)}
                   rows={6}
-                  placeholder="写入已确认知识"
+                  placeholder="记录候选内容；保存后仍需在待审页面中明确接受"
                   className="mt-1.5 min-h-32 w-full resize-y rounded-md border border-outline-variant/50 bg-surface-high px-3 py-2 text-sm leading-6 text-foreground placeholder:text-foreground/30 focus:border-primary/40 focus:outline-none"
                 />
               </label>
@@ -226,7 +225,7 @@ export function WikiCompileDryRunPanel({
             ) : null}
             {manualResult ? (
               <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-700/40 dark:bg-emerald-500/15 dark:text-emerald-300">
-                已写入：{formatWikiPageLabel(manualResult.slug, '新页面')}
+                已保存为待确认：{formatWikiPageLabel(manualResult.slug, '新页面')}
               </div>
             ) : null}
           </div>

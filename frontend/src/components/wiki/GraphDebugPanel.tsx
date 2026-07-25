@@ -1,20 +1,16 @@
-import { useCallback, useMemo, useState, type CSSProperties } from 'react';
-import {
-  Background,
-  Controls,
-  ReactFlow,
-  ReactFlowProvider,
-  type Edge,
-  type Node,
-  type NodeMouseHandler,
-} from '@xyflow/react';
+import { useMemo, useState } from 'react';
 import { GitBranch, Info, Network, RefreshCw } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import {
+  GraphViewport,
+  type GraphViewportEdge,
+  type GraphViewportNode,
+  type GraphViewportSelection,
+} from '@/components/graph/GraphViewport';
 import type { WikiGraphEdgeModel, WikiGraphModel, WikiGraphNodeModel, WikiGraphStructuredModel } from '@/types/wiki';
-import { layoutWithDagre } from '@/components/graph/layoutWithDagre';
 import { formatWikiError, formatWikiPageLabel, sanitizeWikiVisibleText } from './wikiDisplay';
-import '@xyflow/react/dist/style.css';
+import { resolveWikiGraphRelation } from './wikiGraphRelations';
 
 interface GraphDebugPanelProps {
   graph: WikiGraphModel | null;
@@ -44,15 +40,7 @@ function wikiStatusLabel(status: string): string {
 }
 
 function edgeTypeLabel(edgeType: string): string {
-  const labels: Record<string, string> = {
-    related_to: '相关',
-    supports: '支持',
-    contradicts: '冲突',
-    derives_from: '派生',
-    cites: '引用',
-    wikilink: '页面链接',
-  };
-  return labels[edgeType] ?? '其他关系';
+  return resolveWikiGraphRelation(edgeType).label;
 }
 
 function confidenceLabel(confidence: string): string {
@@ -78,71 +66,43 @@ function edgeEndpointLabel(nodeTitleById: Map<string, string>, nodeId: string, f
   return sanitizeWikiVisibleText(nodeTitleById.get(nodeId), wikiPathLabel(fallbackPath));
 }
 
-function nodeStyle(node: WikiGraphNodeModel): CSSProperties {
-  const palette: Record<string, { border: string; background: string; color: string }> = {
-    claim: { border: '#2563eb', background: '#eff6ff', color: '#1e3a8a' },
-    synthesis: { border: '#7c3aed', background: '#f5f3ff', color: '#4c1d95' },
-    concept: { border: '#059669', background: '#ecfdf5', color: '#064e3b' },
-    source: { border: '#d97706', background: '#fffbeb', color: '#78350f' },
-    note: { border: '#64748b', background: '#f8fafc', color: '#334155' },
-  };
-  const tone = palette[node.kind] ?? { border: '#64748b', background: '#f8fafc', color: '#334155' };
-  return {
-    width: 210,
-    minHeight: 64,
-    border: `1px solid ${tone.border}`,
-    borderRadius: 8,
-    background: tone.background,
-    color: tone.color,
-    padding: 10,
-    fontSize: 12,
-    lineHeight: 1.35,
-    boxShadow: '0 8px 18px rgba(15, 23, 42, 0.08)',
-  };
+interface DebugGraphNode extends GraphViewportNode {
+  readonly raw: WikiGraphNodeModel;
 }
 
-function edgeStroke(edge: WikiGraphEdgeModel): string {
-  const palette: Record<string, string> = {
-    supports: '#059669',
-    contradicts: '#dc2626',
-    derives_from: '#2563eb',
-    cites: '#d97706',
-    wikilink: '#7c3aed',
-    related_to: '#64748b',
-  };
-  return palette[edge.edge_type] ?? '#64748b';
+interface DebugGraphEdge extends GraphViewportEdge {
+  readonly raw: WikiGraphEdgeModel;
 }
 
-function graphToFlow(snapshot: WikiGraphStructuredModel): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = snapshot.nodes.map((node) => ({
+function graphToViewport(
+  snapshot: WikiGraphStructuredModel,
+): { nodes: DebugGraphNode[]; edges: DebugGraphEdge[] } {
+  const nodes: DebugGraphNode[] = snapshot.nodes.map((node) => ({
     id: node.node_id,
-    position: { x: 0, y: 0 },
-    data: {
-      label: `${sanitizeWikiVisibleText(node.title, wikiPathLabel(node.page_path))}\n${wikiKindLabel(node.kind)} · ${wikiStatusLabel(node.status)}`,
-      raw: node,
-    },
-    style: nodeStyle(node),
+    label: sanitizeWikiVisibleText(node.title, wikiPathLabel(node.page_path)),
+    type: node.kind || 'concept',
+    status: wikiStatusLabel(node.status),
+    raw: node,
   }));
   const nodeIds = new Set(snapshot.nodes.map((node) => node.node_id));
-  const edges: Edge[] = snapshot.edges
+  const edges: DebugGraphEdge[] = snapshot.edges
     .filter((edge) => nodeIds.has(edge.source_id) && nodeIds.has(edge.target_id))
-    .map((edge) => ({
-      id: edge.edge_id,
-      source: edge.source_id,
-      target: edge.target_id,
-      label: edgeTypeLabel(edge.edge_type),
-      animated: edge.edge_type === 'supports' || edge.edge_type === 'contradicts',
-      style: { stroke: edgeStroke(edge), strokeWidth: Math.max(1, Math.min(4, edge.weight * 2)) },
-      labelStyle: { fill: '#475569', fontSize: 11, fontWeight: 600 },
-      data: { raw: edge },
-    }));
-  return layoutWithDagre(nodes, edges, {
-    nodeWidth: 210,
-    nodeHeight: 72,
-    rankdir: 'LR',
-    ranksep: 96,
-    nodesep: 36,
-  });
+    .map((edge) => {
+      const { relation, direction } = resolveWikiGraphRelation(edge.edge_type);
+      let source = edge.source_id;
+      let target = edge.target_id;
+      if (direction === 'undirected' && target < source) [source, target] = [target, source];
+      return {
+        id: edge.edge_id,
+        source,
+        target,
+        relation,
+        direction,
+        confidence: Number.isFinite(edge.weight) ? Math.min(1, Math.max(0, edge.weight)) : null,
+        raw: edge,
+      };
+    });
+  return { nodes, edges };
 }
 
 function WikiGraphNodeDetail({ node, onClose }: { node: WikiGraphNodeModel; onClose: () => void }) {
@@ -195,7 +155,7 @@ function WikiGraphNodeDetail({ node, onClose }: { node: WikiGraphNodeModel; onCl
 export function GraphDebugPanel({ graph, isLoading, error, onRefresh }: GraphDebugPanelProps) {
   const snapshot = graph?.structuredGraph;
   const [selectedNode, setSelectedNode] = useState<WikiGraphNodeModel | null>(null);
-  const flow = useMemo(() => (snapshot ? graphToFlow(snapshot) : null), [snapshot]);
+  const viewportGraph = useMemo(() => (snapshot ? graphToViewport(snapshot) : null), [snapshot]);
   const nodePreview = snapshot?.nodes.slice(0, 4) ?? [];
   const edgePreview = snapshot?.edges.slice(0, 4) ?? [];
   const nodeTitleById = useMemo(() => {
@@ -205,12 +165,9 @@ export function GraphDebugPanel({ graph, isLoading, error, onRefresh }: GraphDeb
     }
     return map;
   }, [snapshot?.nodes]);
-  const onNodeClick: NodeMouseHandler = useCallback((_, rfNode) => {
-    const raw = rfNode.data?.raw;
-    if (raw && typeof raw === 'object' && 'node_id' in raw) {
-      setSelectedNode(raw as WikiGraphNodeModel);
-    }
-  }, []);
+  const selection: GraphViewportSelection = selectedNode
+    ? { kind: 'node', id: selectedNode.node_id }
+    : null;
 
   return (
     <section className="rounded-lg border border-outline-variant/60 bg-surface-lowest p-4 shadow-sm">
@@ -255,20 +212,17 @@ export function GraphDebugPanel({ graph, isLoading, error, onRefresh }: GraphDeb
           </div>
 
           <div className="relative mt-4 h-[420px] overflow-hidden rounded-md border border-outline-variant/60 bg-surface-low" data-testid="wiki-interactive-graph">
-            {flow && flow.nodes.length > 0 ? (
-              <ReactFlowProvider>
-                <ReactFlow
-                  nodes={flow.nodes}
-                  edges={flow.edges}
-                  onNodeClick={onNodeClick}
-                  fitView
-                  fitViewOptions={{ padding: 0.2 }}
-                  proOptions={{ hideAttribution: true }}
-                >
-                  <Background gap={18} />
-                  <Controls showInteractive={false} />
-                </ReactFlow>
-              </ReactFlowProvider>
+            {viewportGraph && viewportGraph.nodes.length > 0 ? (
+              <GraphViewport
+                nodes={viewportGraph.nodes}
+                edges={viewportGraph.edges}
+                presentation="network"
+                selection={selection}
+                ariaLabel="Wiki 图谱调试视图"
+                fit={{ padding: 0.2, minZoom: 0.3, maxZoom: 1.2 }}
+                onNodeSelect={(node) => setSelectedNode(node.raw)}
+                onSelectionClear={() => setSelectedNode(null)}
+              />
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-foreground/45">
                 当前图谱没有可渲染节点。
@@ -326,7 +280,7 @@ export function GraphDebugPanel({ graph, isLoading, error, onRefresh }: GraphDeb
                       <div className="font-headline text-sm font-semibold text-foreground">{edgeTypeLabel(edge.edge_type)}</div>
                       <div className="mt-1 break-words text-xs text-foreground/55">
                         {edgeEndpointLabel(nodeTitleById, edge.source_id, edge.source_path)}
-                        {' '}→{' '}
+                        {resolveWikiGraphRelation(edge.edge_type).direction === 'directed' ? ' → ' : ' — '}
                         {edgeEndpointLabel(nodeTitleById, edge.target_id, edge.target_path)}
                       </div>
                       <div className="mt-1 text-xs text-foreground/45">置信度：{confidenceLabel(edge.confidence)} · 权重：{edge.weight}</div>

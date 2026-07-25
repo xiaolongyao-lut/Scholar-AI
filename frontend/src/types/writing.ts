@@ -24,6 +24,12 @@ export interface EvidenceReference {
   text?: string;
   compressed_text?: string;
   quote?: string;
+  anchor_kind?: 'text' | 'visual' | null;
+  content_hash?: string;
+  locator_hash?: string;
+  chunk_hash?: string;
+  embedding_input_hash?: string;
+  hash_version?: string;
   label?: string;
   score?: number;
   page?: number | string;

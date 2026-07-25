@@ -533,10 +533,26 @@ async def _lifespan(app: FastAPI):
     from evolution.scheduler import get_curator_scheduler
     curator_scheduler = get_curator_scheduler()
     curator_scheduler.start()
+    try:
+        from routers.resources_router import recover_uploaded_document_extraction_jobs
+
+        upload_recovery = await recover_uploaded_document_extraction_jobs()
+        if upload_recovery.get("recovered") or upload_recovery.get("paused"):
+            logger.info("upload_extraction_recovery: %s", upload_recovery)
+    except (OSError, RuntimeError, TypeError, ValueError) as recovery_exc:
+        logger.warning("upload_extraction_recovery skipped: %s", recovery_exc)
 
     try:
         yield
     finally:
+        try:
+            from routers.resources_router import shutdown_uploaded_document_extraction_jobs
+
+            upload_shutdown = await shutdown_uploaded_document_extraction_jobs()
+            if upload_shutdown.get("interrupted") or upload_shutdown.get("completed_commit"):
+                logger.info("upload_extraction_shutdown: %s", upload_shutdown)
+        except (OSError, RuntimeError, TypeError, ValueError) as shutdown_exc:
+            logger.warning("upload_extraction_shutdown skipped: %s", shutdown_exc)
         await curator_scheduler.stop()
         try:
             _api_port_file = api_port_file_path()
@@ -1101,6 +1117,7 @@ from routers.inspiration_router import router as inspiration_router
 from routers.agent_router import router as agent_router
 from routers.chat_router import router as chat_router
 from routers.intelligent_chat_router import router as intelligent_chat_router
+from routers.acquisition_router import router as acquisition_router
 from routers.rerank_config_router import router as rerank_config_router
 from routers.diagnostics_router import router as diagnostics_router
 from routers.model_config_router import router as model_config_router
@@ -1130,6 +1147,7 @@ from routers.agent_workspace_router import router as agent_workspace_router
 from routers.health_check_router import router as health_check_router
 from routers.zotero_health_router import router as zotero_health_router
 from routers.agent_bridge_router import router as agent_bridge_router
+from routers.reviewed_knowledge_router import router as reviewed_knowledge_router
 
 
 def _initialize_mcp_installer_runtime() -> None:
@@ -1179,6 +1197,7 @@ app.include_router(inspiration_router)
 app.include_router(agent_router)
 app.include_router(chat_router)
 app.include_router(intelligent_chat_router)
+app.include_router(acquisition_router)
 app.include_router(rerank_config_router)
 app.include_router(diagnostics_router)
 app.include_router(model_config_router)
@@ -1208,6 +1227,7 @@ app.include_router(agent_workspace_router)
 app.include_router(health_check_router)
 app.include_router(zotero_health_router)
 app.include_router(agent_bridge_router)
+app.include_router(reviewed_knowledge_router)
 
 
 if FRONTEND_ASSETS_DIR.is_dir():

@@ -249,7 +249,8 @@ describe('DiscussionCitedEvidencePills', () => {
     cited_evidence_ids: ['E1'],
   };
 
-  it('opens a cited evidence pill in the PDF reader when snippet metadata has a material target', async () => {
+  it('opens the known page when bbox enrichment is unavailable', async () => {
+    locateChunkMock.mockResolvedValueOnce(null);
     const result = makeResult({
       pack_id: 'pk',
       pack_version: '1',
@@ -287,7 +288,7 @@ describe('DiscussionCitedEvidencePills', () => {
       expect(parsed.searchParams.get('page')).toBe('6');
       expect(parsed.searchParams.get('chunk')).toBe('chunk-1');
     });
-    expect(locateChunkMock).not.toHaveBeenCalled();
+    expect(locateChunkMock).toHaveBeenCalledWith('chunk-1', 'p1');
   });
 
   it('keeps the evidence-card scroll fallback when snippet metadata cannot open a PDF target', () => {

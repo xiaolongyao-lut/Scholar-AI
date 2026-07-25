@@ -3,7 +3,7 @@
 Each subsystem (chat, embedding, rerank) gets its own JSON file under
 ``runtime_state/`` with identical semantics:
 
-- Fields: provider, base_url, api_key_secret_ref, model, updated_at
+- Fields: provider, base_url, api_key_secret_ref, model, protocol, updated_at
 - Missing fields fall through to the env resolution chain
 - api_key is never exposed in public config (masked only)
 - Writes are atomic (tempfile + os.replace)
@@ -50,7 +50,7 @@ def _coerce_string(value: Any) -> str | None:
     return cleaned or None
 
 
-_VALID_FIELDS = frozenset({"provider", "base_url", "api_key", "model"})
+_VALID_FIELDS = frozenset({"provider", "base_url", "api_key", "model", "protocol"})
 
 
 class SettingsStore:
@@ -137,7 +137,7 @@ class SettingsStore:
                 pass
 
 
-_VALID_FIELDS = frozenset({"provider", "base_url", "api_key", "model"})
+_VALID_FIELDS = frozenset({"provider", "base_url", "api_key", "model", "protocol"})
 
 
 class ModelConfigStore:
@@ -246,6 +246,7 @@ class ModelConfigStore:
             "provider": _coerce_string(raw.get("provider")) or "",
             "base_url": _coerce_string(raw.get("base_url")) or "",
             "model": _coerce_string(raw.get("model")) or "",
+            "protocol": _coerce_string(raw.get("protocol")) or "",
             "has_api_key": bool(api_key),
             "api_key_masked": masked_key,
             "updated_at": _coerce_string(raw.get("updated_at")) or "",
@@ -268,6 +269,7 @@ class ModelConfigStore:
         base_url: str | None,
         api_key: str | None,
         model: str | None,
+        protocol: str | None = None,
     ) -> dict[str, Any]:
         """Atomically write the override document.
 
@@ -280,6 +282,7 @@ class ModelConfigStore:
                 ("provider", provider),
                 ("base_url", base_url),
                 ("model", model),
+                ("protocol", protocol),
             ):
                 cleaned = _coerce_string(value)
                 if cleaned:
@@ -336,14 +339,29 @@ discussion_defaults_store = SettingsStore("discussion_defaults", _DISCUSSION_DEF
 _CHAT_CONTEXT_COMPRESSION_FIELDS = frozenset({
     "enabled",
     "trigger_tokens",
+    "model_auto_compact_token_limit",
+    "model_context_window",
+    "tool_output_token_limit",
     "target_tokens",
     "keep_recent_turns",
 })
-CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT = 24_000
+CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT = 150_000
+CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN = 4_096
+CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MAX = 1_000_000
+CHAT_MODEL_CONTEXT_WINDOW_DEFAULT = 258_400
+CHAT_MODEL_CONTEXT_WINDOW_MIN = 8_192
+CHAT_MODEL_CONTEXT_WINDOW_MAX = 2_000_000
+CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT = 8_000
+CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MIN = 256
+CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MAX = 32_000
+
+# Compatibility aliases for clients and persisted settings created before the
+# answer-model budget fields were named explicitly.
+CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT = CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT
 CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT = 2_000
 CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT = 6
-CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN = 4_096
-CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX = 128_000
+CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN = CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN
+CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX = CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MAX
 CHAT_CONTEXT_COMPRESSION_TARGET_MIN = 512
 CHAT_CONTEXT_COMPRESSION_TARGET_MAX = 16_000
 CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MIN = 1
@@ -384,22 +402,50 @@ def normalize_chat_context_compression_settings(
     """
 
     raw: Mapping[str, Any] = settings or {}
-    trigger_tokens = _coerce_bounded_int(
-        raw.get("trigger_tokens"),
-        default=CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
-        minimum=CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN,
-        maximum=CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX,
+    model_context_window = _coerce_bounded_int(
+        raw.get("model_context_window"),
+        default=CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
+        minimum=CHAT_MODEL_CONTEXT_WINDOW_MIN,
+        maximum=CHAT_MODEL_CONTEXT_WINDOW_MAX,
     )
+    auto_compact_source = raw.get("model_auto_compact_token_limit")
+    if auto_compact_source is None:
+        auto_compact_source = raw.get("trigger_tokens")
+    model_auto_compact_token_limit = _coerce_bounded_int(
+        auto_compact_source,
+        default=CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT,
+        minimum=CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN,
+        maximum=CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MAX,
+    )
+    if model_auto_compact_token_limit >= model_context_window:
+        model_auto_compact_token_limit = min(
+            CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT,
+            max(CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN, model_context_window * 3 // 4),
+        )
     target_tokens = _coerce_bounded_int(
         raw.get("target_tokens"),
         default=CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
         minimum=CHAT_CONTEXT_COMPRESSION_TARGET_MIN,
         maximum=CHAT_CONTEXT_COMPRESSION_TARGET_MAX,
     )
-    if target_tokens >= trigger_tokens:
+    if target_tokens >= model_auto_compact_token_limit:
         target_tokens = min(
             CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
-            max(CHAT_CONTEXT_COMPRESSION_TARGET_MIN, trigger_tokens // 4),
+            max(
+                CHAT_CONTEXT_COMPRESSION_TARGET_MIN,
+                model_auto_compact_token_limit // 4,
+            ),
+        )
+    tool_output_token_limit = _coerce_bounded_int(
+        raw.get("tool_output_token_limit"),
+        default=CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT,
+        minimum=CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MIN,
+        maximum=CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MAX,
+    )
+    if tool_output_token_limit >= model_context_window:
+        tool_output_token_limit = min(
+            CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT,
+            max(CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MIN, model_context_window // 8),
         )
     keep_recent_turns = _coerce_bounded_int(
         raw.get("keep_recent_turns"),
@@ -409,7 +455,10 @@ def normalize_chat_context_compression_settings(
     )
     return {
         "enabled": bool(raw.get("enabled", True)),
-        "trigger_tokens": trigger_tokens,
+        "trigger_tokens": model_auto_compact_token_limit,
+        "model_auto_compact_token_limit": model_auto_compact_token_limit,
+        "model_context_window": model_context_window,
+        "tool_output_token_limit": tool_output_token_limit,
         "target_tokens": target_tokens,
         "keep_recent_turns": keep_recent_turns,
         "updated_at": _coerce_string(raw.get("updated_at")) or "",
@@ -429,6 +478,15 @@ __all__ = [
     "rerank_store",
     "discussion_defaults_store",
     "chat_context_compression_store",
+    "CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT",
+    "CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN",
+    "CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MAX",
+    "CHAT_MODEL_CONTEXT_WINDOW_DEFAULT",
+    "CHAT_MODEL_CONTEXT_WINDOW_MIN",
+    "CHAT_MODEL_CONTEXT_WINDOW_MAX",
+    "CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT",
+    "CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MIN",
+    "CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MAX",
     "CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT",
     "CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT",
     "CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT",

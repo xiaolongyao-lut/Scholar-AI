@@ -2,10 +2,10 @@
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
-from mcp.types import ToolAnnotations
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 
 from .audit import AuditLog
 from .repo_root import is_repo_root
@@ -23,6 +23,10 @@ from .tools import (
 SIDEBAR_APP_RESOURCE_URI = "ui://scholar-ai/sidebar"
 SIDEBAR_APP_RESOURCE_MIME_TYPE = "text/html;profile=mcp-app"
 SIDEBAR_APP_STATUS_TOOL_NAME = "literature.sidebar_app_status"
+NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI = "ui://scholar-ai/native-handoff-probe"
+NATIVE_HANDOFF_WIDGET_TOOL_NAME = "literature.codex_handoff_widget"
+NATIVE_HANDOFF_WIDGET_PROBE_TOOL_NAME = "literature.native_handoff_widget_probe"
+NATIVE_HANDOFF_WIDGET_PROBE_SCHEMA_VERSION = "scholar-ai-native-handoff-widget-probe/v1"
 MCP_TOOL_PROFILE_ENV = "LITASSIST_MCP_TOOL_PROFILE"
 EXPERIMENTAL_TOOLS_ENV = "LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS"
 MCP_TOOL_PROFILE_FULL = "full"
@@ -73,6 +77,545 @@ SIDEBAR_APP_TOOL_META: dict[str, Any] = {
         "visibility": ["model", "app"],
     },
 }
+NATIVE_HANDOFF_WIDGET_TOOL_META: dict[str, Any] = {
+    "ui": {
+        "resourceUri": NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI,
+        "visibility": ["model", "app"],
+    },
+    "ui/resourceUri": NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI,
+    "openai/outputTemplate": NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI,
+    "openai/widgetAccessible": True,
+    "openai/toolInvocation/invoking": "正在打开 Scholar AI 主栏交接...",
+    "openai/toolInvocation/invoked": "Scholar AI 主栏交接已准备",
+}
+NATIVE_HANDOFF_WIDGET_PROBE_TOOL_META: dict[str, Any] = dict(NATIVE_HANDOFF_WIDGET_TOOL_META)
+
+
+def _bounded_widget_text(value: str | None, *, limit: int = 160) -> str | None:
+    if value is None:
+        return None
+    normalized = " ".join(value.strip().split())
+    if not normalized:
+        return None
+    return normalized[:limit]
+
+
+def _native_handoff_widget_probe_html() -> str:
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scholar AI 主栏交接</title>
+  <style>
+    :root {{
+      color-scheme: light dark;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #647084;
+      --line: #d8dfeb;
+      --accent: #176b58;
+      --accent-ink: #ffffff;
+      --soft: #eef6f2;
+      --soft-ink: #176b58;
+      --warn: #8a5a0a;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    @media (prefers-color-scheme: dark) {{
+      :root {{
+        --panel: #181f2a;
+        --ink: #eef3fb;
+        --muted: #aeb8c9;
+        --line: #303b4c;
+        --accent: #53b99f;
+        --accent-ink: #071310;
+        --soft: #18352f;
+        --soft-ink: #8be1ca;
+        --warn: #e1b464;
+      }}
+    }}
+    * {{ box-sizing: border-box; }}
+    html {{ background: transparent; }}
+    body {{
+      margin: 0;
+      background: transparent;
+      color: var(--ink);
+      font: 13px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    main {{
+      min-width: 260px;
+      max-width: 520px;
+      padding: 10px;
+      display: grid;
+    }}
+    section {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }}
+    .title-row {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-width: 0;
+    }}
+    h1 {{
+      font-size: 14px;
+      line-height: 1.25;
+      margin: 0;
+      letter-spacing: 0;
+    }}
+    p {{ margin: 0; }}
+    .muted {{ color: var(--muted); }}
+    .microcopy {{
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .status {{
+      color: var(--warn);
+      min-height: 18px;
+      font-size: 12px;
+    }}
+    .status[data-tone="ready"],
+    .status[data-tone="sent"] {{
+      color: var(--soft-ink);
+    }}
+    .sr-only {{
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }}
+    .pill {{
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--soft-ink);
+      flex: 0 0 auto;
+      font-size: 11px;
+      line-height: 1;
+      padding: 5px 7px;
+      white-space: nowrap;
+    }}
+    button {{
+      width: 100%;
+      border: 0;
+      border-radius: 7px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 650;
+      min-height: 42px;
+      padding: 9px 10px;
+    }}
+    button:disabled {{
+      cursor: default;
+      opacity: 0.55;
+    }}
+    code, .debug {{
+      overflow-wrap: anywhere;
+      color: var(--muted);
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }}
+  </style>
+</head>
+<body>
+  <main data-schema-version="{NATIVE_HANDOFF_WIDGET_PROBE_SCHEMA_VERSION}">
+    <section aria-label="Scholar AI native handoff">
+      <div class="title-row">
+        <h1>交接到 Codex 主栏</h1>
+        <span id="connection-pill" class="pill">连接中</span>
+      </div>
+      <p id="handoff-copy" class="microcopy">点击后把当前 Scholar AI 任务发送到主栏。</p>
+      <button id="send-probe" type="button" disabled>发送到主栏</button>
+      <p id="status" class="status" role="status">正在连接宿主...</p>
+      <p id="probe-meta" class="sr-only">request_id: 等待宿主数据</p>
+      <code id="payload" hidden>等待发送</code>
+    </section>
+  </main>
+  <script>
+    (() => {{
+      "use strict";
+
+      const PROTOCOL_VERSION = "2026-01-26";
+      const button = document.getElementById("send-probe");
+      const statusEl = document.getElementById("status");
+      const connectionPill = document.getElementById("connection-pill");
+      const probeMetaEl = document.getElementById("probe-meta");
+      const payloadEl = document.getElementById("payload");
+      const handoffCopyEl = document.getElementById("handoff-copy");
+      const pending = new Map();
+      const state = {{ ready: false, widgetData: {{}}, bridge: "raw-ui-message", hostCapabilities: {{}} }};
+      let nextId = 1;
+
+      function setStatus(text, tone) {{
+        statusEl.textContent = text;
+        statusEl.dataset.tone = tone || "neutral";
+      }}
+
+      function setConnection(text, tone) {{
+        connectionPill.textContent = text;
+        connectionPill.dataset.tone = tone || "neutral";
+      }}
+
+      function hasRealRequest() {{
+        const requestId = String(state.widgetData.request_id || "").trim();
+        return requestId && requestId !== "s74_probe";
+      }}
+
+      function updateWidgetCopy() {{
+        if (hasRealRequest()) {{
+          button.textContent = "发送到主栏";
+          handoffCopyEl.textContent = "点击后把接手指令发送到当前 Codex 主栏。";
+          return;
+        }}
+        button.textContent = "发送测试消息";
+          handoffCopyEl.textContent = "发送一条测试消息，确认宿主消息桥可用。";
+      }}
+
+      function updateProbeMeta() {{
+        const requestId = state.widgetData.request_id || "s74_probe";
+        const projectId = state.widgetData.project_id || "未指定";
+        const receiptId = state.widgetData.receipt_id || "未指定";
+        const refCount = state.widgetData.ref_count ?? "未指定";
+        probeMetaEl.textContent = `request_id: ${{requestId}} · project_id: ${{projectId}} · receipt: ${{receiptId}} · refs: ${{refCount}}`;
+        updateWidgetCopy();
+      }}
+
+      function applyHostContext(context) {{
+        if (!context) return;
+        if (context.theme === "dark" || context.theme === "light") {{
+          document.documentElement.dataset.theme = context.theme;
+          document.documentElement.style.colorScheme = context.theme;
+        }}
+        if (context.styles && context.styles.variables) {{
+          for (const [name, value] of Object.entries(context.styles.variables)) {{
+            if (typeof name === "string" && typeof value === "string") {{
+              document.documentElement.style.setProperty(name, value);
+            }}
+          }}
+        }}
+      }}
+
+      function withTimeout(promise, ms, label) {{
+        let timer;
+        const timeout = new Promise((_, reject) => {{
+          timer = window.setTimeout(() => reject(new Error(label)), ms);
+        }});
+        return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+      }}
+
+      function canUseOpenAIBridge() {{
+        const api = window.openai;
+        return Boolean(
+          api &&
+          (
+            typeof api.sendFollowUpMessage === "function" ||
+            typeof api.sendMessage === "function"
+          )
+        );
+      }}
+
+      function openAIToolPayload() {{
+        const api = window.openai;
+        if (!api || typeof api !== "object") return {{}};
+        const rawToolResult = api.rawToolResult && typeof api.rawToolResult === "object"
+          ? toolResultPayload(api.rawToolResult)
+          : {{}};
+        const toolOutput = api.toolOutput && typeof api.toolOutput === "object"
+          ? api.toolOutput
+          : {{}};
+        const responseMeta = api.toolResponseMetadata && typeof api.toolResponseMetadata === "object"
+          ? api.toolResponseMetadata
+          : {{}};
+        const directWidgetData = api.widgetData && typeof api.widgetData === "object"
+          ? api.widgetData
+          : {{}};
+        return Object.assign({{}}, rawToolResult, toolOutput, responseMeta.widgetData || {{}}, directWidgetData);
+      }}
+
+      function applyOpenAIState() {{
+        const api = window.openai;
+        if (!api || typeof api !== "object") return false;
+        applyHostContext(api.hostContext);
+        const payload = openAIToolPayload();
+        if (Object.keys(payload).length > 0) {{
+          state.widgetData = Object.assign({{}}, state.widgetData, payload);
+          updateProbeMeta();
+        }}
+        return canUseOpenAIBridge();
+      }}
+
+      function markReady(bridgeName, statusText) {{
+        state.ready = true;
+        state.bridge = bridgeName;
+        updateProbeMeta();
+        button.disabled = false;
+        setConnection("已连接", "ready");
+        updateWidgetCopy();
+        setStatus(statusText, "ready");
+      }}
+
+      function request(method, params, timeoutMs) {{
+        const id = `scholar_ai_probe_${{nextId++}}`;
+        const message = {{ jsonrpc: "2.0", id, method, params }};
+        return new Promise((resolve, reject) => {{
+          const timer = window.setTimeout(() => {{
+            pending.delete(id);
+            reject(new Error(`${{method}} timed out`));
+          }}, timeoutMs || 8000);
+          pending.set(id, {{ resolve, reject, timer }});
+          window.parent.postMessage(message, "*");
+        }});
+      }}
+
+      function notify(method, params) {{
+        window.parent.postMessage({{ jsonrpc: "2.0", method, params: params || {{}} }}, "*");
+      }}
+
+      function promptFromMessage(message) {{
+        if (typeof message === "string") return message;
+        if (message && typeof message.prompt === "string") return message.prompt;
+        if (message && typeof message.content === "string") return message.content;
+        return "";
+      }}
+
+      function contentFromMessage(message, prompt) {{
+        if (message && Array.isArray(message.content)) return message.content;
+        return [{{ type: "text", text: prompt }}];
+      }}
+
+      function publishHostGlobals(globals) {{
+        const openaiGlobals = Object.assign({{}}, globals);
+        const existingOpenAI = window.openai && typeof window.openai === "object" ? window.openai : {{}};
+        if (typeof existingOpenAI.sendFollowUpMessage === "function") {{
+          delete openaiGlobals.sendFollowUpMessage;
+        }}
+        if (typeof existingOpenAI.sendMessage === "function") {{
+          delete openaiGlobals.sendMessage;
+        }}
+        window.scholarAiMcp = Object.assign(window.scholarAiMcp || {{}}, globals);
+        window.openai = Object.assign(existingOpenAI, openaiGlobals);
+        window.dispatchEvent(new CustomEvent("openai:set_globals", {{
+          detail: {{ globals: window.openai }}
+        }}));
+      }}
+
+      function hostSupportsMessage(hostCapabilities) {{
+        return Boolean(hostCapabilities && typeof hostCapabilities === "object" && hostCapabilities.message);
+      }}
+
+      function installHostMessageBridge(initializeResult) {{
+        const hostCapabilities = initializeResult && typeof initializeResult.hostCapabilities === "object"
+          ? initializeResult.hostCapabilities
+          : {{}};
+        const hostInfo = initializeResult && typeof initializeResult.hostInfo === "object"
+          ? initializeResult.hostInfo
+          : {{}};
+        state.hostCapabilities = hostCapabilities;
+        publishHostGlobals({{
+          hostCapabilities,
+          hostInfo,
+          sendMessage: async (message) => {{
+            const prompt = promptFromMessage(message);
+            const content = contentFromMessage(message, prompt);
+            if (!prompt && content.length === 0) throw new Error("Missing message content.");
+            return await request("ui/message", {{
+              role: "user",
+              content
+            }}, 8000);
+          }},
+          sendFollowUpMessage: async (message) => {{
+            const prompt = promptFromMessage(message);
+            if (!prompt) throw new Error("Missing follow-up prompt.");
+            return await request("ui/message", {{
+              role: "user",
+              content: contentFromMessage(message, prompt)
+            }}, 8000);
+          }},
+          notifyResize: () => notify("ui/notifications/size-changed", currentSize())
+        }});
+      }}
+
+      function currentSize() {{
+        return {{
+          width: Math.ceil(window.innerWidth || document.documentElement.clientWidth || 320),
+          height: Math.ceil(document.documentElement.scrollHeight || 160)
+        }};
+      }}
+
+      function toolResultPayload(result) {{
+        if (!result || typeof result !== "object") return {{}};
+        const meta = result._meta && typeof result._meta === "object" ? result._meta : {{}};
+        const structured = result.structuredContent && typeof result.structuredContent === "object"
+          ? result.structuredContent
+          : {{}};
+        const structuredMeta = structured._meta && typeof structured._meta === "object"
+          ? structured._meta
+          : {{}};
+        const nestedWidgetData = structured.widget_data && typeof structured.widget_data === "object"
+          ? structured.widget_data
+          : {{}};
+        return Object.assign(
+          {{}},
+          structured,
+          nestedWidgetData,
+          structuredMeta.widgetData || {{}},
+          meta.widgetData || {{}}
+        );
+      }}
+
+      function receive(event) {{
+        if (event.source !== window.parent) return;
+        const data = event.data;
+        if (!data || typeof data !== "object") return;
+
+        if (Object.prototype.hasOwnProperty.call(data, "id")) {{
+          const id = String(data.id);
+          const entry = pending.get(id);
+          if (entry) {{
+            pending.delete(id);
+            window.clearTimeout(entry.timer);
+            if (data.error) {{
+              entry.reject(new Error(data.error.message || "Host rejected request."));
+            }} else {{
+              entry.resolve(data.result || {{}});
+            }}
+          }}
+          return;
+        }}
+
+        if (data.method === "ui/notifications/host-context-changed") {{
+          applyHostContext(data.params);
+          return;
+        }}
+        if (data.method === "ui/notifications/tool-result") {{
+          const result = data.params && data.params.result ? data.params.result : data.params;
+          state.widgetData = toolResultPayload(result);
+          updateProbeMeta();
+        }}
+      }}
+
+      function handoffMessage() {{
+        const requestId = state.widgetData.request_id || "s74_probe";
+        const projectId = state.widgetData.project_id || "未指定";
+        const note = state.widgetData.note || "";
+        if (hasRealRequest()) {{
+          return [
+            `请接手 Scholar AI 交接任务 ${{requestId}}：`,
+            "用 literature.agent_request_read 读取限定证据，基于 evidence refs 回答，并用 literature.agent_result 写回同一 request_id。"
+          ].join("");
+        }}
+        return [
+          "Scholar AI native handoff widget test",
+          "",
+          `request_id: ${{requestId}}`,
+          `project_id: ${{projectId}}`,
+          note || "请回复 S74_NATIVE_HANDOFF_WIDGET_PROBE_RECEIVED。"
+        ].join("\\n");
+      }}
+
+      async function sendToHost(text) {{
+        const content = [{{ type: "text", text }}];
+        const api = window.openai;
+        if (api && typeof api.sendFollowUpMessage === "function") {{
+          state.bridge = "openai.sendFollowUpMessage";
+          return await withTimeout(
+            Promise.resolve(api.sendFollowUpMessage({{ prompt: text, content }})),
+            8000,
+            "Host did not accept the follow-up message."
+          );
+        }}
+        if (api && typeof api.sendMessage === "function") {{
+          state.bridge = "openai.sendMessage";
+          return await withTimeout(
+            Promise.resolve(api.sendMessage({{ role: "user", content }})),
+            8000,
+            "Host did not accept the message."
+          );
+        }}
+        const scholarApi = window.scholarAiMcp;
+        if (scholarApi && typeof scholarApi.sendFollowUpMessage === "function") {{
+          state.bridge = "scholarAiMcp.sendFollowUpMessage";
+          return await withTimeout(
+            Promise.resolve(scholarApi.sendFollowUpMessage({{ prompt: text, content }})),
+            8000,
+            "Host did not accept the follow-up message."
+          );
+        }}
+        state.bridge = "ui/message";
+        return await request("ui/message", {{
+          role: "user",
+          content
+        }}, 8000);
+      }}
+
+      async function initialize() {{
+        window.addEventListener("message", receive);
+        window.addEventListener("openai:set_globals", () => {{
+          if (applyOpenAIState() && !state.ready) {{
+            markReady("openai", "宿主消息桥可用。");
+          }}
+        }});
+        if (applyOpenAIState() && canUseOpenAIBridge()) {{
+          markReady("openai", "宿主消息桥可用。");
+          return;
+        }}
+        const result = await request("ui/initialize", {{
+          appInfo: {{
+            name: "scholar-ai-native-handoff-probe",
+            version: "0.0.1"
+          }},
+          appCapabilities: {{}},
+          protocolVersion: PROTOCOL_VERSION
+        }}, 5000);
+        applyHostContext(result.hostContext);
+        if (!hostSupportsMessage(result.hostCapabilities)) {{
+          throw new Error("Codex host does not advertise ui/message support.");
+        }}
+        installHostMessageBridge(result);
+        notify("ui/notifications/initialized", {{}});
+        notify("ui/notifications/size-changed", currentSize());
+        markReady("scholarAiMcp.sendMessage", "可发送到 Codex 主栏。");
+      }}
+
+      button.addEventListener("click", async () => {{
+        if (!state.ready) return;
+        button.disabled = true;
+        setStatus("发送中...", "sending");
+        const text = handoffMessage();
+        payloadEl.textContent = text;
+        try {{
+          applyOpenAIState();
+          const result = await sendToHost(text);
+          if (result && result.isError) throw new Error("Host returned isError.");
+          setStatus(hasRealRequest() ? "已发送到主栏；请看主栏是否开始处理。" : "已发送。请查看 Codex 主栏是否收到测试消息。", "sent");
+        }} catch (error) {{
+          setStatus(`发送失败：${{error instanceof Error ? error.message : String(error)}}`, "error");
+        }} finally {{
+          button.disabled = false;
+        }}
+      }});
+
+      initialize().catch((error) => {{
+        setConnection("不可用", "error");
+        setStatus(`宿主 widget bridge 不可用：${{error instanceof Error ? error.message : String(error)}}`, "error");
+      }});
+    }})();
+  </script>
+</body>
+</html>
+"""
 
 
 def _sidebar_app_html() -> str:
@@ -349,6 +892,7 @@ def _apply_tool_profile(
         resources = getattr(resource_manager, "_resources", None)
         if isinstance(resources, dict):
             resources.pop(SIDEBAR_APP_RESOURCE_URI, None)
+            resources.pop(NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI, None)
 
 
 def find_repo_root(start: Path | None = None) -> Path:
@@ -435,6 +979,15 @@ def create_mcp_server(
         "literature.read_material": runtime.read_material,
         "literature.get_material_chunks": runtime.get_material_chunks,
         "literature.search_refs": runtime.search_refs,
+        "literature.acquisition_status": runtime.acquisition_status,
+        "literature.acquisition_search": runtime.acquisition_search,
+        "literature.acquisition_search_run": runtime.acquisition_search_run,
+        "literature.acquisition_download_queue": runtime.acquisition_download_queue,
+        "literature.acquisition_download_run": runtime.acquisition_download_run,
+        "literature.acquisition_download_control": runtime.acquisition_download_control,
+        "literature.acquisition_gate_resolve": runtime.acquisition_gate_resolve,
+        "literature.acquisition_artifact_import": runtime.acquisition_artifact_import,
+        "literature.acquisition_import_receipt": runtime.acquisition_import_receipt,
         "literature.knowledge_packages": runtime.knowledge_packages,
         "literature.knowledge_runtime_conformance": runtime.knowledge_runtime_conformance,
         "literature.ocr_status": runtime.ocr_status,
@@ -548,6 +1101,39 @@ def create_mcp_server(
     def scholar_ai_sidebar_resource() -> str:
         """Return the static Scholar AI MCP Apps sidebar shell."""
         return _sidebar_app_html()
+
+    @mcp.resource(
+        uri=NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI,
+        name="scholar-ai-main-column-handoff",
+        title="Scholar AI 主栏交接",
+        description=(
+            "Host-rendered Scholar AI widget that sends a bounded handoff "
+            "message into the Codex main column after the user clicks."
+        ),
+        mime_type=SIDEBAR_APP_RESOURCE_MIME_TYPE,
+        meta={
+            "ui": {
+                "schemaVersion": NATIVE_HANDOFF_WIDGET_PROBE_SCHEMA_VERSION,
+                "prefersBorder": False,
+                "csp": {
+                    "connectDomains": [],
+                    "resourceDomains": [],
+                },
+            },
+            "openai/widgetDescription": (
+                "Scholar AI main-column handoff widget. Sends a bounded sidebar "
+                "task handoff to the host conversation only when the user clicks."
+            ),
+            "openai/widgetPrefersBorder": False,
+            "openai/widgetCSP": {
+                "connect_domains": [],
+                "resource_domains": [],
+            },
+        },
+    )
+    def scholar_ai_native_handoff_probe_resource() -> str:
+        """Return a minimal host-rendered handoff probe shell."""
+        return _native_handoff_widget_probe_html()
 
     @mcp.tool(
         name="source.list_tree",
@@ -795,11 +1381,143 @@ def create_mcp_server(
             },
             "host_gates": {
                 "claude_desktop": "pending_resource_render_ui_tool_call_and_main_conversation_read_back",
-                "codex_desktop_class": "blocked_until_official_third_party_sidebar_or_panel_surface_exists",
+                "codex_desktop_class": "native_handoff_widget_probe_pending_live_host_test",
+            },
+            "native_handoff_probe": {
+                "tool": NATIVE_HANDOFF_WIDGET_PROBE_TOOL_NAME,
+                "resource_uri": NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI,
+                "status": "experimental_probe_only",
+                "claim_boundary": "not_a_completed_native_handoff_until_codex_renders_and_main_column_receives_message",
             },
             "backend": runtime.config_status(),
             "sidebar_url": sidebar_url,
         }
+
+    @mcp.tool(
+        name=NATIVE_HANDOFF_WIDGET_TOOL_NAME,
+        structured_output=False,
+        annotations=ToolAnnotations(
+            title="Scholar AI 主栏交接",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+        meta=NATIVE_HANDOFF_WIDGET_TOOL_META,
+    )
+    def literature_codex_handoff_widget(
+        request_id: str | None = None,
+        project_id: str | None = None,
+        receipt_id: str | None = None,
+        ref_count: int | None = None,
+        note: str | None = None,
+    ) -> CallToolResult:
+        """Render a Scholar AI handoff widget that can send to the Codex main column."""
+        return _build_native_handoff_widget_result(
+            request_id=request_id,
+            project_id=project_id,
+            receipt_id=receipt_id,
+            ref_count=ref_count,
+            note=note,
+        )
+
+    @mcp.tool(
+        name=NATIVE_HANDOFF_WIDGET_PROBE_TOOL_NAME,
+        structured_output=False,
+        annotations=ToolAnnotations(
+            title="Scholar AI 主栏交接",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+        meta=NATIVE_HANDOFF_WIDGET_PROBE_TOOL_META,
+    )
+    def literature_native_handoff_widget_probe(
+        request_id: str | None = None,
+        project_id: str | None = None,
+        receipt_id: str | None = None,
+        ref_count: int | None = None,
+        note: str | None = None,
+    ) -> CallToolResult:
+        """Compatibility alias for the Scholar AI Codex handoff widget."""
+        return _build_native_handoff_widget_result(
+            request_id=request_id,
+            project_id=project_id,
+            receipt_id=receipt_id,
+            ref_count=ref_count,
+            note=note,
+        )
+
+    def _build_native_handoff_widget_result(
+        *,
+        request_id: str | None = None,
+        project_id: str | None = None,
+        receipt_id: str | None = None,
+        ref_count: int | None = None,
+        note: str | None = None,
+    ) -> CallToolResult:
+        latest_note: str | None = None
+        if request_id is None:
+            latest_result = runtime.codex_handoff_latest(project_id=project_id)
+            if latest_result.get("is_error") is True:
+                latest_note = _bounded_widget_text(str(latest_result.get("message") or "latest handoff unavailable"))
+            else:
+                latest_data = latest_result.get("data")
+                if isinstance(latest_data, dict) and latest_data.get("found") is True:
+                    request_id = str(latest_data.get("request_id") or "") or None
+                    project_id = project_id or str(latest_data.get("project_id") or "") or None
+                    receipt_id = receipt_id or str(latest_data.get("receipt_id") or "") or None
+                    latest_ref_count = latest_data.get("ref_count")
+                    if ref_count is None and isinstance(latest_ref_count, int):
+                        ref_count = latest_ref_count
+                    latest_note = "已绑定最新侧栏接手任务。"
+                elif isinstance(latest_data, dict):
+                    latest_note = _bounded_widget_text(str(latest_data.get("message") or "未找到待接手任务。"))
+        bounded_request_id = _bounded_widget_text(request_id, limit=80)
+        bounded_project_id = _bounded_widget_text(project_id, limit=80)
+        bounded_receipt_id = _bounded_widget_text(receipt_id, limit=120)
+        bounded_note = _bounded_widget_text(note, limit=180) or latest_note
+        bounded_ref_count = ref_count if isinstance(ref_count, int) and 0 <= ref_count <= 50 else None
+        widget_data = {
+            "schema_version": NATIVE_HANDOFF_WIDGET_PROBE_SCHEMA_VERSION,
+            "mode": "handoff" if bounded_request_id else "probe",
+            "request_id": bounded_request_id or "s74_probe",
+            "project_id": bounded_project_id or None,
+            "receipt_id": bounded_receipt_id or None,
+            "ref_count": bounded_ref_count,
+            "note": bounded_note or None,
+        }
+        structured_content = {
+            "is_error": False,
+            "schema_version": NATIVE_HANDOFF_WIDGET_PROBE_SCHEMA_VERSION,
+            "resource_uri": NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI,
+            "rendering": "native_mcp_handoff_widget",
+            "status": "ready_to_render",
+            "claim_boundary": (
+                "Native delivery requires the host to render this widget and "
+                "the user to click its send button; result write-back still uses "
+                "agent_request_read -> agent_result on the same request_id."
+            ),
+            "widget_data": widget_data,
+        }
+        mode_text = "交接" if bounded_request_id else "测试"
+        return CallToolResult(
+            content=[
+                TextContent(
+                    type="text",
+                    text=(
+                        f"Scholar AI 主栏{mode_text}控件已准备。"
+                        "点击控件按钮发送到 Codex 主栏。"
+                    ),
+                )
+            ],
+            structuredContent=structured_content,
+            _meta={
+                "openai/outputTemplate": NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI,
+                "widgetData": widget_data,
+            },
+        )
 
     @mcp.tool(
         name="literature.health_check",
@@ -921,6 +1639,185 @@ def create_mcp_server(
     ) -> dict[str, Any]:
         """Search existing project chunks and return refs only."""
         return runtime.search_refs(project_id=project_id, query=query, top_k=top_k)
+
+    @mcp.tool(
+        name="literature.acquisition_status",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Acquisition Status",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_acquisition_status(
+        project_id: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Read allowlisted sources plus bounded download jobs and access gates."""
+        return runtime.acquisition_status(project_id=project_id, limit=limit)
+
+    @mcp.tool(
+        name="literature.acquisition_search",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Acquisition Search",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
+    def literature_acquisition_search(
+        project_id: str,
+        query: str,
+        sources: list[str] | None = None,
+        max_results: int = 20,
+        year_from: int | None = None,
+        year_to: int | None = None,
+    ) -> dict[str, Any]:
+        """Explicitly search allowlisted metadata sources and persist one bounded run."""
+        return runtime.acquisition_search(
+            project_id=project_id,
+            query=query,
+            sources=sources,
+            max_results=max_results,
+            year_from=year_from,
+            year_to=year_to,
+        )
+
+    @mcp.tool(
+        name="literature.acquisition_search_run",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Acquisition Search Run",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_acquisition_search_run(
+        run_id: str,
+        candidate_offset: int = 0,
+        candidate_limit: int = 10,
+    ) -> dict[str, Any]:
+        """Read one bounded candidate page from a durable acquisition search run."""
+        return runtime.acquisition_search_run(
+            run_id=run_id,
+            candidate_offset=candidate_offset,
+            candidate_limit=candidate_limit,
+        )
+
+    @mcp.tool(
+        name="literature.acquisition_download_queue",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Acquisition Download Queue",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_acquisition_download_queue(
+        project_id: str,
+        candidate_id: str,
+        access_evidence_id: str,
+        max_bytes: int = 100 * 1024 * 1024,
+    ) -> dict[str, Any]:
+        """Queue one PDF only from exact allowlisted open-access evidence."""
+        return runtime.acquisition_download_queue(
+            project_id=project_id,
+            candidate_id=candidate_id,
+            access_evidence_id=access_evidence_id,
+            max_bytes=max_bytes,
+        )
+
+    @mcp.tool(
+        name="literature.acquisition_download_run",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Acquisition Download Run",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+    )
+    def literature_acquisition_download_run(job_id: str) -> dict[str, Any]:
+        """Explicitly run or retry one queued allowlisted PDF download."""
+        return runtime.acquisition_download_run(job_id=job_id)
+
+    @mcp.tool(
+        name="literature.acquisition_download_control",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Acquisition Download Control",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_acquisition_download_control(
+        job_id: str,
+        action: Literal["pause", "resume", "cancel"],
+    ) -> dict[str, Any]:
+        """Explicitly pause, resume, or cancel one durable download job."""
+        return runtime.acquisition_download_control(job_id=job_id, action=action)
+
+    @mcp.tool(
+        name="literature.acquisition_gate_resolve",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Acquisition Gate Resolve",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_acquisition_gate_resolve(
+        gate_id: str,
+        confirm_user_completed: bool = False,
+    ) -> dict[str, Any]:
+        """Resolve a visible access gate only after explicit user confirmation."""
+        return runtime.acquisition_gate_resolve(
+            gate_id=gate_id,
+            confirm_user_completed=confirm_user_completed,
+        )
+
+    @mcp.tool(
+        name="literature.acquisition_artifact_import",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Acquisition Artifact Import",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_acquisition_artifact_import(artifact_id: str) -> dict[str, Any]:
+        """Import one validated PDF through the existing material pipeline."""
+        return runtime.acquisition_artifact_import(artifact_id=artifact_id)
+
+    @mcp.tool(
+        name="literature.acquisition_import_receipt",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            title="Acquisition Import Receipt",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    def literature_acquisition_import_receipt(receipt_id: str) -> dict[str, Any]:
+        """Read one durable import receipt without repeating ingestion."""
+        return runtime.acquisition_import_receipt(receipt_id=receipt_id)
 
     @mcp.tool(
         name="literature.knowledge_packages",

@@ -13,6 +13,7 @@ import logging
 import os
 import random
 import time
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -35,8 +36,18 @@ from llm_defaults import resolve_llm_params
 from llm_cost_logger import log_llm_call
 from llm_pricing import usage_from_response
 from sampling_storage import load_user_sampling
-from model_config_store import chat_store
-from mcp_runtime.tool_use_runner import ToolLoopStopReason, failed_tool_use_run_result
+from model_config_store import (
+    CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
+    CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT,
+    chat_context_compression_store,
+    chat_store,
+    normalize_chat_context_compression_settings,
+)
+from mcp_runtime.tool_use_runner import (
+    RunCaps,
+    ToolLoopStopReason,
+    failed_tool_use_run_result,
+)
 import provider_capabilities
 from provider_capabilities import ProviderToolCapabilityError
 from runtime_env import env_value
@@ -72,7 +83,7 @@ class LLMConfig(BaseModel):
     temperature: float = 0.7
     top_p: float = 0.9
     top_k: int = 50
-    max_tokens: int = 4096
+    max_tokens: int = 12000
     system_prompt: str = ""
 
 
@@ -81,6 +92,16 @@ class ChatMessage(BaseModel):
 
     role: str = Field(..., description="'user' or 'assistant'")
     content: str = Field(..., description="Message content")
+
+
+@dataclass(frozen=True, slots=True)
+class ChatImageAttachment:
+    """Validated in-memory image passed only between internal chat layers."""
+
+    mime: str
+    data_b64: str
+    size: int
+    name: str | None = None
 
 
 # Envelope for the assembled prompt that callers pass via ``ChatRequest.query``
@@ -128,6 +149,8 @@ MAX_CHAT_QUERY_LENGTH = 80_000
 class ChatRequest(BaseModel):
     _internal_skip_analysis_chain: bool = PrivateAttr(default=False)
     _internal_skip_chat_telemetry: bool = PrivateAttr(default=False)
+    _internal_force_deterministic_analysis_chain: bool = PrivateAttr(default=False)
+    _internal_images: tuple[ChatImageAttachment, ...] = PrivateAttr(default=())
 
     query: str = Field(..., min_length=1, max_length=MAX_CHAT_QUERY_LENGTH)
     context: list[str] = Field(default_factory=list, description="Document text chunks as context")
@@ -221,7 +244,9 @@ def _resolve_chat_llm(llm: LLMConfig | None) -> LLMConfig:
     temperature = (llm.temperature if llm else None) or float(env_value("CHAT_TEMPERATURE", default="0.7") or "0.7")
     top_p = (llm.top_p if llm else None) or float(env_value("CHAT_TOP_P", default="0.9") or "0.9")
     top_k = (llm.top_k if llm else None) or int(env_value("CHAT_TOP_K", default="50") or "50")
-    max_tokens = (llm.max_tokens if llm else None) or int(env_value("CHAT_MAX_TOKENS", default="4096") or "4096")
+    max_tokens = (llm.max_tokens if llm else None) or int(
+        env_value("CHAT_MAX_TOKENS", default="12000") or "12000"
+    )
     system_prompt = (llm.system_prompt if llm else "") or env_value("CHAT_SYSTEM_PROMPT", default="") or ""
 
     if not resolved_base_url or not resolved_model:
@@ -684,7 +709,85 @@ def _resolve_model_name(provider: str, model: str, base_url: str = "") -> str:
     raise ValueError(f"未配置可用模型: provider={provider}")
 
 
-_CHARS_PER_TOKEN = 4  # rough estimate: 1 token ≈ 4 characters (mix of CJK and Latin)
+_TOOL_PAYLOAD_CHARS_PER_TOKEN = 4
+_CHAT_MESSAGE_OVERHEAD_TOKENS = 8
+_CHAT_REQUEST_OVERHEAD_TOKENS = 64
+_CHAT_CONTEXT_TRUNCATION_NOTICE = (
+    "\n\n[系统注意：为适配当前模型上下文窗口，后续较低优先级内容已截断。]"
+)
+_CHAT_HISTORY_TRUNCATION_NOTICE = (
+    "[系统注意：由于上下文长度限制，早期对话记录已被截断。"
+    "以下仅保留最近的对话历史，请根据现有内容尽力理解用户意图。]"
+)
+
+
+def _estimate_provider_text_tokens(text: str) -> int:
+    """Estimate provider tokens without loading a tokenizer or making network calls."""
+
+    if not text:
+        return 0
+    non_ascii = sum(1 for character in text if ord(character) > 127)
+    ascii_chars = len(text) - non_ascii
+    return non_ascii + (ascii_chars + 3) // 4
+
+
+def _prefix_within_token_budget(text: str, max_tokens: int) -> str:
+    """Return the longest leading substring inside a deterministic token budget."""
+
+    if not text or max_tokens <= 0:
+        return ""
+    if _estimate_provider_text_tokens(text) <= max_tokens:
+        return text
+
+    low = 0
+    high = len(text)
+    while low < high:
+        middle = (low + high + 1) // 2
+        if _estimate_provider_text_tokens(text[:middle]) <= max_tokens:
+            low = middle
+        else:
+            high = middle - 1
+    return text[:low]
+
+
+def _truncate_provider_text(text: str, max_tokens: int) -> str:
+    """Head-truncate provider text and add a visible truncation marker when possible."""
+
+    if not text or max_tokens <= 0:
+        return ""
+    if _estimate_provider_text_tokens(text) <= max_tokens:
+        return text
+    notice_tokens = _estimate_provider_text_tokens(_CHAT_CONTEXT_TRUNCATION_NOTICE)
+    if notice_tokens >= max_tokens:
+        return _prefix_within_token_budget(text, max_tokens)
+    prefix = _prefix_within_token_budget(text, max_tokens - notice_tokens).rstrip()
+    return f"{prefix}{_CHAT_CONTEXT_TRUNCATION_NOTICE}"
+
+
+def _chat_runtime_token_budgets() -> tuple[int, int]:
+    """Return normalized model-context and provider-bound tool-output budgets."""
+
+    settings = normalize_chat_context_compression_settings(
+        chat_context_compression_store.get_settings()
+    )
+    return (
+        int(settings.get("model_context_window") or CHAT_MODEL_CONTEXT_WINDOW_DEFAULT),
+        int(
+            settings.get("tool_output_token_limit")
+            or CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT
+        ),
+    )
+
+
+def _chat_tool_run_caps() -> RunCaps:
+    """Build MCP caps using the frontend-configurable provider-bound token limit."""
+
+    _context_window, tool_output_token_limit = _chat_runtime_token_budgets()
+    return RunCaps(
+        max_tool_payload_chars=(
+            tool_output_token_limit * _TOOL_PAYLOAD_CHARS_PER_TOKEN
+        )
+    )
 
 
 def _compress_history(
@@ -702,35 +805,81 @@ def _compress_history(
 
     This is fully deterministic and requires no extra API call.
     """
-    if not history:
+    if not history or max_tokens_budget <= 0:
         return []
 
-    max_chars = max_tokens_budget * _CHARS_PER_TOKEN
+    full_cost = sum(
+        _estimate_provider_text_tokens(message.content) + _CHAT_MESSAGE_OVERHEAD_TOKENS
+        for message in history
+    )
+    if full_cost <= max_tokens_budget:
+        return [
+            {"role": message.role, "content": message.content}
+            for message in history
+        ]
+
+    notice_cost = (
+        _estimate_provider_text_tokens(_CHAT_HISTORY_TRUNCATION_NOTICE)
+        + _CHAT_MESSAGE_OVERHEAD_TOKENS
+    )
+    remaining_tokens = max(0, max_tokens_budget - notice_cost)
     kept: list[dict[str, str]] = []
-    used_chars = 0
-    truncated = False
 
     for msg in reversed(history):
-        cost = len(msg.content)
-        if used_chars + cost > max_chars:
-            truncated = True
+        cost = _estimate_provider_text_tokens(msg.content) + _CHAT_MESSAGE_OVERHEAD_TOKENS
+        if cost > remaining_tokens:
+            if not kept and remaining_tokens > _CHAT_MESSAGE_OVERHEAD_TOKENS:
+                clipped = _truncate_provider_text(
+                    msg.content,
+                    remaining_tokens - _CHAT_MESSAGE_OVERHEAD_TOKENS,
+                )
+                if clipped:
+                    kept.insert(0, {"role": msg.role, "content": clipped})
             break
         kept.insert(0, {"role": msg.role, "content": msg.content})
-        used_chars += cost
+        remaining_tokens -= cost
 
-    if truncated:
+    if notice_cost <= max_tokens_budget:
         kept.insert(
             0,
             {
                 "role": "system",
-                "content": (
-                    "[系统注意：由于上下文长度限制，早期对话记录已被截断。"
-                    "以下仅保留最近的对话历史，请根据现有内容尽力理解用户意图。]"
-                ),
+                "content": _CHAT_HISTORY_TRUNCATION_NOTICE,
             },
         )
 
     return kept
+
+
+def _chat_model_supports_images() -> bool:
+    """Return whether the configured chat transport may serialize images."""
+
+    explicit = env_value("CHAT_MODEL_SUPPORTS_IMAGE")
+    if explicit is None:
+        return False
+    return str(explicit).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _provider_image_attachments(
+    images: tuple[ChatImageAttachment, ...],
+) -> tuple[ChatImageAttachment, ...]:
+    """Validate internal images and expose them only for an opted-in provider."""
+
+    if not images or not _chat_model_supports_images():
+        return ()
+    if len(images) > 6:
+        raise ValueError("at most 6 chat images are supported")
+    allowed_mime = {"image/png", "image/jpeg"}
+    for image in images:
+        if not isinstance(image, ChatImageAttachment):
+            raise TypeError("images must contain ChatImageAttachment values")
+        if image.mime not in allowed_mime:
+            raise ValueError(f"unsupported chat image MIME type: {image.mime}")
+        if not image.data_b64:
+            raise ValueError("chat image data_b64 must not be empty")
+        if image.size < 1 or image.size > 4 * 1024 * 1024:
+            raise ValueError("chat image size must be between 1 byte and 4 MiB")
+    return images
 
 
 def _build_chat_request(
@@ -742,9 +891,11 @@ def _build_chat_request(
     history: list[ChatMessage] | None = None,
     response_format: dict[str, Any] | None = None,
     tools: list[dict[str, Any]] | None = None,
+    reserve_tool_output_tokens: bool = False,
     project_id: str | None = None,
     project_reasoning_bias_enabled: bool | None = None,
     project_reasoning_bias_surface: str = "chat",
+    images: tuple[ChatImageAttachment, ...] = (),
 ) -> tuple[str, dict[str, str], dict[str, Any]]:
     """Build provider-specific URL, headers, and payload."""
     provider_key = _provider_key(llm.provider)
@@ -759,13 +910,53 @@ def _build_chat_request(
     )
     url = _build_chat_endpoint(llm.base_url, llm.provider)
 
-    # Reserve ~40% of max_tokens for history; the rest for the current exchange.
-    history_token_budget = max(0, int(llm.max_tokens * 0.4))
+    model_context_window, tool_output_token_limit = _chat_runtime_token_budgets()
+    if llm.max_tokens <= 0:
+        raise ValueError("max_tokens must be positive")
+    reserved_tool_tokens = tool_output_token_limit if reserve_tool_output_tokens else 0
+    input_token_budget = model_context_window - llm.max_tokens - reserved_tool_tokens
+    if input_token_budget <= _CHAT_REQUEST_OVERHEAD_TOKENS:
+        raise ValueError(
+            "回答模型预算无可用输入空间：请增大模型上下文窗口，或降低最大输出和工具输出上限。"
+        )
+
+    query_tokens = _estimate_provider_text_tokens(query) + _CHAT_MESSAGE_OVERHEAD_TOKENS
+    tool_schema_tokens = 0
+    if tools:
+        try:
+            serialized_tools = json.dumps(tools, ensure_ascii=False, sort_keys=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("tools must be JSON serializable") from exc
+        tool_schema_tokens = _estimate_provider_text_tokens(serialized_tools)
+    fixed_input_tokens = (
+        _CHAT_REQUEST_OVERHEAD_TOKENS + query_tokens + tool_schema_tokens
+    )
+    if fixed_input_tokens >= input_token_budget:
+        raise ValueError(
+            "用户问题和工具定义超过当前模型输入预算：请增大模型上下文窗口或缩小请求。"
+        )
+
+    content_token_budget = input_token_budget - fixed_input_tokens
+    history_full_tokens = sum(
+        _estimate_provider_text_tokens(message.content) + _CHAT_MESSAGE_OVERHEAD_TOKENS
+        for message in (history or [])
+    )
+    history_reserve = min(history_full_tokens, content_token_budget // 4)
+    system_token_budget = max(0, content_token_budget - history_reserve)
+    if system_text:
+        system_token_budget = max(0, system_token_budget - _CHAT_MESSAGE_OVERHEAD_TOKENS)
+        system_text = _truncate_provider_text(system_text, system_token_budget)
+    used_system_tokens = _estimate_provider_text_tokens(system_text)
+    if system_text:
+        used_system_tokens += _CHAT_MESSAGE_OVERHEAD_TOKENS
+    history_token_budget = max(0, content_token_budget - used_system_tokens)
     history_messages = _compress_history(history or [], history_token_budget)
 
     key_optional_providers = {"ollama", "local llm"}
     if provider_key not in key_optional_providers and not api_key:
         raise ValueError(f"未配置可用的服务访问凭证: provider={llm.provider}")
+
+    image_attachments = _provider_image_attachments(images)
 
     if provider_key == "claude":
         headers = {
@@ -779,9 +970,25 @@ def _build_chat_request(
             for m in history_messages
             if m.get("role") != "system"
         ]
+        user_content: str | list[dict[str, Any]] = query
+        if image_attachments:
+            user_content = [
+                {"type": "text", "text": query},
+                *[
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": image.mime,
+                            "data": image.data_b64,
+                        },
+                    }
+                    for image in image_attachments
+                ],
+            ]
         payload: dict[str, Any] = {
             "model": resolved_model,
-            "messages": [*claude_history, {"role": "user", "content": query}],
+            "messages": [*claude_history, {"role": "user", "content": user_content}],
             "max_tokens": llm.max_tokens,
             "temperature": llm.temperature,
             "top_p": llm.top_p,
@@ -799,11 +1006,25 @@ def _build_chat_request(
             payload["stream"] = True
         return url, headers, payload
 
-    messages: list[dict[str, str]] = []
+    messages: list[dict[str, Any]] = []
     if system_text:
         messages.append({"role": "system", "content": system_text})
     messages.extend(history_messages)
-    messages.append({"role": "user", "content": query})
+    user_content = query
+    if image_attachments:
+        user_content = [
+            {"type": "text", "text": query},
+            *[
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{image.mime};base64,{image.data_b64}",
+                    },
+                }
+                for image in image_attachments
+            ],
+        ]
+    messages.append({"role": "user", "content": user_content})
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -1135,6 +1356,11 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     llm = _apply_ai_cost_profile_to_llm(llm, req.ai_cost_profile)
+    use_external_mcp = (
+        req.mcp_server_ids is not None
+        and chat_mcp_integration.is_mcp_tools_enabled()
+    )
+    use_local_literature_tools = bool(req.use_local_literature_tools)
     with use_cost_profile(req.ai_cost_profile):
         try:
             # B18 (2026-06-13): user-confirmed chat credential — see comment below
@@ -1145,9 +1371,13 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
                 llm,
                 history=req.history,
                 tools=req.tools,
+                reserve_tool_output_tokens=bool(
+                    req.tools or use_external_mcp or use_local_literature_tools
+                ),
                 project_id=req.project_id,
                 project_reasoning_bias_enabled=req.project_reasoning_bias_enabled,
                 project_reasoning_bias_surface="chat",
+                images=req._internal_images,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1157,8 +1387,6 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
 
         # ---- Optional MCP tool-use loop ----------------------------------
         mcp_run_dump: dict[str, Any] | None = None
-        use_external_mcp = req.mcp_server_ids is not None and chat_mcp_integration.is_mcp_tools_enabled()
-        use_local_literature_tools = bool(req.use_local_literature_tools)
         if use_external_mcp or use_local_literature_tools:
             try:
                 servers, snapshot = (
@@ -1187,12 +1415,14 @@ async def chat_ask(req: ChatRequest) -> ChatResponse:
             runner = (
                 chat_mcp_integration.make_local_literature_runner(
                     allow_high_risk_tools=req.mcp_allow_high_risk_tools,
+                    caps=_chat_tool_run_caps(),
                 )
                 if use_local_literature_tools
                 else chat_mcp_integration.make_runner(
                     servers=servers,
                     catalog_snapshot=snapshot,
                     allow_high_risk_tools=req.mcp_allow_high_risk_tools,
+                    caps=_chat_tool_run_caps(),
                 )
             )
             offered_tool_count = max(
@@ -1316,7 +1546,11 @@ async def _maybe_build_analysis_chain(
         return None
 
     evidence_snippets = list(req.context or [])
-    use_llm = is_enabled("analysis_chain_rag_llm")
+    use_llm = is_enabled("analysis_chain_rag_llm") and not getattr(
+        req,
+        "_internal_force_deterministic_analysis_chain",
+        False,
+    )
 
     # B5 LLM path: spin up a minimal sub-chat to render the structured chain.
     # The callable closure deliberately strips MCP tools and history so the
@@ -1363,6 +1597,8 @@ async def _maybe_build_analysis_chain(
 
 class ChatStreamRequest(BaseModel):
     """Request body for streaming chat — same fields as ChatRequest."""
+
+    _internal_images: tuple[ChatImageAttachment, ...] = PrivateAttr(default=())
 
     query: str = Field(..., min_length=1, max_length=MAX_CHAT_QUERY_LENGTH)
     context: list[str] = Field(default_factory=list, description="文档上下文片段")
@@ -1424,6 +1660,7 @@ async def chat_stream(req: ChatStreamRequest) -> StreamingResponse:
                 project_id=req.project_id,
                 project_reasoning_bias_enabled=req.project_reasoning_bias_enabled,
                 project_reasoning_bias_surface="chat",
+                images=req._internal_images,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

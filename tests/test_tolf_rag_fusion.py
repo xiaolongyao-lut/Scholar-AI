@@ -27,12 +27,17 @@ if str(_CORE) not in sys.path:
 
 from routers.intelligent_chat_router import (  # noqa: E402
     ContextChunkPayload,
+    EvidenceReferencePayload,
+    _build_visual_evidence_refs_from_chunks,
+    _collect_related_visual_evidence_chunks,
     _extract_figure_candidate_detail,
     _extract_image_paths,
+    _has_image_asset_paths,
     _build_smart_read_retrieval_diagnostics,
     _merge_visual_evidence_chunks,
     _prioritize_query_identifier_matches,
     _rrf_merge,
+    _supplement_visual_evidence_refs_for_answer,
     _tolf_fusion_mode_enabled,
     _visual_evidence_score,
 )
@@ -172,6 +177,49 @@ def test_smart_read_retrieval_diagnostics_aggregate_gateway_and_tolf_without_con
     assert "retrieval_gateway_diagnostics" not in serialized_chunk
     assert "tolf_diagnostics" not in serialized_chunk
     assert "proj_hidden" not in str(diagnostics.model_dump())
+
+
+def test_smart_read_retrieval_diagnostics_reports_hybrid_rerank_from_source_labels() -> None:
+    chunk = ContextChunkPayload(
+        index=1,
+        source="Laser welding paper",
+        content="AlSi10Mg laser welding evidence.",
+        source_labels=["bm25", "dense", "rerank"],
+    )
+
+    diagnostics = _build_smart_read_retrieval_diagnostics(
+        [chunk],
+        project_id="proj_hidden",
+        retrieval_attempted=True,
+    )
+
+    assert diagnostics is not None
+    assert diagnostics.retrieval_method == "hybrid_rerank"
+    assert diagnostics.embedding_status == "active"
+    assert diagnostics.rerank_status == "active"
+    assert diagnostics.lexical_only is False
+
+
+def test_smart_read_retrieval_diagnostics_reports_hybrid_fallback_without_claiming_rerank() -> None:
+    chunk = ContextChunkPayload(
+        index=1,
+        source="Laser welding paper",
+        content="AlSi10Mg laser welding evidence.",
+        source_labels=["bm25", "dense_fallback", "rerank_fallback"],
+    )
+
+    diagnostics = _build_smart_read_retrieval_diagnostics(
+        [chunk],
+        project_id="proj_hidden",
+        retrieval_attempted=True,
+    )
+
+    assert diagnostics is not None
+    assert diagnostics.retrieval_method == "hybrid"
+    assert diagnostics.embedding_status == "skipped"
+    assert diagnostics.rerank_status == "skipped"
+    assert diagnostics.lexical_only is True
+    assert diagnostics.fallback_reasons == ["dense_fallback", "rerank_fallback"]
 
 
 def test_identifier_priority_demotes_broad_topic_hits() -> None:
@@ -400,6 +448,159 @@ def test_hybrid_retrieval_keeps_keyword_recall_when_hybrid_returns_hits(
     assert any(chunk.chunk_id == "keyword_welding" for chunk in chunks)
 
 
+def test_material_scoped_context_uses_hybrid_labels_inside_active_material(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A selected PDF must not bypass the hybrid retrieval diagnostics path."""
+
+    _isolate_overrides(monkeypatch, tmp_path)
+    monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", "1")
+    monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED", "1")
+    monkeypatch.setenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", "1")
+    monkeypatch.setenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED", "0")
+    _reset_flag_cache()
+
+    from routers import intelligent_chat_router as router
+
+    active_material = {
+        "chunk_id": "active_laser",
+        "material_id": "mat_active",
+        "content": "The selected paper reports laser power and hardness evidence.",
+        "title": "Selected Laser Study",
+    }
+    other_material = {
+        "chunk_id": "other_laser",
+        "material_id": "mat_other",
+        "content": "A different project material also discusses laser power.",
+        "title": "Other Laser Study",
+    }
+
+    with (
+        patch.object(router, "load_project_chunks_for_rag", return_value=[active_material, other_material]),
+        patch.object(router, "search_project_chunks_for_query", return_value=[other_material]) as mock_keyword,
+    ):
+        chunks, _ = asyncio.run(
+            router._build_project_context_chunks(
+                query="laser power hardness",
+                project_id="proj_test",
+                tier="fast",
+                material_id="mat_active",
+            )
+        )
+
+    mock_keyword.assert_called_once()
+    assert chunks
+    assert {chunk.material_id for chunk in chunks} == {"mat_active"}
+    labels = chunks[0].source_labels
+    assert "bm25" in labels
+    assert "dense_fallback" in labels
+    assert "project_chunks" not in labels
+
+
+def test_exclusive_author_year_query_scopes_context_and_visual_refs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An explicit single-paper request must not leak other project materials."""
+
+    _isolate_overrides(monkeypatch, tmp_path)
+    monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", "0")
+    monkeypatch.setenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", "0")
+    monkeypatch.setenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED", "0")
+    _reset_flag_cache()
+
+    from routers import intelligent_chat_router as router
+
+    cui_title = "Cui - 2022 - Porosity microstructure and mechanical property.pdf"
+    other_title = "Peng - 2022 - Laser welding of AlSi10Mg.pdf"
+    cui_narrative = {
+        "chunk_id": "cui-narrative",
+        "material_id": "mat-cui",
+        "title": cui_title,
+        "content": "Cui reports AlSi10Mg composition, porosity, and welded-joint microstructure.",
+        "chunk_type": "narrative",
+    }
+    other_narrative = {
+        "chunk_id": "peng-narrative",
+        "material_id": "mat-peng",
+        "title": other_title,
+        "content": "Peng reports AlSi10Mg porosity and welded-joint microstructure.",
+        "chunk_type": "narrative",
+    }
+    cui_visuals = [
+        {
+            "chunk_id": "cui-table-1",
+            "material_id": "mat-cui",
+            "title": cui_title,
+            "content": "Table 1. Chemical composition of AlSi10Mg.",
+            "chunk_type": "table",
+            "image_paths": ["figure_assets/extracted/cui/table-1.png"],
+        },
+        {
+            "chunk_id": "cui-fig-6",
+            "material_id": "mat-cui",
+            "title": cui_title,
+            "content": "Fig. 6. Porosity and macrostructure of the welded joint.",
+            "chunk_type": "figure_caption",
+            "image_paths": ["figure_assets/extracted/cui/fig-6.png"],
+        },
+        {
+            "chunk_id": "cui-fig-14",
+            "material_id": "mat-cui",
+            "title": cui_title,
+            "content": "Fig. 14. Microstructure of eutectic silicon in the welded joint.",
+            "chunk_type": "figure_caption",
+            "image_paths": ["figure_assets/extracted/cui/fig-14.png"],
+        },
+    ]
+    other_visual = {
+        "chunk_id": "peng-fig-6",
+        "material_id": "mat-peng",
+        "title": other_title,
+        "content": "Fig. 6. Porosity and microstructure of another welded joint.",
+        "chunk_type": "figure_caption",
+        "image_paths": ["figure_assets/extracted/peng/fig-6.png"],
+    }
+    project_chunks = [cui_narrative, other_narrative, *cui_visuals, other_visual]
+    existing_assets = {
+        path
+        for chunk in [*cui_visuals, other_visual]
+        for path in chunk["image_paths"]
+    }
+    visual_refs: list[EvidenceReferencePayload] = []
+
+    with (
+        patch.object(router, "load_project_chunks_for_rag", return_value=project_chunks),
+        patch.object(
+            router,
+            "search_project_chunks_for_query",
+            return_value=[other_narrative, cui_narrative],
+        ),
+        patch(
+            "routers.resources_router.endpoints_search_upload._collect_existing_project_asset_paths",
+            return_value=existing_assets,
+        ),
+    ):
+        chunks, _truncated = asyncio.run(
+            router._build_project_context_chunks(
+                query="仅依据 Cui 等人 2022 年的论文说明 Table 1、Fig. 6 和 Fig. 14。",
+                project_id="proj_test",
+                tier="fast",
+                visual_evidence_sink=visual_refs,
+            )
+        )
+
+    assert chunks
+    assert {chunk.material_id for chunk in chunks} == {"mat-cui"}
+    assert {ref.material_id for ref in visual_refs} == {"mat-cui"}
+    assert {ref.chunk_id for ref in visual_refs} == {
+        "cui-table-1",
+        "cui-fig-6",
+        "cui-fig-14",
+    }
+
+
 def test_visual_evidence_merge_prefers_laser_weld_images_over_non_laser_images() -> None:
     """Visual queries should surface real figure assets matching the user intent."""
 
@@ -457,6 +658,339 @@ def test_visual_evidence_merge_prefers_laser_weld_images_over_non_laser_images()
     assert "ping_surface_appearance" in merged_ids
     assert "cui_fracture_surface" in merged_ids
     assert "electron_beam_image" not in merged_ids
+
+
+def test_visual_evidence_merge_adds_all_related_images_for_non_visual_query() -> None:
+    """Ordinary questions receive every relevant image that fits the prompt cap."""
+
+    selected = [
+        {
+            "chunk_id": "porosity_process_anchor",
+            "material_id": "mat-laser",
+            "title": "Laser welding of AlSi10Mg.pdf",
+            "section_path": ["Results", "Porosity and process parameters"],
+            "page": 4,
+            "content": (
+                "AlSi10Mg laser welding porosity changes with laser power and welding speed."
+            ),
+            "chunk_type": "narrative",
+        }
+    ]
+    related = [
+        {
+            "chunk_id": f"porosity_process_figure_{index}",
+            "material_id": "mat-laser",
+            "title": "Laser welding of AlSi10Mg.pdf",
+            "section_path": ["Results", "Porosity and process parameters"],
+            "page": 4 + index,
+            "content": (
+                f"Figure {index}. Porosity of AlSi10Mg welds at different laser powers "
+                "and welding speeds."
+            ),
+            "chunk_type": "figure_caption",
+            "image_paths": [f"figure_assets/extracted/laser/p000{4 + index}_img001.jpeg"],
+        }
+        for index in range(1, 4)
+    ]
+    unrelated = {
+        "chunk_id": "unrelated_micrograph",
+        "material_id": "mat-corrosion",
+        "title": "Corrosion microstructure study.pdf",
+        "section_path": ["Results", "Corrosion"],
+        "page": 9,
+        "content": "Figure 9. SEM micrograph of corrosion products after salt-spray exposure.",
+        "chunk_type": "figure_caption",
+        "image_paths": ["figure_assets/extracted/corrosion/p0009_img001.jpeg"],
+    }
+
+    merged = _merge_visual_evidence_chunks(
+        "Explain AlSi10Mg laser welding porosity and process parameter relationships",
+        selected,
+        [*selected, unrelated, *related],
+        total_cap=6,
+    )
+
+    merged_ids = [item["chunk_id"] for item in merged]
+    assert {item["chunk_id"] for item in related}.issubset(merged_ids)
+    assert "unrelated_micrograph" not in merged_ids
+    assert sum(bool(item.get("image_paths")) for item in merged) == 3
+
+
+def test_visual_evidence_refs_keep_all_related_existing_assets_only() -> None:
+    """Display refs keep every related real asset and exclude missing or unrelated paths."""
+
+    related_count = 205
+    selected = [
+        {
+            "chunk_id": "porosity-anchor",
+            "material_id": "mat-laser",
+            "title": "Laser welding of AlSi10Mg.pdf",
+            "content": "Laser power and welding speed control porosity in AlSi10Mg welds.",
+        }
+    ]
+    related = [
+        {
+            "chunk_id": f"related-figure-{index}",
+            "material_id": "mat-laser",
+            "title": "Laser welding of AlSi10Mg.pdf",
+            "content": f"Figure {index}. Porosity response to laser power and welding speed.",
+            "chunk_type": "figure_caption",
+            "image_paths": [
+                f"figure_assets/extracted/laser/figure-{index}.png",
+                f"figure_assets/extracted/laser/missing-{index}.png",
+            ],
+        }
+        for index in range(1, related_count + 1)
+    ]
+    unrelated = {
+        "chunk_id": "unrelated-corrosion-figure",
+        "material_id": "mat-corrosion",
+        "title": "Corrosion products.pdf",
+        "content": "Figure 9. Corrosion products after salt-spray exposure.",
+        "chunk_type": "figure_caption",
+        "image_paths": ["figure_assets/extracted/corrosion/figure-9.png"],
+    }
+    existing_assets = {
+        f"figure_assets/extracted/laser/figure-{index}.png"
+        for index in range(1, related_count + 1)
+    } | {"figure_assets/extracted/corrosion/figure-9.png"}
+
+    chunks = _collect_related_visual_evidence_chunks(
+        "Explain AlSi10Mg laser welding porosity and process parameter relationships",
+        selected,
+        [*related, unrelated],
+        allowed_image_paths=existing_assets,
+    )
+    refs = _build_visual_evidence_refs_from_chunks(chunks)
+
+    assert len(refs) == related_count
+    assert [ref.chunk_id for ref in refs] == [
+        f"related-figure-{index}"
+        for index in range(1, related_count + 1)
+    ]
+    assert [path for ref in refs for path in ref.image_paths] == [
+        f"figure_assets/extracted/laser/figure-{index}.png"
+        for index in range(1, related_count + 1)
+    ]
+    assert all("missing" not in path for ref in refs for path in ref.image_paths)
+    assert all("corrosion" not in path for ref in refs for path in ref.image_paths)
+
+
+def test_visual_evidence_ref_keeps_every_asset_from_one_related_chunk() -> None:
+    """One relevant chunk may expose all of its native assets without a fixed quota."""
+
+    asset_paths = [
+        f"figure_assets/extracted/laser/panel-{index}.png"
+        for index in range(1, 13)
+    ]
+    selected = [
+        {
+            "chunk_id": "multi-panel-anchor",
+            "material_id": "mat-laser",
+            "title": "Laser welding of AlSi10Mg.pdf",
+            "content": "Laser power and welding speed control porosity in AlSi10Mg welds.",
+        }
+    ]
+    related = {
+        "chunk_id": "multi-panel-figure",
+        "material_id": "mat-laser",
+        "title": "Laser welding of AlSi10Mg.pdf",
+        "content": "Figure 8. Porosity response to laser power and welding speed.",
+        "chunk_type": "figure_caption",
+        "image_paths": asset_paths,
+    }
+
+    chunks = _collect_related_visual_evidence_chunks(
+        "Explain AlSi10Mg laser welding porosity and process parameter relationships",
+        selected,
+        [related],
+        allowed_image_paths=set(asset_paths),
+    )
+    refs = _build_visual_evidence_refs_from_chunks(chunks)
+
+    assert len(refs) == 1
+    assert refs[0].image_paths == asset_paths
+
+
+def test_answer_figure_refs_supplement_native_asset_from_existing_ref_material(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A final-answer Fig. 6 citation must join the existing same-paper Fig. 14."""
+
+    fig_14_path = "figure_assets/extracted/cui/p0011_img001.png"
+    fig_6_path = "figure_assets/extracted/cui/p0006_img001.png"
+    other_fig_6_path = "figure_assets/extracted/other/p0006_img001.png"
+    existing = EvidenceReferencePayload(
+        chunk_id="cui-fig-14",
+        material_id="mat-cui",
+        source="Cui 2022.pdf",
+        text="Fig. 14. Joint tensile properties.",
+        quote="Fig. 14. Joint tensile properties.",
+        label="visual_evidence",
+        figure_candidate="Fig. 14",
+        figure_candidate_detail={"kind": "figure", "label": "Fig. 14"},
+        image_paths=[fig_14_path],
+    )
+    project_chunks = [
+        {
+            "chunk_id": "cui-fig-6",
+            "material_id": "mat-cui",
+            "title": "Cui 2022.pdf",
+            "content": "Fig. 6. Macrostructure of the welded joints.",
+            "chunk_type": "figure_caption",
+            "figure_candidate_detail": {
+                "kind": "figure",
+                "label": "Fig. 6",
+                "caption": "Fig. 6. Macrostructure of the welded joints.",
+            },
+            "image_paths": [fig_6_path],
+        },
+        {
+            "chunk_id": "other-fig-6",
+            "material_id": "mat-other",
+            "title": "Other paper.pdf",
+            "content": "Fig. 6. An unrelated corrosion image.",
+            "chunk_type": "figure_caption",
+            "figure_candidate_detail": {
+                "kind": "figure",
+                "label": "Fig. 6",
+            },
+            "image_paths": [other_fig_6_path],
+        },
+    ]
+    monkeypatch.setattr(
+        "routers.intelligent_chat_router.load_project_chunks_for_rag",
+        lambda _project_id: project_chunks,
+    )
+    monkeypatch.setattr(
+        "routers.resources_router.endpoints_search_upload._collect_existing_project_asset_paths",
+        lambda _project_id: {fig_14_path, fig_6_path, other_fig_6_path},
+    )
+
+    refs = _supplement_visual_evidence_refs_for_answer(
+        answer="The macrostructure in Fig. 6 explains the strength trend in Fig. 14.",
+        project_id="project-alsi10mg2",
+        existing_refs=[existing],
+        evidence_refs=[],
+        context_chunks=[],
+    )
+
+    assert [ref.chunk_id for ref in refs] == ["cui-fig-14", "cui-fig-6"]
+    assert [path for ref in refs for path in ref.image_paths] == [fig_14_path, fig_6_path]
+    assert all(ref.material_id == "mat-cui" for ref in refs)
+
+
+def test_answer_visual_reconciliation_prunes_235_broad_refs_to_explicit_evidence_material() -> None:
+    """Final refs must follow answer labels and the uniquely evidenced paper."""
+
+    target_specs = [
+        ("cui-table-1", "table", "Table 1", "table-1.png"),
+        ("cui-fig-6", "figure", "Fig. 6", "fig-6.png"),
+        ("cui-fig-14", "figure", "Fig. 14", "fig-14.png"),
+    ]
+    targets = [
+        EvidenceReferencePayload(
+            chunk_id=chunk_id,
+            material_id="mat-cui",
+            source="Cui 2022.pdf",
+            text=f"{label}. Target evidence.",
+            quote=f"{label}. Target evidence.",
+            label="visual_evidence",
+            figure_candidate=label,
+            figure_candidate_detail={"kind": kind, "label": label},
+            image_paths=[f"figure_assets/extracted/cui/{asset_name}"],
+        )
+        for chunk_id, kind, label, asset_name in target_specs
+    ]
+    duplicate_labels = [
+        ("table", "Table 1"),
+        ("figure", "Fig. 6"),
+        ("figure", "Fig. 14"),
+    ]
+    noise: list[EvidenceReferencePayload] = []
+    for index in range(232):
+        kind, label = (
+            duplicate_labels[index]
+            if index < len(duplicate_labels)
+            else ("figure", f"Fig. {index + 20}")
+        )
+        noise.append(
+            EvidenceReferencePayload(
+                chunk_id=f"noise-{index}",
+                material_id=f"mat-noise-{index % 25}",
+                source=f"Other paper {index % 25}.pdf",
+                text=f"{label}. Broad AlSi10Mg laser-welding evidence.",
+                quote=f"{label}. Broad AlSi10Mg laser-welding evidence.",
+                label="visual_evidence",
+                figure_candidate=label,
+                figure_candidate_detail={"kind": kind, "label": label},
+                image_paths=[f"figure_assets/extracted/noise/{index}.png"],
+            )
+        )
+    evidence_ref = EvidenceReferencePayload(
+        chunk_id="cui-narrative",
+        material_id="mat-cui",
+        source="Cui 2022.pdf",
+        text="Cui 2022 evidence for Table 1, Fig. 6, and Fig. 14.",
+        quote="Cui 2022 evidence for Table 1, Fig. 6, and Fig. 14.",
+        label="project_context",
+    )
+
+    refs = _supplement_visual_evidence_refs_for_answer(
+        answer="Table 1 gives the composition; Fig. 6 shows the section; Fig. 14 shows eutectic Si.",
+        project_id="project-alsi10mg2",
+        existing_refs=[*targets, *noise],
+        evidence_refs=[evidence_ref],
+        context_chunks=[],
+        project_chunks=[],
+        allowed_image_paths=set(),
+    )
+
+    assert len([*targets, *noise]) == 235
+    assert [ref.chunk_id for ref in refs] == [
+        "cui-table-1",
+        "cui-fig-6",
+        "cui-fig-14",
+    ]
+
+
+def test_cross_material_visual_candidate_does_not_inherit_a_text_anchor() -> None:
+    """Query-related figures from another paper stay unanchored for UI placement."""
+
+    selected = [
+        {
+            "chunk_id": "sun-porosity-anchor",
+            "material_id": "material-sun",
+            "title": "Sun 2022 adjustable ring mode laser welding.pdf",
+            "content": "AlSi10Mg laser power and welding speed control weld porosity.",
+        }
+    ]
+    cross_material = {
+        "chunk_id": "ping-porosity-figure",
+        "material_id": "material-ping",
+        "title": "Ping 2026 oscillating laser welding.pdf",
+        "content": "Figure 7. AlSi10Mg laser weld porosity and fracture location at different welding conditions.",
+        "chunk_type": "figure_caption",
+        "image_paths": ["figure_assets/extracted/ping/figure-7.png"],
+        "figure_candidate_detail": {
+            "id": "figure:ping:7",
+            "kind": "figure",
+            "label": "图 7",
+            "caption": "AlSi10Mg laser weld porosity and fracture location.",
+        },
+    }
+
+    chunks = _collect_related_visual_evidence_chunks(
+        "Compare AlSi10Mg laser power and welding speed effects on porosity and fracture",
+        selected,
+        [cross_material],
+        allowed_image_paths={"figure_assets/extracted/ping/figure-7.png"},
+    )
+    refs = _build_visual_evidence_refs_from_chunks(chunks)
+
+    assert len(refs) == 1
+    assert refs[0].figure_candidate_detail is not None
+    assert "anchor_chunk_id" not in refs[0].figure_candidate_detail
 
 
 def test_visual_evidence_merge_places_images_before_long_tail_anchors() -> None:
@@ -598,3 +1132,224 @@ def test_chat_image_paths_filter_whole_page_captures() -> None:
     }
 
     assert _extract_image_paths(chunk) == []
+
+
+def test_has_image_asset_paths_recognizes_derived_asset_fields() -> None:
+    """Project-derived table crops must participate in visual ranking."""
+
+    chunk = {
+        "chunk_id": "derived_table_chunk",
+        "material_id": "mat-derived",
+        "content": "Table 1. Laser welding parameters.",
+        "asset_path": "figure_assets/mat-derived/derived_table_chunk-Table1-deadbeef.png",
+    }
+
+    assert _extract_image_paths(chunk) == [
+        "figure_assets/mat-derived/derived_table_chunk-Table1-deadbeef.png"
+    ]
+    assert _has_image_asset_paths(chunk) is True
+
+
+def test_build_context_filters_punctuation_only_chunks_but_keeps_visual_structured_assets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Meaningless OCR debris must not displace a real short visual candidate."""
+
+    _isolate_overrides(monkeypatch, tmp_path)
+    monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", "0")
+    monkeypatch.setenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", "0")
+    monkeypatch.setenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED", "0")
+    _reset_flag_cache()
+
+    from routers import intelligent_chat_router as router
+
+    results = [
+        {
+            "chunk_id": "punctuation_only",
+            "material_id": "mat-text",
+            "title": "OCR debris",
+            "content": "[",
+        },
+        {
+            "chunk_id": "derived_table",
+            "material_id": "mat-table",
+            "title": "Table crop",
+            "content": "[",
+            "chunk_type": "table",
+            "asset_path": "figure_assets/mat-table/derived_table-Table1-feedface.png",
+        },
+        {
+            "chunk_id": "meaningful_text",
+            "material_id": "mat-text",
+            "title": "Laser welding study",
+            "content": "AlSi10Mg laser welding process evidence.",
+        },
+    ]
+
+    with patch.object(router, "search_project_chunks_for_query", return_value=results):
+        chunks, _truncated = asyncio.run(
+            router._build_project_context_chunks(
+                query="laser welding evidence",
+                project_id="proj_test",
+                tier="fast",
+            )
+        )
+
+    chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks}
+    assert "punctuation_only" not in chunks_by_id
+    assert chunks_by_id["derived_table"].image_paths == [
+        "figure_assets/mat-table/derived_table-Table1-feedface.png"
+    ]
+    assert "meaningful_text" in chunks_by_id
+
+
+def test_build_context_adds_related_visual_asset_without_visual_intent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Normal research questions should receive a small related visual budget."""
+
+    _isolate_overrides(monkeypatch, tmp_path)
+    monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", "0")
+    monkeypatch.setenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", "0")
+    monkeypatch.setenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED", "0")
+    _reset_flag_cache()
+
+    from routers import intelligent_chat_router as router
+
+    narrative = {
+        "chunk_id": "porosity_anchor",
+        "material_id": "mat-laser",
+        "title": "Laser welding of AlSi10Mg.pdf",
+        "section_path": ["Results", "Porosity"],
+        "page": 4,
+        "content": "AlSi10Mg laser welding porosity depends on laser power and welding speed.",
+        "chunk_type": "narrative",
+    }
+    related_figure = {
+        "chunk_id": "porosity_figure",
+        "material_id": "mat-laser",
+        "title": "Laser welding of AlSi10Mg.pdf",
+        "section_path": ["Results", "Porosity"],
+        "page": 4,
+        "content": "Figure 4. Porosity at different laser powers and welding speeds.",
+        "chunk_type": "figure_caption",
+        "image_paths": ["figure_assets/extracted/laser/p0004_img001.jpeg"],
+    }
+    unrelated_figure = {
+        "chunk_id": "corrosion_figure",
+        "material_id": "mat-corrosion",
+        "title": "Corrosion study.pdf",
+        "section_path": ["Results", "Corrosion"],
+        "page": 8,
+        "content": "Figure 8. Surface morphology after corrosion exposure.",
+        "chunk_type": "figure_caption",
+        "image_paths": ["figure_assets/extracted/corrosion/p0008_img001.jpeg"],
+    }
+
+    with (
+        patch.object(router, "search_project_chunks_for_query", return_value=[narrative]),
+        patch.object(
+            router,
+            "load_project_chunks_for_rag",
+            return_value=[narrative, unrelated_figure, related_figure],
+        ),
+    ):
+        chunks, _truncated = asyncio.run(
+            router._build_project_context_chunks(
+                query="Explain AlSi10Mg laser welding porosity and process parameters",
+                project_id="proj_test",
+                tier="fast",
+            )
+        )
+
+    chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks}
+    assert chunks_by_id["porosity_figure"].image_paths == [
+        "figure_assets/extracted/laser/p0004_img001.jpeg"
+    ]
+    assert "corrosion_figure" not in chunks_by_id
+
+
+def test_build_context_binds_overlapping_table_text_to_caption_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Real consecutive Cui table cells must reach the answer model without reimport."""
+
+    _isolate_overrides(monkeypatch, tmp_path)
+    monkeypatch.setenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED", "0")
+    monkeypatch.setenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", "0")
+    monkeypatch.setenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED", "0")
+    _reset_flag_cache()
+
+    from routers import intelligent_chat_router as router
+
+    table = {
+        "chunk_id": "cui-table-1",
+        "chunk_index": 26,
+        "material_id": "mat-cui",
+        "title": "Cui - 2022 - AlSi10Mg.pdf",
+        "page": 3,
+        "bbox": [0.028143, 0.070389, 0.451618, 0.109109],
+        "content": "Table 1. Nominal chemical compositions of AlSi10Mg alloys (wt,%).",
+        "raw_content": "Table 1. Nominal chemical compositions of AlSi10Mg alloys (wt,%).",
+        "chunk_type": "table",
+        "image_paths": ["figure_assets/extracted/cui/table-1.png"],
+    }
+    header = {
+        "chunk_id": "cui-table-1-header",
+        "chunk_index": 27,
+        "material_id": "mat-cui",
+        "title": table["title"],
+        "page": 3,
+        "bbox": [0.073238, 0.099767, 0.848956, 0.008033],
+        "content": "Element\nCu\nFe\nMg\nMn\nNi\nSi\nZn\nTi\nPb\nSn\nAl",
+        "raw_content": "Element\nCu\nFe\nMg\nMn\nNi\nSi\nZn\nTi\nPb\nSn\nAl",
+        "chunk_type": "narrative",
+    }
+    values = {
+        "chunk_id": "cui-table-1-values",
+        "chunk_index": 28,
+        "material_id": "mat-cui",
+        "title": table["title"],
+        "page": 3,
+        "bbox": [0.073238, 0.116189, 0.859806, 0.018968],
+        "content": "SLM\n0.05\n0.55\n0.20-0.45\n0.45\n0.05\n9.0-11.0\n0.10\n0.15\n0.05\n0.05\nBal.\nCasting\n0.03\n0.12\n0.417\n0.051\n0.006\n9.375\n<0.002\n0.164\n<0.005\n<0.002\nBal.",
+        "raw_content": "SLM\n0.05\n0.55\n0.20-0.45\n0.45\n0.05\n9.0-11.0\n0.10\n0.15\n0.05\n0.05\nBal.\nCasting\n0.03\n0.12\n0.417\n0.051\n0.006\n9.375\n<0.002\n0.164\n<0.005\n<0.002\nBal.",
+        "chunk_type": "narrative",
+    }
+    outside_prose = {
+        "chunk_id": "outside-prose",
+        "chunk_index": 29,
+        "material_id": "mat-cui",
+        "title": table["title"],
+        "page": 3,
+        "bbox": [0.515043, 0.205, 0.425, 0.12],
+        "content": "This paragraph is outside the table crop and must stay separate.",
+        "raw_content": "This paragraph is outside the table crop and must stay separate.",
+        "chunk_type": "narrative",
+    }
+    project_chunks = [table, header, values, outside_prose]
+
+    with (
+        patch.object(router, "load_project_chunks_for_rag", return_value=project_chunks),
+        patch.object(router, "search_project_chunks_for_query", return_value=[table]),
+        patch(
+            "routers.resources_router.endpoints_search_upload._collect_existing_project_asset_paths",
+            return_value={"figure_assets/extracted/cui/table-1.png"},
+        ),
+    ):
+        chunks, _truncated = asyncio.run(
+            router._build_project_context_chunks(
+                query="What composition values are reported in Table 1?",
+                project_id="proj_test",
+                tier="fast",
+            )
+        )
+
+    table_context = next(chunk for chunk in chunks if chunk.chunk_id == "cui-table-1")
+    assert "Element\nCu\nFe\nMg" in table_context.content
+    assert "SLM\n0.05\n0.55\n0.20-0.45" in table_context.content
+    assert "Casting\n0.03\n0.12\n0.417" in table_context.content
+    assert "outside the table crop" not in table_context.content

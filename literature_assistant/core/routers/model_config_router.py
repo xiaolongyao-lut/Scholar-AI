@@ -48,6 +48,15 @@ from model_config_store import (
     CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
     CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX,
     CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN,
+    CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT,
+    CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MAX,
+    CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN,
+    CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
+    CHAT_MODEL_CONTEXT_WINDOW_MAX,
+    CHAT_MODEL_CONTEXT_WINDOW_MIN,
+    CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT,
+    CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MAX,
+    CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MIN,
     chat_context_compression_store,
     chat_store,
     discussion_defaults_store,
@@ -64,6 +73,16 @@ _EMBEDDING_CONTRACT_SCHEMA_VERSION = "scholar-ai-embedding-contract/v1"
 _EMBEDDING_INPUT_BUILDER_VERSION = "runtime_env.build_embedding_request_payload/v1"
 _EMBEDDING_NORMALIZATION_VERSION = "observed_l2_norm/v1"
 _EMBEDDING_TRUNCATION_VERSION = "probe_sample_no_truncation/v1"
+_SCHOLAR_CHAT_TEST_SYSTEM_PROMPT = (
+    "You are a Scholar AI model-readiness probe. Follow the user's evidence "
+    "and return only the requested compact JSON object."
+)
+_SCHOLAR_CHAT_TEST_USER_PROMPT = (
+    '请完成一次 Scholar AI 接入测试。只基于材料回答，严格输出一行 JSON，不要 Markdown。'
+    'JSON 模板：{"verdict":"usable","answer":"...","evidence_ids":["S1"],"limits":"..."}\n'
+    "材料 S1：检索增强生成在回答前引用原文证据，可以降低幻觉风险，并帮助用户回到来源核对。\n"
+    "问题：根据材料，Scholar AI 为什么要在回答中保留证据编号？"
+)
 
 
 def _probe_error_response(
@@ -85,6 +104,41 @@ def _probe_error_response(
 def _extract_chat_probe_text(payload: Any) -> str:
     if not isinstance(payload, dict):
         return ""
+    content = payload.get("content")
+    if isinstance(content, list):
+        text_parts = [
+            part.get("text", "").strip()
+            for part in content
+            if (
+                isinstance(part, dict)
+                and isinstance(part.get("text"), str)
+                and (not isinstance(part.get("type"), str) or part.get("type") == "text")
+            )
+        ]
+        joined = "".join(text_parts).strip()
+        if joined:
+            return joined
+    output_text = payload.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
+    output = payload.get("output")
+    if isinstance(output, list):
+        text_parts = []
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            item_content = item.get("content")
+            if isinstance(item_content, list):
+                text_parts.extend(
+                    part.get("text", "").strip()
+                    for part in item_content
+                    if isinstance(part, dict) and isinstance(part.get("text"), str)
+                )
+            elif isinstance(item_content, str):
+                text_parts.append(item_content.strip())
+        joined = "".join(text_parts).strip()
+        if joined:
+            return joined
     choices = payload.get("choices")
     if not isinstance(choices, list):
         return ""
@@ -109,6 +163,78 @@ def _extract_chat_probe_text(payload: Any) -> str:
         if isinstance(text, str) and text.strip():
             return text.strip()
     return ""
+
+
+def _resolve_chat_probe_protocol(payload: ConfigUpdate) -> str:
+    explicit_protocol = (payload.protocol or "").strip().lower()
+    if explicit_protocol:
+        return explicit_protocol
+    if _has_temporary_chat_probe_override(payload):
+        return "openai_chat_completions"
+    return (chat_store.get_resolved_field("protocol") or "openai_chat_completions").strip().lower()
+
+
+def _build_anthropic_messages_endpoint(base_url: str) -> str:
+    base = base_url.strip().rstrip("/")
+    if base.endswith("/messages"):
+        return base
+    if base.endswith("/v1"):
+        return f"{base}/messages"
+    return f"{base}/v1/messages"
+
+
+def _build_openai_responses_endpoint(base_url: str) -> str:
+    base = base_url.strip().rstrip("/")
+    if base.endswith("/responses"):
+        return base
+    if base.endswith("/v1"):
+        return f"{base}/responses"
+    return f"{base}/v1/responses"
+
+
+def _build_chat_probe_body(
+    *,
+    protocol: str,
+    model: str,
+    provider: str,
+    base_url: str,
+) -> dict[str, Any]:
+    normalized_model = model.strip() or "gpt-3.5-turbo"
+    if protocol == "anthropic_messages":
+        return {
+            "model": normalized_model,
+            "system": _SCHOLAR_CHAT_TEST_SYSTEM_PROMPT,
+            "messages": [{"role": "user", "content": _SCHOLAR_CHAT_TEST_USER_PROMPT}],
+            "max_tokens": 180,
+            "temperature": 0,
+        }
+    if protocol == "openai_responses":
+        return {
+            "model": normalized_model,
+            "input": [
+                {"role": "system", "content": _SCHOLAR_CHAT_TEST_SYSTEM_PROMPT},
+                {"role": "user", "content": _SCHOLAR_CHAT_TEST_USER_PROMPT},
+            ],
+            "max_output_tokens": 180,
+            "temperature": 0,
+        }
+    probe_body: dict[str, Any] = {
+        "model": normalized_model,
+        "messages": [
+            {"role": "system", "content": _SCHOLAR_CHAT_TEST_SYSTEM_PROMPT},
+            {"role": "user", "content": _SCHOLAR_CHAT_TEST_USER_PROMPT},
+        ],
+        "max_tokens": 180,
+        "temperature": 0,
+    }
+    apply_openai_chat_payload_compat(
+        probe_body,
+        provider=provider,
+        base_url=base_url,
+        model=normalized_model,
+        top_k=None,
+    )
+    return probe_body
 
 
 def _embedding_vectors_from_payload(payload: Any) -> list[list[float]]:
@@ -279,6 +405,7 @@ class ConfigPayload(BaseModel):
     provider: str = ""
     base_url: str = ""
     model: str = ""
+    protocol: str = ""
     has_api_key: bool = False
     api_key_masked: str = ""
     updated_at: str = ""
@@ -290,6 +417,7 @@ class ConfigUpdate(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     model: str | None = None
+    protocol: str | None = Field(default=None, max_length=64)
 
 
 class CredentialApplyRequest(BaseModel):
@@ -455,6 +583,7 @@ def _apply_credential_to_store(
         base_url=credential.base_url,
         api_key=credential.api_key,
         model=credential.model,
+        protocol=credential.protocol.value,
     )
     return ConfigPayload(**updated)
 
@@ -474,6 +603,7 @@ def _build_config_routes(store: ModelConfigStore, prefix: str, tag: str) -> APIR
             base_url=payload.base_url,
             api_key=payload.api_key,
             model=payload.model,
+            protocol=payload.protocol,
         )
         return ConfigPayload(**updated)
 
@@ -497,13 +627,28 @@ chat_router = _build_config_routes(chat_store, "/api/chat", "Chat Config")
 
 
 class ChatContextCompressionPayload(BaseModel):
-    """SmartRead long-session compression settings."""
+    """Answer-model context, compaction, and tool-output budgets."""
 
     enabled: bool = True
+    model_auto_compact_token_limit: int = Field(
+        default=CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT,
+        ge=CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN,
+        le=CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MAX,
+    )
     trigger_tokens: int = Field(
         default=CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
         ge=CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN,
         le=CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX,
+    )
+    model_context_window: int = Field(
+        default=CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
+        ge=CHAT_MODEL_CONTEXT_WINDOW_MIN,
+        le=CHAT_MODEL_CONTEXT_WINDOW_MAX,
+    )
+    tool_output_token_limit: int = Field(
+        default=CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT,
+        ge=CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MIN,
+        le=CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MAX,
     )
     target_tokens: int = Field(
         default=CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
@@ -524,7 +669,19 @@ def _chat_context_compression_payload() -> ChatContextCompressionPayload:
     )
     return ChatContextCompressionPayload(
         enabled=bool(settings.get("enabled", True)),
-        trigger_tokens=int(settings.get("trigger_tokens") or CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT),
+        model_auto_compact_token_limit=int(
+            settings.get("model_auto_compact_token_limit")
+            or CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT
+        ),
+        trigger_tokens=int(
+            settings.get("trigger_tokens") or CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT
+        ),
+        model_context_window=int(
+            settings.get("model_context_window") or CHAT_MODEL_CONTEXT_WINDOW_DEFAULT
+        ),
+        tool_output_token_limit=int(
+            settings.get("tool_output_token_limit") or CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT
+        ),
         target_tokens=int(settings.get("target_tokens") or CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT),
         keep_recent_turns=int(
             settings.get("keep_recent_turns") or CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT
@@ -543,17 +700,47 @@ async def get_chat_context_compression() -> ChatContextCompressionPayload:
 async def put_chat_context_compression(
     payload: ChatContextCompressionPayload,
 ) -> ChatContextCompressionPayload:
-    """Update SmartRead long-session compression settings."""
-    if payload.target_tokens >= payload.trigger_tokens:
+    """Update answer-model budgets while accepting the legacy trigger alias."""
+
+    fields_set = payload.model_fields_set
+    auto_compact_token_limit = payload.model_auto_compact_token_limit
+    if "trigger_tokens" in fields_set and "model_auto_compact_token_limit" not in fields_set:
+        auto_compact_token_limit = payload.trigger_tokens
+    elif (
+        "trigger_tokens" in fields_set
+        and "model_auto_compact_token_limit" in fields_set
+        and payload.trigger_tokens != payload.model_auto_compact_token_limit
+    ):
         raise HTTPException(
             status_code=400,
-            detail="target_tokens must be smaller than trigger_tokens",
+            detail=(
+                "trigger_tokens and model_auto_compact_token_limit must match "
+                "when both are provided"
+            ),
+        )
+    if payload.target_tokens >= auto_compact_token_limit:
+        raise HTTPException(
+            status_code=400,
+            detail="target_tokens must be smaller than model_auto_compact_token_limit",
+        )
+    if auto_compact_token_limit >= payload.model_context_window:
+        raise HTTPException(
+            status_code=400,
+            detail="model_auto_compact_token_limit must be smaller than model_context_window",
+        )
+    if payload.tool_output_token_limit >= payload.model_context_window:
+        raise HTTPException(
+            status_code=400,
+            detail="tool_output_token_limit must be smaller than model_context_window",
         )
     settings = normalize_chat_context_compression_settings(
         chat_context_compression_store.write_settings(
             {
                 "enabled": payload.enabled,
-                "trigger_tokens": payload.trigger_tokens,
+                "trigger_tokens": auto_compact_token_limit,
+                "model_auto_compact_token_limit": auto_compact_token_limit,
+                "model_context_window": payload.model_context_window,
+                "tool_output_token_limit": payload.tool_output_token_limit,
                 "target_tokens": payload.target_tokens,
                 "keep_recent_turns": payload.keep_recent_turns,
             }
@@ -561,7 +748,16 @@ async def put_chat_context_compression(
     )
     return ChatContextCompressionPayload(
         enabled=bool(settings.get("enabled", True)),
-        trigger_tokens=int(settings.get("trigger_tokens") or payload.trigger_tokens),
+        model_auto_compact_token_limit=int(
+            settings.get("model_auto_compact_token_limit") or auto_compact_token_limit
+        ),
+        trigger_tokens=int(settings.get("trigger_tokens") or auto_compact_token_limit),
+        model_context_window=int(
+            settings.get("model_context_window") or payload.model_context_window
+        ),
+        tool_output_token_limit=int(
+            settings.get("tool_output_token_limit") or payload.tool_output_token_limit
+        ),
         target_tokens=int(settings.get("target_tokens") or payload.target_tokens),
         keep_recent_turns=int(settings.get("keep_recent_turns") or payload.keep_recent_turns),
         updated_at=str(settings.get("updated_at") or ""),
@@ -585,6 +781,7 @@ async def test_chat_endpoint(payload: ConfigUpdate) -> ProbeResult:
     api_key = (payload.api_key or chat_store.get_resolved_field("api_key") or "").strip()
     model = (payload.model or chat_store.get_resolved_field("model") or "").strip()
     provider = (payload.provider or chat_store.get_resolved_field("provider") or "").strip()
+    protocol = _resolve_chat_probe_protocol(payload)
 
     if not base_url:
         return ProbeResult(ok=False, error="base_url is required")
@@ -601,7 +798,12 @@ async def test_chat_endpoint(payload: ConfigUpdate) -> ProbeResult:
         # so freshly-added third-party gateways don't get rejected before the
         # user can even reach "测试连接". Real chat traffic stays strict.
         _validate_outbound_llm_base_url(base_url, provider or "OpenAI", skip_dns=True)
-        url = _build_chat_endpoint(base_url, provider or "OpenAI")
+        if protocol == "anthropic_messages":
+            url = _build_anthropic_messages_endpoint(base_url)
+        elif protocol == "openai_responses":
+            url = _build_openai_responses_endpoint(base_url)
+        else:
+            url = _build_chat_endpoint(base_url, provider or "OpenAI")
         resolved_key = _resolve_api_key(provider or "OpenAI", api_key)
     except ValueError as exc:
         return ProbeResult(ok=False, error=str(exc))
@@ -610,20 +812,17 @@ async def test_chat_endpoint(payload: ConfigUpdate) -> ProbeResult:
 
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if resolved_key:
-        headers["Authorization"] = f"Bearer {resolved_key}"
+        if protocol == "anthropic_messages":
+            headers["x-api-key"] = resolved_key
+            headers["anthropic-version"] = "2023-06-01"
+        else:
+            headers["Authorization"] = f"Bearer {resolved_key}"
 
-    probe_body = {
-        "model": model or "gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": "Hi"}],
-        "max_tokens": 1,
-        "temperature": 0,
-    }
-    apply_openai_chat_payload_compat(
-        probe_body,
+    probe_body = _build_chat_probe_body(
+        protocol=protocol,
+        model=model,
         provider=provider,
         base_url=base_url,
-        model=str(probe_body["model"]),
-        top_k=None,
     )
 
     start = time.monotonic()
@@ -684,6 +883,33 @@ def _capability_status_from_probe_result(probe_result: Any) -> str:
     return CAPABILITY_STATUS_PROBE_FAILED
 
 
+def _has_temporary_chat_probe_override(payload: ConfigUpdate) -> bool:
+    """Return true when a probe payload is testing a transient provider config."""
+
+    return any(
+        isinstance(value, str) and value.strip()
+        for value in (payload.provider, payload.base_url, payload.api_key, payload.model)
+    )
+
+
+def _resolve_tool_capability_probe_protocol(payload: ConfigUpdate) -> str:
+    """Resolve the protocol for the provider tool-capability probe.
+
+    Why:
+        An empty payload means "test the saved chat configuration" and should
+        inherit the saved protocol. A non-empty payload means "test this
+        transient provider candidate"; if it omits protocol, it must not inherit
+        an unrelated saved protocol from another provider.
+    """
+
+    explicit_protocol = (payload.protocol or "").strip()
+    if explicit_protocol:
+        return explicit_protocol
+    if _has_temporary_chat_probe_override(payload):
+        return "openai_chat_completions"
+    return (chat_store.get_resolved_field("protocol") or "openai_chat_completions").strip()
+
+
 @chat_router.post("/tool-capability/test", response_model=ToolCapabilityProbeResult)
 async def test_chat_tool_capability(payload: ConfigUpdate) -> ToolCapabilityProbeResult:
     """Probe and persist native OpenAI-compatible chat tool-call capability."""
@@ -692,6 +918,7 @@ async def test_chat_tool_capability(payload: ConfigUpdate) -> ToolCapabilityProb
     api_key = (payload.api_key or chat_store.get_resolved_field("api_key") or "").strip()
     model = (payload.model or chat_store.get_resolved_field("model") or "").strip()
     provider = (payload.provider or chat_store.get_resolved_field("provider") or "OpenAI").strip()
+    protocol = _resolve_tool_capability_probe_protocol(payload)
 
     if not base_url:
         record = provider_capability_store.upsert_record(
@@ -772,6 +999,7 @@ async def test_chat_tool_capability(payload: ConfigUpdate) -> ToolCapabilityProb
         api_key,
         model,
         provider=provider,
+        protocol=protocol,
         timeout_s=provider_http_timeout_s(
             provider=provider,
             base_url=base_url,

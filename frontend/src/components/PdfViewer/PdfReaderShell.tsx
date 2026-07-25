@@ -1,32 +1,54 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronRight, Download, FileText, Highlighter, ListTree, Loader2, PanelRightClose,
-  PanelRight, Plus, Trash2, X,
+  PanelRight, Plus, Send, Trash2, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PdfViewer, type PdfOutlineEntry, type PdfSelectionAnchor } from '@/components/PdfViewer/PdfViewer';
+import {
+  PdfViewer,
+  type PdfFormulaCandidate,
+  type PdfOutlineEntry,
+  type PdfRegionCapture,
+  type PdfSelectedVisualRegion,
+  type PdfSelectionAnchor,
+} from '@/components/PdfViewer/PdfViewer';
 import { CaptureToInboxButton } from '@/components/knowledge/CaptureToInboxButton';
 import { RecallPanel } from '@/components/knowledge/RecallPanel';
 import {
   type AnnotationData,
+  type AnnotationUseScope,
   type Highlight,
   type Note,
+  ANNOTATION_USE_SCOPES,
   addNote,
   deleteNote,
+  enqueueAnnotationWikiReview,
   exportMarkdown,
+  getAnnotations,
+  isAnnotationConflict,
   setLastPage,
   setLastPageBeacon,
   setLastPageKeepalive,
   updateNote,
+  updateNoteUsage,
 } from '@/services/annotationApi';
 import { downloadBlob } from '@/services/exportApi';
+import type { PdfBbox } from '@/lib/pdfAnchor';
 
 type TabId = 'highlights' | 'notes' | 'outline';
 
 interface PdfReaderShellProps {
   url: string;
   materialId: string;
+  /** Owning project is required only for explicit Wiki-review submission. */
+  projectId?: string | null;
+  /** Disables PDF-to-chat selection while the current answer is generating. */
+  analysisDisabled?: boolean;
   initialPage?: number;
+  /** Exact normalized citation region paired with initialPage. */
+  initialBbox?: PdfBbox;
+  /** Bounded exact text anchor resolved before a coarse text-block bbox. */
+  initialQuote?: string;
   /** Multi-tab fast path: bytes from the parent's LRU cache. When set,
    *  PdfViewer skips its own fetch. */
   bytes?: Uint8Array;
@@ -42,6 +64,9 @@ interface PdfReaderShellProps {
    *  Out of scope for F3 (placeholder); F5 wires the real fetch. */
   outline?: OutlineEntry[] | null;
   onAnalyzeText?: (text: string, page: number, anchor?: PdfSelectionAnchor) => void;
+  onAnalyzeRegion?: (selection: PdfRegionCapture) => void;
+  formulaCandidates?: readonly PdfFormulaCandidate[];
+  selectedVisualRegions?: readonly PdfSelectedVisualRegion[];
   onAddHighlight?: (highlight: Highlight) => void;
   onDeleteHighlight?: (index: number) => void;
   onAnnotationUpdate?: (annotation: AnnotationData) => void;
@@ -49,6 +74,18 @@ interface PdfReaderShellProps {
    *  persisted in PdfTabsContext. Fires on every confirmed page change. */
   onPageChange?: (page: number) => void;
   className?: string;
+}
+
+type NoteActionFeedback =
+  | { state: 'saving'; message: string }
+  | { state: 'error'; message: string }
+  | { state: 'success'; message: string };
+
+function createReviewRequestId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return `annotation-${globalThis.crypto.randomUUID()}`;
+  }
+  return `annotation-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 interface OutlineEntry {
@@ -109,7 +146,11 @@ function persistSidebarOpen(materialId: string, open: boolean): void {
 export function PdfReaderShell({
   url,
   materialId,
+  projectId,
+  analysisDisabled = false,
   initialPage,
+  initialBbox,
+  initialQuote,
   bytes,
   onBytesLoaded,
   scale,
@@ -119,6 +160,9 @@ export function PdfReaderShell({
   lastPage,
   outline,
   onAnalyzeText,
+  onAnalyzeRegion,
+  formulaCandidates,
+  selectedVisualRegions,
   onAddHighlight,
   onDeleteHighlight,
   onAnnotationUpdate,
@@ -128,9 +172,16 @@ export function PdfReaderShell({
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => loadSidebarOpen(materialId));
   const [activeTab, setActiveTab] = useState<TabId>(() => loadOpenTab(materialId));
   const [currentPage, setCurrentPage] = useState<number>(initialPage ?? 1);
-  const [pendingPage, setPendingPage] = useState<number | undefined>(initialPage);
+  const [pendingPage, setPendingPage] = useState<number | undefined>(undefined);
   const [localNotes, setLocalNotes] = useState<Note[]>(notes ?? []);
   const [savingExport, setSavingExport] = useState(false);
+  const [usageFeedback, setUsageFeedback] = useState<Record<string, NoteActionFeedback>>({});
+  const [reviewFeedback, setReviewFeedback] = useState<Record<string, NoteActionFeedback>>({});
+  const reviewRequestIdsRef = useRef(new Map<string, {
+    expectedUpdatedAt: string;
+    expectedContentHash: string;
+    requestId: string;
+  }>());
   const [loadedOutline, setLoadedOutline] = useState<PdfOutlineEntry[] | null | undefined>(undefined);
   // Track C F4: selection-anchored note popover state. Opened when
   // PdfViewer's "添加笔记" button fires the onAddNote callback.
@@ -147,6 +198,9 @@ export function PdfReaderShell({
   useEffect(() => {
     setSidebarOpen(loadSidebarOpen(materialId));
     setActiveTab(loadOpenTab(materialId));
+    setUsageFeedback({});
+    setReviewFeedback({});
+    reviewRequestIdsRef.current.clear();
   }, [materialId]);
 
   const handleTabSelect = useCallback((tab: TabId) => {
@@ -238,6 +292,122 @@ export function PdfReaderShell({
     }
   }, [materialId, onAnnotationUpdate]);
 
+  const refreshNotesAfterConflict = useCallback(async (): Promise<boolean> => {
+    try {
+      const annotation = await getAnnotations(materialId);
+      setLocalNotes(annotation.notes ?? []);
+      if (onAnnotationUpdate) onAnnotationUpdate(annotation);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [materialId, onAnnotationUpdate]);
+
+  const handleUpdateNoteUsage = useCallback(async (
+    note: Note,
+    scope: AnnotationUseScope,
+    enabled: boolean,
+  ): Promise<void> => {
+    const enabledSet = new Set(note.enabled_scopes);
+    if (enabled) enabledSet.add(scope);
+    else enabledSet.delete(scope);
+    const enabledScopes = ANNOTATION_USE_SCOPES.filter((candidate) => enabledSet.has(candidate));
+    setUsageFeedback((current) => ({
+      ...current,
+      [note.note_id]: { state: 'saving', message: '正在保存使用范围…' },
+    }));
+    try {
+      const result = await updateNoteUsage(materialId, note.note_id, {
+        enabled_scopes: enabledScopes,
+        expected_updated_at: note.updated_at,
+      });
+      setLocalNotes((current) => current.map((item) => (
+        item.note_id === note.note_id ? result.note : item
+      )));
+      if (onAnnotationUpdate) onAnnotationUpdate(result.annotation);
+      setUsageFeedback((current) => {
+        const next = { ...current };
+        delete next[note.note_id];
+        return next;
+      });
+    } catch (error: unknown) {
+      if (isAnnotationConflict(error)) {
+        reviewRequestIdsRef.current.delete(note.note_id);
+        const refreshed = await refreshNotesAfterConflict();
+        setUsageFeedback((current) => ({
+          ...current,
+          [note.note_id]: {
+            state: 'error',
+            message: refreshed
+              ? '这条笔记刚刚有变化，已刷新。请重新确认使用范围。'
+              : '这条笔记刚刚有变化，但刷新失败。请稍后重试。',
+          },
+        }));
+        return;
+      }
+      setUsageFeedback((current) => ({
+        ...current,
+        [note.note_id]: { state: 'error', message: '使用范围未保存，请稍后重试。' },
+      }));
+    }
+  }, [materialId, onAnnotationUpdate, refreshNotesAfterConflict]);
+
+  const handleSubmitNoteReview = useCallback(async (note: Note): Promise<void> => {
+    const owningProjectId = projectId?.trim() ?? '';
+    if (!owningProjectId || !note.enabled_scopes.includes('wiki_review')) return;
+    const priorRequest = reviewRequestIdsRef.current.get(note.note_id);
+    const request = priorRequest
+      && priorRequest.expectedUpdatedAt === note.updated_at
+      && priorRequest.expectedContentHash === note.content_hash
+      ? priorRequest
+      : {
+          expectedUpdatedAt: note.updated_at,
+          expectedContentHash: note.content_hash,
+          requestId: createReviewRequestId(),
+        };
+    reviewRequestIdsRef.current.set(note.note_id, request);
+    setReviewFeedback((current) => ({
+      ...current,
+      [note.note_id]: { state: 'saving', message: '正在提交 Wiki 待审…' },
+    }));
+    try {
+      await enqueueAnnotationWikiReview({
+        project_id: owningProjectId,
+        material_id: materialId,
+        note_id: note.note_id,
+        expected_updated_at: request.expectedUpdatedAt,
+        expected_content_hash: request.expectedContentHash,
+        request_id: request.requestId,
+      });
+      setReviewFeedback((current) => ({
+        ...current,
+        [note.note_id]: {
+          state: 'success',
+          message: '已提交 Wiki 待审；审核结论不会自动发布或改写 Wiki。',
+        },
+      }));
+    } catch (error: unknown) {
+      if (isAnnotationConflict(error)) {
+        reviewRequestIdsRef.current.delete(note.note_id);
+        const refreshed = await refreshNotesAfterConflict();
+        setReviewFeedback((current) => ({
+          ...current,
+          [note.note_id]: {
+            state: 'error',
+            message: refreshed
+              ? '笔记或待审状态已有变化，已刷新。请重新确认后提交。'
+              : '笔记或待审状态已有变化，但刷新失败。请稍后重试。',
+          },
+        }));
+        return;
+      }
+      setReviewFeedback((current) => ({
+        ...current,
+        [note.note_id]: { state: 'error', message: '提交失败，请重试；重试会沿用同一请求。' },
+      }));
+    }
+  }, [materialId, projectId, refreshNotesAfterConflict]);
+
   // ---- F7 Export ---------------------------------------------------------
   const handleExport = useCallback(async () => {
     setSavingExport(true);
@@ -306,12 +476,18 @@ export function PdfReaderShell({
         <PdfViewer
           url={url}
           materialId={materialId}
+          analysisDisabled={analysisDisabled}
           initialPage={pendingPage ?? initialPage}
+          initialBbox={pendingPage === undefined ? initialBbox : undefined}
+          initialQuote={pendingPage === undefined ? initialQuote : undefined}
           bytes={bytes}
           onBytesLoaded={onBytesLoaded}
           scale={scale}
           onScaleChange={onScaleChange}
           onAnalyzeText={onAnalyzeText}
+          onAnalyzeRegion={onAnalyzeRegion}
+          formulaCandidates={formulaCandidates}
+          selectedVisualRegions={selectedVisualRegions}
           onAddHighlight={onAddHighlight}
           onDeleteHighlight={onDeleteHighlight}
           highlights={highlights}
@@ -402,11 +578,16 @@ export function PdfReaderShell({
             {activeTab === 'notes' && (
               <NotesTab
                 notes={localNotes}
+                projectId={projectId}
                 currentPage={currentPage}
                 onJump={jumpToPage}
                 onAdd={handleAddNote}
                 onUpdate={handleUpdateNote}
                 onDelete={handleDeleteNote}
+                onUsageChange={handleUpdateNoteUsage}
+                onSubmitReview={handleSubmitNoteReview}
+                usageFeedback={usageFeedback}
+                reviewFeedback={reviewFeedback}
               />
             )}
             {activeTab === 'outline' && (
@@ -629,20 +810,52 @@ function HighlightsTab({
 
 interface NotesTabProps {
   notes: Note[];
+  projectId?: string | null;
   currentPage: number;
   onJump: (page: number) => void;
   onAdd: (input: { page: number; anchor_text: string; body: string; tags: string[] }) => Promise<void> | void;
   onUpdate: (noteId: string, body: string, tags: string[]) => Promise<void> | void;
   onDelete: (noteId: string) => Promise<void> | void;
+  onUsageChange: (note: Note, scope: AnnotationUseScope, enabled: boolean) => Promise<void> | void;
+  onSubmitReview: (note: Note) => Promise<void> | void;
+  usageFeedback: Record<string, NoteActionFeedback>;
+  reviewFeedback: Record<string, NoteActionFeedback>;
 }
+
+const NOTE_SCOPE_OPTIONS: ReadonlyArray<{
+  scope: AnnotationUseScope;
+  label: string;
+  description: string;
+}> = [
+  {
+    scope: 'project_retrieval',
+    label: '项目检索',
+    description: '回答项目问题时可检索这条笔记。',
+  },
+  {
+    scope: 'wiki_review',
+    label: 'Wiki 待审',
+    description: '仅允许手动提交；关闭不会撤回已经提交的待审项。',
+  },
+  {
+    scope: 'writing_source',
+    label: '写作来源',
+    description: '写作任务可把这条笔记作为显式来源。',
+  },
+];
 
 function NotesTab({
   notes,
+  projectId,
   currentPage,
   onJump,
   onAdd,
   onUpdate,
   onDelete,
+  onUsageChange,
+  onSubmitReview,
+  usageFeedback,
+  reviewFeedback,
 }: NotesTabProps) {
   const [draftBody, setDraftBody] = useState('');
   const [draftTags, setDraftTags] = useState('');
@@ -730,6 +943,13 @@ function NotesTab({
         <ul className="space-y-1.5">
           {notes.map(note => {
             const isEditing = editingId === note.note_id;
+            const noteUsageFeedback = usageFeedback[note.note_id];
+            const noteReviewFeedback = reviewFeedback[note.note_id];
+            const usageSaving = noteUsageFeedback?.state === 'saving';
+            const reviewSaving = noteReviewFeedback?.state === 'saving';
+            const reviewSubmitted = noteReviewFeedback?.state === 'success';
+            const wikiReviewEnabled = note.enabled_scopes.includes('wiki_review');
+            const hasOwningProject = Boolean(projectId?.trim());
             return (
               <li
                 key={note.note_id}
@@ -823,6 +1043,84 @@ function NotesTab({
                     )}
                   </>
                 )}
+                <fieldset
+                  className="mt-2 border-t border-outline-variant/30 pt-2"
+                  disabled={usageSaving}
+                  aria-busy={usageSaving}
+                >
+                  <legend className="px-0 text-[10px] font-label text-foreground/55">
+                    允许用于
+                  </legend>
+                  <div className="mt-1 space-y-1.5">
+                    {NOTE_SCOPE_OPTIONS.map((option) => (
+                      <label
+                        key={option.scope}
+                        className="flex cursor-pointer items-start gap-2 rounded px-1 py-1 text-[10px] text-foreground/65 hover:bg-surface-high/70"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={note.enabled_scopes.includes(option.scope)}
+                          onChange={(event) => void onUsageChange(note, option.scope, event.target.checked)}
+                          className="mt-0.5 h-3.5 w-3.5 rounded border-outline-variant text-primary focus:ring-primary/30"
+                          aria-label={`${option.label}：笔记 ${note.note_id}`}
+                        />
+                        <span>
+                          <span className="block font-label text-foreground/75">{option.label}</span>
+                          <span className="block leading-4 text-foreground/45">{option.description}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                {noteUsageFeedback ? (
+                  <p
+                    className={cn(
+                      'mt-1.5 text-[10px] leading-4',
+                      noteUsageFeedback.state === 'error'
+                        ? 'text-red-600 dark:text-red-300'
+                        : 'text-foreground/45',
+                    )}
+                    role={noteUsageFeedback.state === 'error' ? 'alert' : 'status'}
+                  >
+                    {noteUsageFeedback.message}
+                  </p>
+                ) : null}
+                <div className="mt-2 rounded border border-outline-variant/30 bg-surface-low px-2 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 text-[10px] leading-4 text-foreground/45">
+                      {!hasOwningProject
+                        ? '需要先确定这篇文献所属的项目。'
+                        : wikiReviewEnabled
+                          ? '提交后只进入审核队列，不会直接写入 Wiki。'
+                          : '先启用“Wiki 待审”，再手动提交。'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void onSubmitReview(note)}
+                      disabled={!hasOwningProject || !wikiReviewEnabled || reviewSaving || reviewSubmitted}
+                      className="inline-flex shrink-0 items-center gap-1 rounded border border-primary/35 bg-primary/10 px-2 py-1 text-[10px] font-label text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-45"
+                      aria-label={`提交笔记 ${note.note_id} 到 Wiki 待审`}
+                    >
+                      {reviewSaving ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                      {reviewSubmitted ? '已提交' : '提交待审'}
+                    </button>
+                  </div>
+                  {noteReviewFeedback ? (
+                    <p
+                      className={cn(
+                        'mt-1.5 text-[10px] leading-4',
+                        noteReviewFeedback.state === 'error'
+                          ? 'text-red-600 dark:text-red-300'
+                          : noteReviewFeedback.state === 'success'
+                            ? 'text-emerald-700 dark:text-emerald-300'
+                            : 'text-foreground/45',
+                      )}
+                      role={noteReviewFeedback.state === 'error' ? 'alert' : 'status'}
+                    >
+                      {noteReviewFeedback.message}
+                    </p>
+                  ) : null}
+                </div>
               </li>
             );
           })}

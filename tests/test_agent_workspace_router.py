@@ -1250,7 +1250,10 @@ def test_agent_workspace_status_lists_artifacts_and_redacted_audit(tmp_path, mon
         "Goal Requirement Drilldown",
     ]
     assert all(probe["read_only"] is True for probe in probes)
-    server_tools = {tool.name: tool for tool in create_mcp_server()._tool_manager.list_tools()}
+    monkeypatch.setenv("LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS", "1")
+    server_tools = {
+        tool.name: tool for tool in create_mcp_server(tool_profile="full")._tool_manager.list_tools()
+    }
     for probe in probes:
         method = probe.get("method")
         assert method in {"GET", "POST"}

@@ -9,20 +9,39 @@ writes; L1 endpoints preserve L2 fields on roundtrip and vice versa.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
 import secrets
+from datetime import datetime, timedelta, timezone
+from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
-from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, HTTPException, Query, Response
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from literature_assistant.core.project_paths import runtime_state_path
 
 router = APIRouter(prefix="/api/annotations", tags=["Annotations"])
 logger = logging.getLogger(__name__)
+
+
+class AnnotationUseScope(str, Enum):
+    """Explicit downstream uses a user may authorize for one note."""
+
+    project_retrieval = "project_retrieval"
+    wiki_review = "wiki_review"
+    writing_source = "writing_source"
+
+
+_ANNOTATION_USE_SCOPE_ORDER = tuple(AnnotationUseScope)
+
+
+def _normalized_use_scopes(value: Iterable[AnnotationUseScope | str]) -> list[AnnotationUseScope]:
+    requested = {AnnotationUseScope(item) for item in value}
+    return [scope for scope in _ANNOTATION_USE_SCOPE_ORDER if scope in requested]
 
 
 # ---------------------------------------------------------------------------
@@ -62,10 +81,30 @@ def _read_annotation_data(material_id: str) -> dict[str, Any]:
             raw = {}
     except (OSError, ValueError):
         raw = {}
+    normalized_notes: list[Any] = []
+    raw_notes = raw.get("notes")
+    if isinstance(raw_notes, list):
+        for raw_note in raw_notes:
+            try:
+                normalized_notes.append(
+                    Note.model_validate(raw_note).model_dump(mode="json", exclude_none=True)
+                )
+            except (TypeError, ValueError):
+                # A newer or partially damaged local record must not disappear
+                # during an unrelated annotation write. Unknown shapes remain
+                # readable but are excluded by the strict downstream reader.
+                preserved = dict(raw_note) if isinstance(raw_note, dict) else raw_note
+                if isinstance(preserved, dict):
+                    preserved.setdefault("enabled_scopes", [])
+                normalized_notes.append(preserved)
+                logger.warning(
+                    "annotation_note_schema_unknown_preserved material_id=%s",
+                    material_id,
+                )
     return {
         "material_id": material_id,
         "highlights": raw.get("highlights") or [],
-        "notes": raw.get("notes") or [],
+        "notes": normalized_notes,
         "last_page": raw.get("last_page") if isinstance(raw.get("last_page"), int) else None,
     }
 
@@ -143,8 +182,18 @@ class Note(BaseModel):
     anchor_text: str = Field(default="", max_length=2000)
     body: str = Field(default="", max_length=10_000)
     tags: list[str] = Field(default_factory=list, max_length=16)
+    enabled_scopes: list[AnnotationUseScope] = Field(default_factory=list, max_length=3)
+    usage_updated_at: str | None = Field(default=None, min_length=1)
     created_at: str = Field(..., min_length=1)
     updated_at: str = Field(..., min_length=1)
+
+    @field_validator("enabled_scopes")
+    @classmethod
+    def normalize_enabled_scopes(
+        cls,
+        value: list[AnnotationUseScope],
+    ) -> list[AnnotationUseScope]:
+        return _normalized_use_scopes(value)
 
 
 class AnnotationData(BaseModel):
@@ -152,6 +201,88 @@ class AnnotationData(BaseModel):
     highlights: list[Highlight] = Field(default_factory=list)
     notes: list[Note] = Field(default_factory=list)
     last_page: int | None = Field(default=None, ge=1)
+
+
+def annotation_note_content_hash(note: Note | dict[str, Any]) -> str:
+    """Return the canonical SHA-256 digest for one persisted note.
+
+    The digest covers the complete normalized ``Note`` record, including its
+    usage authorization and revision timestamps. API clients consume the
+    server-provided digest and must not duplicate this canonicalization.
+
+    Args:
+        note: A validated note or an object that exactly matches ``Note``.
+
+    Returns:
+        A lowercase 64-character SHA-256 hexadecimal digest.
+
+    Raises:
+        ValueError: If the supplied object is not a valid persisted note.
+    """
+
+    validated = note if isinstance(note, Note) else Note.model_validate(note)
+    canonical = json.dumps(
+        validated.model_dump(mode="json", exclude_none=True),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _note_response_payload(note: Note | dict[str, Any]) -> dict[str, Any]:
+    """Add a derived content hash to a valid note without persisting it."""
+
+    validated = note if isinstance(note, Note) else Note.model_validate(note)
+    payload = validated.model_dump(mode="json", exclude_none=True)
+    payload["content_hash"] = annotation_note_content_hash(validated)
+    return payload
+
+
+def _annotation_response_payload(data: dict[str, Any]) -> dict[str, Any]:
+    """Build an API envelope while preserving unknown local note records."""
+
+    payload = dict(data)
+    response_notes: list[Any] = []
+    for raw_note in data.get("notes") or []:
+        try:
+            response_notes.append(_note_response_payload(raw_note))
+        except (TypeError, ValueError):
+            response_notes.append(dict(raw_note) if isinstance(raw_note, dict) else raw_note)
+    payload["notes"] = response_notes
+    return payload
+
+
+def get_annotation_note_snapshot(material_id: str, note_id: str) -> dict[str, Any] | None:
+    """Read one strict note snapshot for a project-bound downstream consumer.
+
+    Args:
+        material_id: Material already authorized by the caller's project
+            boundary.
+        note_id: Stable note identity within the material annotation file.
+
+    Returns:
+        The material id, normalized note, and server-generated content hash,
+        or ``None`` when the note no longer exists.
+
+    Raises:
+        ValueError: If the matching local record does not satisfy ``Note``.
+        HTTPException: If ``material_id`` is unsafe.
+    """
+
+    normalized_note_id = str(note_id or "").strip()
+    if not normalized_note_id:
+        raise ValueError("note_id cannot be empty")
+    for raw_note in _read_annotation_data(material_id)["notes"]:
+        if not isinstance(raw_note, dict) or str(raw_note.get("note_id") or "") != normalized_note_id:
+            continue
+        validated = Note.model_validate(raw_note)
+        return {
+            "material_id": material_id,
+            "note": _note_response_payload(validated),
+            "content_hash": annotation_note_content_hash(validated),
+        }
+    return None
 
 
 class AddHighlightRequest(BaseModel):
@@ -181,6 +312,22 @@ class UpdateNoteRequest(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=16)
 
 
+class UpdateNoteUsageRequest(BaseModel):
+    """Compare-and-set update for explicit downstream note authorization."""
+
+    model_config = ConfigDict(extra="forbid")
+    enabled_scopes: list[AnnotationUseScope] = Field(default_factory=list, max_length=3)
+    expected_updated_at: str = Field(..., min_length=1, max_length=64)
+
+    @field_validator("enabled_scopes")
+    @classmethod
+    def normalize_enabled_scopes(
+        cls,
+        value: list[AnnotationUseScope],
+    ) -> list[AnnotationUseScope]:
+        return _normalized_use_scopes(value)
+
+
 class LastPageRequest(BaseModel):
     """L2 read-progress write. Allow null to clear."""
 
@@ -201,8 +348,26 @@ def _dump_highlight_for_storage(highlight: Highlight) -> dict[str, Any]:
 
 def _utc_now_iso() -> str:
     """ISO-8601 UTC timestamp without microseconds."""
-    from datetime import datetime, timezone
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _next_note_updated_at(previous: str) -> str:
+    """Return a UTC CAS token guaranteed to differ from the prior timestamp."""
+
+    candidate = datetime.now(timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(previous.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.astimezone(timezone.utc)
+        if parsed >= candidate:
+            candidate = parsed + timedelta(microseconds=1)
+    except (OverflowError, ValueError):
+        pass
+    rendered = candidate.isoformat(timespec="microseconds")
+    if rendered == previous:
+        rendered = (candidate + timedelta(microseconds=1)).isoformat(timespec="microseconds")
+    return rendered
 
 
 def _generate_note_id(existing_ids: set[str]) -> str:
@@ -221,14 +386,14 @@ def _generate_note_id(existing_ids: set[str]) -> str:
 
 @router.get("/{material_id}")
 async def get_annotations(material_id: str):
-    return _read_annotation_data(material_id)
+    return _annotation_response_payload(_read_annotation_data(material_id))
 
 
 @router.post("/{material_id}")
 async def add_highlight(material_id: str, req: AddHighlightRequest):
     data = _read_annotation_data(material_id)
     data["highlights"] = list(data["highlights"]) + [_dump_highlight_for_storage(req.highlight)]
-    return _persist(material_id, data)
+    return _annotation_response_payload(_persist(material_id, data))
 
 
 @router.put("/{material_id}")
@@ -236,7 +401,7 @@ async def replace_highlights(material_id: str, req: ReplaceHighlightsRequest):
     """Replace the full highlight list. Preserves notes + last_page."""
     data = _read_annotation_data(material_id)
     data["highlights"] = [_dump_highlight_for_storage(h) for h in req.highlights]
-    return _persist(material_id, data)
+    return _annotation_response_payload(_persist(material_id, data))
 
 
 @router.delete("/{material_id}")
@@ -281,7 +446,11 @@ async def add_note(material_id: str, req: AddNoteRequest):
     notes.append(note)
     data["notes"] = notes
     persisted = _persist(material_id, data)
-    return {"material_id": material_id, "note": note, "annotation": persisted}
+    return {
+        "material_id": material_id,
+        "note": _note_response_payload(note),
+        "annotation": _annotation_response_payload(persisted),
+    }
 
 
 @router.put("/{material_id}/notes/{note_id}")
@@ -296,12 +465,149 @@ async def update_note(material_id: str, note_id: str, req: UpdateNoteRequest):
         updated = dict(raw)
         updated["body"] = req.body
         updated["tags"] = list(req.tags)
-        updated["updated_at"] = _utc_now_iso()
+        updated["updated_at"] = _next_note_updated_at(str(raw.get("updated_at") or ""))
         notes[i] = updated
         data["notes"] = notes
         persisted = _persist(material_id, data)
-        return {"material_id": material_id, "note": updated, "annotation": persisted}
+        return {
+            "material_id": material_id,
+            "note": _note_response_payload(updated),
+            "annotation": _annotation_response_payload(persisted),
+        }
     raise HTTPException(status_code=404, detail=f"note 不存在: {note_id}")
+
+
+@router.put("/{material_id}/notes/{note_id}/usage")
+async def update_note_usage(
+    material_id: str,
+    note_id: str,
+    req: UpdateNoteUsageRequest,
+) -> dict[str, Any]:
+    """Explicitly authorize a note for selected downstream source scopes."""
+
+    data = _read_annotation_data(material_id)
+    notes = list(data["notes"])
+    for index, raw in enumerate(notes):
+        if not isinstance(raw, dict) or str(raw.get("note_id")) != note_id:
+            continue
+        try:
+            note = Note.model_validate(raw)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="note schema is not eligible for downstream use; update or recreate it first",
+            ) from exc
+        if note.updated_at != req.expected_updated_at:
+            raise HTTPException(
+                status_code=409,
+                detail="note changed; refresh before updating its source usage",
+            )
+        requested_scopes = _normalized_use_scopes(req.enabled_scopes)
+        if note.enabled_scopes == requested_scopes:
+            return {
+                "material_id": material_id,
+                "note": _note_response_payload(note),
+                "annotation": _annotation_response_payload(data),
+                "changed": False,
+            }
+        now = _next_note_updated_at(note.updated_at)
+        updated = note.model_copy(
+            update={
+                "enabled_scopes": requested_scopes,
+                "usage_updated_at": now,
+                "updated_at": now,
+            }
+        )
+        updated_payload = updated.model_dump(mode="json", exclude_none=True)
+        notes[index] = updated_payload
+        data["notes"] = notes
+        persisted = _persist(material_id, data)
+        return {
+            "material_id": material_id,
+            "note": _note_response_payload(updated),
+            "annotation": _annotation_response_payload(persisted),
+            "changed": True,
+        }
+    raise HTTPException(status_code=404, detail=f"note 不存在: {note_id}")
+
+
+def get_enabled_annotation_notes(
+    material_ids: Iterable[str],
+    scope: AnnotationUseScope | str,
+    *,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Return only notes explicitly authorized for one downstream scope.
+
+    Args:
+        material_ids: Material identities already authorized by the caller's
+            project or task boundary.
+        scope: One exact downstream use. Scopes are intentionally not implied
+            by one another.
+        limit: Hard result cap across all materials.
+
+    Returns:
+        Bounded note records with material identity and durable PDF locators.
+
+    Raises:
+        ValueError: If the scope, material list, or limit is invalid.
+    """
+
+    normalized_scope = AnnotationUseScope(scope)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+        raise ValueError("limit must be between 1 and 200")
+    normalized_material_ids: list[str] = []
+    seen_material_ids: set[str] = set()
+    for raw_material_id in material_ids:
+        material_id = str(raw_material_id or "").strip()
+        if not material_id or material_id in seen_material_ids:
+            continue
+        _annotation_file(material_id)
+        seen_material_ids.add(material_id)
+        normalized_material_ids.append(material_id)
+        if len(normalized_material_ids) > 500:
+            raise ValueError("material_ids cannot contain more than 500 entries")
+
+    eligible: list[dict[str, Any]] = []
+    for material_id in normalized_material_ids:
+        for raw_note in _read_annotation_data(material_id)["notes"]:
+            try:
+                note = Note.model_validate(raw_note)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "annotation_note_schema_unknown_ineligible material_id=%s",
+                    material_id,
+                )
+                continue
+            if normalized_scope not in note.enabled_scopes:
+                continue
+            eligible.append(
+                {
+                    "material_id": material_id,
+                    "scope": normalized_scope.value,
+                    "note": _note_response_payload(note),
+                    "source_ref": f"annotation:{material_id}:{note.note_id}",
+                    "page": note.page,
+                }
+            )
+            if len(eligible) >= limit:
+                return eligible
+    return eligible
+
+
+@router.get("/{material_id}/notes/eligible")
+async def list_eligible_notes(
+    material_id: str,
+    scope: AnnotationUseScope = Query(...),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    """Read one material's explicitly enabled notes for a single consumer."""
+
+    return {
+        "material_id": material_id,
+        "scope": scope.value,
+        "notes": get_enabled_annotation_notes([material_id], scope, limit=limit),
+    }
 
 
 @router.delete("/{material_id}/notes/{note_id}")
@@ -313,7 +619,11 @@ async def delete_note(material_id: str, note_id: str):
         raise HTTPException(status_code=404, detail=f"note 不存在: {note_id}")
     data["notes"] = new_notes
     persisted = _persist(material_id, data)
-    return {"material_id": material_id, "note_id": note_id, "annotation": persisted}
+    return {
+        "material_id": material_id,
+        "note_id": note_id,
+        "annotation": _annotation_response_payload(persisted),
+    }
 
 
 # ---------------------------------------------------------------------------

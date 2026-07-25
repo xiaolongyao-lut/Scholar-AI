@@ -12,6 +12,7 @@ import base64
 import importlib
 import importlib.util
 import json
+import math
 import os
 import re
 import shutil
@@ -19,17 +20,72 @@ import subprocess
 import sys
 import tempfile
 import time
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from .ocr_engine import OcrEngineHealth, OcrReadinessStatus
+from .ocr_engine import OcrEngineHealth, OcrImageRegion, OcrImageResult, OcrReadinessStatus
 
 
 _LANGUAGE_TAG_RE = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*$")
 _DEFAULT_WINDOWS_OCR_TIMEOUT_SECONDS = 90
+_PADDLE_JOBS_API_PATH = "/api/v2/ocr/jobs"
+_PADDLE_JOBS_INITIAL_POLL_SECONDS = 3.0
+_PADDLE_JOBS_MAX_POLL_SECONDS = 15.0
+_PADDLE_JOBS_POLL_MULTIPLIER = 1.5
+_PADDLE_JOBS_DEFAULT_POLL_TIMEOUT_SECONDS = 600.0
+_PADDLE_JOBS_STATES = {"pending", "running", "done", "failed"}
+_PADDLE_JOBS_QUOTA_CODES = frozenset({12001})
+_PADDLE_ERROR_DETAIL_MAX_CHARS = 300
+_PADDLE_AUTHORIZATION_DETAIL_RE = re.compile(
+    r"(?i)(\bauthorization\b\s*(?:[:=]\s*|\s+))(?:bearer\s+)?[^\s,;]+"
+)
+_PADDLE_SECRET_DETAIL_RE = re.compile(
+    r"(?i)(\b(?:access[_-]?token|api[_-]?key|authorization|bearer)\b"
+    r"\s*(?:[:=]\s*|\s+))[^\s,;]+"
+)
+_PADDLE_OCR_RESULT_MODELS = frozenset({"PP-OCRv5"})
+_PADDLE_DOCUMENT_RESULT_MODELS = frozenset(
+    {"PP-StructureV3", "PaddleOCR-VL", "PaddleOCR-VL-1.5", "PaddleOCR-VL-1.6"}
+)
+_PADDLE_IMAGE_TYPES: tuple[tuple[bytes, str, str], ...] = (
+    (b"\x89PNG\r\n\x1a\n", ".png", "image/png"),
+    (b"\xff\xd8\xff", ".jpg", "image/jpeg"),
+    (b"GIF87a", ".gif", "image/gif"),
+    (b"GIF89a", ".gif", "image/gif"),
+    (b"BM", ".bmp", "image/bmp"),
+    (b"II*\x00", ".tiff", "image/tiff"),
+    (b"MM\x00*", ".tiff", "image/tiff"),
+)
+_PADDLE_SUFFIX_MIME_TYPES = {
+    ".bmp": "image/bmp",
+    ".gif": "image/gif",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".png": "image/png",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+    ".webp": "image/webp",
+}
+_PADDLE_BLOCK_TYPES = {
+    "doc_title": "Heading",
+    "figure": "Image",
+    "figure_caption": "FigureCaption",
+    "figure_title": "FigureCaption",
+    "formula": "Equation",
+    "image": "Image",
+    "image_caption": "FigureCaption",
+    "list": "ListItem",
+    "paragraph": "Paragraph",
+    "table": "Table",
+    "table_caption": "TableCaption",
+    "table_title": "TableCaption",
+    "text": "Text",
+    "title": "Heading",
+}
 _REMOTE_OCR_PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
     "generic": {
         "base_url": "",
@@ -45,6 +101,11 @@ _REMOTE_OCR_PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
         "base_url": "https://mineru.net/api",
         "endpoint_path": "/v4/file-urls/batch",
         "model": "pipeline",
+    },
+    "paddle_jobs": {
+        "base_url": "",
+        "endpoint_path": "",
+        "model": "",
     },
 }
 _EXTERNAL_OCR_JSON_PREFIX = "__LITASSIST_OCR_JSON__"
@@ -1122,6 +1183,9 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
         return self.unavailable_reason() is None
 
     def unavailable_reason(self) -> str | None:
+        credential_error = str(self.config.get("_credential_error") or "").strip()
+        if credential_error:
+            return credential_error
         api_key = self._api_key()
         base_url = self._base_url()
         if api_key and base_url and not self._allow_remote_upload():
@@ -1130,7 +1194,6 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
             try:
                 provider = self._provider()
                 self._validated_base_url()
-                self._endpoint_path()
                 self._timeout_seconds()
             except (TypeError, ValueError) as exc:
                 return str(exc)
@@ -1139,6 +1202,18 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
                     "MinerU uses asynchronous document parsing; configure it as "
                     "an OCR credential, but do not select it for page-level OCR."
                 )
+            if provider == "paddle_jobs":
+                if not self._model():
+                    return "PaddleOCR AIStudio jobs require a model name"
+                try:
+                    self._poll_timeout_seconds()
+                except (TypeError, ValueError) as exc:
+                    return str(exc)
+                return None
+            try:
+                self._endpoint_path()
+            except (TypeError, ValueError) as exc:
+                return str(exc)
             return None
         return "remote OCR requires explicit api_key and base_url configuration"
 
@@ -1146,7 +1221,7 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
         reason = self.unavailable_reason()
         if reason is None:
             return "ready"
-        if "asynchronous document parsing" in reason:
+        if "asynchronous document parsing" in reason or "not wired" in reason:
             return "adapter_not_wired"
         if "allow_remote_upload" in reason or "configuration" in reason:
             return "configuration_required"
@@ -1186,6 +1261,17 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
             )
 
         image_bytes = self._read_image_bytes(image)
+        if provider == "paddle_jobs":
+            upload_filename, upload_mime_type = self._paddle_upload_metadata(
+                image,
+                image_bytes,
+            )
+            return self._run_paddle_jobs(
+                image_bytes,
+                upload_filename=upload_filename,
+                upload_mime_type=upload_mime_type,
+                image_size=self._paddle_image_size(image_bytes),
+            ).text.strip()
         if provider == "mistral":
             payload = self._mistral_request_payload(image_bytes)
             response = self._post_ocr_payload(payload, provider=provider)
@@ -1194,12 +1280,61 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
             response = self._post_ocr_payload(payload, provider=provider)
         return self._extract_response_text(response).strip()
 
+    def ocr_image_result(
+        self,
+        image: bytes | Path,
+        *,
+        language: str = "en",
+    ) -> OcrImageResult:
+        """Return a layout-aware OCR result without changing ``ocr_image``.
+
+        Args:
+            image: Non-empty encoded image bytes or an existing image path.
+            language: Valid BCP-47-like language tag retained for adapter
+                compatibility. Paddle jobs currently derives behavior from its
+                configured model and optional payload.
+
+        Returns:
+            Searchable text plus normalized page regions when the provider
+            returns coordinates that still refer to the uploaded image.
+
+        Raises:
+            TypeError: If the image or language shape is invalid.
+            RuntimeError: If the engine is unavailable or the remote job fails.
+        """
+
+        if not isinstance(image, (bytes, Path)):
+            raise TypeError("image must be bytes or pathlib.Path")
+        _validate_language_tag(language)
+        unavailable = self.unavailable_reason()
+        if unavailable is not None:
+            raise RuntimeError(unavailable)
+        if self._provider() != "paddle_jobs":
+            return OcrImageResult(text=self.ocr_image(image, language=language))
+
+        image_bytes = self._read_image_bytes(image)
+        upload_filename, upload_mime_type = self._paddle_upload_metadata(
+            image,
+            image_bytes,
+        )
+        result = self._run_paddle_jobs(
+            image_bytes,
+            upload_filename=upload_filename,
+            upload_mime_type=upload_mime_type,
+            image_size=self._paddle_image_size(image_bytes),
+        )
+        if not isinstance(result, OcrImageResult):
+            raise RuntimeError("PaddleOCR jobs adapter returned an invalid OCR result")
+        return result
+
     def _provider(self) -> str:
         raw = str(self.config.get("provider") or "generic").strip().lower()
         if raw in {"", "custom"}:
             return "generic"
         if raw not in _REMOTE_OCR_PROVIDER_DEFAULTS:
-            raise ValueError("remote OCR provider must be one of: generic, mistral, mineru")
+            raise ValueError(
+                "remote OCR provider must be one of: generic, mistral, mineru, paddle_jobs"
+            )
         return raw
 
     def _api_key(self) -> str:
@@ -1260,10 +1395,28 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
         if isinstance(raw, bool):
             raise ValueError("remote OCR timeout_seconds must be numeric")
         timeout = float(raw)
+        if not math.isfinite(timeout):
+            raise ValueError("remote OCR timeout_seconds must be finite")
         if timeout < 5:
             raise ValueError("remote OCR timeout_seconds must be at least 5")
         if timeout > 600:
             raise ValueError("remote OCR timeout_seconds must be 600 or fewer")
+        return timeout
+
+    def _poll_timeout_seconds(self) -> float:
+        raw = self.config.get(
+            "poll_timeout_seconds",
+            _PADDLE_JOBS_DEFAULT_POLL_TIMEOUT_SECONDS,
+        )
+        if isinstance(raw, bool):
+            raise ValueError("remote OCR poll_timeout_seconds must be numeric")
+        timeout = float(raw)
+        if not math.isfinite(timeout):
+            raise ValueError("remote OCR poll_timeout_seconds must be finite")
+        if timeout < 5:
+            raise ValueError("remote OCR poll_timeout_seconds must be at least 5")
+        if timeout > 600:
+            raise ValueError("remote OCR poll_timeout_seconds must be 600 or fewer")
         return timeout
 
     def _read_image_bytes(self, image: bytes | Path) -> bytes:
@@ -1277,6 +1430,60 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
         if not data:
             raise ValueError("remote OCR image file must be non-empty")
         return data
+
+    def _paddle_upload_metadata(
+        self,
+        image: bytes | Path,
+        image_bytes: bytes,
+    ) -> tuple[str, str]:
+        """Preserve a path name and derive a truthful multipart image type."""
+
+        detected_suffix = ""
+        detected_mime = ""
+        if image_bytes.startswith(b"RIFF") and len(image_bytes) >= 12:
+            if image_bytes[8:12] == b"WEBP":
+                detected_suffix, detected_mime = ".webp", "image/webp"
+        if not detected_mime:
+            for magic, suffix, mime_type in _PADDLE_IMAGE_TYPES:
+                if image_bytes.startswith(magic):
+                    detected_suffix, detected_mime = suffix, mime_type
+                    break
+
+        if isinstance(image, Path):
+            raw_filename = image.name or f"page{detected_suffix or '.png'}"
+            filename = (
+                raw_filename.replace("\r", "_")
+                .replace("\n", "_")
+                .replace('"', "_")[:180]
+            )
+            suffix_mime = _PADDLE_SUFFIX_MIME_TYPES.get(image.suffix.lower(), "")
+            return filename, detected_mime or suffix_mime or "image/png"
+
+        return f"page{detected_suffix or '.png'}", detected_mime or "image/png"
+
+    def _paddle_image_size(self, image_bytes: bytes) -> tuple[int, int] | None:
+        """Read original upload dimensions without making OCR depend on decoding."""
+
+        try:
+            from PIL import Image
+        except ImportError:
+            return None
+
+        try:
+            with Image.open(BytesIO(image_bytes)) as decoded:
+                width, height = decoded.size
+        except (OSError, SyntaxError, ValueError, Image.DecompressionBombError):
+            return None
+        if (
+            isinstance(width, bool)
+            or isinstance(height, bool)
+            or not isinstance(width, int)
+            or not isinstance(height, int)
+            or width <= 0
+            or height <= 0
+        ):
+            return None
+        return width, height
 
     def _request_payload(self, image_bytes: bytes, *, language: str) -> dict[str, Any]:
         extra_payload = self.config.get("extra_payload", {})
@@ -1306,7 +1513,7 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
         }
 
     def _post_ocr_payload(self, payload: Mapping[str, Any], *, provider: str) -> Any:
-        url = urljoin(self._validated_base_url(), self._endpoint_path().lstrip("/"))
+        url = self._joined_endpoint_url(self._endpoint_path())
         headers = {
             "Authorization": f"Bearer {self._api_key()}",
             "Accept": "application/json",
@@ -1320,6 +1527,549 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
             return response.json()
         except ValueError as exc:
             raise RuntimeError("remote OCR response must be JSON") from exc
+
+    def _joined_endpoint_url(self, endpoint_path: str) -> str:
+        """Join an endpoint while preserving an already-complete base URL."""
+
+        base_url = self._validated_base_url().rstrip("/")
+        normalized_endpoint = "/" + endpoint_path.strip().strip("/")
+        base_path = urlparse(base_url).path.rstrip("/")
+        if base_path.endswith(normalized_endpoint):
+            return base_url
+        return urljoin(base_url + "/", normalized_endpoint.lstrip("/"))
+
+    def _run_paddle_jobs(
+        self,
+        image_bytes: bytes,
+        *,
+        upload_filename: str,
+        upload_mime_type: str,
+        image_size: tuple[int, int] | None,
+    ) -> OcrImageResult:
+        """Run the official PaddleOCR submit-poll-result job protocol."""
+
+        model = self._model()
+        if not model:
+            raise RuntimeError("PaddleOCR AIStudio jobs require a model name")
+        optional_payload = self.config.get("extra_payload", {})
+        if optional_payload is None:
+            optional_payload = {}
+        if not isinstance(optional_payload, Mapping):
+            raise ValueError("remote OCR extra_payload must be a JSON object")
+
+        jobs_url = self._joined_endpoint_url(_PADDLE_JOBS_API_PATH)
+        headers = {
+            "Authorization": f"Bearer {self._api_key()}",
+            "Accept": "application/json",
+        }
+        form_data = {
+            "model": model,
+            "optionalPayload": json.dumps(dict(optional_payload), ensure_ascii=False),
+        }
+        files = {"file": (upload_filename, image_bytes, upload_mime_type)}
+
+        with httpx.Client(
+            timeout=self._timeout_seconds(),
+            follow_redirects=False,
+        ) as client:
+            submit_response = self._paddle_request(
+                lambda: client.post(
+                    jobs_url,
+                    data=form_data,
+                    files=files,
+                    headers=headers,
+                ),
+                operation="job submission",
+            )
+            submit_data = self._paddle_response_data(
+                submit_response,
+                operation="job submission",
+            )
+            job_id = submit_data.get("jobId")
+            if not isinstance(job_id, str) or not job_id.strip():
+                raise RuntimeError(
+                    "PaddleOCR job submission response is missing data.jobId"
+                )
+            result_url = self._poll_paddle_job(
+                client,
+                jobs_url=jobs_url,
+                job_id=job_id.strip(),
+                headers=headers,
+            )
+            result_response = self._paddle_request(
+                lambda: client.get(result_url, follow_redirects=True),
+                operation="result download",
+            )
+            if not 200 <= result_response.status_code < 300:
+                detail = self._safe_paddle_detail(result_response.text)
+                raise RuntimeError(
+                    "PaddleOCR result download failed "
+                    f"(HTTP {result_response.status_code}): {detail}"
+                )
+            return self._paddle_jsonl_result(
+                result_response.text,
+                image_size=image_size,
+            )
+
+    def _poll_paddle_job(
+        self,
+        client: httpx.Client,
+        *,
+        jobs_url: str,
+        job_id: str,
+        headers: Mapping[str, str],
+    ) -> str:
+        """Poll one PaddleOCR job until a validated result URL is available."""
+
+        deadline = time.monotonic() + self._poll_timeout_seconds()
+        request_timeout = self._timeout_seconds()
+        interval = _PADDLE_JOBS_INITIAL_POLL_SECONDS
+        status_url = f"{jobs_url.rstrip('/')}/{job_id}"
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError(f"PaddleOCR job {job_id} polling timed out")
+            status_response = self._paddle_request(
+                lambda: client.get(
+                    status_url,
+                    headers=dict(headers),
+                    timeout=min(request_timeout, remaining),
+                ),
+                operation="job status",
+            )
+            status_data = self._paddle_response_data(
+                status_response,
+                operation="job status",
+            )
+            state = status_data.get("state")
+            if not isinstance(state, str):
+                raise RuntimeError("PaddleOCR job status state must be a string")
+            if state not in _PADDLE_JOBS_STATES:
+                raise RuntimeError(
+                    f"PaddleOCR job status has unknown or missing state: {state!r}"
+                )
+            if state == "failed":
+                detail = self._safe_paddle_detail(
+                    status_data.get("errorMsg"),
+                    fallback="unknown provider error",
+                )
+                raise RuntimeError(f"PaddleOCR job {job_id} failed: {detail}")
+            if state == "done":
+                result_urls = status_data.get("resultUrl")
+                if not isinstance(result_urls, Mapping):
+                    raise RuntimeError(
+                        "PaddleOCR completed job response is missing data.resultUrl"
+                    )
+                json_url = result_urls.get("jsonUrl")
+                if not isinstance(json_url, str) or not json_url.strip():
+                    raise RuntimeError(
+                        "PaddleOCR completed job response is missing resultUrl.jsonUrl"
+                    )
+                return self._validated_paddle_result_url(json_url.strip())
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError(f"PaddleOCR job {job_id} polling timed out")
+            time.sleep(min(interval, remaining))
+            interval = min(
+                interval * _PADDLE_JOBS_POLL_MULTIPLIER,
+                _PADDLE_JOBS_MAX_POLL_SECONDS,
+            )
+
+    def _validated_paddle_result_url(self, result_url: str) -> str:
+        parsed = urlparse(result_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise RuntimeError("PaddleOCR result URL must be a valid http(s) URL")
+        if parsed.scheme == "http" and not self._allow_insecure_http(parsed.hostname or ""):
+            raise RuntimeError("PaddleOCR result URL must use https")
+        return result_url
+
+    def _paddle_request(
+        self,
+        request: Any,
+        *,
+        operation: str,
+    ) -> httpx.Response:
+        try:
+            response = request()
+        except httpx.TimeoutException as exc:
+            raise RuntimeError(f"PaddleOCR {operation} timed out") from exc
+        except httpx.RequestError as exc:
+            detail = self._safe_paddle_detail(str(exc), fallback="request failed")
+            raise RuntimeError(
+                f"PaddleOCR {operation} network error: {detail}"
+            ) from exc
+        if not isinstance(response, httpx.Response):
+            raise RuntimeError(f"PaddleOCR {operation} returned an invalid HTTP response")
+        return response
+
+    def _paddle_response_data(
+        self,
+        response: httpx.Response,
+        *,
+        operation: str,
+    ) -> Mapping[str, Any]:
+        message = ""
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            if 200 <= response.status_code < 300:
+                raise RuntimeError(
+                    f"PaddleOCR {operation} response must be JSON"
+                ) from exc
+            payload = {}
+            message = response.text.strip()
+        if isinstance(payload, Mapping):
+            payload_data = payload.get("data")
+            nested_error = (
+                payload_data.get("errorMsg")
+                if isinstance(payload_data, Mapping)
+                else None
+            )
+            message = str(
+                payload.get("msg")
+                or payload.get("errorMsg")
+                or payload.get("message")
+                or nested_error
+                or message
+            ).strip()
+        safe_message = self._safe_paddle_detail(message)
+        normalized_message = message.casefold()
+        is_quota_error = any(
+            marker in normalized_message
+            for marker in ("quota", "rate limit", "too many requests")
+        )
+        is_auth_error = any(
+            marker in normalized_message
+            for marker in (
+                "access token",
+                "authentication",
+                "credential",
+                "invalid token",
+                "unauthorized",
+            )
+        )
+        is_invalid_request_error = any(
+            marker in normalized_message
+            for marker in ("invalid request", "invalid parameter", "bad request")
+        )
+        is_service_unavailable_error = any(
+            marker in normalized_message
+            for marker in (
+                "service unavailable",
+                "temporarily unavailable",
+                "gateway timeout",
+            )
+        )
+        if isinstance(payload, Mapping):
+            code = payload.get("code", 0)
+            if isinstance(code, bool) or (
+                code is not None and not isinstance(code, int)
+            ):
+                raise RuntimeError(
+                    f"PaddleOCR {operation} response code must be an integer or null"
+                )
+        else:
+            code = 0
+        is_business_error = (
+            200 <= response.status_code < 300 and code not in {0, None}
+        )
+        if code in _PADDLE_JOBS_QUOTA_CODES or response.status_code == 429 or (
+            (response.status_code in {401, 403} or is_business_error)
+            and is_quota_error
+        ):
+            raise RuntimeError(
+                f"PaddleOCR quota or rate limit exceeded: {safe_message}"
+            )
+        if (
+            response.status_code in {401, 403} or is_business_error
+        ) and is_auth_error:
+            raise RuntimeError(
+                "PaddleOCR authentication failed: "
+                f"{self._safe_paddle_detail(message, fallback='access token rejected')}"
+            )
+        if response.status_code == 400 or (
+            is_business_error and is_invalid_request_error
+        ):
+            raise RuntimeError(f"PaddleOCR invalid request: {safe_message}")
+        if response.status_code in {503, 504} or (
+            is_business_error and is_service_unavailable_error
+        ):
+            raise RuntimeError(f"PaddleOCR service unavailable: {safe_message}")
+        if not 200 <= response.status_code < 300:
+            raise RuntimeError(
+                f"PaddleOCR {operation} failed (HTTP {response.status_code}): "
+                f"{safe_message}"
+            )
+        if not isinstance(payload, Mapping):
+            raise RuntimeError(f"PaddleOCR {operation} response must be a JSON object")
+        if code not in {0, None}:
+            raise RuntimeError(
+                f"PaddleOCR {operation} failed (code {code}): "
+                f"{safe_message}"
+            )
+        data = payload.get("data")
+        if not isinstance(data, Mapping):
+            raise RuntimeError(
+                f"PaddleOCR {operation} response is missing object field data"
+            )
+        return data
+
+    def _safe_paddle_detail(
+        self,
+        value: Any,
+        *,
+        fallback: str = "provider error",
+    ) -> str:
+        """Return a bounded provider detail with credential-shaped values removed."""
+
+        detail = str(value or "").replace("\r", " ").replace("\n", " ").strip()
+        api_key = self._api_key()
+        if api_key:
+            detail = detail.replace(api_key, "[REDACTED]")
+        detail = _PADDLE_AUTHORIZATION_DETAIL_RE.sub(
+            lambda match: f"{match.group(1)}[REDACTED]",
+            detail,
+        )
+        detail = _PADDLE_SECRET_DETAIL_RE.sub(
+            lambda match: f"{match.group(1)}[REDACTED]",
+            detail,
+        )
+        normalized = detail or fallback
+        return normalized[:_PADDLE_ERROR_DETAIL_MAX_CHARS]
+
+    def _paddle_jsonl_result(
+        self,
+        payload: str,
+        *,
+        image_size: tuple[int, int] | None,
+    ) -> OcrImageResult:
+        """Parse PaddleOCR JSONL while retaining trustworthy original-image regions."""
+
+        fragments: list[str] = []
+        regions: list[OcrImageRegion] = []
+        allow_regions = self._paddle_regions_are_trustworthy(image_size)
+        for line_number, raw_line in enumerate(payload.splitlines(), start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(
+                    f"PaddleOCR result JSONL line {line_number} is invalid"
+                ) from exc
+            if not isinstance(item, Mapping):
+                raise RuntimeError(
+                    f"PaddleOCR result JSONL line {line_number} must be an object"
+                )
+            result = item.get("result")
+            if not isinstance(result, Mapping):
+                raise RuntimeError(
+                    f"PaddleOCR result JSONL line {line_number} is missing result"
+                )
+            layout_results = result.get("layoutParsingResults")
+            ocr_results = result.get("ocrResults")
+            model = self._model()
+            if model in _PADDLE_DOCUMENT_RESULT_MODELS and not isinstance(
+                layout_results, list
+            ):
+                raise RuntimeError(
+                    "PaddleOCR result JSONL line "
+                    f"{line_number} is missing list field layoutParsingResults"
+                )
+            if model in _PADDLE_OCR_RESULT_MODELS and not isinstance(
+                ocr_results, list
+            ):
+                raise RuntimeError(
+                    "PaddleOCR result JSONL line "
+                    f"{line_number} is missing list field ocrResults"
+                )
+            if (
+                model not in _PADDLE_DOCUMENT_RESULT_MODELS
+                and model not in _PADDLE_OCR_RESULT_MODELS
+                and not isinstance(layout_results, list)
+                and not isinstance(ocr_results, list)
+            ):
+                raise RuntimeError(
+                    "PaddleOCR result JSONL line "
+                    f"{line_number} has no supported result list"
+                )
+            layout_fragments, layout_regions = self._paddle_layout_content(
+                layout_results,
+                image_size=image_size if allow_regions else None,
+            )
+            if layout_fragments:
+                fragments.extend(layout_fragments)
+                regions.extend(layout_regions)
+                continue
+            ocr_fragments, ocr_regions = self._paddle_ocr_content(
+                ocr_results,
+                image_size=image_size if allow_regions else None,
+            )
+            fragments.extend(ocr_fragments)
+            regions.extend(ocr_regions)
+        return OcrImageResult(text="\n".join(fragments), regions=tuple(regions))
+
+    def _paddle_jsonl_text(self, payload: str) -> str:
+        """Retain the pre-structured internal parser contract for callers in flight."""
+
+        return self._paddle_jsonl_result(payload, image_size=None).text
+
+    def _paddle_layout_content(
+        self,
+        raw_layout_results: Any,
+        *,
+        image_size: tuple[int, int] | None,
+    ) -> tuple[list[str], list[OcrImageRegion]]:
+        """Prefer located document blocks, falling back to page Markdown."""
+
+        if not isinstance(raw_layout_results, list):
+            return [], []
+        block_fragments: list[str] = []
+        block_regions: list[OcrImageRegion] = []
+        markdown_fragments: list[str] = []
+        for layout in raw_layout_results:
+            if not isinstance(layout, Mapping):
+                continue
+            markdown = layout.get("markdown")
+            if isinstance(markdown, Mapping):
+                markdown_text = markdown.get("text")
+                if isinstance(markdown_text, str) and markdown_text.strip():
+                    markdown_fragments.append(markdown_text.strip())
+            pruned_result = layout.get("prunedResult")
+            if not isinstance(pruned_result, Mapping):
+                continue
+            raw_blocks = pruned_result.get("parsing_res_list")
+            if not isinstance(raw_blocks, list):
+                continue
+            for raw_block in raw_blocks:
+                if not isinstance(raw_block, Mapping):
+                    continue
+                content = raw_block.get("block_content")
+                if not isinstance(content, str) or not content.strip():
+                    continue
+                text = content.strip()
+                block_fragments.append(text)
+                raw_label = raw_block.get("block_label")
+                label = raw_label.strip().casefold() if isinstance(raw_label, str) else ""
+                block_type = _PADDLE_BLOCK_TYPES.get(label, "Text")
+                region = self._paddle_region(
+                    text,
+                    raw_block.get("block_bbox"),
+                    block_type=block_type,
+                    image_size=image_size,
+                )
+                if region is not None:
+                    block_regions.append(region)
+        if block_fragments:
+            return block_fragments, block_regions
+        return markdown_fragments, []
+
+    def _paddle_ocr_content(
+        self,
+        raw_ocr_results: Any,
+        *,
+        image_size: tuple[int, int] | None,
+    ) -> tuple[list[str], list[OcrImageRegion]]:
+        """Read OCR lines and retain only boxes valid for the uploaded image."""
+
+        if not isinstance(raw_ocr_results, list):
+            return [], []
+        fragments: list[str] = []
+        regions: list[OcrImageRegion] = []
+        for raw_ocr_result in raw_ocr_results:
+            if not isinstance(raw_ocr_result, Mapping):
+                continue
+            pruned_result = raw_ocr_result.get("prunedResult")
+            if not isinstance(pruned_result, Mapping):
+                continue
+            raw_texts = pruned_result.get("rec_texts")
+            raw_boxes = pruned_result.get("rec_boxes")
+            if not isinstance(raw_texts, list):
+                fallback_text = _extract_paddleocr_text(pruned_result).strip()
+                if fallback_text:
+                    fragments.append(fallback_text)
+                continue
+            boxes = raw_boxes if isinstance(raw_boxes, list) else []
+            for index, raw_text in enumerate(raw_texts):
+                if not isinstance(raw_text, str) or not raw_text.strip():
+                    continue
+                text = raw_text.strip()
+                fragments.append(text)
+                raw_bbox = boxes[index] if index < len(boxes) else None
+                region = self._paddle_region(
+                    text,
+                    raw_bbox,
+                    block_type="Text",
+                    image_size=image_size,
+                )
+                if region is not None:
+                    regions.append(region)
+        return fragments, regions
+
+    def _paddle_regions_are_trustworthy(
+        self,
+        image_size: tuple[int, int] | None,
+    ) -> bool:
+        """Reject exact locators when Paddle may transform the source geometry."""
+
+        if image_size is None:
+            return False
+        extra_payload = self.config.get("extra_payload")
+        if not isinstance(extra_payload, Mapping):
+            return True
+        for flag_name in ("useDocOrientationClassify", "useDocUnwarping"):
+            value = extra_payload.get(flag_name)
+            if value is True or (
+                isinstance(value, str)
+                and value.strip().casefold() in {"1", "true", "yes", "on"}
+            ):
+                return False
+        return True
+
+    def _paddle_region(
+        self,
+        text: str,
+        raw_bbox: Any,
+        *,
+        block_type: str,
+        image_size: tuple[int, int] | None,
+    ) -> OcrImageRegion | None:
+        """Convert one original-image ``xyxy`` box to normalized ``xywh``."""
+
+        if image_size is None or not isinstance(raw_bbox, (list, tuple)):
+            return None
+        if len(raw_bbox) != 4:
+            return None
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            for value in raw_bbox
+        ):
+            return None
+        x0, y0, x1, y1 = (float(value) for value in raw_bbox)
+        if not all(math.isfinite(value) for value in (x0, y0, x1, y1)):
+            return None
+        width, height = image_size
+        if (
+            x0 < 0.0
+            or y0 < 0.0
+            or x1 <= x0
+            or y1 <= y0
+            or x1 > float(width)
+            or y1 > float(height)
+        ):
+            return None
+        return OcrImageRegion(
+            markdown=text,
+            bbox=(
+                x0 / width,
+                y0 / height,
+                (x1 - x0) / width,
+                (y1 - y0) / height,
+            ),
+            block_type=block_type,
+        )
 
     def _extract_response_text(self, payload: Any) -> str:
         if isinstance(payload, str):

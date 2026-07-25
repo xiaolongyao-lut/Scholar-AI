@@ -27,6 +27,9 @@ from literature_assistant.core.wiki.query import WikiQueryIndex
 from literature_assistant.core.wiki.source_registry import WikiRegistry
 
 
+REVIEW_SAMPLE_LIMIT = 8
+
+
 class DoctorStatus(str, Enum):
     ok = "ok"
     warning = "warning"
@@ -447,7 +450,8 @@ class WikiDoctor:
                     ),
                 ),
             )
-        node_ids = {node.node_id for node in graph.nodes}
+        node_by_id = {node.node_id: node for node in graph.nodes}
+        node_ids = set(node_by_id)
         broken_edges = sorted(
             f"{edge.source_id} -> {edge.target_id}"
             for edge in graph.edges
@@ -465,23 +469,48 @@ class WikiDoctor:
             for node_id in node_ids
             if inbound_counts[node_id] == 0 and outbound_counts[node_id] == 0
         )
+        final_orphans = tuple(
+            node_id
+            for node_id in orphans
+            if str(node_by_id[node_id].status or "draft").strip().lower() == "final"
+        )
+        governance_orphans = tuple(node_id for node_id in orphans if node_id not in set(final_orphans))
         duplicates = find_duplicate_concept_candidates(graph)
         status = (
             DoctorStatus.error
             if broken_edges
             else DoctorStatus.warning
-            if orphans or duplicates or not (json_exists and sqlite_exists)
+            if final_orphans or duplicates or not (json_exists and sqlite_exists)
             else DoctorStatus.ok
         )
         detail_parts = []
         if broken_edges:
             detail_parts.append("broken=" + ", ".join(broken_edges[:10]))
-        if orphans:
-            detail_parts.append("orphans=" + ", ".join(orphans[:10]))
+        if final_orphans:
+            detail_parts.append("final_orphans=" + ", ".join(final_orphans[:10]))
+        if governance_orphans:
+            detail_parts.append("draft_review_orphans=" + ", ".join(governance_orphans[:10]))
         if duplicates:
             detail_parts.append(
                 "duplicates="
                 + ", ".join(f"{left}/{right}:{score:.2f}" for left, right, score in duplicates[:10])
+            )
+        actions: list[DoctorAction] = []
+        if broken_edges or not (json_exists and sqlite_exists):
+            actions.append(
+                DoctorAction(
+                    command="wiki graph rebuild",
+                    description="Rebuild graph JSON/SQLite artifacts from pages.",
+                    safe_auto_repair=True,
+                )
+            )
+        if final_orphans or duplicates:
+            actions.append(
+                DoctorAction(
+                    command="wiki review list --filter graph",
+                    description="Review final graph orphan or duplicate candidates before publishing graph claims.",
+                    safe_auto_repair=False,
+                )
             )
         return DoctorCheck(
             id="graph",
@@ -489,7 +518,8 @@ class WikiDoctor:
             status=status,
             summary=(
                 f"Graph has {len(graph.nodes)} nodes, {len(graph.edges)} edges, "
-                f"{len(broken_edges)} broken links, {len(orphans)} orphans, {len(duplicates)} duplicate candidates."
+                f"{len(broken_edges)} broken links, {len(final_orphans)} final orphans, "
+                f"{len(governance_orphans)} draft/review orphans, {len(duplicates)} duplicate candidates."
             ),
             detail="\n".join(detail_parts),
             metrics={
@@ -497,40 +527,57 @@ class WikiDoctor:
                 "edge_count": len(graph.edges),
                 "broken_link_count": len(broken_edges),
                 "orphan_count": len(orphans),
+                "final_orphan_count": len(final_orphans),
+                "governance_orphan_count": len(governance_orphans),
+                "sample_final_orphans": list(final_orphans[:10]),
+                "sample_governance_orphans": list(governance_orphans[:10]),
                 "duplicate_candidate_count": len(duplicates),
                 "graph_json_exists": json_exists,
                 "graph_db_exists": sqlite_exists,
             },
-            actions=(
-                DoctorAction(
-                    command="wiki graph rebuild",
-                    description="Rebuild graph JSON/SQLite artifacts from pages.",
-                    safe_auto_repair=True,
-                ),
-            )
-            if broken_edges or not (json_exists and sqlite_exists)
-            else tuple(),
+            actions=tuple(actions),
         )
 
     def check_review(self) -> DoctorCheck:
         draft_pages = 0
         review_pages = 0
         final_pages = 0
+        samples: list[dict[str, Any]] = []
         for page_path in self.page_store.list_pages():
             content = self.page_store.read_page(page_path)
             if not content:
                 continue
             try:
-                status = str(parse_wiki_page(content).frontmatter.get("status") or "draft")
+                frontmatter = parse_wiki_page(content).frontmatter
+                status = str(frontmatter.get("status") or "draft")
+                title = str(frontmatter.get("title") or page_path.stem)
+                kind = str(frontmatter.get("kind") or (page_path.parts[0] if page_path.parts else ""))
             except (json.JSONDecodeError, ValueError):
                 status = "draft"
+                title = page_path.stem
+                kind = page_path.parts[0] if page_path.parts else ""
             if status == "review":
                 review_pages += 1
             elif status == "final":
                 final_pages += 1
             else:
                 draft_pages += 1
+            if status != "final" and len(samples) < REVIEW_SAMPLE_LIMIT:
+                samples.append(
+                    {
+                        "page_path": page_path.as_posix(),
+                        "title": title,
+                        "status": status,
+                        "kind": kind,
+                    }
+                )
         needs_review = draft_pages + review_pages
+        truncated = needs_review > len(samples)
+        detail = ""
+        if samples:
+            detail = "\n".join(
+                f"{sample['page_path']} [{sample['status']}] {sample['title']}" for sample in samples
+            )
         return DoctorCheck(
             id="review",
             label="Review",
@@ -540,11 +587,20 @@ class WikiDoctor:
                 if needs_review
                 else f"All {final_pages} pages are final."
             ),
-            metrics={"draft_pages": draft_pages, "review_pages": review_pages, "final_pages": final_pages},
+            detail=detail,
+            metrics={
+                "draft_pages": draft_pages,
+                "review_pages": review_pages,
+                "final_pages": final_pages,
+                "sample_count": len(samples),
+                "sample_limit": REVIEW_SAMPLE_LIMIT,
+                "truncated": truncated,
+                "samples": samples,
+            },
             actions=(
                 DoctorAction(
                     command="wiki review list",
-                    description="Inspect draft/review pages before approval.",
+                    description="Inspect draft/review pages in the Wiki Workbench before approval, archive, or linking.",
                     safe_auto_repair=False,
                 ),
             )

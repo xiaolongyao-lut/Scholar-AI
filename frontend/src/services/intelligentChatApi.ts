@@ -1,10 +1,26 @@
 import axios from 'axios';
 import { getApiBaseUrl } from './apiBaseUrl';
-import type { PdfBbox, PdfBboxUnit } from '@/lib/pdfAnchor';
+import {
+  isPdfBboxUnit,
+  readPdfBbox,
+  type PdfBbox,
+  type PdfBboxUnit,
+  type PdfContentSelection,
+} from '@/lib/pdfAnchor';
+import {
+  sanitizeResearchSelections,
+  type ResearchSelection,
+} from '@/types/researchSelection';
+import {
+  sanitizeVisualObservationReferences,
+  type VisualObservationReference,
+} from '@/types/visualObservation';
 import type { AnalysisChainPayload } from './discussionApi';
 
 export type ContextTier = 'fast' | 'balanced' | 'thorough';
 export type ChatMode = 'direct' | 'literature_qa' | 'inspiration';
+export type GeneratedIn = 'smart_read' | 'mcp_sidebar';
+export type EvidenceRole = 'selected_content' | 'current_material' | 'cited_project_material' | 'project_context';
 
 export interface ContextChunk {
   index: number;
@@ -13,6 +29,7 @@ export interface ContextChunk {
   relevance_score?: number;
   chunk_id?: string | null;
   material_id?: string | null;
+  evidence_role?: EvidenceRole;
   title?: string | null;
   section_title?: string | null;
   page?: number | string | null;
@@ -33,9 +50,16 @@ export interface ContextMetadata {
 export interface EvidenceReference {
   chunk_id: string;
   material_id?: string | null;
+  evidence_role?: EvidenceRole;
   source: string;
   text: string;
   quote: string;
+  anchor_kind?: 'text' | 'visual' | null;
+  content_hash?: string | null;
+  locator_hash?: string | null;
+  chunk_hash?: string | null;
+  embedding_input_hash?: string | null;
+  hash_version?: string | null;
   label?: string;
   score?: number | null;
   source_labels?: string[];
@@ -62,6 +86,9 @@ export interface CurrentPdfContext {
   bbox?: PdfBbox | null;
   bbox_unit?: PdfBboxUnit | null;
   selected_text?: string | null;
+  selection?: PdfContentSelection | null;
+  /** Canonical bounded list for mixed text/figure/table/formula selections. */
+  selections?: PdfContentSelection[];
   context_kind?: 'reader_page' | 'selection' | 'deep_link';
   source_labels?: string[];
 }
@@ -108,18 +135,28 @@ export interface TokenUsage {
   total: number;
 }
 
+export type AnswerOrigin = 'internal_smartread' | 'external_agent';
+export type AnswerModelOrigin = 'scholar_ai_configured_chat' | 'external_agent';
+
 export interface IntelligentChatRequest {
   query: string;
+  /** Stable client turn id used to keep retries and durable selections aligned. */
+  turn_id?: string;
   session_id?: string;
   tier?: ContextTier;
   project_id?: string;
   project_reasoning_bias_enabled?: boolean;
+  answer_origin?: AnswerOrigin;
   material_id?: string;
   current_pdf_context?: CurrentPdfContext;
+  /** Durable input locators. Never include image indexes or encoded pixels. */
+  research_selections?: ResearchSelection[];
   source_paths?: string[];
   mcpServerIds?: string[];
   mcpAllowHighRiskTools?: boolean;
   useLocalLiteratureTools?: boolean;
+  generated_in?: GeneratedIn;
+  evidence_pack_ref?: string;
   /** @deprecated Legacy compatibility only. Unified smart-read callers should omit this. */
   direct_mode?: boolean;
   mode?: ChatMode;
@@ -136,6 +173,13 @@ export interface IntelligentChatResponse {
   context_metadata?: ContextMetadata;
   retrieval_diagnostics?: SmartReadRetrievalDiagnostics | null;
   evidence_refs?: EvidenceReference[];
+  visual_evidence_refs?: EvidenceReference[];
+  visual_observation_refs?: VisualObservationReference[];
+  answer_origin?: AnswerOrigin;
+  answer_model_origin?: AnswerModelOrigin;
+  retrieval_provider?: 'scholar_ai';
+  generated_in?: GeneratedIn;
+  evidence_pack_ref?: string | null;
   actual_sampling_params?: {
     temperature: number;
     top_p: number;
@@ -182,6 +226,20 @@ export interface SmartReadRetrievalDiagnostics {
   fallback_reasons?: string[];
   gateway?: SmartReadGatewayDiagnostics | null;
   tolf?: SmartReadTolfDiagnostics | null;
+  qrels_status?: {
+    schema_version?: 'retrieval-qrels-status/v1';
+    status?: 'missing' | 'candidate' | 'reviewed' | 'canonical';
+    candidate_qrels_count?: number;
+    reviewed_qrels_count?: number;
+    canonical_qrels_count?: number;
+    semantic_quality_claim_allowed?: boolean;
+    quality_claim?:
+      | 'no_qrels_available'
+      | 'candidate_qrels_review_required'
+      | 'reviewed_qrels_promotion_required'
+      | 'canonical_qrels_available';
+    notes?: string[];
+  } | null;
 }
 
 export type IntelligentChatStreamEvent =
@@ -192,8 +250,14 @@ export type IntelligentChatStreamEvent =
       tier_used: ContextTier;
       context_metadata?: ContextMetadata | null;
       evidence_refs?: EvidenceReference[];
+      visual_evidence_refs?: EvidenceReference[];
       actual_sampling_params?: IntelligentChatResponse['actual_sampling_params'] | null;
       retrieval_diagnostics?: SmartReadRetrievalDiagnostics | null;
+      answer_origin?: AnswerOrigin;
+      answer_model_origin?: AnswerModelOrigin;
+      retrieval_provider?: 'scholar_ai';
+      generated_in?: GeneratedIn;
+      evidence_pack_ref?: string | null;
     }
   | {
       event: 'text_delta';
@@ -221,6 +285,12 @@ export type IntelligentChatStreamEvent =
       response?: string;
       session_id?: string;
       tokens_used?: TokenUsage;
+      visual_evidence_refs?: EvidenceReference[];
+      visual_observation_refs?: VisualObservationReference[];
+      answer_origin?: AnswerOrigin;
+      answer_model_origin?: AnswerModelOrigin;
+      generated_in?: GeneratedIn;
+      evidence_pack_ref?: string | null;
     }
   | {
       event: 'error';
@@ -323,10 +393,20 @@ export interface ChatResumeMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  turn_id?: string | null;
+  research_selections?: ResearchSelection[];
   tier_used?: ContextTier | null;
   context_metadata?: ContextMetadata | null;
   tokens_used?: TokenUsage | null;
   evidence_refs?: EvidenceReference[];
+  visual_evidence_refs?: EvidenceReference[];
+  visual_observation_refs?: VisualObservationReference[];
+  answer_origin?: AnswerOrigin | null;
+  answer_model_origin?: AnswerModelOrigin | null;
+  retrieval_provider?: 'scholar_ai' | null;
+  generated_in?: GeneratedIn | null;
+  evidence_pack_ref?: string | null;
+  retrieval_diagnostics?: SmartReadRetrievalDiagnostics | null;
   analysis_chain?: AnalysisChainPayload | null;
   inspiration_context?: InspirationContext | null;
 }
@@ -384,6 +464,95 @@ export async function getBudgetStatus(): Promise<BudgetStatus> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readOptionalString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function readOptionalPage(value: unknown): number | string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return readOptionalString(value);
+}
+
+function readOptionalStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value.flatMap((item): string[] => {
+    const text = readOptionalString(item);
+    return text ? [text] : [];
+  });
+  return values.length > 0 ? values : undefined;
+}
+
+/**
+ * Normalize evidence at the HTTP boundary without collapsing quote/text or
+ * guessing a coordinate unit. A bbox is usable only when its explicit unit is
+ * known; otherwise the page/chunk identity remains while geometry is dropped.
+ */
+function sanitizeEvidenceReference(value: unknown): EvidenceReference | null {
+  if (!isRecord(value)) return null;
+  const chunkId = readOptionalString(value.chunk_id) ?? readOptionalString(value.ref_id);
+  if (!chunkId) return null;
+
+  const bboxUnit = isPdfBboxUnit(value.bbox_unit) ? value.bbox_unit : null;
+  const bbox = bboxUnit ? readPdfBbox(value.bbox) : null;
+  const sourceTitle = readOptionalString(value.source_title);
+  const source = readOptionalString(value.source) ?? sourceTitle ?? '';
+  const anchorKind = value.anchor_kind === 'text' || value.anchor_kind === 'visual'
+    ? value.anchor_kind
+    : null;
+  const evidenceRole = value.evidence_role === 'selected_content'
+    || value.evidence_role === 'current_material'
+    || value.evidence_role === 'cited_project_material'
+    || value.evidence_role === 'project_context'
+    ? value.evidence_role
+    : undefined;
+  const sourceKind = value.source_kind === 'local' || value.source_kind === 'web' || value.source_kind === 'mcp'
+    ? value.source_kind
+    : undefined;
+  const sourceType = value.source_type === 'project' || value.source_type === 'wiki'
+    ? value.source_type
+    : undefined;
+  const sanitized: EvidenceReference = {
+    chunk_id: chunkId,
+    material_id: readOptionalString(value.material_id),
+    ...(evidenceRole ? { evidence_role: evidenceRole } : {}),
+    source,
+    // Keep these fields independent. An absent text must not be replaced by quote,
+    // and an absent quote must not be synthesized from a summary.
+    text: readOptionalString(value.text) ?? '',
+    quote: readOptionalString(value.quote) ?? '',
+    ...(anchorKind ? { anchor_kind: anchorKind } : { anchor_kind: null }),
+    ...(bbox ? { bbox: [...bbox], bbox_unit: bboxUnit } : { bbox: null, bbox_unit: null }),
+    ...(readOptionalString(value.label) ? { label: readOptionalString(value.label) ?? undefined } : {}),
+    ...(typeof value.score === 'number' && Number.isFinite(value.score) ? { score: value.score } : {}),
+    ...(readOptionalPage(value.page) !== null ? { page: readOptionalPage(value.page) } : {}),
+    ...(readOptionalStringArray(value.source_labels) ? { source_labels: readOptionalStringArray(value.source_labels) } : {}),
+    ...(readOptionalString(value.source_hint) ? { source_hint: readOptionalString(value.source_hint) ?? undefined } : {}),
+    ...(sourceKind ? { source_kind: sourceKind } : {}),
+    ...(sourceType ? { source_type: sourceType } : {}),
+    ...(sourceTitle ? { source_title: sourceTitle } : {}),
+    ...(readOptionalString(value.source_path) ? { source_path: readOptionalString(value.source_path) ?? undefined } : {}),
+    ...(typeof value.joint_score === 'number' && Number.isFinite(value.joint_score) ? { joint_score: value.joint_score } : {}),
+    ...(readOptionalString(value.figure_candidate) ? { figure_candidate: readOptionalString(value.figure_candidate) ?? undefined } : {}),
+    ...(isRecord(value.figure_candidate_detail) ? { figure_candidate_detail: value.figure_candidate_detail } : {}),
+    ...(readOptionalStringArray(value.image_paths) ? { image_paths: readOptionalStringArray(value.image_paths) } : {}),
+  };
+  for (const key of ['content_hash', 'locator_hash', 'chunk_hash', 'embedding_input_hash', 'hash_version'] as const) {
+    const hash = readOptionalString(value[key]);
+    if (hash) sanitized[key] = hash;
+  }
+  return sanitized;
+}
+
+export function sanitizeEvidenceReferences(value: unknown): EvidenceReference[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): EvidenceReference[] => {
+    const reference = sanitizeEvidenceReference(item);
+    return reference ? [reference] : [];
+  });
 }
 
 function isChatSessionListResponse(data: unknown): data is ChatSessionListResponse {
@@ -574,7 +743,25 @@ export async function resumeChatSession(
     },
     { timeout: timeoutMs }
   );
-  return data;
+  return {
+    ...data,
+    messages: Array.isArray(data.messages)
+      ? data.messages.map((message) => {
+          const { visual_observation_refs: rawReferences, ...rest } = message;
+          const references = sanitizeVisualObservationReferences(rawReferences);
+          const evidenceReferences = sanitizeEvidenceReferences(message.evidence_refs);
+          const visualEvidenceReferences = sanitizeEvidenceReferences(message.visual_evidence_refs);
+          return {
+            ...rest,
+            ...(message.evidence_refs !== undefined ? { evidence_refs: evidenceReferences } : {}),
+            ...(message.visual_evidence_refs !== undefined
+              ? { visual_evidence_refs: visualEvidenceReferences }
+              : {}),
+            ...(references.length > 0 ? { visual_observation_refs: references } : {}),
+          };
+        })
+      : [],
+  };
 }
 
 export async function sendIntelligentChatMessage(
@@ -584,12 +771,19 @@ export async function sendIntelligentChatMessage(
   return runSmartReadRequestSerially(async () => {
     const payload: Record<string, unknown> = {
       query: request.query,
+      turn_id: request.turn_id,
       session_id: request.session_id,
       tier: request.tier || 'balanced',
       project_id: request.project_id,
       project_reasoning_bias_enabled: request.project_reasoning_bias_enabled,
+      answer_origin: request.answer_origin,
+      generated_in: request.generated_in,
+      evidence_pack_ref: request.evidence_pack_ref,
       material_id: request.material_id,
       current_pdf_context: request.current_pdf_context,
+      research_selections: request.research_selections
+        ? sanitizeResearchSelections(request.research_selections)
+        : undefined,
       source_paths: request.source_paths,
     };
     if (request.direct_mode !== undefined) payload.direct_mode = request.direct_mode;
@@ -608,7 +802,23 @@ export async function sendIntelligentChatMessage(
       payload,
       { timeout: timeoutMs }
     );
-    return data;
+    const {
+      visual_observation_refs: rawReferences,
+      evidence_refs: rawEvidenceReferences,
+      visual_evidence_refs: rawVisualEvidenceReferences,
+      ...rest
+    } = data;
+    const references = sanitizeVisualObservationReferences(rawReferences);
+    return {
+      ...rest,
+      ...(rawEvidenceReferences !== undefined
+        ? { evidence_refs: sanitizeEvidenceReferences(rawEvidenceReferences) }
+        : {}),
+      ...(rawVisualEvidenceReferences !== undefined
+        ? { visual_evidence_refs: sanitizeEvidenceReferences(rawVisualEvidenceReferences) }
+        : {}),
+      ...(references.length > 0 ? { visual_observation_refs: references } : {}),
+    };
   });
 }
 
@@ -622,12 +832,19 @@ export async function streamIntelligentChatMessage(
   await runSmartReadRequestSerially(async () => {
     const payload: Record<string, unknown> = {
       query: request.query,
+      turn_id: request.turn_id,
       session_id: request.session_id,
       tier: request.tier || 'balanced',
       project_id: request.project_id,
       project_reasoning_bias_enabled: request.project_reasoning_bias_enabled,
+      answer_origin: request.answer_origin,
+      generated_in: request.generated_in,
+      evidence_pack_ref: request.evidence_pack_ref,
       material_id: request.material_id,
       current_pdf_context: request.current_pdf_context,
+      research_selections: request.research_selections
+        ? sanitizeResearchSelections(request.research_selections)
+        : undefined,
       source_paths: request.source_paths,
     };
     if (request.direct_mode !== undefined) payload.direct_mode = request.direct_mode;
@@ -747,7 +964,15 @@ function coerceIntelligentChatStreamEvent(value: unknown): IntelligentChatStream
       if (value.tier_used !== 'fast' && value.tier_used !== 'balanced' && value.tier_used !== 'thorough') {
         return null;
       }
-      return value as IntelligentChatStreamEvent;
+      return {
+        ...(value as Extract<IntelligentChatStreamEvent, { event: 'metadata' }>),
+        ...(value.evidence_refs !== undefined
+          ? { evidence_refs: sanitizeEvidenceReferences(value.evidence_refs) }
+          : {}),
+        ...(value.visual_evidence_refs !== undefined
+          ? { visual_evidence_refs: sanitizeEvidenceReferences(value.visual_evidence_refs) }
+          : {}),
+      };
     case 'text_delta':
       return typeof value.delta === 'string' ? value as IntelligentChatStreamEvent : null;
     case 'usage':
@@ -761,8 +986,21 @@ function coerceIntelligentChatStreamEvent(value: unknown): IntelligentChatStream
         analysis_chain: chain,
       };
     }
-    case 'done':
-      return value as IntelligentChatStreamEvent;
+    case 'done': {
+      const references = sanitizeVisualObservationReferences(value.visual_observation_refs);
+      const {
+        visual_observation_refs: _rawReferences,
+        visual_evidence_refs: rawVisualEvidenceReferences,
+        ...rest
+      } = value;
+      return {
+        ...(rest as Extract<IntelligentChatStreamEvent, { event: 'done' }>),
+        ...(rawVisualEvidenceReferences !== undefined
+          ? { visual_evidence_refs: sanitizeEvidenceReferences(rawVisualEvidenceReferences) }
+          : {}),
+        ...(references.length > 0 ? { visual_observation_refs: references } : {}),
+      };
+    }
     case 'error':
       return typeof value.error === 'string' ? value as IntelligentChatStreamEvent : null;
     default:

@@ -3,4 +3,4 @@
 Entry: ``python -m lit_mcp_vision_auxiliary.server``
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

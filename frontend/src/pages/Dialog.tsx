@@ -1,5 +1,18 @@
 import axios from 'axios';
-import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+  lazy,
+  Suspense,
+  useId,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type SetStateAction,
+} from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Archive,
@@ -26,13 +39,26 @@ import {
   Sparkles,
   Users2,
   Activity,
+  Check,
+  ChevronDown,
 } from 'lucide-react';
 import { Conversation } from '@/components/chat/Conversation';
 import { buildSuggestedQuestions, type SuggestedQuestion } from '@/components/chat/suggestedQuestions';
 import { DiscussionPanel } from '@/components/DiscussionPanel';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
-import { formatChatVisibleError, sanitizeChatVisibleText } from '@/components/chat/chatDisplay';
-import type { ChatAttachment, ChatInputSubmitPayload } from '@/components/chat/ChatInput';
+import {
+  formatChatVisibleError,
+  sanitizeAssistantVisibleContent,
+  sanitizeChatVisibleText,
+} from '@/components/chat/chatDisplay';
+import {
+  CHAT_INPUT_VISION_LIMITS,
+  chatAttachmentFingerprint,
+  type ChatAttachment,
+  type ChatInputHandle,
+  type ChatInputSubmitPayload,
+  type IdentifiedChatSelectionContext,
+} from '@/components/chat/ChatInput';
 import type {
   ChatRelatedFigure,
   ChatJointRecallDiagnostics,
@@ -41,14 +67,23 @@ import type {
   ChatRetrievalDiagnostics,
   ChatRetrievalQrelsStatus,
 } from '@/components/chat/MessageRenderer';
+import { relatedFiguresFromEvidenceRefs } from '@/components/chat/relatedFigures';
 import type { EvidenceRefLike } from '@/components/evidence/EvidencePill';
 import type { GraphNavigateTarget } from '@/components/graph/GraphPayloadViewer';
-import { WikiGraphSegmentedView } from '@/components/graph/WikiGraphSegmentedView';
 import type { GraphPayloadV0 } from '@/components/graph/payloadToRf';
+import { WikiGraphSegmentedView } from '@/components/graph/WikiGraphSegmentedView';
+import { buildAnswerTurnGraphPayload } from '@/components/graph/answerGraphProjection';
+import { evidenceGraphToGraphPayload } from '@/components/knowledge/evidenceGraphAdapter';
 import type { ReasoningDimension } from '@/components/graph/dimensionGraph';
 import { PdfTabStrip } from '@/components/PdfViewer/PdfTabStrip';
-import type { PdfSelectionAnchor } from '@/components/PdfViewer/PdfViewer';
+import type {
+  PdfFormulaCandidate,
+  PdfRegionCapture,
+  PdfSelectedVisualRegion,
+  PdfSelectionAnchor,
+} from '@/components/PdfViewer/PdfViewer';
 import { getAnnotations, type Highlight, type Note as AnnotationNote } from '@/services/annotationApi';
+import { getAnswerEvidenceGraph } from '@/services/graphApi';
 import { smartReadDialogScope, useSmartRead } from '@/contexts/SmartReadContext';
 import { usePdfTabs } from '@/contexts/PdfTabsContext';
 import {
@@ -61,8 +96,10 @@ import {
   resumeChatSession,
   searchChatHistory,
   streamIntelligentChatMessage,
+  type AnswerOrigin,
   type ContextTier,
   type CurrentPdfContext,
+  type EvidenceRole,
   type IntelligentChatResponse,
   type IntelligentChatStreamEvent,
   type ChatSessionSummary,
@@ -74,27 +111,52 @@ import { backendTierForCostTier, loadSmartReadCostTier } from '@/services/smartR
 import { useWriting } from '@/contexts/WritingContext';
 import { useProjectReasoningBiasState } from '@/hooks/useProjectReasoningBiasState';
 import { getWritingBackendService } from '@/services/writingBackend';
-import type { FigureTableCandidateResource, ProjectChunkResource, WritingMaterialResource, WritingProject } from '@/types/resources';
+import type {
+  FigureTableCandidateResource,
+  FormulaCandidateResource,
+  ProjectChunkResource,
+  WritingMaterialResource,
+  WritingProject,
+} from '@/types/resources';
+import {
+  buildResearchSelections,
+  sanitizeResearchSelections,
+  type ResearchSelection,
+} from '@/types/researchSelection';
+import {
+  sanitizeVisualObservationReferences,
+  type VisualObservationReference,
+} from '@/types/visualObservation';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
 import {
   encodePdfBboxParam,
   isPdfBboxUnit,
   normalizePdfUrlBbox,
   parsePdfBboxSearchParam,
+  readPdfBbox,
   toPdfHighlightRect,
   type PdfBbox,
   type PdfBboxUnit,
+  type PdfContentSelection,
 } from '@/lib/pdfAnchor';
+import { normalizePdfQuote } from '@/lib/pdfQuoteAnchor';
+import { locateChunk, type ChunkLocator } from '@/services/resourcesApi';
 import {
   type DiscussionDefaults,
   DEFAULT_DISCUSSION_DEFAULTS,
   normalizeDiscussionDefaults,
 } from '@/services/discussionDefaults';
+import {
+  createAgentSidebarAnswerRequest,
+  readAgentSidebarReceipt,
+  type AgentSidebarAnswerRequestResponse,
+} from '@/services/agentSidebarApi';
 
 const UNIFIED_DIALOG_MODE = 'literature_qa' as const;
 const UNIFIED_INPUT_PLACEHOLDER = '围绕当前项目材料提问…';
 const UNIFIED_EMPTY_HINT = '提问后会结合当前项目材料、证据和上下文生成回答。';
 const DISCUSSION_SESSION_SOURCE = 'multi_agent_discussion';
+const AGENT_BRIDGE_READY_MESSAGE = '证据已准备，等待智能体回答。';
 const DIALOG_REQUEST_TIMEOUT_MS = 30 * 60_000;
 const DIALOG_REQUEST_TIMEOUT_SECONDS = DIALOG_REQUEST_TIMEOUT_MS / 1000;
 const LEGACY_DIALOG_MODES = ['literature_qa', 'direct', 'inspiration'] as const;
@@ -110,22 +172,42 @@ const DIALOG_CONTEXT_DEFAULT_WIDTH = 380;
 const DIALOG_CONTEXT_MIN_WIDTH = 320;
 const DIALOG_CONTEXT_MAX_WIDTH = 560;
 const DIALOG_MAIN_MIN_WIDTH = 420;
+const DIALOG_PDF_SELECTION_MAX_COUNT = 12;
+const DIALOG_PDF_FORMULA_CANDIDATE_MAX_COUNT = 200;
+const DIALOG_MIXED_SELECTION_PROMPT = '请结合选中的内容进行分析。';
+const DIALOG_SELECTION_AUTO_PROMPTS = new Set([
+  '请分析选中的这段内容。',
+  '请分析选中的图。',
+  '请分析选中的表。',
+  '请解释选中的公式。',
+  '请分析选中的区域。',
+  DIALOG_MIXED_SELECTION_PROMPT,
+]);
 const dialogAbortControllers = new Map<string, AbortController>();
 const dialogRequestStartedAtByScope = new Map<string, number>();
+let dialogPdfSelectionSequence = 0;
+let dialogTurnSequence = 0;
 
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
+  turnId?: string;
   content: string;
+  researchSelections?: ResearchSelection[];
+  visualObservationRefs?: VisualObservationReference[];
   tierUsed?: ContextTier;
   contextMetadata?: IntelligentChatResponse['context_metadata'];
   evidenceRefs?: IntelligentChatResponse['evidence_refs'];
   actualSamplingParams?: IntelligentChatResponse['actual_sampling_params'];
   tokensUsed?: TokenUsage;
   retrievalDiagnostics?: ChatRetrievalDiagnostics;
+  answerOrigin?: AnswerOrigin;
+  answerModelOrigin?: IntelligentChatResponse['answer_model_origin'];
+  retrievalProvider?: IntelligentChatResponse['retrieval_provider'];
   timestamp: Date;
   insufficientContext?: boolean;
   status?: ChatMessageData['status'];
+  relatedFigures?: ChatRelatedFigure[];
 }
 
 type ChatState = 'ready' | 'responding' | 'error' | 'unavailable';
@@ -140,13 +222,22 @@ type DiscussionEnhancementIntent = 'reading' | 'writing' | 'research';
 type ProjectMaterialsState = 'idle' | 'loading' | 'error';
 type AnnotationNotesState = 'idle' | 'loading' | 'error';
 type SuggestedQuestionState = 'idle' | 'loading' | 'error';
+type AgentHandoffState = 'idle' | 'creating' | 'created' | 'error';
 
 interface DialogPdfSelectionState {
+  id: string;
   materialId: string;
-  page: number;
-  selectedText: string;
-  bbox: PdfBbox | null;
-  bboxUnit: PdfBboxUnit | null;
+  selection: PdfContentSelection;
+  imageFingerprint?: string;
+  restoredFromResearchSelection?: true;
+}
+
+interface DialogRequestContextRevision {
+  projectId: string | null;
+  materialId: string | null;
+  contextScope: DialogContextScope;
+  sessionId: string | null;
+  revision: number;
 }
 
 interface BuildDialogCurrentPdfContextInput {
@@ -156,6 +247,8 @@ interface BuildDialogCurrentPdfContextInput {
   selectedText?: string | null;
   bbox?: readonly number[] | null;
   bboxUnit?: PdfBboxUnit | null;
+  selection?: PdfContentSelection | null;
+  selections?: readonly PdfContentSelection[] | null;
 }
 
 interface SessionBranchGroup {
@@ -248,6 +341,26 @@ function writeDialogBoolean(key: string, value: boolean): void {
   } catch {
     // Browser storage can be unavailable in private or restricted contexts.
   }
+}
+
+function normalizeAnswerOrigin(value: string | null | undefined): AnswerOrigin | null {
+  const normalized = String(value ?? '').trim();
+  if (normalized === 'internal_smartread' || normalized === 'external_agent') {
+    return normalized;
+  }
+  return null;
+}
+
+function dialogVisibleAnswerContent(content: string, answerOrigin: AnswerOrigin): string {
+  const raw = content.trim();
+  if (!raw) return '';
+  const isExternalHandoff = answerOrigin === 'external_agent'
+    || raw.includes('已切换为外部智能体回答模式')
+    || raw.includes('文献助手未调用内部聊天模型');
+  const directAnswer = sanitizeAssistantVisibleContent(raw);
+  if (!isExternalHandoff) return directAnswer;
+  if (!directAnswer) return AGENT_BRIDGE_READY_MESSAGE;
+  return directAnswer.replace(/\n{3,}/g, '\n\n');
 }
 
 function normalizeDialogContextRailTab(value: string | null | undefined): DialogContextRailTab | null {
@@ -368,6 +481,17 @@ function readRecordPage(record: Record<string, unknown>, key: string): number | 
   return undefined;
 }
 
+function readRecordPageNumber(record: Record<string, unknown>, key: string): number | null | undefined {
+  const value = readRecordPage(record, key);
+  if (value === null) return null;
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value > 0 ? value : undefined;
+  }
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const parsed = Number(value.trim());
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function readRecordStringArray(record: Record<string, unknown>, key: string): string[] | undefined {
   const value = record[key];
   if (!Array.isArray(value)) return undefined;
@@ -380,12 +504,26 @@ function readRecordBoolean(record: Record<string, unknown>, key: string): boolea
   return typeof value === 'boolean' ? value : undefined;
 }
 
+function readEvidenceRole(value: unknown): EvidenceRole {
+  if (
+    value === 'selected_content'
+    || value === 'current_material'
+    || value === 'cited_project_material'
+    || value === 'project_context'
+  ) {
+    return value;
+  }
+  return 'project_context';
+}
+
 function coerceContextMetadata(value: unknown): IntelligentChatResponse['context_metadata'] | undefined {
   if (!isRecord(value) || !Array.isArray(value.chunks)) return undefined;
   const chunks = value.chunks.flatMap((chunk, index) => {
     if (!isRecord(chunk)) return [];
     const source = readRecordString(chunk, 'source') ?? '来源材料';
     const content = readRecordString(chunk, 'content') ?? '';
+    const bboxUnit = isPdfBboxUnit(chunk.bbox_unit) ? chunk.bbox_unit : null;
+    const bbox = bboxUnit ? readPdfBbox(chunk.bbox) : null;
     return [{
       index: readRecordNumber(chunk, 'index') ?? index + 1,
       source,
@@ -393,9 +531,12 @@ function coerceContextMetadata(value: unknown): IntelligentChatResponse['context
       relevance_score: readRecordNumber(chunk, 'relevance_score'),
       chunk_id: readRecordStringOrNull(chunk, 'chunk_id'),
       material_id: readRecordStringOrNull(chunk, 'material_id'),
+      evidence_role: readEvidenceRole(chunk.evidence_role),
       title: readRecordStringOrNull(chunk, 'title'),
       section_title: readRecordStringOrNull(chunk, 'section_title'),
       page: readRecordPage(chunk, 'page'),
+      bbox: bbox ? [...bbox] : null,
+      bbox_unit: bbox ? bboxUnit : null,
       source_labels: readRecordStringArray(chunk, 'source_labels'),
       source_hint: readRecordStringOrNull(chunk, 'source_hint'),
     }];
@@ -411,29 +552,37 @@ function readRecordNonNegativeNumber(record: Record<string, unknown>, key: strin
   return value !== undefined && value >= 0 ? value : undefined;
 }
 
-function coerceEvidenceRefs(value: unknown): IntelligentChatResponse['evidence_refs'] | undefined {
+type DialogEvidenceRef = NonNullable<IntelligentChatResponse['evidence_refs']>[number]
+  & EvidenceRefLike
+  & { content?: string | null };
+
+function coerceEvidenceRefs(value: unknown): DialogEvidenceRef[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const refs = value.flatMap((item): NonNullable<IntelligentChatResponse['evidence_refs']> => {
+  const refs = value.flatMap((item): DialogEvidenceRef[] => {
     if (!isRecord(item)) return [];
     const chunkId = readRecordString(item, 'chunk_id') ?? readRecordString(item, 'ref_id');
     if (!chunkId) return [];
     const sourceType = readRecordString(item, 'source_type');
     const sourceTitle = readRecordStringOrNull(item, 'source_title');
     const source = readRecordString(item, 'source') ?? sourceTitle ?? (sourceType === 'wiki' ? 'Wiki 记忆' : '项目证据');
-    const text = readRecordString(item, 'text') ?? readRecordString(item, 'summary') ?? '';
-    const quote = readRecordString(item, 'quote') ?? text;
-    return [{
+    const text = readRecordString(item, 'text') ?? '';
+    const quote = readRecordString(item, 'quote') ?? '';
+    const bboxUnit = isPdfBboxUnit(item.bbox_unit) ? item.bbox_unit : null;
+    const bbox = bboxUnit ? readPdfBbox(item.bbox) : null;
+    const ref: DialogEvidenceRef = {
+      evidence_id: readRecordString(item, 'evidence_id') ?? chunkId,
       chunk_id: chunkId,
       material_id: readRecordStringOrNull(item, 'material_id') ?? undefined,
+      evidence_role: readEvidenceRole(item.evidence_role),
       source,
       text,
       quote,
       label: readRecordString(item, 'label'),
       score: readRecordNonNegativeNumber(item, 'score') ?? readRecordNonNegativeNumber(item, 'lexical_score'),
       source_labels: readRecordStringArray(item, 'source_labels'),
-      page: readRecordPage(item, 'page'),
-      bbox: Array.isArray(item.bbox) ? item.bbox.filter((part): part is number => typeof part === 'number' && Number.isFinite(part)) : null,
-      bbox_unit: isPdfBboxUnit(item.bbox_unit) ? item.bbox_unit : null,
+      page: readRecordPageNumber(item, 'page'),
+      bbox: bbox ? [...bbox] : null,
+      bbox_unit: bbox ? bboxUnit : null,
       source_hint: readRecordStringOrNull(item, 'source_hint'),
       source_kind: item.source_kind === 'web' || item.source_kind === 'mcp' || item.source_kind === 'local'
         ? item.source_kind
@@ -447,7 +596,16 @@ function coerceEvidenceRefs(value: unknown): IntelligentChatResponse['evidence_r
       figure_candidate: readRecordStringOrNull(item, 'figure_candidate'),
       figure_candidate_detail: isRecord(item.figure_candidate_detail) ? item.figure_candidate_detail : null,
       image_paths: readRecordStringArray(item, 'image_paths'),
-    }];
+      anchor_kind: item.anchor_kind === 'text' || item.anchor_kind === 'visual'
+        ? item.anchor_kind
+        : null,
+      ...(readRecordString(item, 'content') ? { content: readRecordString(item, 'content') } : {}),
+    };
+    for (const key of ['content_hash', 'locator_hash', 'chunk_hash', 'embedding_input_hash', 'hash_version'] as const) {
+      const hash = readRecordString(item, key);
+      if (hash) ref[key] = hash;
+    }
+    return [ref];
   });
   return refs.length > 0 ? refs : undefined;
 }
@@ -492,21 +650,23 @@ function coerceQrelsQualityClaim(value: unknown): ChatRetrievalQrelsStatus['qual
   return undefined;
 }
 
-function coerceQrelsStatus(value: unknown): ChatRetrievalQrelsStatus | undefined {
+export function coerceQrelsStatus(value: unknown): ChatRetrievalQrelsStatus | undefined {
   if (!isRecord(value)) return undefined;
   const status = readRecordString(value, 'status');
+  const normalizedStatus = status === 'missing' || status === 'candidate' || status === 'reviewed' || status === 'canonical'
+    ? status
+    : undefined;
+  const semanticQualityClaimAllowed = normalizedStatus === 'canonical' && value.semantic_quality_claim_allowed === true;
   const qrelsStatus: ChatRetrievalQrelsStatus = {
     schema_version: readRecordString(value, 'schema_version') === 'retrieval-qrels-status/v1'
       ? 'retrieval-qrels-status/v1'
       : undefined,
-    status: status === 'missing' || status === 'candidate' || status === 'reviewed' || status === 'canonical'
-      ? status
-      : undefined,
+    status: normalizedStatus,
     candidate_qrels_count: readRecordNonNegativeNumber(value, 'candidate_qrels_count'),
     reviewed_qrels_count: readRecordNonNegativeNumber(value, 'reviewed_qrels_count'),
     canonical_qrels_count: readRecordNonNegativeNumber(value, 'canonical_qrels_count'),
-    semantic_quality_claim_allowed: value.semantic_quality_claim_allowed === true,
-    quality_claim: coerceQrelsQualityClaim(value.quality_claim),
+    semantic_quality_claim_allowed: semanticQualityClaimAllowed,
+    quality_claim: semanticQualityClaimAllowed ? coerceQrelsQualityClaim(value.quality_claim) : undefined,
     notes: readRecordStringArray(value, 'notes')?.slice(0, 8),
   };
   return Object.values(qrelsStatus).some((item) => item !== undefined) ? qrelsStatus : undefined;
@@ -588,6 +748,9 @@ function coerceSmartReadResponsePatch(
   actualSamplingParams?: IntelligentChatResponse['actual_sampling_params'];
   tokensUsed?: TokenUsage;
   retrievalDiagnostics?: ChatRetrievalDiagnostics;
+  answerOrigin?: AnswerOrigin;
+  answerModelOrigin?: IntelligentChatResponse['answer_model_origin'];
+  retrievalProvider?: IntelligentChatResponse['retrieval_provider'];
   insufficientContext?: boolean;
 } {
   const contextMetadata = coerceContextMetadata(content.context_metadata);
@@ -598,6 +761,9 @@ function coerceSmartReadResponsePatch(
   const tierUsed = coerceSmartReadTier(content.tier_used, fallbackTier);
   const tokensUsed = coerceTokenUsageRecord(content.tokens_used);
   const retrievalDiagnostics = coerceRetrievalDiagnostics(content.retrieval_diagnostics);
+  const answerOrigin = normalizeAnswerOrigin(readRecordString(content, 'answer_origin'));
+  const answerModelOrigin = readRecordString(content, 'answer_model_origin');
+  const retrievalProvider = readRecordString(content, 'retrieval_provider');
   return {
     tierUsed,
     contextMetadata,
@@ -605,6 +771,11 @@ function coerceSmartReadResponsePatch(
     actualSamplingParams,
     tokensUsed,
     retrievalDiagnostics,
+    answerOrigin: answerOrigin ?? undefined,
+    answerModelOrigin: answerModelOrigin === 'scholar_ai_configured_chat' || answerModelOrigin === 'external_agent'
+      ? answerModelOrigin
+      : undefined,
+    retrievalProvider: retrievalProvider === 'scholar_ai' ? 'scholar_ai' : undefined,
     insufficientContext: contextMetadata ? contextMetadata.chunks.length === 0 : undefined,
   };
 }
@@ -617,6 +788,9 @@ function buildSmartReadDiagnostics(
     actualSamplingParams?: IntelligentChatResponse['actual_sampling_params'];
     tokensUsed?: TokenUsage;
     retrievalDiagnostics?: ChatRetrievalDiagnostics;
+    answerOrigin?: AnswerOrigin;
+    answerModelOrigin?: IntelligentChatResponse['answer_model_origin'];
+    retrievalProvider?: IntelligentChatResponse['retrieval_provider'];
     insufficientContext?: boolean;
     content: string;
   },
@@ -631,6 +805,9 @@ function buildSmartReadDiagnostics(
     actualSamplingParams: patch.actualSamplingParams,
     tokensUsed: patch.tokensUsed,
     retrievalDiagnostics: patch.retrievalDiagnostics,
+    answerOrigin: patch.answerOrigin,
+    answerModelOrigin: patch.answerModelOrigin,
+    retrievalProvider: patch.retrievalProvider,
     timestamp: new Date(),
     insufficientContext: patch.insufficientContext,
   });
@@ -653,6 +830,9 @@ function buildSmartReadDiagnosticsFromStream(input: {
     actual_sampling_params: input.metadata?.actual_sampling_params ?? undefined,
     tokens_used: input.doneTokens ?? input.usage?.usage ?? undefined,
     retrieval_diagnostics: input.metadata?.retrieval_diagnostics ?? undefined,
+    answer_origin: input.metadata?.answer_origin ?? undefined,
+    answer_model_origin: input.metadata?.answer_model_origin ?? undefined,
+    retrieval_provider: input.metadata?.retrieval_provider ?? undefined,
   };
   const patch = coerceSmartReadResponsePatch(payload, input.fallbackTier);
   return buildSmartReadDiagnostics({
@@ -663,7 +843,12 @@ function buildSmartReadDiagnosticsFromStream(input: {
 
 function evidenceRefsFromDialogStreamMetadata(metadata: DialogStreamMetadata | null): EvidenceRefLike[] | undefined {
   if (!metadata) return undefined;
-  return metadata.evidence_refs as EvidenceRefLike[] | undefined;
+  return coerceEvidenceRefs(metadata.evidence_refs);
+}
+
+function visualEvidenceRefsFromDialogStreamMetadata(metadata: DialogStreamMetadata | null): EvidenceRefLike[] | undefined {
+  if (!metadata || metadata.visual_evidence_refs === undefined) return undefined;
+  return coerceEvidenceRefs(metadata.visual_evidence_refs) ?? [];
 }
 
 function shouldLoadRelatedFigures(query: string): boolean {
@@ -730,6 +915,8 @@ function toDialogRelatedFigures(
     const id = String(candidate.id ?? `${candidate.material_id}:${candidate.chunk_id}:${candidate.label}`).trim();
     if (!id || seen.has(id)) continue;
     seen.add(id);
+    const bboxUnit = isPdfBboxUnit(candidate.bbox_unit) ? candidate.bbox_unit : null;
+    const bbox = bboxUnit ? normalizePdfUrlBbox(candidate.bbox, bboxUnit) : null;
     figures.push({
       id,
       kind: candidate.kind === 'table' ? 'table' : 'figure',
@@ -738,11 +925,12 @@ function toDialogRelatedFigures(
       material_id: String(candidate.material_id ?? ''),
       material_title: candidate.material_title ?? null,
       page: typeof candidate.page === 'number' && Number.isFinite(candidate.page) ? candidate.page : null,
+      bbox: bbox ? [...bbox] : null,
+      bbox_unit: bbox ? 'normalized_ratio' : null,
       chunk_id: candidate.chunk_id ?? null,
       asset_path: candidate.asset_path ?? null,
       source: candidate.source ?? null,
     });
-    if (figures.length >= 6) break;
   }
   return figures;
 }
@@ -764,62 +952,17 @@ function relatedFigureMaterialHint(message: ChatMessageData): string | undefined
   return materialId?.trim() || undefined;
 }
 
-function readEvidenceFigureDetailString(
-  ref: EvidenceRefLike,
-  key: string,
-): string | null {
-  const detail = ref.figure_candidate_detail;
-  if (!detail || typeof detail !== 'object' || Array.isArray(detail)) return null;
-  const value = detail[key];
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
 function evidenceRefPageNumber(ref: EvidenceRefLike): number | null {
-  if (typeof ref.page === 'number' && Number.isFinite(ref.page) && ref.page > 0) {
+  if (typeof ref.page === 'number' && Number.isInteger(ref.page) && ref.page > 0) {
     return ref.page;
   }
   return null;
 }
 
-function relatedFiguresFromEvidenceRefs(
-  evidenceRefs: EvidenceRefLike[] | undefined,
-): ChatRelatedFigure[] {
-  if (!evidenceRefs || evidenceRefs.length === 0) return [];
-  const figures: ChatRelatedFigure[] = [];
-  const seen = new Set<string>();
-  for (const ref of evidenceRefs) {
-    const imagePaths = Array.isArray(ref.image_paths)
-      ? ref.image_paths.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-      : [];
-    for (const imagePath of imagePaths) {
-      const key = imagePath.trim();
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      const label =
-        readEvidenceFigureDetailString(ref, 'figure_id')
-        ?? ref.figure_candidate
-        ?? `图像证据 ${figures.length + 1}`;
-      const caption =
-        readEvidenceFigureDetailString(ref, 'caption')
-        ?? ref.text
-        ?? ref.quote
-        ?? label;
-      figures.push({
-        id: `${ref.chunk_id ?? 'evidence'}:${key}`,
-        kind: 'figure',
-        label,
-        caption,
-        material_id: String(ref.material_id ?? ''),
-        material_title: ref.source_title ?? ref.source ?? null,
-        page: evidenceRefPageNumber(ref),
-        chunk_id: ref.chunk_id ?? null,
-        asset_path: key,
-        source: 'chunk_image_paths',
-      });
-      if (figures.length >= 6) return figures;
-    }
-  }
-  return figures;
+function evidenceRefBbox(ref: EvidenceRefLike): PdfBbox | null {
+  return isPdfBboxUnit(ref.bbox_unit)
+    ? normalizePdfUrlBbox(ref.bbox, ref.bbox_unit)
+    : null;
 }
 
 async function restoreDialogRelatedFigures(
@@ -847,7 +990,7 @@ async function restoreDialogRelatedFigures(
   try {
     candidates = await getWritingBackendService().listFigureTableCandidates(
       normalizedProjectId,
-      24,
+      200,
       { pixelOnly: true, renderPdfFallback: false },
     );
   } catch {
@@ -874,17 +1017,32 @@ function toChatMessage(message: ChatResumeMessage): ChatMessage {
   if (message.role !== 'user' && message.role !== 'assistant') {
     throw new Error('Unsupported chat message role');
   }
+  const visualEvidenceRefs = coerceEvidenceRefs(message.visual_evidence_refs);
+  const turnId = message.turn_id ?? undefined;
+  const visualObservationRefs = message.role === 'assistant'
+    ? sanitizeVisualObservationReferences(message.visual_observation_refs)
+        .filter((reference) => !turnId || reference.turn_id === turnId)
+    : [];
   const chatMessage: ChatMessage = {
     id: message.id,
     role: message.role,
+    turnId,
     content: message.content,
+    researchSelections: sanitizeResearchSelections(message.research_selections),
+    ...(visualObservationRefs.length > 0 ? { visualObservationRefs } : {}),
     tierUsed: message.tier_used ?? undefined,
-    contextMetadata: message.context_metadata ?? undefined,
-    evidenceRefs: message.evidence_refs ?? undefined,
+    contextMetadata: coerceContextMetadata(message.context_metadata),
+    evidenceRefs: coerceEvidenceRefs(message.evidence_refs),
     tokensUsed: message.tokens_used ?? undefined,
     retrievalDiagnostics: coerceRetrievalDiagnostics((message as { retrieval_diagnostics?: unknown }).retrieval_diagnostics),
+    answerOrigin: message.answer_origin ?? undefined,
+    answerModelOrigin: message.answer_model_origin ?? undefined,
+    retrievalProvider: message.retrieval_provider === 'scholar_ai'
+      ? 'scholar_ai'
+      : undefined,
     timestamp: parseChatTimestamp(message.timestamp),
     insufficientContext: message.role === 'assistant' && !message.context_metadata,
+    relatedFigures: relatedFiguresFromEvidenceRefs(visualEvidenceRefs),
   };
   return chatMessage;
 }
@@ -897,7 +1055,10 @@ function mapChatDataToDialogMessage(message: ChatMessageData): ChatMessage {
   return {
     id: message.id,
     role: message.role,
+    turnId: message.turnId,
     content: message.content,
+    researchSelections: message.researchSelections,
+    visualObservationRefs: message.visualObservationRefs,
     tierUsed: diagnostics?.tier,
     contextMetadata: diagnostics?.context
       ? {
@@ -906,25 +1067,21 @@ function mapChatDataToDialogMessage(message: ChatMessageData): ChatMessage {
             source: chunk.source,
             content: chunk.content,
             relevance_score: chunk.relevance_score,
+            chunk_id: chunk.chunk_id,
+            material_id: chunk.material_id,
+            evidence_role: readEvidenceRole(chunk.evidence_role),
+            title: chunk.title,
+            section_title: chunk.section_title,
+            page: chunk.page,
+            bbox: chunk.bbox ?? null,
+            bbox_unit: chunk.bbox_unit ?? null,
+            source_labels: chunk.source_labels,
+            source_hint: chunk.source_hint,
           })) ?? [],
           truncated: false,
         }
       : undefined,
-    evidenceRefs: message.evidence?.map((ref) => ({
-      chunk_id: ref.chunk_id ?? ref.evidence_id ?? 'legacy-evidence',
-      material_id: ref.material_id ?? undefined,
-      source: ref.source ?? '证据',
-      text: ref.text ?? '',
-      quote: ref.text ?? '',
-      page: ref.page ?? undefined,
-      bbox: ref.bbox ?? null,
-      bbox_unit: ref.bbox_unit ?? null,
-      source_kind: ref.source_kind ?? 'local',
-      source_type: ref.source_type ?? 'project',
-      source_title: ref.source_title ?? null,
-      source_path: ref.source_path ?? null,
-      joint_score: ref.joint_score ?? null,
-    })),
+    evidenceRefs: coerceEvidenceRefs(message.evidence),
     actualSamplingParams: diagnostics?.sampling
       ? {
           temperature: diagnostics.sampling.temperature ?? 0,
@@ -938,12 +1095,16 @@ function mapChatDataToDialogMessage(message: ChatMessageData): ChatMessage {
           prompt: diagnostics.tokens.prompt ?? 0,
           completion: diagnostics.tokens.completion ?? 0,
           total: diagnostics.tokens.total ?? 0,
-        }
+      }
       : undefined,
     retrievalDiagnostics: diagnostics?.retrieval,
+    answerOrigin: diagnostics?.answerOrigin,
+    answerModelOrigin: diagnostics?.answerModelOrigin,
+    retrievalProvider: diagnostics?.retrievalProvider,
     timestamp: message.timestamp ? parseChatTimestamp(message.timestamp) : new Date(),
     insufficientContext: diagnostics?.insufficient,
     status: message.status,
+    relatedFigures: message.relatedFigures,
   };
 }
 
@@ -1100,66 +1261,6 @@ function buildSessionProjectGroups(
   }));
 }
 
-type DialogGraphNode = GraphPayloadV0['nodes'][number];
-type DialogGraphEdge = GraphPayloadV0['edges'][number];
-type DialogGraphEvidenceRef = NonNullable<ChatMessageData['evidence']>[number];
-
-function hashGraphText(text: string): string {
-  let hash = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    hash = (hash * 31 + text.charCodeAt(index)) | 0;
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0');
-}
-
-function lastUserQuestion(messages: ChatMessageData[]): string {
-  const found = [...messages].reverse().find((message) => message.role === 'user' && message.content.trim());
-  return sanitizeChatVisibleText(found?.content ?? '', '当前研读问题', { maxLength: 88 });
-}
-
-function evidenceGraphId(evidence: DialogGraphEvidenceRef, index: number): string {
-  const materialId = String(evidence.material_id ?? '').trim();
-  const chunkId = String(evidence.chunk_id ?? '').trim();
-  if (materialId && chunkId) return `evidence:${materialId}:${chunkId}`;
-  if (materialId) return `evidence:${materialId}:${index}`;
-  const source = String(evidence.source ?? '').trim();
-  const text = String(evidence.text ?? '').trim();
-  return `evidence:external:${hashGraphText(`${source}|${text}|${index}`)}`;
-}
-
-function graphEvidenceText(evidence: DialogGraphEvidenceRef): string {
-  return sanitizeChatVisibleText(
-    String(evidence.text ?? evidence.source ?? '').trim(),
-    '证据',
-    { maxLength: 96 },
-  );
-}
-
-function graphEvidenceLabel(evidence: DialogGraphEvidenceRef, index: number): string {
-  const source = sanitizeChatVisibleText(
-    String(evidence.source ?? '').trim(),
-    '',
-    { maxLength: 54 },
-  );
-  if (source) {
-    return typeof evidence.page === 'number' && evidence.page > 0
-      ? `${source} · p.${evidence.page}`
-      : source;
-  }
-  const text = graphEvidenceText(evidence);
-  return text === '证据' ? `证据 ${index + 1}` : text;
-}
-
-function materialNodeLabel(evidence: DialogGraphEvidenceRef, index: number): string {
-  const source = sanitizeChatVisibleText(
-    String(evidence.source ?? '').trim(),
-    '',
-    { maxLength: 54 },
-  );
-  if (source) return source;
-  return `文献 ${index + 1}`;
-}
-
 function materialTitleLabel(material: WritingMaterialResource): string {
   return sanitizeChatVisibleText(material.title, '未命名文献', { maxLength: 80 });
 }
@@ -1216,156 +1317,6 @@ function noteTags(note: AnnotationNote): string[] {
     .slice(0, 4);
 }
 
-function graphEvidenceRef(evidence: DialogGraphEvidenceRef): DialogGraphNode['evidence_refs'] {
-  const materialId = String(evidence.material_id ?? '').trim();
-  if (!materialId) return null;
-  return [{
-    material_id: materialId,
-    chunk_id: evidence.chunk_id ?? null,
-    page: typeof evidence.page === 'number' && evidence.page > 0 ? evidence.page : null,
-    text: graphEvidenceText(evidence),
-    score: null,
-  }];
-}
-
-function buildDialogEvidenceGraphPayload(messages: ChatMessageData[]): GraphPayloadV0 | null {
-  const claimId = 'dialog-claim';
-  const nodes = new Map<string, DialogGraphNode>();
-  const edges = new Map<string, DialogGraphEdge>();
-  const materialEvidenceCounts = new Map<string, number>();
-
-  nodes.set(claimId, {
-    id: claimId,
-    label: lastUserQuestion(messages),
-    type: 'claim',
-    material_id: null,
-    source_ref: null,
-    evidence_refs: null,
-    confidence: null,
-    metadata: { surface: 'dialog', reasoning_dimension: 'question' },
-  });
-
-  let evidenceIndex = 0;
-  for (const message of messages) {
-    if (message.role !== 'assistant' || !message.evidence || message.evidence.length === 0) continue;
-    for (const evidence of message.evidence) {
-      const evidenceId = evidenceGraphId(evidence, evidenceIndex);
-      const evidenceRefs = graphEvidenceRef(evidence);
-      const materialId = String(evidence.material_id ?? '').trim();
-      if (!nodes.has(evidenceId)) {
-        nodes.set(evidenceId, {
-          id: evidenceId,
-          label: graphEvidenceLabel(evidence, evidenceIndex),
-          type: 'evidence',
-          material_id: materialId || null,
-          source_ref: materialId
-            ? {
-                material_id: materialId,
-                chunk_id: evidence.chunk_id ?? null,
-                page: typeof evidence.page === 'number' && evidence.page > 0 ? evidence.page : null,
-                bbox: evidence.bbox ?? null,
-              }
-            : null,
-          evidence_refs: evidenceRefs,
-          confidence: null,
-          metadata: {
-            source_kind: evidence.source_kind ?? 'local',
-            evidence_text: graphEvidenceText(evidence),
-            reasoning_dimension: 'evidence',
-          },
-        });
-      }
-
-      if (materialId) {
-        const materialNodeId = `material:${materialId}`;
-        const previousCount = materialEvidenceCounts.get(materialNodeId) ?? 0;
-        materialEvidenceCounts.set(materialNodeId, previousCount + 1);
-        const existingMaterial = nodes.get(materialNodeId);
-        if (existingMaterial) {
-          nodes.set(materialNodeId, {
-            ...existingMaterial,
-            label: `${existingMaterial.label.replace(/\s·\s\d+\s条证据$/, '')} · ${previousCount + 1} 条证据`,
-            evidence_refs: [
-              ...(existingMaterial.evidence_refs ?? []),
-              ...(evidenceRefs ?? []),
-            ],
-          });
-        } else {
-          nodes.set(materialNodeId, {
-            id: materialNodeId,
-            label: `${materialNodeLabel(evidence, evidenceIndex)} · 1 条证据`,
-            type: 'material',
-            material_id: materialId,
-            source_ref: {
-              material_id: materialId,
-              chunk_id: evidence.chunk_id ?? null,
-              page: typeof evidence.page === 'number' && evidence.page > 0 ? evidence.page : null,
-              bbox: evidence.bbox ?? null,
-            },
-            evidence_refs: evidenceRefs,
-            confidence: null,
-            metadata: { evidence_count: 1, reasoning_dimension: 'evidence' },
-          });
-        }
-        const evidenceToMaterialId = `edge:${evidenceId}->${materialNodeId}`;
-        if (!edges.has(evidenceToMaterialId)) {
-          edges.set(evidenceToMaterialId, {
-            id: evidenceToMaterialId,
-            source: evidenceId,
-            target: materialNodeId,
-            relation: 'cites',
-            material_id: materialId,
-            source_ref: null,
-            evidence_refs: evidenceRefs,
-            confidence: null,
-            metadata: null,
-          });
-        }
-        const materialToClaimId = `edge:${materialNodeId}->${claimId}`;
-        if (!edges.has(materialToClaimId)) {
-          edges.set(materialToClaimId, {
-            id: materialToClaimId,
-            source: materialNodeId,
-            target: claimId,
-            relation: 'supports',
-            material_id: materialId,
-            source_ref: null,
-            evidence_refs: null,
-            confidence: null,
-            metadata: null,
-          });
-        }
-      } else {
-        const evidenceToClaimId = `edge:${evidenceId}->${claimId}`;
-        if (!edges.has(evidenceToClaimId)) {
-          edges.set(evidenceToClaimId, {
-            id: evidenceToClaimId,
-            source: evidenceId,
-            target: claimId,
-            relation: 'related',
-            material_id: null,
-            source_ref: null,
-            evidence_refs: null,
-            confidence: null,
-            metadata: null,
-          });
-        }
-      }
-      evidenceIndex += 1;
-    }
-  }
-
-  if (nodes.size <= 1) return null;
-
-  return {
-    version: 'v0',
-    scope: { kind: 'question', ref: lastUserQuestion(messages) },
-    updated_at: new Date().toISOString(),
-    nodes: Array.from(nodes.values()),
-    edges: Array.from(edges.values()),
-  };
-}
-
 function extractChunkRefs(content: string): string[] {
   return Array.from(content.matchAll(/\[(chunk-[a-zA-Z0-9_-]+)\]/g), (match) => match[1]);
 }
@@ -1392,6 +1343,322 @@ function normalizeDialogSelectionText(value: string | null | undefined): string 
   return normalized.length > 1800 ? `${normalized.slice(0, 1799)}…` : normalized;
 }
 
+function createDialogPdfSelectionId(): string {
+  dialogPdfSelectionSequence += 1;
+  return `pdf-selection-${Date.now().toString(36)}-${dialogPdfSelectionSequence.toString(36)}`;
+}
+
+function createDialogTurnId(): string {
+  dialogTurnSequence += 1;
+  return `dialog-turn-${Date.now().toString(36)}-${dialogTurnSequence.toString(36)}`;
+}
+
+function dialogPdfSelectionsFromResearchSelections(
+  value: unknown,
+  turnId: string | null | undefined,
+): DialogPdfSelectionState[] {
+  const normalizedTurnId = String(turnId ?? '').trim();
+  if (!normalizedTurnId) return [];
+  return sanitizeResearchSelections(value).flatMap((researchSelection) => {
+    if (researchSelection.turn_id !== normalizedTurnId) return [];
+    const normalizedBbox = researchSelection.bbox_unit === 'normalized_ratio'
+      ? researchSelection.bbox
+      : undefined;
+    if (researchSelection.kind !== 'text' && !normalizedBbox) return [];
+    const selection = normalizeDialogPdfSelection({
+      kind: researchSelection.kind,
+      page: researchSelection.page,
+      bbox: normalizedBbox,
+      bbox_unit: normalizedBbox ? 'normalized_ratio' : undefined,
+      text: researchSelection.text,
+      label: researchSelection.label,
+      chunk_id: researchSelection.chunk_id,
+      candidate_id: researchSelection.candidate_id,
+    });
+    return selection ? [{
+      id: researchSelection.selection_id,
+      materialId: researchSelection.material_id,
+      selection,
+      restoredFromResearchSelection: true,
+    }] : [];
+  });
+}
+
+function dialogPdfSelectionIdentity(selectionState: DialogPdfSelectionState): string {
+  const { selection } = selectionState;
+  return [
+    selectionState.materialId,
+    selection.kind,
+    selection.page,
+    selection.candidate_id ?? '',
+    selection.chunk_id ?? '',
+    selection.bbox?.join(',') ?? '',
+    selection.text ?? '',
+  ].join('|');
+}
+
+function mergeDialogPdfSelections(
+  primary: readonly DialogPdfSelectionState[],
+  secondary: readonly DialogPdfSelectionState[] = [],
+): DialogPdfSelectionState[] {
+  const merged: DialogPdfSelectionState[] = [];
+  const ids = new Set<string>();
+  const identities = new Set<string>();
+  for (const selection of [...primary, ...secondary]) {
+    const id = selection.id.trim();
+    const identity = dialogPdfSelectionIdentity(selection);
+    if (!id || ids.has(id) || identities.has(identity)) continue;
+    ids.add(id);
+    identities.add(identity);
+    merged.push(selection);
+    if (merged.length >= DIALOG_PDF_SELECTION_MAX_COUNT) break;
+  }
+  return merged;
+}
+
+function selectionPrompt(
+  kind: PdfContentSelection['kind'],
+  selectionCount: number,
+): string {
+  if (selectionCount > 1) return DIALOG_MIXED_SELECTION_PROMPT;
+  const promptByKind: Record<PdfContentSelection['kind'], string> = {
+    text: '请分析选中的这段内容。',
+    figure: '请分析选中的图。',
+    table: '请分析选中的表。',
+    formula: '请解释选中的公式。',
+    region: '请分析选中的区域。',
+  };
+  return promptByKind[kind];
+}
+
+export function buildDialogFormulaCandidates(
+  chunks: readonly ProjectChunkResource[],
+  materialId: string,
+): PdfFormulaCandidate[] {
+  const normalizedMaterialId = normalizeMaterialId(materialId);
+  if (!normalizedMaterialId) return [];
+  const candidates: PdfFormulaCandidate[] = [];
+  const candidateIds = new Set<string>();
+  for (const [index, chunk] of chunks.entries()) {
+    const chunkMaterialId = normalizeMaterialId(chunk.material_id ?? normalizedMaterialId);
+    if (chunkMaterialId && chunkMaterialId !== normalizedMaterialId) continue;
+    const chunkType = String(chunk.chunk_type ?? '').trim().toLowerCase();
+    const equationLatex = normalizeDialogSelectionText(
+      typeof chunk.equation_latex === 'string' ? chunk.equation_latex : null,
+    );
+    if (chunkType !== 'formula' && chunkType !== 'equation' && !equationLatex) continue;
+    const page = normalizeDialogReaderPage(chunk.page);
+    const bbox = isPdfBboxUnit(chunk.bbox_unit)
+      ? normalizePdfUrlBbox(chunk.bbox ?? null, chunk.bbox_unit)
+      : null;
+    if (!page || !bbox) continue;
+    const chunkId = normalizeMaterialId(chunk.chunk_id ?? '');
+    const candidateId = chunkId || `formula-${normalizedMaterialId}-${page}-${index}`;
+    if (candidateIds.has(candidateId)) continue;
+    candidateIds.add(candidateId);
+    const content = normalizeDialogSelectionText(
+      typeof chunk.content === 'string' ? chunk.content : null,
+    );
+    candidates.push({
+      candidateId,
+      page,
+      bbox,
+      ...(chunkId ? { chunkId } : {}),
+      ...(equationLatex || content ? { text: equationLatex ?? content ?? undefined } : {}),
+    });
+    if (candidates.length >= DIALOG_PDF_FORMULA_CANDIDATE_MAX_COUNT) break;
+  }
+  return candidates;
+}
+
+export function buildDialogFormulaCandidatesFromResources(
+  resources: readonly FormulaCandidateResource[],
+): PdfFormulaCandidate[] {
+  const candidates: PdfFormulaCandidate[] = [];
+  const candidateIds = new Set<string>();
+  for (const resource of resources) {
+    const candidateId = normalizeMaterialId(resource.candidate_id);
+    const page = normalizeDialogReaderPage(resource.page);
+    const bbox = isPdfBboxUnit(resource.bbox_unit)
+      ? normalizePdfUrlBbox(resource.bbox, resource.bbox_unit)
+      : null;
+    if (!candidateId || !page || !bbox || candidateIds.has(candidateId)) continue;
+    candidateIds.add(candidateId);
+    const chunkId = normalizeMaterialId(resource.chunk_id ?? '');
+    const text = normalizeDialogSelectionText(resource.text);
+    candidates.push({
+      candidateId,
+      page,
+      bbox,
+      ...(chunkId ? { chunkId } : {}),
+      ...(text ? { text } : {}),
+    });
+    if (candidates.length >= DIALOG_PDF_FORMULA_CANDIDATE_MAX_COUNT) break;
+  }
+  return candidates;
+}
+
+function isDialogPdfSelectionKind(value: unknown): value is PdfContentSelection['kind'] {
+  return value === 'text'
+    || value === 'figure'
+    || value === 'table'
+    || value === 'formula'
+    || value === 'region';
+}
+
+function hasDurableVisualReplayLocator(selectionState: DialogPdfSelectionState): boolean {
+  const { selection } = selectionState;
+  if (
+    selectionState.restoredFromResearchSelection !== true
+    || !selectionState.materialId.trim()
+    || selection.kind === 'text'
+    || !Number.isSafeInteger(selection.page)
+    || selection.page < 1
+    || selection.bbox_unit !== 'normalized_ratio'
+    || !selection.bbox
+  ) {
+    return false;
+  }
+  const [x, y, width, height] = selection.bbox;
+  return [x, y, width, height].every(Number.isFinite)
+    && x >= 0
+    && y >= 0
+    && width > 0
+    && height > 0
+    && x + width <= 1.0001
+    && y + height <= 1.0001;
+}
+
+function selectionHasReplaySource(
+  selectionState: DialogPdfSelectionState,
+  attachments: ChatAttachment[],
+): boolean {
+  if (
+    selectionState.selection.kind === 'text'
+    || (
+      selectionState.selection.kind === 'formula'
+      && Boolean(selectionState.selection.text?.trim())
+    )
+  ) return true;
+  if (hasDurableVisualReplayLocator(selectionState)) return true;
+  return findSelectionImageIndex(selectionState, attachments) !== null;
+}
+
+function findSelectionImageIndex(
+  selectionState: DialogPdfSelectionState,
+  attachments: readonly ChatAttachment[],
+): number | null {
+  const fingerprint = selectionState.imageFingerprint?.trim() ?? '';
+  if (!fingerprint) return null;
+  const imageIndex = attachments.findIndex(
+    (attachment) => chatAttachmentFingerprint(attachment) === fingerprint,
+  );
+  return imageIndex >= 0 ? imageIndex : null;
+}
+
+function selectionAttachmentFingerprints(
+  selections: readonly DialogPdfSelectionState[],
+): string[] {
+  const fingerprints = new Set<string>();
+  for (const selection of selections) {
+    const fingerprint = selection.imageFingerprint?.trim() ?? '';
+    if (fingerprint) fingerprints.add(fingerprint);
+  }
+  return [...fingerprints];
+}
+
+function withoutAttachmentFingerprints(
+  attachments: readonly ChatAttachment[],
+  fingerprints: readonly (string | null | undefined)[],
+): ChatAttachment[] {
+  const normalizedFingerprints = new Set(
+    fingerprints.map((fingerprint) => fingerprint?.trim() ?? '').filter(Boolean),
+  );
+  if (normalizedFingerprints.size === 0) return [...attachments];
+  return attachments.filter(
+    (attachment) => !normalizedFingerprints.has(chatAttachmentFingerprint(attachment)),
+  );
+}
+
+function mergeDialogRetryAttachments(
+  current: readonly ChatAttachment[],
+  retry: readonly ChatAttachment[],
+  priorityFingerprints: readonly (string | null | undefined)[] = [],
+): ChatAttachment[] {
+  const merged: ChatAttachment[] = [];
+  const seen = new Set<string>();
+  const append = (attachment: ChatAttachment): void => {
+    const key = `${attachment.mime}:${attachment.data_b64}`;
+    if (seen.has(key) || merged.length >= CHAT_INPUT_VISION_LIMITS.maxImages) return;
+    seen.add(key);
+    merged.push(attachment);
+  };
+
+  current.forEach(append);
+  for (const priorityFingerprint of priorityFingerprints) {
+    const normalizedPriorityFingerprint = priorityFingerprint?.trim() ?? '';
+    if (!normalizedPriorityFingerprint || merged.length >= CHAT_INPUT_VISION_LIMITS.maxImages) continue;
+    const priorityAttachment = retry.find(
+      (attachment) => chatAttachmentFingerprint(attachment) === normalizedPriorityFingerprint,
+    );
+    if (priorityAttachment) append(priorityAttachment);
+  }
+  retry.forEach(append);
+  return merged;
+}
+
+function dialogSelectionContext(selectionState: DialogPdfSelectionState): IdentifiedChatSelectionContext {
+  const { selection } = selectionState;
+  const fallbackLabels: Record<PdfContentSelection['kind'], string> = {
+    text: '文本选区',
+    figure: '图',
+    table: '表格',
+    formula: '公式',
+    region: '区域',
+  };
+  const fallbackLabel = fallbackLabels[selection.kind];
+  return {
+    id: selectionState.id,
+    kind: selection.kind,
+    page: selection.page,
+    label: sanitizeChatVisibleText(selection.label || fallbackLabel, fallbackLabel, { maxLength: 60 }),
+    ...(selection.kind === 'text' && selection.text ? { text: selection.text } : {}),
+    ...(selectionState.imageFingerprint
+      ? { attachmentFingerprint: selectionState.imageFingerprint }
+      : {}),
+  };
+}
+
+function normalizeDialogPdfSelection(
+  rawSelection: PdfContentSelection | null | undefined,
+): PdfContentSelection | undefined {
+  if (!rawSelection) return undefined;
+  const page = normalizeDialogReaderPage(rawSelection.page);
+  const text = normalizeDialogSelectionText(rawSelection.text);
+  const bbox = rawSelection.bbox_unit === 'normalized_ratio'
+    ? normalizePdfUrlBbox(rawSelection.bbox ?? null, rawSelection.bbox_unit)
+    : null;
+  const kind = isDialogPdfSelectionKind(rawSelection.kind) ? rawSelection.kind : null;
+  const visualSelection = kind !== null && kind !== 'text';
+  const imageIndex = visualSelection
+    && typeof rawSelection.image_index === 'number'
+    && Number.isSafeInteger(rawSelection.image_index)
+    && rawSelection.image_index >= 0
+    ? rawSelection.image_index
+    : null;
+  if (!kind || !page || (kind === 'text' ? !text : !bbox)) return undefined;
+  return {
+    kind,
+    page,
+    ...(imageIndex !== null ? { image_index: imageIndex } : {}),
+    ...(text ? { text } : { text: null }),
+    ...(bbox ? { bbox, bbox_unit: 'normalized_ratio' as const } : { bbox: null }),
+    ...(rawSelection.label !== undefined ? { label: rawSelection.label } : {}),
+    ...(rawSelection.chunk_id !== undefined ? { chunk_id: rawSelection.chunk_id } : {}),
+    ...(rawSelection.candidate_id !== undefined ? { candidate_id: rawSelection.candidate_id } : {}),
+  };
+}
+
 function combineSelectionRects(rects: PdfSelectionAnchor['rects'] | undefined): PdfBbox | null {
   if (!rects || rects.length === 0) return null;
   const valid = rects.filter((rect) => (
@@ -1414,11 +1681,22 @@ function combineSelectionRects(rects: PdfSelectionAnchor['rects'] | undefined): 
 export function buildDialogCurrentPdfContext(input: BuildDialogCurrentPdfContextInput): CurrentPdfContext | undefined {
   const materialId = normalizeMaterialId(input.materialId ?? '');
   if (!materialId) return undefined;
-  const page = normalizeDialogReaderPage(input.page);
-  const selectedText = normalizeDialogSelectionText(input.selectedText);
-  const bboxUnit = input.bboxUnit ?? 'normalized_ratio';
-  const bbox = normalizePdfUrlBbox(input.bbox ?? null, bboxUnit);
-  const chunkId = normalizeMaterialId(input.chunkId ?? '');
+  const rawSelections = input.selections && input.selections.length > 0
+    ? input.selections
+    : input.selection
+      ? [input.selection]
+      : [];
+  const selections = rawSelections
+    .slice(0, DIALOG_PDF_SELECTION_MAX_COUNT)
+    .map(normalizeDialogPdfSelection)
+    .filter((selection): selection is PdfContentSelection => selection !== undefined);
+  const selection = selections[0];
+  const page = selection?.page ?? normalizeDialogReaderPage(input.page);
+  const selectedText = selection?.text ?? normalizeDialogSelectionText(input.selectedText);
+  const bboxUnit = isPdfBboxUnit(input.bboxUnit) ? input.bboxUnit : null;
+  const bbox = selection?.bbox
+    ?? (bboxUnit ? normalizePdfUrlBbox(input.bbox ?? null, bboxUnit) : null);
+  const chunkId = normalizeMaterialId(selection?.chunk_id ?? input.chunkId ?? '');
   if (!page && !selectedText && !chunkId) return undefined;
   return {
     material_id: materialId,
@@ -1426,10 +1704,12 @@ export function buildDialogCurrentPdfContext(input: BuildDialogCurrentPdfContext
     ...(chunkId ? { chunk_id: chunkId } : {}),
     ...(bbox ? { bbox, bbox_unit: 'normalized_ratio' } : {}),
     ...(selectedText ? { selected_text: selectedText } : {}),
-    context_kind: selectedText ? 'selection' : bbox || chunkId ? 'deep_link' : 'reader_page',
+    ...(selection ? { selection } : {}),
+    ...(selections.length > 0 ? { selections } : {}),
+    context_kind: selection || selectedText ? 'selection' : bbox || chunkId ? 'deep_link' : 'reader_page',
     source_labels: [
       'dialog_smart_read',
-      selectedText ? 'pdf_selection' : 'pdf_reader_page',
+      selection || selectedText ? 'pdf_selection' : 'pdf_reader_page',
     ],
   };
 }
@@ -1447,28 +1727,16 @@ function mapDialogMessageToChatData(message: ChatMessage): ChatMessageData {
   return {
     id: message.id,
     role: message.role,
-    content: message.content,
-    evidence: message.evidenceRefs?.map((ref) => ({
-      evidence_id: ref.chunk_id,
-      chunk_id: ref.chunk_id,
-      material_id: ref.material_id ?? undefined,
-      source: ref.source,
-      quote: ref.quote || ref.text,
-      text: ref.text || ref.quote,
-      score: ref.score ?? undefined,
-      page: normalizeEvidencePage(ref.page),
-      bbox: ref.bbox ?? null,
-      bbox_unit: ref.bbox_unit ?? null,
-      source_hint: ref.source_hint ?? undefined,
-      source_labels: ref.source_labels,
-      source_kind: ref.source_kind ?? 'local',
-      source_type: ref.source_type ?? 'project',
-      source_title: ref.source_title ?? null,
-      source_path: ref.source_path ?? null,
-      joint_score: ref.joint_score ?? null,
-    })),
+    turnId: message.turnId,
+    content: message.role === 'assistant'
+      ? dialogVisibleAnswerContent(message.content, message.answerOrigin ?? 'internal_smartread')
+      : message.content,
+    researchSelections: message.researchSelections,
+    visualObservationRefs: message.visualObservationRefs,
+    evidence: coerceEvidenceRefs(message.evidenceRefs),
     timestamp: message.timestamp.toISOString(),
     status: message.status,
+    relatedFigures: message.relatedFigures,
     metadata: diagnostics ? { diagnostics } : undefined,
   };
 }
@@ -1480,6 +1748,15 @@ function buildDialogDiagnostics(message: ChatMessage): ChatMessageDiagnostics | 
   const diagnostics: ChatMessageDiagnostics = {};
   if (message.tierUsed) {
     diagnostics.tier = message.tierUsed;
+  }
+  if (message.answerOrigin) {
+    diagnostics.answerOrigin = message.answerOrigin;
+  }
+  if (message.answerModelOrigin) {
+    diagnostics.answerModelOrigin = message.answerModelOrigin;
+  }
+  if (message.retrievalProvider) {
+    diagnostics.retrievalProvider = message.retrievalProvider;
   }
   if (message.actualSamplingParams) {
     diagnostics.sampling = message.actualSamplingParams;
@@ -1504,9 +1781,12 @@ function buildDialogDiagnostics(message: ChatMessage): ChatMessageDiagnostics | 
         relevance_score: chunk.relevance_score,
         chunk_id: chunk.chunk_id,
         material_id: chunk.material_id,
+        evidence_role: chunk.evidence_role,
         title: chunk.title,
         section_title: chunk.section_title,
         page: chunk.page,
+        bbox: chunk.bbox ?? null,
+        bbox_unit: chunk.bbox_unit ?? null,
         source_labels: chunk.source_labels,
         source_hint: chunk.source_hint,
       })),
@@ -1569,15 +1849,33 @@ const ENHANCEMENT_MENU_ITEMS: Array<{
   { id: 'research', label: '研究思路', description: '提出后续研究假设与实验', icon: Network },
 ];
 
-function EnhancementMenu({
+function ComposerControlMenu({
+  label,
+  title,
+  icon: Icon,
   disabled,
-  onSelect,
+  align = 'left',
+  width = 'default',
+  children,
 }: {
+  label: string;
+  title: string;
+  icon: typeof Users2;
   disabled?: boolean;
-  onSelect: (intent: DiscussionEnhancementIntent) => void;
+  align?: 'left' | 'right';
+  width?: 'default' | 'compact';
+  children: (close: () => void) => ReactNode;
 }) {
+  const menuId = useId();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!disabled) return undefined;
+    setOpen(false);
+    return undefined;
+  }, [disabled]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -1590,45 +1888,132 @@ function EnhancementMenu({
     return () => window.removeEventListener('pointerdown', handlePointerDown);
   }, [open]);
 
+  const close = useCallback((): void => {
+    setOpen(false);
+    window.setTimeout(() => buttonRef.current?.focus(), 0);
+  }, []);
+
+  function handleContainerKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (event.key !== 'Escape' || !open) return;
+    event.stopPropagation();
+    close();
+  }
+
+  function handleButtonKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>): void {
+    if (event.key !== 'ArrowDown') return;
+    event.preventDefault();
+    setOpen(true);
+  }
+
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative shrink-0" onKeyDown={handleContainerKeyDown}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((value) => !value)}
+        onKeyDown={handleButtonKeyDown}
         disabled={disabled}
-        aria-haspopup="true"
+        aria-haspopup="menu"
         aria-expanded={open}
-        className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-2.5 text-[11px] font-medium text-foreground/70 transition-colors hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-45"
-        title="用多智能体讨论增强当前研读"
+        aria-controls={open ? menuId : undefined}
+        className="inline-flex h-8 min-w-[3.25rem] items-center justify-center gap-0.5 rounded-md border border-outline-variant/60 bg-surface-lowest px-1 text-[11px] font-medium text-foreground/70 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-45"
+        title={title}
       >
-        <Sparkles className="h-3.5 w-3.5" aria-hidden />
-        增强
+        <Icon className="h-3.5 w-3.5" aria-hidden />
+        {label}
+        <ChevronDown className={`h-3 w-3 text-foreground/40 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-60 overflow-hidden rounded-md border border-outline-variant/60 bg-surface-lowest p-1 shadow-lg">
-          {ENHANCEMENT_MENU_ITEMS.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  onSelect(item.id);
-                }}
-                className="flex w-full items-start gap-2 rounded px-2 py-1.5 text-left transition-colors hover:bg-primary/8"
-              >
-                <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
-                <span className="min-w-0">
-                  <span className="block text-xs font-medium text-foreground/80">{item.label}</span>
-                  <span className="block text-[11px] leading-snug text-foreground/50">{item.description}</span>
-                </span>
-              </button>
-            );
-          })}
+        <div
+          id={menuId}
+          role="menu"
+          className={`absolute z-30 mt-1 max-h-[min(18rem,calc(100vh-8rem))] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border border-outline-variant/60 bg-surface-lowest p-1 shadow-lg ${
+            width === 'compact' ? 'w-48' : 'w-56'
+          } ${
+            align === 'right' ? 'right-0' : 'left-0'
+          }`}
+        >
+          {children(close)}
         </div>
       )}
     </div>
+  );
+}
+
+function ComposerMenuItem({
+  label,
+  description,
+  icon: Icon,
+  role = 'menuitemradio',
+  selected,
+  disabled,
+  title,
+  onSelect,
+}: {
+  label: string;
+  description: string;
+  icon: typeof Users2;
+  role?: 'menuitem' | 'menuitemradio';
+  selected?: boolean;
+  disabled?: boolean;
+  title?: string;
+  onSelect: () => void;
+}) {
+  const checkedProps = role === 'menuitemradio'
+    ? { 'aria-checked': Boolean(selected) }
+    : {};
+  return (
+    <button
+      type="button"
+      role={role}
+      aria-label={label}
+      {...checkedProps}
+      disabled={disabled}
+      onClick={onSelect}
+      title={title ?? description}
+      className={`flex w-full items-start gap-2 rounded px-2 py-1.5 text-left transition-colors ${
+        selected ? 'bg-primary/10' : 'hover:bg-primary/8'
+      } disabled:cursor-not-allowed disabled:opacity-45`}
+    >
+      <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${selected ? 'text-primary' : 'text-foreground/45'}`} aria-hidden />
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs font-medium text-foreground/80">{label}</span>
+        <span className="block text-[11px] leading-snug text-foreground/50">{description}</span>
+      </span>
+      {selected ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden /> : null}
+    </button>
+  );
+}
+
+function EnhancementMenu({
+  disabled,
+  onSelect,
+}: {
+  disabled?: boolean;
+  onSelect: (intent: DiscussionEnhancementIntent) => void;
+}) {
+  return (
+    <ComposerControlMenu
+      label="增强"
+      title="用多智能体讨论增强当前研读"
+      icon={Sparkles}
+      disabled={disabled}
+      align="right"
+    >
+      {(close) => ENHANCEMENT_MENU_ITEMS.map((item) => (
+        <ComposerMenuItem
+          key={item.id}
+          role="menuitem"
+          label={item.label}
+          description={item.description}
+          icon={item.icon}
+          onSelect={() => {
+            close();
+            onSelect(item.id);
+          }}
+        />
+      ))}
+    </ComposerControlMenu>
   );
 }
 
@@ -1690,6 +2075,9 @@ export function Dialog() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryProjectId = normalizeProjectId(searchParams.get('project_id'));
+  const queryConversationId = normalizeChatHistorySessionId(
+    searchParams.get('conversation_id') ?? searchParams.get('session_id') ?? searchParams.get('receipt'),
+  );
   const pinnedMaterialId = normalizeMaterialId(searchParams.get('material_id') ?? searchParams.get('material'));
   const pinnedMaterialTitle = normalizeMaterialId(searchParams.get('material_title') ?? searchParams.get('title'));
   const effectiveProjectId = normalizeProjectId(activeProjectId || queryProjectId);
@@ -1776,15 +2164,44 @@ export function Dialog() {
   const [suggestedQuestionChunks, setSuggestedQuestionChunks] = useState<ProjectChunkResource[]>([]);
   const [suggestedQuestionState, setSuggestedQuestionState] = useState<SuggestedQuestionState>('idle');
   const [backendSuggestedQuestions, setBackendSuggestedQuestions] = useState<SuggestedQuestion[] | null>(null);
+  const [readerFormulaCandidates, setReaderFormulaCandidates] = useState<PdfFormulaCandidate[]>([]);
   const [embeddedReaderTarget, setEmbeddedReaderTarget] = useState<{
     page?: number;
-    bbox?: number[];
+    bbox?: PdfBbox;
     bboxUnit?: PdfBboxUnit | null;
     chunkId?: string;
+    quote?: string;
     nonce: number;
   }>({ nonce: 0 });
   const [embeddedReaderPage, setEmbeddedReaderPage] = useState<number | null>(null);
-  const [currentPdfSelection, setCurrentPdfSelection] = useState<DialogPdfSelectionState | null>(null);
+  const [draftAttachments, setDraftAttachmentsState] = useState<ChatAttachment[]>([]);
+  const draftAttachmentsRef = useRef<ChatAttachment[]>(draftAttachments);
+  const setDraftAttachments = useCallback((update: SetStateAction<ChatAttachment[]>): void => {
+    const next = typeof update === 'function'
+      ? update(draftAttachmentsRef.current)
+      : update;
+    draftAttachmentsRef.current = next;
+    setDraftAttachmentsState(next);
+  }, []);
+  const [pendingAttachmentReads, setPendingAttachmentReads] = useState(0);
+  const [currentPdfSelections, setCurrentPdfSelectionsState] = useState<DialogPdfSelectionState[]>([]);
+  const currentPdfSelectionsRef = useRef<DialogPdfSelectionState[]>(currentPdfSelections);
+  const setCurrentPdfSelections = useCallback((
+    update: SetStateAction<DialogPdfSelectionState[]>,
+  ): void => {
+    const next = typeof update === 'function'
+      ? update(currentPdfSelectionsRef.current)
+      : update;
+    currentPdfSelectionsRef.current = next;
+    setCurrentPdfSelectionsState(next);
+  }, []);
+  const clearCurrentPdfSelectionsAndAttachments = useCallback((): void => {
+    const fingerprints = selectionAttachmentFingerprints(currentPdfSelectionsRef.current);
+    setCurrentPdfSelections([]);
+    if (fingerprints.length > 0) {
+      setDraftAttachments((current) => withoutAttachmentFingerprints(current, fingerprints));
+    }
+  }, [setCurrentPdfSelections, setDraftAttachments]);
   const [discussionLaunchState, setDiscussionLaunchState] = useState<DiscussionLaunchState | null>(() => (
     normalizeDiscussionLaunchState(location.state) ?? readDiscussionLaunchState()
   ));
@@ -1799,10 +2216,57 @@ export function Dialog() {
     () => conversation.messages,
     [conversation.messages],
   );
-  const evidenceGraphPayload = useMemo(
-    () => buildDialogEvidenceGraphPayload(conversationMessages),
+  const visibleConversationMessages = useMemo(
+    () => conversationMessages.map((message) => {
+      if (message.role !== 'assistant') return message;
+      const answerOrigin = message.metadata?.diagnostics?.answerOrigin ?? 'internal_smartread';
+      const content = dialogVisibleAnswerContent(message.content, answerOrigin);
+      return content === message.content ? message : { ...message, content };
+    }),
     [conversationMessages],
   );
+  const localEvidenceGraphPayload = useMemo(
+    () => buildAnswerTurnGraphPayload(conversationMessages, {
+      sessionId: normalizeChatHistorySessionId(sessionId ?? conversation.sessionId ?? '')
+        ?? `local:${smartReadScope}`,
+    }),
+    [conversation.sessionId, conversationMessages, sessionId, smartReadScope],
+  );
+  const evidenceGraphSessionId = normalizeChatHistorySessionId(sessionId ?? conversation.sessionId ?? '');
+  const evidenceGraphTurnId = useMemo(() => {
+    for (const node of localEvidenceGraphPayload?.nodes ?? []) {
+      const value = node.metadata?.turn_id;
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return null;
+  }, [localEvidenceGraphPayload]);
+  const [persistedEvidenceGraphPayload, setPersistedEvidenceGraphPayload] = useState<GraphPayloadV0 | null>(null);
+  const [evidenceGraphRefreshToken, setEvidenceGraphRefreshToken] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPersistedEvidenceGraphPayload(null);
+    if (!evidenceGraphSessionId || !evidenceGraphTurnId) return () => {
+      cancelled = true;
+    };
+
+    void getAnswerEvidenceGraph({
+      session_id: evidenceGraphSessionId,
+      turn_id: evidenceGraphTurnId,
+    }).then((payload) => {
+      if (cancelled) return;
+      const adapted = evidenceGraphToGraphPayload(payload);
+      if (adapted.nodes.length > 0) setPersistedEvidenceGraphPayload(adapted);
+    }).catch(() => {
+      if (!cancelled) setPersistedEvidenceGraphPayload(null);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [evidenceGraphRefreshToken, evidenceGraphSessionId, evidenceGraphTurnId]);
+
+  const evidenceGraphPayload = persistedEvidenceGraphPayload ?? localEvidenceGraphPayload;
   const evidenceGraphStats = useMemo(() => ({
     evidence: evidenceGraphPayload?.nodes.filter((node) => node.type === 'evidence').length ?? 0,
     materials: evidenceGraphPayload?.nodes.filter((node) => node.type === 'material').length ?? 0,
@@ -1824,6 +2288,35 @@ export function Dialog() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [graphExplorerOpen]);
+
+  useEffect(() => {
+    if (!graphExplorerOpen) return undefined;
+    const shell = dialogShellRef.current;
+    if (!shell) return undefined;
+    const backgroundElements = Array.from(shell.children).filter((child): child is HTMLElement => {
+      if (!(child instanceof HTMLElement)) return false;
+      return child.getAttribute('role') !== 'dialog';
+    });
+    const previousState = backgroundElements.map((element) => ({
+      element,
+      inert: element.inert === true,
+      ariaHidden: element.getAttribute('aria-hidden'),
+    }));
+    for (const element of backgroundElements) {
+      element.inert = true;
+      element.setAttribute('aria-hidden', 'true');
+    }
+    return () => {
+      for (const { element, inert, ariaHidden } of previousState) {
+        element.inert = inert;
+        if (ariaHidden === null) {
+          element.removeAttribute('aria-hidden');
+        } else {
+          element.setAttribute('aria-hidden', ariaHidden);
+        }
+      }
+    };
   }, [graphExplorerOpen]);
 
   const activePinnedMaterial = useMemo(
@@ -1854,24 +2347,53 @@ export function Dialog() {
   const persistedPinnedPdfView = pinnedMaterialId ? getPdfView(pinnedMaterialId) : undefined;
   const urlReaderPage = normalizeDialogReaderPage(searchParams.get('page'));
   const urlReaderChunkId = normalizeMaterialId(searchParams.get('chunk'));
-  const urlReaderBbox = parsePdfBboxSearchParam(searchParams.get('bbox'));
+  const urlReaderBbox = urlReaderPage
+    ? parsePdfBboxSearchParam(searchParams.get('bbox'))
+    : null;
+  const urlReaderAnchorKind = searchParams.get('anchor_kind') === 'visual' ? 'visual' : 'text';
+  const urlReaderQuote = urlReaderAnchorKind === 'visual'
+    ? null
+    : normalizePdfQuote(searchParams.get('quote'));
   const urlReaderTargetKey = [
     pinnedMaterialId,
     searchParams.get('page') ?? '',
     searchParams.get('bbox') ?? '',
     searchParams.get('chunk') ?? '',
+    searchParams.get('quote') ?? '',
+    searchParams.get('anchor_kind') ?? '',
   ].join(':');
+  const embeddedTargetHasPage = embeddedReaderTarget.page !== undefined;
+  const embeddedPageOverridesUrlTarget = embeddedReaderPage !== null;
   const effectiveReaderPage = embeddedReaderTarget.page
     ?? embeddedReaderPage
     ?? urlReaderPage
     ?? persistedPinnedPdfView?.page
     ?? null;
-  const effectiveReaderBbox = embeddedReaderTarget.bbox ?? urlReaderBbox ?? undefined;
-  const effectiveReaderBboxUnit = embeddedReaderTarget.bboxUnit ?? (urlReaderBbox ? 'normalized_ratio' : null);
-  const effectiveReaderChunkId = embeddedReaderTarget.chunkId ?? urlReaderChunkId ?? undefined;
+  const effectiveReaderBbox = embeddedTargetHasPage
+    ? embeddedReaderTarget.bboxUnit === 'normalized_ratio'
+      ? embeddedReaderTarget.bbox
+      : undefined
+    : embeddedPageOverridesUrlTarget
+      ? undefined
+      : urlReaderBbox ?? undefined;
+  // URL bbox values use the normalized_ratio protocol. Embedded targets must
+  // declare the same unit explicitly; otherwise retain only page/chunk.
+  const effectiveReaderBboxUnit: PdfBboxUnit | null = effectiveReaderBbox
+    ? 'normalized_ratio'
+    : null;
+  const effectiveReaderChunkId = embeddedTargetHasPage
+    ? embeddedReaderTarget.chunkId
+    : embeddedPageOverridesUrlTarget
+      ? undefined
+      : embeddedReaderTarget.chunkId ?? urlReaderChunkId ?? undefined;
+  const effectiveReaderQuote = embeddedTargetHasPage
+    ? embeddedReaderTarget.quote
+    : embeddedPageOverridesUrlTarget
+      ? undefined
+      : embeddedReaderTarget.quote ?? urlReaderQuote ?? undefined;
   const embeddedReaderHighlights = useMemo<Highlight[]>(() => {
-    if (!effectiveReaderPage) return [];
-    const rect = toPdfHighlightRect(effectiveReaderBbox, effectiveReaderBboxUnit);
+    if (!effectiveReaderPage || effectiveReaderQuote) return [];
+    const rect = toPdfHighlightRect(effectiveReaderBbox, effectiveReaderBboxUnit ?? null);
     if (!rect) return [];
     return [{
       page: effectiveReaderPage,
@@ -1879,7 +2401,23 @@ export function Dialog() {
       color: '#60A5FA',
       rects: [rect],
     }];
-  }, [effectiveReaderBbox, effectiveReaderBboxUnit, effectiveReaderPage]);
+  }, [effectiveReaderBbox, effectiveReaderBboxUnit, effectiveReaderPage, effectiveReaderQuote]);
+  const selectedReaderVisualRegions = useMemo<PdfSelectedVisualRegion[]>(() => (
+    currentPdfSelections.flatMap((selectionState) => {
+      const { selection } = selectionState;
+      if (selectionState.materialId !== pinnedMaterialId || selection.kind === 'text') return [];
+      const bbox = selection.bbox_unit === 'normalized_ratio'
+        ? normalizePdfUrlBbox(selection.bbox ?? null, selection.bbox_unit)
+        : null;
+      if (!bbox) return [];
+      return [{
+        kind: selection.kind,
+        page: selection.page,
+        bbox,
+        ...(selection.candidate_id ? { candidateId: selection.candidate_id } : {}),
+      }];
+    })
+  ), [currentPdfSelections, pinnedMaterialId]);
   const readerTabAvailable = !!pinnedMaterialId && pinnedLooksLikePdf;
   const readerInCenter = readerTabAvailable;
   const projectMaterialCount = projectMaterials.length;
@@ -1909,19 +2447,72 @@ export function Dialog() {
   const activeAbortControllerRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(true);
   const restoringSessionIdRef = useRef<string | null>(null);
+  const evidenceActivationSequenceRef = useRef(0);
+  const urlConversationRestoreRef = useRef<string | null>(null);
   const taskCenterNavigationPendingRef = useRef(false);
   const dialogShellRef = useRef<HTMLDivElement | null>(null);
+  const chatInputRef = useRef<ChatInputHandle | null>(null);
+  const pendingResearchSelectionRestoreRef = useRef<DialogPdfSelectionState[] | null>(null);
   const previousPinnedMaterialIdRef = useRef('');
   const previousUrlReaderTargetKeyRef = useRef<string | null>(null);
+  const currentRequestContextRef = useRef<DialogRequestContextRevision>({
+    projectId: requestProjectId ?? null,
+    materialId: pinnedMaterialId || null,
+    contextScope: dialogContextScope,
+    sessionId: normalizeChatHistorySessionId(sessionId ?? conversation.sessionId) ?? null,
+    revision: 0,
+  });
+  const previousRequestContext = currentRequestContextRef.current;
+  const nextRequestContext = {
+    projectId: requestProjectId ?? null,
+    materialId: pinnedMaterialId || null,
+    contextScope: dialogContextScope,
+    sessionId: normalizeChatHistorySessionId(sessionId ?? conversation.sessionId) ?? null,
+  };
+  if (
+    previousRequestContext.projectId !== nextRequestContext.projectId
+    || previousRequestContext.materialId !== nextRequestContext.materialId
+    || previousRequestContext.contextScope !== nextRequestContext.contextScope
+    || previousRequestContext.sessionId !== nextRequestContext.sessionId
+  ) {
+    currentRequestContextRef.current = {
+      ...nextRequestContext,
+      revision: previousRequestContext.revision + 1,
+    };
+  }
+  const requestContextRevision = currentRequestContextRef.current.revision;
+  const clearedSelectionContextRevisionRef = useRef(requestContextRevision);
   const projectReasoningBias = useProjectReasoningBiasState(activeProjectId);
   const defaultProjectBiasEnabled = projectReasoningBias.isEnabledForSurface('chat_generation');
   const [projectBiasEnabled, setProjectBiasEnabled] = useState(defaultProjectBiasEnabled);
+  const [agentHandoffState, setAgentHandoffState] = useState<AgentHandoffState>('idle');
+  const [agentHandoffMessage, setAgentHandoffMessage] = useState<string | null>(null);
+  const [agentHandoffRequest, setAgentHandoffRequest] = useState<AgentSidebarAnswerRequestResponse | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (clearedSelectionContextRevisionRef.current === requestContextRevision) return;
+    clearedSelectionContextRevisionRef.current = requestContextRevision;
+    clearCurrentPdfSelectionsAndAttachments();
+    const pendingSelections = pendingResearchSelectionRestoreRef.current;
+    if (!pendingSelections || pendingSelections.length === 0) return;
+    const targetMaterialId = pendingSelections[0]?.materialId ?? '';
+    const activeMaterialId = currentRequestContextRef.current.materialId ?? '';
+    if (targetMaterialId && activeMaterialId !== targetMaterialId) return;
+    pendingResearchSelectionRestoreRef.current = null;
+    setCurrentPdfSelections(pendingSelections);
+  }, [clearCurrentPdfSelectionsAndAttachments, requestContextRevision, setCurrentPdfSelections]);
+
+  const focusComposerAfterDraftWrite = useCallback((selection: 'start' | 'end' | 'all' = 'end') => {
+    window.setTimeout(() => {
+      chatInputRef.current?.focus({ selection });
+    }, 0);
   }, []);
 
   const refreshProjectMaterials = useCallback(async (
@@ -2011,6 +2602,32 @@ export function Dialog() {
       setSuggestedQuestionChunks([]);
       setSuggestedQuestionState('error');
     }
+  }, [effectiveProjectId, pinnedMaterialId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReaderFormulaCandidates([]);
+    if (!effectiveProjectId || !pinnedMaterialId) return undefined;
+    const service = getWritingBackendService();
+    void service.listFormulaCandidates(effectiveProjectId, pinnedMaterialId, DIALOG_PDF_FORMULA_CANDIDATE_MAX_COUNT)
+      .then((response) => {
+        if (!cancelled) {
+          setReaderFormulaCandidates(buildDialogFormulaCandidatesFromResources(response.candidates));
+        }
+      })
+      .catch(async () => {
+        try {
+          const response = await service.listMaterialChunks(effectiveProjectId, pinnedMaterialId);
+          if (!cancelled) {
+            setReaderFormulaCandidates(buildDialogFormulaCandidates(response.chunks, pinnedMaterialId));
+          }
+        } catch {
+          if (!cancelled) setReaderFormulaCandidates([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [effectiveProjectId, pinnedMaterialId]);
 
   useEffect(() => {
@@ -2111,7 +2728,8 @@ export function Dialog() {
   }, [pinnedLooksLikePdf, pinnedMaterialId, urlCenterTab]);
 
   useEffect(() => {
-    if (pinnedMaterialId && previousPinnedMaterialIdRef.current !== pinnedMaterialId) {
+    if (previousPinnedMaterialIdRef.current === pinnedMaterialId) return;
+    if (pinnedMaterialId) {
       setContextRailTab(
         pinnedLooksLikePdf
           ? urlCenterTab === 'discussion' ? 'discussion' : 'chat'
@@ -2119,7 +2737,6 @@ export function Dialog() {
       );
       setEmbeddedReaderTarget({ nonce: 0 });
       setEmbeddedReaderPage(null);
-      setCurrentPdfSelection(null);
     }
     previousPinnedMaterialIdRef.current = pinnedMaterialId;
   }, [pinnedLooksLikePdf, pinnedMaterialId, urlCenterTab]);
@@ -2293,6 +2910,7 @@ export function Dialog() {
   const handleNewSession = () => {
     conversationMessagesRef.current = [];
     clearConversation(smartReadScope);
+    clearCurrentPdfSelectionsAndAttachments();
     setDiscussionLaunchState(null);
     clearDiscussionLaunchState();
     setSessionId(undefined);
@@ -2327,6 +2945,42 @@ export function Dialog() {
       setHistoryErrorMessage(getChatErrorMessage(error));
     }
   };
+
+  const handleCreateAgentHandoff = useCallback(async (): Promise<void> => {
+    const targetSessionId = normalizeChatHistorySessionId(sessionId ?? conversation.sessionId ?? '');
+    if (!targetSessionId) {
+      setAgentHandoffState('error');
+      setAgentHandoffMessage('当前会话还没有可接手记录。');
+      setAgentHandoffRequest(null);
+      return;
+    }
+    if (!effectiveProjectId) {
+      setAgentHandoffState('error');
+      setAgentHandoffMessage('请先选择项目。');
+      setAgentHandoffRequest(null);
+      return;
+    }
+    setAgentHandoffState('creating');
+    setAgentHandoffMessage(null);
+    setAgentHandoffRequest(null);
+    try {
+      const receipt = await readAgentSidebarReceipt(targetSessionId);
+      const request = await createAgentSidebarAnswerRequest(receipt, {
+        projectId: effectiveProjectId,
+        agentHost: 'agent',
+        source: 'desktop',
+        route: '/dialog',
+        generatedIn: 'desktop_dialog',
+      });
+      setAgentHandoffRequest(request);
+      setAgentHandoffState('created');
+      setAgentHandoffMessage('已创建智能体接手任务。');
+    } catch (error) {
+      setAgentHandoffState('error');
+      setAgentHandoffMessage(getChatErrorMessage(error));
+      setAgentHandoffRequest(null);
+    }
+  }, [conversation.sessionId, effectiveProjectId, sessionId]);
 
   const handleResumeSession = async (nextSessionId: string, sessionHint?: ChatSessionSummary) => {
     const normalizedSessionId = nextSessionId.trim();
@@ -2363,6 +3017,19 @@ export function Dialog() {
       restoringSessionIdRef.current = null;
     }
   };
+
+  useEffect(() => {
+    if (!queryConversationId) return;
+    if (urlConversationRestoreRef.current === queryConversationId) return;
+    if (restoringSessionIdRef.current === queryConversationId) return;
+    const currentSessionId = normalizeChatHistorySessionId(sessionId ?? conversation.sessionId ?? '');
+    if (currentSessionId === queryConversationId && conversationMessages.length > 0) {
+      urlConversationRestoreRef.current = queryConversationId;
+      return;
+    }
+    urlConversationRestoreRef.current = queryConversationId;
+    void handleResumeSession(queryConversationId);
+  }, [conversation.sessionId, conversationMessages.length, queryConversationId, sessionId]);
 
   const handleDeleteSession = async (target: ChatSessionSummary) => {
     const normalizedSessionId = target.session_id.trim();
@@ -2461,6 +3128,7 @@ export function Dialog() {
       conversationMessagesRef.current = restoredMessages;
       setConversation(targetScope, restoredMessages, { sessionId: forked.fork_session_id });
       setInputValue('从这个分叉继续：');
+      focusComposerAfterDraftWrite('end');
       setIsUnavailable(false);
       setChatState('ready');
       focusRestoredSessionPane('chat');
@@ -2501,13 +3169,50 @@ export function Dialog() {
     const index = conversationMessagesRef.current.findIndex((item) => item.id === message.id);
     if (index < 0) return;
     const nextMessages = conversationMessagesRef.current.slice(0, index);
+    const restoredSelections = dialogPdfSelectionsFromResearchSelections(
+      message.researchSelections,
+      message.turnId,
+    );
+    pendingResearchSelectionRestoreRef.current = restoredSelections.length > 0
+      ? restoredSelections
+      : null;
     conversationMessagesRef.current = nextMessages;
-    setConversation(smartReadScope, nextMessages);
+    setConversation(smartReadScope, nextMessages, { sessionId: null });
     setInputValue(message.content);
+    focusComposerAfterDraftWrite('all');
     setSessionId(undefined);
     setErrorMessage(null);
     setIsUnavailable(false);
     setChatState('ready');
+    const primarySelection = restoredSelections[0];
+    if (primarySelection) {
+      if (
+        currentRequestContextRef.current.materialId === primarySelection.materialId
+        && currentRequestContextRef.current.sessionId === null
+      ) {
+        pendingResearchSelectionRestoreRef.current = null;
+        clearCurrentPdfSelectionsAndAttachments();
+        setCurrentPdfSelections(restoredSelections);
+      }
+      const material = projectMaterials.find(
+        (item) => normalizeMaterialId(item.material_id) === primarySelection.materialId,
+      );
+      focusMaterialReaderPane(
+        primarySelection.materialId,
+        material ? materialTitleLabel(material) : primarySelection.materialId,
+      );
+      writeReaderSearchParams(primarySelection.materialId, {
+        title: material ? materialTitleLabel(material) : primarySelection.materialId,
+        page: primarySelection.selection.page,
+        chunkId: primarySelection.selection.chunk_id,
+        bbox: primarySelection.selection.bbox
+          ? [...primarySelection.selection.bbox]
+          : undefined,
+        bboxUnit: primarySelection.selection.bbox_unit,
+      });
+    } else {
+      clearCurrentPdfSelectionsAndAttachments();
+    }
   };
 
   const handleForkMessage = (message: ChatMessageData) => {
@@ -2516,7 +3221,7 @@ export function Dialog() {
     if (index < 0) return;
     const nextMessages = conversationMessagesRef.current.slice(0, index + 1);
     conversationMessagesRef.current = nextMessages;
-    setConversation(smartReadScope, nextMessages);
+    setConversation(smartReadScope, nextMessages, { sessionId: null });
     setSessionId(undefined);
     setErrorMessage(null);
     setIsUnavailable(false);
@@ -2525,21 +3230,58 @@ export function Dialog() {
 
   const handleSendMessage = async (payload: ChatInputSubmitPayload) => {
     const query = payload.text.trim();
-    if (!query || chatState === 'responding') return;
+    if (!query || chatState === 'responding' || pendingAttachmentReads > 0) return;
     const images: ChatAttachment[] = payload.attachmentsEnabled ? payload.attachments : [];
+    const requestScope = smartReadScope;
+    const requestContextRevisionAtStart = currentRequestContextRef.current.revision;
+    const requestContextIsCurrent = (): boolean => (
+      currentRequestContextRef.current.revision === requestContextRevisionAtStart
+    );
     const selectedTier = loadSmartReadCostTier('medium');
+    const selectionCandidates = currentPdfSelectionsRef.current.filter(
+      (selectionState) => selectionState.materialId === requestMaterialId,
+    );
+    const missingVisualSelection = selectionCandidates.find(
+      (selectionState) => !selectionHasReplaySource(selectionState, images),
+    );
+    if (missingVisualSelection) {
+      setErrorMessage('恢复的图表、公式或区域选区需要在 PDF 中重新选择后才能再次提交。');
+      setChatState('error');
+      focusComposerAfterDraftWrite('end');
+      return;
+    }
+    const selectionsForRequest = selectionCandidates;
+    const turnId = createDialogTurnId();
+    const researchSelections = buildResearchSelections({
+      turnId,
+      groupId: `${turnId}-group`,
+      selections: selectionsForRequest.map((selectionState) => ({
+        selectionId: selectionState.id,
+        materialId: selectionState.materialId,
+        selection: selectionState.selection,
+      })),
+    });
+    if (researchSelections.length !== selectionsForRequest.length) {
+      setErrorMessage('当前 PDF 选区不完整，请重新选择后再提交。');
+      setChatState('error');
+      focusComposerAfterDraftWrite('end');
+      return;
+    }
 
     const userMessage: ChatMessageData = {
-      id: `user-${Date.now()}`,
+      id: `user-${turnId}`,
       role: 'user',
+      turnId,
       content: query,
       timestamp: new Date().toISOString(),
+      ...(researchSelections.length > 0 ? { researchSelections } : {}),
     };
     const assistantId = `assistant-${Date.now()}`;
     const assistantMessage: ChatMessageData = {
       id: assistantId,
       role: 'assistant',
-      content: 'AI 思考中…',
+      turnId,
+      content: '',
       timestamp: new Date().toISOString(),
       status: 'streaming',
       metadata: {
@@ -2549,78 +3291,124 @@ export function Dialog() {
       },
     };
 
+    let requestMessages = [
+      ...conversationMessagesRef.current,
+      userMessage,
+      assistantMessage,
+    ];
     const commitMessages = (nextMessages: ChatMessageData[]) => {
-      conversationMessagesRef.current = nextMessages;
-      setConversation(smartReadScope, nextMessages);
+      requestMessages = nextMessages;
+      if (requestContextIsCurrent()) {
+        conversationMessagesRef.current = nextMessages;
+      }
+      setConversation(requestScope, nextMessages);
     };
     const updateAssistantMessage = (patch: Partial<ChatMessageData>): ChatMessageData => {
-      const existing = conversationMessagesRef.current.find((message) => message.id === assistantId) ?? assistantMessage;
+      const existing = requestMessages.find((message) => message.id === assistantId) ?? assistantMessage;
       const nextMessage: ChatMessageData = {
         ...existing,
         ...patch,
         metadata: patch.metadata ?? existing.metadata,
       };
       commitMessages(
-        replaceOrAppendChatData(conversationMessagesRef.current, nextMessage),
+        replaceOrAppendChatData(requestMessages, nextMessage),
       );
       return nextMessage;
     };
 
-    commitMessages([
-      ...conversationMessagesRef.current,
-      userMessage,
-      assistantMessage,
-    ]);
+    commitMessages(requestMessages);
     setInputValue('');
     setChatState('responding');
     focusDialogChatPane();
     const startedAt = Date.now();
-    dialogRequestStartedAtByScope.set(smartReadScope, startedAt);
+    dialogRequestStartedAtByScope.set(requestScope, startedAt);
     setRequestStartedAt(startedAt);
     setErrorMessage(null);
     setIsUnavailable(false);
 
+    const abortController = new AbortController();
+    activeAbortControllerRef.current = abortController;
+    dialogAbortControllers.set(requestScope, abortController);
+    const restoreRequestDraft = (): void => {
+      const contextIsCurrent = requestContextIsCurrent();
+      if (contextIsCurrent) {
+        setInputValue(query);
+      }
+      const selectionFingerprints = selectionAttachmentFingerprints(selectionsForRequest);
+      if (images.length === 0 && contextIsCurrent) {
+        setCurrentPdfSelections((current) => mergeDialogPdfSelections(current, selectionsForRequest));
+        return;
+      }
+      if (images.length === 0) return;
+      window.setTimeout(() => {
+        const delayedContextIsCurrent = requestContextIsCurrent();
+        const retryImages = delayedContextIsCurrent
+          ? images
+          : withoutAttachmentFingerprints(images, selectionFingerprints);
+        const mergedImages = mergeDialogRetryAttachments(
+          draftAttachmentsRef.current,
+          retryImages,
+          delayedContextIsCurrent ? selectionFingerprints : [],
+        );
+        setDraftAttachments(mergedImages);
+        if (delayedContextIsCurrent) {
+          const restorableSelections = selectionsForRequest.filter(
+            (selectionState) => selectionHasReplaySource(selectionState, mergedImages),
+          );
+          setCurrentPdfSelections((current) => mergeDialogPdfSelections(current, restorableSelections));
+        }
+      }, 0);
+    };
     try {
-      const abortController = new AbortController();
-      activeAbortControllerRef.current = abortController;
-      dialogAbortControllers.set(smartReadScope, abortController);
       const existingSessionId = sessionId ?? conversation.sessionId ?? undefined;
-      const selectionForRequest = currentPdfSelection?.materialId === requestMaterialId
-        ? currentPdfSelection
-        : null;
+      if (selectionCandidates.length > 0) {
+        const candidateIds = new Set(selectionCandidates.map((selectionState) => selectionState.id));
+        setCurrentPdfSelections((current) => current.filter(
+          (selectionState) => !candidateIds.has(selectionState.id),
+        ));
+      }
+      const requestSelections = selectionsForRequest.map((selectionState) => {
+        const imageIndex = findSelectionImageIndex(selectionState, images);
+        return {
+          ...selectionState.selection,
+          ...(selectionState.selection.kind !== 'text' && imageIndex !== null
+            ? { image_index: imageIndex }
+            : {}),
+        };
+      });
+      const primarySelection = requestSelections[0];
       const currentPdfContext = buildDialogCurrentPdfContext({
         materialId: requestMaterialId,
-        page: selectionForRequest?.page ?? effectiveReaderPage,
+        page: primarySelection?.page ?? effectiveReaderPage,
         chunkId: effectiveReaderChunkId,
-        selectedText: selectionForRequest?.selectedText,
-        bbox: selectionForRequest?.bbox ?? effectiveReaderBbox ?? null,
-        bboxUnit: selectionForRequest?.bboxUnit ?? effectiveReaderBboxUnit ?? null,
+        selectedText: primarySelection?.text,
+        bbox: primarySelection?.bbox ?? effectiveReaderBbox ?? null,
+        bboxUnit: primarySelection?.bbox_unit ?? effectiveReaderBboxUnit ?? null,
+        selections: requestSelections,
       });
-      if (selectionForRequest) {
-        setCurrentPdfSelection(null);
-      }
       let metadata: DialogStreamMetadata | null = null;
       let usage: DialogStreamUsage | null = null;
       let analysisChain: ChatMessageData['analysis_chain'] = null;
       let streamedContent = '';
       let nextSessionId = existingSessionId;
       let doneTokens: TokenUsage | undefined;
+      let finalVisualEvidenceRefs: EvidenceRefLike[] | null = null;
+      let finalVisualObservationRefs: VisualObservationReference[] = [];
       const fallbackTier = backendTierForCostTier(selectedTier);
-
-      updateAssistantMessage({
-        content: '正在检索项目材料并准备生成回答…',
-        status: 'streaming',
-      });
+      const requestAnswerOrigin: AnswerOrigin = 'internal_smartread';
 
       await streamIntelligentChatMessage(
         {
           query,
+          turn_id: turnId,
           session_id: existingSessionId,
           project_id: requestProjectId,
           material_id: requestMaterialId,
           tier: fallbackTier,
           mode: UNIFIED_DIALOG_MODE,
+          answer_origin: requestAnswerOrigin,
           current_pdf_context: currentPdfContext,
+          research_selections: researchSelections.length > 0 ? researchSelections : undefined,
           images: images.length > 0 ? images : undefined,
           project_reasoning_bias_enabled: defaultProjectBiasEnabled ? projectBiasEnabled : undefined,
         },
@@ -2639,9 +3427,9 @@ export function Dialog() {
                 content: streamedContent,
               });
               updateAssistantMessage({
-                content: streamedContent || `已找到 ${event.context_chunks_used} 个参考片段，正在生成回答…`,
+                content: dialogVisibleAnswerContent(streamedContent, requestAnswerOrigin),
                 status: 'streaming',
-                evidence: event.evidence_refs as EvidenceRefLike[] | undefined,
+                evidence: coerceEvidenceRefs(event.evidence_refs),
                 metadata: nextDiagnostics ? { diagnostics: nextDiagnostics } : undefined,
               });
               return;
@@ -2669,7 +3457,7 @@ export function Dialog() {
             if (event.event === 'text_delta') {
               streamedContent += event.delta;
               updateAssistantMessage({
-                content: streamedContent,
+                content: dialogVisibleAnswerContent(streamedContent, requestAnswerOrigin),
                 status: 'streaming',
               });
               return;
@@ -2678,6 +3466,15 @@ export function Dialog() {
               nextSessionId = event.session_id || nextSessionId;
               doneTokens = event.tokens_used;
               streamedContent = event.response ?? streamedContent;
+              if (event.visual_evidence_refs !== undefined) {
+                finalVisualEvidenceRefs = coerceEvidenceRefs(event.visual_evidence_refs) ?? [];
+              }
+              if (event.visual_observation_refs !== undefined) {
+                finalVisualObservationRefs = sanitizeVisualObservationReferences(
+                  event.visual_observation_refs,
+                ).filter((reference) => reference.turn_id === turnId);
+                updateAssistantMessage({ visualObservationRefs: finalVisualObservationRefs });
+              }
               return;
             }
             if (event.event === 'error') {
@@ -2686,8 +3483,8 @@ export function Dialog() {
           },
         },
       );
-
-      const finalContent = streamedContent || '回答已生成，但未找到可显示的结果。';
+      const finalContent = dialogVisibleAnswerContent(streamedContent, requestAnswerOrigin)
+        || '回答已生成，但未找到可显示的结果。';
       const finalDiagnostics = buildSmartReadDiagnosticsFromStream({
         metadata,
         usage,
@@ -2696,32 +3493,24 @@ export function Dialog() {
         content: finalContent,
       });
       const finalEvidence = evidenceRefsFromDialogStreamMetadata(metadata);
+      const metadataVisualEvidence = visualEvidenceRefsFromDialogStreamMetadata(metadata);
+      const finalVisualEvidence = finalVisualEvidenceRefs ?? metadataVisualEvidence;
+      const receivedVisualEvidenceRefs = finalVisualEvidenceRefs !== null
+        || metadataVisualEvidence !== undefined;
       let relatedFigures: ChatRelatedFigure[] | undefined;
-      const evidenceFigures = relatedFiguresFromEvidenceRefs(finalEvidence);
+      const evidenceFigures = relatedFiguresFromEvidenceRefs(finalVisualEvidence ?? finalEvidence);
       if (evidenceFigures.length > 0) {
         relatedFigures = evidenceFigures;
       }
-      if (requestProjectId && shouldLoadRelatedFigures(query)) {
+      if (requestProjectId && !receivedVisualEvidenceRefs && !relatedFigures && shouldLoadRelatedFigures(query)) {
         try {
           const candidates = await getWritingBackendService().listFigureTableCandidates(
             requestProjectId,
-            24,
+            200,
             { pixelOnly: true, renderPdfFallback: false },
           );
           const figures = toDialogRelatedFigures(candidates, query, requestMaterialId);
-          if (!relatedFigures || relatedFigures.length < 3) {
-            const seenAssets = new Set((relatedFigures ?? []).map((figure) => figure.asset_path).filter(Boolean));
-            const merged = [
-              ...(relatedFigures ?? []),
-              ...figures.filter((figure) => {
-                const assetPath = figure.asset_path ?? '';
-                if (!assetPath || seenAssets.has(assetPath)) return false;
-                seenAssets.add(assetPath);
-                return true;
-              }),
-            ].slice(0, 6);
-            relatedFigures = merged.length > 0 ? merged : undefined;
-          }
+          relatedFigures = figures.length > 0 ? figures : undefined;
         } catch {
           relatedFigures = relatedFigures && relatedFigures.length > 0 ? relatedFigures : undefined;
         }
@@ -2733,17 +3522,25 @@ export function Dialog() {
         evidence: finalEvidence,
         ...(analysisChain ? { analysis_chain: analysisChain } : {}),
         ...(relatedFigures ? { relatedFigures } : {}),
+        ...(finalVisualObservationRefs.length > 0
+          ? { visualObservationRefs: finalVisualObservationRefs }
+          : {}),
       });
 
-      if (isMountedRef.current && nextSessionId && nextSessionId !== sessionId) {
+      if (
+        isMountedRef.current
+        && requestContextIsCurrent()
+        && nextSessionId
+        && nextSessionId !== sessionId
+      ) {
         setSessionId(nextSessionId);
       }
       setConversation(
-        smartReadScope,
-        replaceOrAppendChatData(conversationMessagesRef.current, finalAssistant),
+        requestScope,
+        replaceOrAppendChatData(requestMessages, finalAssistant),
         { sessionId: nextSessionId },
       );
-      if (isMountedRef.current) {
+      if (isMountedRef.current && requestContextIsCurrent()) {
         setIsUnavailable(false);
         setChatState('ready');
       }
@@ -2756,15 +3553,20 @@ export function Dialog() {
           content: '已停止生成。',
           status: 'done',
         });
-        setChatState('ready');
+        restoreRequestDraft();
+        if (requestContextIsCurrent()) {
+          setChatState('ready');
+        }
         return;
       }
       const errorMsg = getChatErrorMessage(error);
+      const contextIsCurrent = requestContextIsCurrent();
+      restoreRequestDraft();
       updateAssistantMessage({
         content: `回答失败：${errorMsg}`,
         status: 'error',
       });
-      if (isMountedRef.current) {
+      if (isMountedRef.current && contextIsCurrent) {
         if (isUnavailableError(error)) {
           setIsUnavailable(true);
           setChatState('unavailable');
@@ -2774,12 +3576,14 @@ export function Dialog() {
         }
       }
     } finally {
-      if (dialogAbortControllers.get(smartReadScope) === activeAbortControllerRef.current) {
-        dialogAbortControllers.delete(smartReadScope);
+      if (dialogAbortControllers.get(requestScope) === abortController) {
+        dialogAbortControllers.delete(requestScope);
       }
-      dialogRequestStartedAtByScope.delete(smartReadScope);
-      activeAbortControllerRef.current = null;
-      if (isMountedRef.current) {
+      dialogRequestStartedAtByScope.delete(requestScope);
+      if (activeAbortControllerRef.current === abortController) {
+        activeAbortControllerRef.current = null;
+      }
+      if (isMountedRef.current && requestContextIsCurrent()) {
         setRequestStartedAt(null);
       }
     }
@@ -2789,6 +3593,7 @@ export function Dialog() {
     if (chatState === 'responding') return;
     focusDialogChatPane();
     setInputValue(question.question);
+    focusComposerAfterDraftWrite('end');
   };
 
   const launchDiscussionEnhancement = (intent: DiscussionEnhancementIntent, seedQuestion = inputValue): void => {
@@ -2818,6 +3623,100 @@ export function Dialog() {
   };
 
   const isInputDisabled = isResponseActive;
+  const activeHandoffSessionId = normalizeChatHistorySessionId(sessionId ?? conversation.sessionId ?? '');
+  const latestCompletedAnswerId = useMemo(() => {
+    for (let index = conversationMessages.length - 1; index >= 0; index -= 1) {
+      const message = conversationMessages[index];
+      if (
+        (message.role === 'assistant' || message.role === 'agent') &&
+        message.status !== 'streaming' &&
+        message.content.trim()
+      ) {
+        return message.id;
+      }
+    }
+    return null;
+  }, [conversationMessages]);
+  const agentHandoffDisabled =
+    isInputDisabled ||
+    agentHandoffState === 'creating' ||
+    !activeHandoffSessionId ||
+    !effectiveProjectId;
+  const agentHandoffMenuDisabled = isInputDisabled || agentHandoffState === 'creating';
+  const agentHandoffActionTitle = !effectiveProjectId
+    ? '请先选择项目'
+    : !activeHandoffSessionId
+      ? '当前回答保存后可创建接手任务'
+      : '为当前回答创建接手任务';
+  const agentHandoffMenuTitle = agentHandoffState === 'creating'
+    ? '正在创建智能体接手任务'
+    : agentHandoffState === 'created'
+      ? '智能体接手任务已创建'
+      : '把当前回答交给智能体继续';
+  const agentHandoffButtonText = agentHandoffState === 'creating' ? '创建中…' : '接手当前回答';
+  const renderAgentHandoffFooter = useCallback((message: ChatMessageData) => {
+    if (message.id !== latestCompletedAnswerId || (message.role !== 'assistant' && message.role !== 'agent')) {
+      return null;
+    }
+    return (
+      <div className="flex flex-wrap items-center gap-2 border-t border-outline-variant/40 pt-2 text-[11px]">
+        <ComposerControlMenu
+          label="给智能体"
+          title={agentHandoffMenuTitle}
+          icon={Users2}
+          disabled={agentHandoffMenuDisabled}
+          align="left"
+          width="compact"
+        >
+          {(close) => (
+            <ComposerMenuItem
+              role="menuitem"
+              label={agentHandoffButtonText}
+              description="生成同一条 SmartRead 记录的接手任务，智能体可继续处理并写回。"
+              icon={Users2}
+              disabled={agentHandoffDisabled}
+              title={agentHandoffActionTitle}
+              onSelect={() => {
+                close();
+                void handleCreateAgentHandoff();
+              }}
+            />
+          )}
+        </ComposerControlMenu>
+        {agentHandoffRequest ? (
+          <span className="sr-only">智能体接手任务已绑定当前 SmartRead 记录。</span>
+        ) : null}
+      </div>
+    );
+  }, [
+    activeHandoffSessionId,
+    agentHandoffButtonText,
+    agentHandoffDisabled,
+    agentHandoffMenuDisabled,
+    agentHandoffMenuTitle,
+    agentHandoffRequest,
+    agentHandoffActionTitle,
+    effectiveProjectId,
+    handleCreateAgentHandoff,
+    isInputDisabled,
+    latestCompletedAnswerId,
+  ]);
+  useEffect(() => {
+    if (isInputDisabled) return;
+    const timer = window.setTimeout(() => {
+      const active = document.activeElement;
+      const shouldClaimInitialFocus =
+        active === null ||
+        active === document.body ||
+        active === document.documentElement ||
+        active?.id === 'root';
+      if (shouldClaimInitialFocus) {
+        chatInputRef.current?.focus();
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [dialogStorageScope, isInputDisabled]);
+
   const emptyHint = useMemo(() => {
     if (dialogContextScope === 'paper' && pinnedMaterialId) {
       return `当前对话优先围绕「${activeMaterialLabel}」检索和回答。`;
@@ -2868,6 +3767,8 @@ export function Dialog() {
       chunkId?: string | null;
       bbox?: number[] | null;
       bboxUnit?: PdfBboxUnit | null;
+      quote?: string | null;
+      anchorKind?: 'text' | 'visual';
       replace?: boolean;
     } = {},
   ): void {
@@ -2889,9 +3790,16 @@ export function Dialog() {
     }
     if (options.chunkId) nextParams.set('chunk', options.chunkId);
     else nextParams.delete('chunk');
-    const bboxParam = encodePdfBboxParam(options.bbox ?? null, options.bboxUnit);
+    const bboxParam = encodePdfBboxParam(options.bbox ?? null, options.bboxUnit ?? null);
     if (bboxParam) nextParams.set('bbox', bboxParam);
     else nextParams.delete('bbox');
+    const quote = options.anchorKind === 'visual'
+      ? null
+      : normalizePdfQuote(options.quote);
+    if (quote) nextParams.set('quote', quote);
+    else nextParams.delete('quote');
+    if (options.anchorKind) nextParams.set('anchor_kind', options.anchorKind);
+    else nextParams.delete('anchor_kind');
     setSearchParams(nextParams, { replace: options.replace ?? false });
   }
   function focusMaterialReaderPane(materialId: string, title?: string): string | null {
@@ -2903,6 +3811,9 @@ export function Dialog() {
     );
     setCenterTab('reader');
     return normalizedMaterialId;
+  }
+  function invalidatePendingEvidenceActivation(): void {
+    evidenceActivationSequenceRef.current += 1;
   }
   function handleFocusPinnedMaterialReader(): void {
     if (!pinnedMaterialId) return;
@@ -2920,17 +3831,10 @@ export function Dialog() {
       replace: true,
     });
   }
-  function handleOpenMaterialInReader(materialId: string): void {
-    const normalizedMaterialId = normalizeMaterialId(materialId);
-    if (!normalizedMaterialId) return;
-    const material = projectMaterials.find((item) => normalizeMaterialId(item.material_id) === normalizedMaterialId);
-    const title = material ? materialTitleLabel(material) : normalizedMaterialId;
-    focusMaterialReaderPane(normalizedMaterialId, title);
-    writeReaderSearchParams(normalizedMaterialId, { title });
-  }
   function handlePdfTabActivate(materialId: string): void {
     const normalizedMaterialId = normalizeMaterialId(materialId);
     if (!normalizedMaterialId) return;
+    invalidatePendingEvidenceActivation();
     const material = projectMaterials.find((item) => normalizeMaterialId(item.material_id) === normalizedMaterialId);
     setCenterTab('reader');
     writeReaderSearchParams(normalizedMaterialId, {
@@ -2947,6 +3851,8 @@ export function Dialog() {
     nextParams.delete('page');
     nextParams.delete('chunk');
     nextParams.delete('bbox');
+    nextParams.delete('quote');
+    nextParams.delete('anchor_kind');
     nextParams.delete('tab');
     nextParams.set('scope', 'project');
     setSearchParams(nextParams, { replace: true });
@@ -2967,6 +3873,13 @@ export function Dialog() {
   function handleEmbeddedReaderPageChange(page: number): void {
     if (!Number.isFinite(page) || page <= 0) return;
     const normalizedPage = Math.round(page);
+    if (normalizedPage === effectiveReaderPage) {
+      if (pinnedMaterialId) {
+        updatePdfView(pinnedMaterialId, { page: normalizedPage });
+      }
+      return;
+    }
+    invalidatePendingEvidenceActivation();
     setEmbeddedReaderPage(normalizedPage);
     if (pinnedMaterialId) {
       updatePdfView(pinnedMaterialId, { page: normalizedPage });
@@ -2974,21 +3887,94 @@ export function Dialog() {
   }
 
   function handleAnalyzeReaderText(text: string, page: number, anchor?: PdfSelectionAnchor): void {
-    if (!pinnedMaterialId) return;
+    if (!pinnedMaterialId || isInputDisabled) return;
     const selectedText = normalizeDialogSelectionText(text);
     if (!selectedText) return;
     const normalizedPage = normalizeDialogReaderPage(page) ?? effectiveReaderPage ?? 1;
     const bbox = combineSelectionRects(anchor?.rects);
-    setCurrentPdfSelection({
+    const selectionState: DialogPdfSelectionState = {
+      id: createDialogPdfSelectionId(),
       materialId: pinnedMaterialId,
-      page: normalizedPage,
-      selectedText,
-      bbox,
-      bboxUnit: bbox ? 'normalized_ratio' : null,
-    });
+      selection: {
+        kind: 'text',
+        page: normalizedPage,
+        text: selectedText,
+        label: '选中的文本',
+        ...(bbox ? { bbox, bbox_unit: 'normalized_ratio' } : {}),
+      },
+    };
+    const nextSelections = mergeDialogPdfSelections(
+      currentPdfSelectionsRef.current,
+      [selectionState],
+    );
+    if (nextSelections.length === currentPdfSelectionsRef.current.length) return;
+    setCurrentPdfSelections(nextSelections);
     setEmbeddedReaderPage(normalizedPage);
     focusDialogChatPane();
-    setInputValue(`请分析当前 PDF 第 ${normalizedPage} 页选中的这段内容：\n\n${selectedText}`);
+    if (!inputValue.trim() || DIALOG_SELECTION_AUTO_PROMPTS.has(inputValue.trim())) {
+      setInputValue(selectionPrompt('text', nextSelections.length));
+    }
+    focusComposerAfterDraftWrite('end');
+  }
+
+  function handleAnalyzeReaderRegion(capture: PdfRegionCapture): void {
+    if (currentRequestContextRef.current.revision !== requestContextRevision) return;
+    if (!pinnedMaterialId || isInputDisabled) return;
+    const normalizedPage = normalizeDialogReaderPage(capture.page) ?? effectiveReaderPage ?? 1;
+    const bbox = normalizePdfUrlBbox(capture.bbox, 'normalized_ratio');
+    if (!bbox) return;
+    const imageFingerprint = chatAttachmentFingerprint(capture.image);
+    const selectionState: DialogPdfSelectionState = {
+      id: createDialogPdfSelectionId(),
+      materialId: pinnedMaterialId,
+      imageFingerprint,
+      selection: {
+        kind: capture.kind,
+        page: normalizedPage,
+        bbox,
+        bbox_unit: 'normalized_ratio',
+        label: capture.label,
+        ...(capture.text ? { text: capture.text } : {}),
+        ...(capture.chunkId ? { chunk_id: capture.chunkId } : {}),
+        ...(capture.candidateId ? { candidate_id: capture.candidateId } : {}),
+      },
+    };
+    const nextSelections = mergeDialogPdfSelections(
+      currentPdfSelectionsRef.current,
+      [selectionState],
+    );
+    if (nextSelections.length === currentPdfSelectionsRef.current.length) return;
+    if (!chatInputRef.current?.appendAttachments([capture.image])) return;
+    setCurrentPdfSelections(nextSelections);
+    setEmbeddedReaderPage(normalizedPage);
+    focusDialogChatPane();
+    if (!inputValue.trim() || DIALOG_SELECTION_AUTO_PROMPTS.has(inputValue.trim())) {
+      setInputValue(selectionPrompt(capture.kind, nextSelections.length));
+    }
+    focusComposerAfterDraftWrite('end');
+  }
+
+  function handleRemoveCurrentPdfSelection(selectionId: string): void {
+    if (isInputDisabled) return;
+    const normalizedSelectionId = selectionId.trim();
+    if (!normalizedSelectionId) return;
+    const target = currentPdfSelectionsRef.current.find(
+      (selectionState) => selectionState.id === normalizedSelectionId,
+    );
+    if (!target) return;
+    const nextSelections = currentPdfSelectionsRef.current.filter(
+      (selectionState) => selectionState.id !== normalizedSelectionId,
+    );
+    setCurrentPdfSelections(nextSelections);
+    if (target.imageFingerprint) {
+      setDraftAttachments((current) => withoutAttachmentFingerprints(
+        current,
+        [target.imageFingerprint],
+      ));
+    }
+    if (nextSelections.length === 0 && DIALOG_SELECTION_AUTO_PROMPTS.has(inputValue.trim())) {
+      setInputValue('');
+    }
   }
 
   function handleSelectContextMaterial(material: WritingMaterialResource): void {
@@ -3007,24 +3993,34 @@ export function Dialog() {
   function handleGraphNavigateTarget(target: GraphNavigateTarget): void {
     const targetMaterialId = normalizeMaterialId(target.material_id);
     if (!targetMaterialId) return;
+    const targetPage = typeof target.page === 'number'
+      && Number.isInteger(target.page)
+      && target.page > 0
+      ? target.page
+      : null;
+    const targetBbox = targetPage && isPdfBboxUnit(target.bbox_unit)
+      ? normalizePdfUrlBbox(target.bbox, target.bbox_unit)
+      : null;
+    const targetBboxUnit: PdfBboxUnit | null = targetBbox ? 'normalized_ratio' : null;
+    const targetChunkId = normalizeMaterialId(target.chunk_id ?? '') || null;
     setGraphExplorerOpen(false);
     setContextRailOpen(true);
     setContextRailTab('graph');
     if (targetMaterialId === pinnedMaterialId) {
       setEmbeddedReaderTarget((previous) => ({
-        page: target.page ?? undefined,
-        bbox: target.bbox ?? undefined,
-        bboxUnit: target.bbox_unit ?? null,
-        chunkId: target.chunk_id ?? undefined,
+        page: targetPage ?? undefined,
+        bbox: targetBbox ?? undefined,
+        bboxUnit: targetBboxUnit,
+        chunkId: targetChunkId ?? undefined,
         nonce: previous.nonce + 1,
       }));
       setCenterTab('reader');
       writeReaderSearchParams(targetMaterialId, {
         title: activeMaterialLabel || pinnedMaterialTitle || targetMaterialId,
-        page: target.page,
-        chunkId: target.chunk_id,
-        bbox: target.bbox,
-        bboxUnit: target.bbox_unit,
+        page: targetPage,
+        chunkId: targetChunkId,
+        bbox: targetBbox ? [...targetBbox] : null,
+        bboxUnit: targetBboxUnit,
         replace: false,
       });
       return;
@@ -3033,10 +4029,87 @@ export function Dialog() {
     focusMaterialReaderPane(targetMaterialId, material ? materialTitleLabel(material) : targetMaterialId);
     writeReaderSearchParams(targetMaterialId, {
       title: material ? materialTitleLabel(material) : targetMaterialId,
-      page: target.page,
-      chunkId: target.chunk_id,
-      bbox: target.bbox,
-      bboxUnit: target.bbox_unit,
+      page: targetPage,
+      chunkId: targetChunkId,
+      bbox: targetBbox ? [...targetBbox] : null,
+      bboxUnit: targetBboxUnit,
+      replace: false,
+    });
+  }
+  async function handleSelectEvidence(evidence: EvidenceRefLike): Promise<void> {
+    const activationSequence = evidenceActivationSequenceRef.current + 1;
+    evidenceActivationSequenceRef.current = activationSequence;
+    const normalizedProjectId = effectiveProjectId || queryProjectId;
+    const evidenceChunkId = normalizeMaterialId(evidence.chunk_id ?? '');
+    let targetMaterialId = normalizeMaterialId(evidence.material_id ?? '');
+    let targetPage = evidenceRefPageNumber(evidence);
+    let targetBbox = targetPage ? evidenceRefBbox(evidence) : null;
+    let targetBboxUnit: PdfBboxUnit | null = targetBbox ? 'normalized_ratio' : null;
+    const targetAnchorKind = evidence.anchor_kind === 'visual' ? 'visual' : 'text';
+
+    if ((!targetMaterialId || !targetPage || !targetBbox) && evidenceChunkId && normalizedProjectId) {
+      let locator: ChunkLocator | null = null;
+      try {
+        locator = await locateChunk(evidenceChunkId, normalizedProjectId);
+      } catch {
+        // A locator outage must not discard an already usable material/page target.
+      }
+      if (activationSequence !== evidenceActivationSequenceRef.current) return;
+      const locatorMaterialId = normalizeMaterialId(locator?.material_id ?? '');
+      const locatorChunkId = normalizeMaterialId(locator?.chunk_id ?? '');
+      const locatorMatchesTarget = locator !== null
+        && locatorChunkId === evidenceChunkId
+        && Boolean(locatorMaterialId)
+        && (!targetMaterialId || locatorMaterialId === targetMaterialId);
+      const trustedLocator = locatorMatchesTarget ? locator : null;
+      const locatorPage = typeof trustedLocator?.page === 'number'
+        && Number.isInteger(trustedLocator.page)
+        && trustedLocator.page > 0
+        ? trustedLocator.page
+        : null;
+      if (!targetMaterialId && locatorMaterialId && trustedLocator) {
+        targetMaterialId = locatorMaterialId;
+      }
+      if (!targetPage && locatorPage !== null) {
+        targetPage = locatorPage;
+      }
+      const locatorBbox = isPdfBboxUnit(trustedLocator?.bbox_unit)
+        ? normalizePdfUrlBbox(trustedLocator?.bbox, trustedLocator.bbox_unit)
+        : null;
+      if (!targetBbox && locatorPage !== null && locatorBbox) {
+        targetBbox = locatorBbox;
+        targetBboxUnit = 'normalized_ratio';
+        targetPage = locatorPage;
+      }
+    }
+
+    if (!targetMaterialId) return;
+    const targetQuote = targetAnchorKind === 'text'
+      ? normalizePdfQuote(evidence.quote)
+      : null;
+    const material = projectMaterials.find((item) => normalizeMaterialId(item.material_id) === targetMaterialId);
+    const title = material ? materialTitleLabel(material) : evidence.source_title || evidence.source || targetMaterialId;
+    focusMaterialReaderPane(targetMaterialId, title);
+    setContextRailOpen(true);
+    setContextRailTab('chat');
+    if (targetMaterialId === pinnedMaterialId) {
+      setEmbeddedReaderTarget((previous) => ({
+        page: targetPage ?? undefined,
+        bbox: targetBbox ?? undefined,
+        bboxUnit: targetBboxUnit,
+        chunkId: evidenceChunkId || undefined,
+        quote: targetQuote ?? undefined,
+        nonce: previous.nonce + 1,
+      }));
+    }
+    writeReaderSearchParams(targetMaterialId, {
+      title,
+      page: targetPage,
+      chunkId: evidenceChunkId || null,
+      bbox: targetBbox ? [...targetBbox] : null,
+      bboxUnit: targetBboxUnit,
+      quote: targetQuote,
+      anchorKind: targetAnchorKind,
       replace: false,
     });
   }
@@ -3100,40 +4173,69 @@ export function Dialog() {
   }
 
   const composerContext = (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="inline-grid grid-cols-2 rounded-md border border-outline-variant/60 bg-surface-lowest p-1">
-        {([
-          { id: 'paper', label: '本文献', icon: BookOpen, disabled: !pinnedMaterialId },
-          { id: 'project', label: '项目文献', icon: FolderKanban, disabled: false },
-        ] as const).map((option) => {
-          const Icon = option.icon;
-          const selected = dialogContextScope === option.id;
-          return (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => handleContextScopeChange(option.id)}
-              disabled={option.disabled || isInputDisabled}
-              className={`inline-flex min-h-8 items-center justify-center gap-1.5 rounded px-2.5 text-[11px] font-medium transition-colors ${
-                selected
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-foreground/60 hover:bg-surface-high hover:text-foreground disabled:hover:bg-transparent'
-              } disabled:cursor-not-allowed disabled:opacity-45`}
-              aria-pressed={selected}
-              title={option.disabled ? '从知识库文献进入后可用' : option.label}
-            >
-              <Icon className="h-3.5 w-3.5" aria-hidden />
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-[11px] text-foreground/50">
-        <EnhancementMenu
-          disabled={isInputDisabled}
-          onSelect={(intent) => launchDiscussionEnhancement(intent)}
-        />
-      </div>
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-foreground/50">
+      <ComposerControlMenu
+        label="范围"
+        title={`检索范围：${dialogContextScope === 'paper' ? '本文献' : '项目文献'}`}
+        icon={dialogContextScope === 'paper' ? BookOpen : FolderKanban}
+        disabled={isInputDisabled}
+      >
+        {(close) => ([
+          { id: 'paper' as const, label: '本文献', description: '围绕当前打开的文献检索。', icon: BookOpen, disabled: !pinnedMaterialId },
+          { id: 'project' as const, label: '项目文献', description: '在当前项目材料中检索。', icon: FolderKanban, disabled: false },
+        ].map((option) => (
+          <ComposerMenuItem
+            key={option.id}
+            label={option.label}
+            description={option.disabled ? '从知识库文献进入后可用。' : option.description}
+            icon={option.icon}
+            selected={dialogContextScope === option.id}
+            disabled={option.disabled}
+            title={option.disabled ? '从知识库文献进入后可用' : option.description}
+            onSelect={() => {
+              handleContextScopeChange(option.id);
+              close();
+            }}
+          />
+        )))}
+      </ComposerControlMenu>
+      <ComposerControlMenu
+        label="给智能体"
+        title={agentHandoffMenuTitle}
+        icon={Users2}
+        disabled={agentHandoffMenuDisabled}
+        width="compact"
+      >
+        {(close) => (
+          <ComposerMenuItem
+            role="menuitem"
+            label={agentHandoffButtonText}
+            description="创建接手任务，智能体可读取同一条证据链并写回结果。"
+            icon={Users2}
+            disabled={agentHandoffDisabled}
+            title={agentHandoffActionTitle}
+            onSelect={() => {
+              close();
+              void handleCreateAgentHandoff();
+            }}
+          />
+        )}
+      </ComposerControlMenu>
+      <EnhancementMenu
+        disabled={isInputDisabled}
+        onSelect={(intent) => launchDiscussionEnhancement(intent)}
+      />
+      {agentHandoffMessage ? (
+        <span
+          className={agentHandoffState === 'error'
+            ? 'min-w-0 max-w-[220px] truncate text-[11px] text-destructive'
+            : 'sr-only'}
+          title={agentHandoffMessage}
+          aria-live="polite"
+        >
+          {agentHandoffMessage}
+        </span>
+      ) : null}
     </div>
   );
   const contextRailTabs: Array<{
@@ -3252,14 +4354,21 @@ export function Dialog() {
           <ErrorBoundary fallbackTitle="PDF 阅读器暂时无法显示">
             <Suspense fallback={<PdfReaderFallback />}>
               <PdfReaderShell
-                key={`${pinnedMaterialId}:${embeddedReaderTarget.nonce}:${searchParams.get('page') ?? ''}:${searchParams.get('bbox') ?? ''}:${searchParams.get('chunk') ?? ''}`}
+                key={`${pinnedMaterialId}:${embeddedReaderTarget.nonce}:${searchParams.get('page') ?? ''}:${searchParams.get('bbox') ?? ''}:${searchParams.get('chunk') ?? ''}:${searchParams.get('quote') ?? ''}`}
                 url={pinnedPdfUrl}
                 materialId={pinnedMaterialId}
+                projectId={normalizeProjectId(_material?.project_id) || null}
+                analysisDisabled={isInputDisabled}
                 initialPage={effectiveReaderPage ?? undefined}
+                initialBbox={effectiveReaderBbox}
+                initialQuote={effectiveReaderQuote}
                 highlights={embeddedReaderHighlights}
                 notes={annotationNotes}
+                formulaCandidates={readerFormulaCandidates}
+                selectedVisualRegions={selectedReaderVisualRegions}
                 className="h-full"
                 onAnalyzeText={handleAnalyzeReaderText}
+                onAnalyzeRegion={handleAnalyzeReaderRegion}
                 onPageChange={handleEmbeddedReaderPageChange}
               />
             </Suspense>
@@ -3402,7 +4511,10 @@ export function Dialog() {
             <div className="flex shrink-0 items-center gap-1">
               <button
                 type="button"
-                onClick={() => void refreshProjectMaterials({ surfaceError: false })}
+                onClick={() => {
+                  void refreshProjectMaterials({ surfaceError: false });
+                  setEvidenceGraphRefreshToken((current) => current + 1);
+                }}
                 className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 px-2 py-1 text-[11px] text-foreground/60 transition-colors hover:border-primary/40 hover:text-foreground"
                 title="刷新当前项目材料和图谱"
               >
@@ -3426,10 +4538,10 @@ export function Dialog() {
             {evidenceGraphPayload ? (
               <WikiGraphSegmentedView
                 payload={evidenceGraphPayload}
+                domain="answer"
                 projectId={effectiveProjectId || null}
                 onNavigateTarget={handleGraphNavigateTarget}
                 variant="rail"
-                onExpand={handleOpenGraphExplorer}
                 selectedDimensions={graphSelectedDimensions}
                 onChangeSelectedDimensions={setGraphSelectedDimensions}
               />
@@ -3728,10 +4840,11 @@ export function Dialog() {
     ))
   );
 
+  const activeComposerSelections = currentPdfSelections.map(dialogSelectionContext);
   const chatPanel = (
     <Conversation
       className="min-h-0 flex-1"
-      messages={conversationMessages}
+      messages={visibleConversationMessages}
       onSubmit={(payload) => void handleSendMessage(payload)}
       projectId={effectiveProjectId}
       inputValue={inputValue}
@@ -3740,11 +4853,24 @@ export function Dialog() {
       disabled={isInputDisabled}
       responding={isInputDisabled}
       onStop={handleStopGeneration}
+      inputRef={chatInputRef}
       onEditMessage={handleEditMessage}
       onForkMessage={handleForkMessage}
+      messageFooter={renderAgentHandoffFooter}
+      onSelectEvidence={(evidence) => {
+        void handleSelectEvidence(evidence);
+      }}
       submitKey="enter"
       composerRows={3}
+      composerAriaLabel="对话输入"
+      autoFocusComposer={!isInputDisabled}
       enableAttachments
+      attachments={draftAttachments}
+      onAttachmentsChange={setDraftAttachments}
+      pendingAttachmentReads={pendingAttachmentReads}
+      onPendingAttachmentReadsChange={setPendingAttachmentReads}
+      selectionContexts={activeComposerSelections}
+      onRemoveSelectionContext={handleRemoveCurrentPdfSelection}
       composerHint={isInputDisabled
         ? `AI 思考中 · ${requestElapsedSec}s / ${DIALOG_REQUEST_TIMEOUT_SECONDS}s`
         : `按 Enter 发送，Shift+Enter 换行 · 单次请求最多等待 ${DIALOG_REQUEST_TIMEOUT_SECONDS}s`}
@@ -4228,6 +5354,7 @@ export function Dialog() {
             <div className="min-h-0 flex-1 p-3">
               <WikiGraphSegmentedView
                 payload={evidenceGraphPayload}
+                domain="answer"
                 projectId={effectiveProjectId || null}
                 onNavigateTarget={handleGraphNavigateTarget}
                 variant="explorer"

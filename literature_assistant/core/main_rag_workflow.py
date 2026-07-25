@@ -735,7 +735,8 @@ class RAGWorkflow:
                 # 对齐字段格式
                 for res in local_results:
                     local_text = (
-                        res.get("text")
+                        res.get("raw_content")
+                        or res.get("text")
                         or res.get("claim")
                         or res.get("content")
                         or res.get("source_text")
@@ -761,7 +762,21 @@ class RAGWorkflow:
                         "score": score,
                         "metadata": metadata,
                     }, source_labels, source_hint=source_hint)
-                    for key in ("chunk_id", "material_id", "page", "rerank_score", "rerank_model", "rerank_source", "warning"):
+                    for key in (
+                        "chunk_id",
+                        "material_id",
+                        "page",
+                        "raw_content",
+                        "bbox",
+                        "bbox_unit",
+                        "figure_candidate",
+                        "figure_candidate_detail",
+                        "image_paths",
+                        "rerank_score",
+                        "rerank_model",
+                        "rerank_source",
+                        "warning",
+                    ):
                         if res.get(key) is not None:
                             aligned[key] = res.get(key)
                     if "rerank_fallback" in res:

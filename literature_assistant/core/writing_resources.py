@@ -29,6 +29,12 @@ from repositories.writing_resource_repository import WritingResourceRepository, 
 
 
 CITATION_ANCHORS_METADATA_KEY = "citation_anchors"
+PROJECT_RETENTION_METADATA_KEY = "project_retention"
+PROJECT_RETENTION_SCHEMA_VERSION = "scholar-ai-project-retention/v1"
+
+
+class ProjectRevisionConflictError(ValueError):
+    """Raised when a project retention precondition no longer matches."""
 
 
 def _normalize_citation_anchor(anchor: Mapping[str, Any]) -> dict[str, Any]:
@@ -1894,19 +1900,31 @@ class WritingResourceStore:
             self._autosave_if_enabled()
             return project
 
-    def get_project(self, project_id: str) -> WritingProject | None:
-        """Get a project by ID."""
-        return self._projects.get(project_id)
+    def get_project(self, project_id: str, *, include_archived: bool = False) -> WritingProject | None:
+        """Get a project by ID, hiding archived projects by default."""
+        project = self._projects.get(project_id)
+        if project is not None and project.status is ProjectStatus.ARCHIVED and not include_archived:
+            return None
+        return project
 
-    def list_projects(self, user_id: str | None = None) -> list[WritingProject]:
-        """List all projects, optionally filtered by user."""
+    def list_projects(
+        self,
+        user_id: str | None = None,
+        *,
+        include_archived: bool = False,
+    ) -> list[WritingProject]:
+        """List projects, hiding archived tombstones unless explicitly requested."""
         projects = list(self._projects.values())
+        if not include_archived:
+            projects = [project for project in projects if project.status is not ProjectStatus.ARCHIVED]
         if user_id:
             projects = [p for p in projects if p.user_id == user_id]
         return sorted(projects, key=lambda p: p.created_at, reverse=True)
 
     def update_project_status(self, project_id: str, status: ProjectStatus) -> WritingProject | None:
         """Update project status."""
+        if status is ProjectStatus.ARCHIVED:
+            return self.archive_project(project_id)
         with self._lock:
             project = self.get_project(project_id)
             if project:
@@ -1920,7 +1938,7 @@ class WritingResourceStore:
         """Update project fields (title, description, tags)."""
         with self._lock:
             project = self._projects.get(project_id)
-            if not project:
+            if not project or project.status is ProjectStatus.ARCHIVED:
                 return None
             # Rebuild frozen dataclass with updated fields
             d = project.to_dict()
@@ -1935,8 +1953,191 @@ class WritingResourceStore:
             self._autosave_if_enabled()
             return updated
 
+    def archive_project(
+        self,
+        project_id: str,
+        *,
+        expected_updated_at: str | None = None,
+        archived_by: str | None = None,
+    ) -> WritingProject | None:
+        """Persist an archive tombstone without deleting project-owned resources.
+
+        Args:
+            project_id: Stable project identifier.
+            expected_updated_at: Optional exact revision token observed by the
+                caller. A mismatch aborts before any state is changed.
+            archived_by: Optional local actor identifier for the receipt.
+
+        Returns:
+            Archived project snapshot, or ``None`` when the project is absent.
+
+        Raises:
+            ProjectRevisionConflictError: If the caller's revision token is
+                stale or the project is already archived under another receipt.
+        """
+
+        with self._lock:
+            project = self._projects.get(project_id)
+            if project is None:
+                return None
+            normalized_expected = None if expected_updated_at is None else str(expected_updated_at).strip()
+            if expected_updated_at is not None and not normalized_expected:
+                raise ValueError("expected_updated_at cannot be empty")
+            if normalized_expected is not None and project.updated_at != normalized_expected:
+                raise ProjectRevisionConflictError("project revision changed before archive")
+            if project.status is ProjectStatus.ARCHIVED:
+                raise ProjectRevisionConflictError("project is already archived")
+
+            archived_at = utc_now_iso_z()
+            receipt_id = f"project_archive_{uuid4().hex}"
+            metadata = dict(project.metadata)
+            retention_raw = metadata.get(PROJECT_RETENTION_METADATA_KEY)
+            retention = dict(retention_raw) if isinstance(retention_raw, Mapping) else {}
+            history_raw = retention.get("receipt_history")
+            receipt_history = [
+                dict(item)
+                for item in history_raw
+                if isinstance(item, Mapping)
+            ] if isinstance(history_raw, list) else []
+            archive_receipt = {
+                "receipt_id": receipt_id,
+                "operation": "archive",
+                "project_id": project.project_id,
+                "previous_status": project.status.value,
+                "archived_at": archived_at,
+                "archived_by": str(archived_by or "local-user").strip() or "local-user",
+                "expected_updated_at": project.updated_at,
+            }
+            retention.update(
+                {
+                    "schema_version": PROJECT_RETENTION_SCHEMA_VERSION,
+                    "state": ProjectStatus.ARCHIVED.value,
+                    "archive_receipt": archive_receipt,
+                    "receipt_history": [*receipt_history, archive_receipt],
+                }
+            )
+            metadata[PROJECT_RETENTION_METADATA_KEY] = retention
+            archived = replace(
+                project,
+                status=ProjectStatus.ARCHIVED,
+                updated_at=archived_at,
+                metadata=metadata,
+            )
+            self._projects[project_id] = archived
+            self._autosave_if_enabled()
+            return archived
+
+    def restore_project(
+        self,
+        project_id: str,
+        *,
+        expected_archive_receipt_id: str,
+        expected_updated_at: str | None = None,
+        restored_by: str | None = None,
+    ) -> WritingProject | None:
+        """Restore an archived project when its persisted receipt still matches.
+
+        Args:
+            project_id: Stable project identifier.
+            expected_archive_receipt_id: Receipt id returned by the archive
+                operation. This is the required archive-state precondition.
+            expected_updated_at: Optional exact archived project revision.
+            restored_by: Optional local actor identifier for the restore receipt.
+
+        Returns:
+            Restored project snapshot, or ``None`` when the project is absent.
+
+        Raises:
+            ProjectRevisionConflictError: If archive state, receipt, or revision
+                drifted before the restore.
+        """
+
+        normalized_receipt_id = str(expected_archive_receipt_id or "").strip()
+        if not normalized_receipt_id:
+            raise ValueError("expected_archive_receipt_id cannot be empty")
+        with self._lock:
+            project = self._projects.get(project_id)
+            if project is None:
+                return None
+            if project.status is not ProjectStatus.ARCHIVED:
+                raise ProjectRevisionConflictError("project is not archived")
+            normalized_expected = None if expected_updated_at is None else str(expected_updated_at).strip()
+            if expected_updated_at is not None and not normalized_expected:
+                raise ValueError("expected_updated_at cannot be empty")
+            if normalized_expected is not None and project.updated_at != normalized_expected:
+                raise ProjectRevisionConflictError("project revision changed before restore")
+
+            retention_raw = project.metadata.get(PROJECT_RETENTION_METADATA_KEY)
+            retention = dict(retention_raw) if isinstance(retention_raw, Mapping) else {}
+            archive_raw = retention.get("archive_receipt")
+            archive_receipt = dict(archive_raw) if isinstance(archive_raw, Mapping) else {}
+            if retention.get("state") != ProjectStatus.ARCHIVED.value:
+                raise ProjectRevisionConflictError("project archive tombstone is missing")
+            if str(archive_receipt.get("receipt_id") or "") != normalized_receipt_id:
+                raise ProjectRevisionConflictError("project archive receipt changed before restore")
+
+            previous_status_raw = str(archive_receipt.get("previous_status") or ProjectStatus.DRAFT.value)
+            try:
+                previous_status = ProjectStatus(previous_status_raw)
+            except ValueError:
+                previous_status = ProjectStatus.DRAFT
+            if previous_status is ProjectStatus.ARCHIVED:
+                previous_status = ProjectStatus.DRAFT
+            restored_at = utc_now_iso_z()
+            restore_receipt = {
+                "receipt_id": f"project_restore_{uuid4().hex}",
+                "operation": "restore",
+                "project_id": project.project_id,
+                "archive_receipt_id": normalized_receipt_id,
+                "restored_at": restored_at,
+                "restored_by": str(restored_by or "local-user").strip() or "local-user",
+                "expected_updated_at": project.updated_at,
+            }
+            history_raw = retention.get("receipt_history")
+            receipt_history = [
+                dict(item)
+                for item in history_raw
+                if isinstance(item, Mapping)
+            ] if isinstance(history_raw, list) else []
+            retention.update(
+                {
+                    "state": "active",
+                    "restore_receipt": restore_receipt,
+                    "receipt_history": [*receipt_history, restore_receipt],
+                }
+            )
+            metadata = dict(project.metadata)
+            metadata[PROJECT_RETENTION_METADATA_KEY] = retention
+            restored = replace(
+                project,
+                status=previous_status,
+                updated_at=restored_at,
+                metadata=metadata,
+            )
+            self._projects[project_id] = restored
+            self._autosave_if_enabled()
+            return restored
+
+    def get_project_retention(self, project_id: str) -> dict[str, Any] | None:
+        """Return a detached persisted retention receipt for one project."""
+
+        with self._lock:
+            project = self._projects.get(project_id)
+            if project is None:
+                return None
+            retention = project.metadata.get(PROJECT_RETENTION_METADATA_KEY)
+            if not isinstance(retention, Mapping):
+                return None
+            return json.loads(json.dumps(dict(retention), ensure_ascii=False))
+
     def delete_project(self, project_id: str) -> bool:
-        """Delete a project and all its associated resources (sections, materials, drafts, revisions)."""
+        """Archive a project; retained as a compatibility alias for callers."""
+
+        return self.archive_project(project_id) is not None
+
+    def purge_project(self, project_id: str) -> bool:
+        """Physically purge a project aggregate for explicit internal cleanup only."""
+
         with self._lock:
             if project_id not in self._projects:
                 return False

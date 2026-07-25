@@ -118,6 +118,17 @@ FEATURE_FLAGS: dict[str, FeatureFlagSpec] = {
             "「具体数值见 Table 2」但 Table 2 本身不在 prompt。"
         ),
     ),
+    "rag_evidence_window_shadow": FeatureFlagSpec(
+        name="rag_evidence_window_shadow",
+        default=False,
+        env_var="RAG_EVIDENCE_WINDOW_SHADOW_ENABLED",
+        label="Evidence Window Shadow 审计",
+        description=(
+            "Phase 5A 影子审计：记录 narrative chunk 与同 section/page 的图注、表格、公式"
+            "之间的 EvidenceRelationManifest，并写入 generated/evidence_relations。"
+            "默认关闭；开启后只产生 telemetry，不改变 prompt、TOLF 节点或最终排序。"
+        ),
+    ),
     "local_rerank": FeatureFlagSpec(
         name="local_rerank",
         default=True,

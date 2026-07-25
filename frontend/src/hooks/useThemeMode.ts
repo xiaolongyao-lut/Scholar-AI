@@ -4,10 +4,17 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
 
 const STORAGE_KEY = 'scholar-ai.theme';
+const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)';
+
+function isAgentSidebarRoute(): boolean {
+  if (typeof window === 'undefined') return false;
+  const pathname = window.location.pathname;
+  return pathname === '/agent-sidebar' || pathname.startsWith('/agent-sidebar/');
+}
 
 function readSystemPref(): ResolvedTheme {
   if (typeof window === 'undefined' || !window.matchMedia) return 'light';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return window.matchMedia(DARK_SCHEME_QUERY).matches ? 'dark' : 'light';
 }
 
 function readStoredMode(): ThemeMode {
@@ -25,6 +32,10 @@ function resolve(mode: ThemeMode): ResolvedTheme {
   return mode === 'system' ? readSystemPref() : mode;
 }
 
+function resolveForCurrentRoute(mode: ThemeMode): ResolvedTheme {
+  return isAgentSidebarRoute() ? readSystemPref() : resolve(mode);
+}
+
 function applyDocumentClass(resolved: ResolvedTheme) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
@@ -35,27 +46,31 @@ function applyDocumentClass(resolved: ResolvedTheme) {
 
 export function useThemeMode() {
   const [mode, setModeState] = useState<ThemeMode>(() => readStoredMode());
-  const [resolved, setResolved] = useState<ResolvedTheme>(() => resolve(readStoredMode()));
+  const [resolved, setResolved] = useState<ResolvedTheme>(() => resolveForCurrentRoute(readStoredMode()));
 
   const setMode = useCallback((next: ThemeMode) => {
+    const sidebarRoute = isAgentSidebarRoute();
     setModeState(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      /* ignore quota / private mode */
+    if (!sidebarRoute) {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, next);
+      } catch {
+        /* ignore quota / private mode */
+      }
     }
-    const r = resolve(next);
+    const r = sidebarRoute ? readSystemPref() : resolve(next);
     setResolved(r);
     applyDocumentClass(r);
   }, []);
 
   useEffect(() => {
-    applyDocumentClass(resolve(mode));
+    applyDocumentClass(resolveForCurrentRoute(mode));
   }, [mode]);
 
   useEffect(() => {
-    if (mode !== 'system') return;
-    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+    const followsSystem = isAgentSidebarRoute() || mode === 'system';
+    if (!followsSystem || typeof window === 'undefined' || !window.matchMedia) return;
+    const mql = window.matchMedia(DARK_SCHEME_QUERY);
     const handler = (e: MediaQueryListEvent) => {
       const next: ResolvedTheme = e.matches ? 'dark' : 'light';
       setResolved(next);

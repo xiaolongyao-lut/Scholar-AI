@@ -12,7 +12,9 @@ class EnrichedChunk:
     - Existing 12 fields (chunk_id through keywords) MUST NOT change type,
       default, or removal. ``page`` stays ``int = 0`` (not Optional) — some
       downstream code uses ``chunk.page > 0`` checks.
-    - 5 new fields (bbox, section_path, image_paths, table_csv,
+    - Structured-only optional fields (bbox, bbox_unit, anchor_kind,
+      section_path, image_paths,
+      figure_id, table_id, linked_figure_ids, linked_table_ids, table_csv,
       equation_latex) are all Optional with default None. They are populated
       ONLY by structured-parser chunking paths; the legacy PyMuPDF path
       MUST NOT serialize them (see _chunk_text._chunk_document — default
@@ -39,7 +41,13 @@ class EnrichedChunk:
     # New Optional fields (structured parser only — PyMuPDF path leaves these as
     # field defaults and does NOT serialize the keys; see plan §1.5).
     bbox: list[float] | None = None
+    bbox_unit: str | None = None
+    anchor_kind: str | None = None
     section_path: list[str] | None = None
     image_paths: list[str] | None = None
+    figure_id: str | None = None
+    table_id: str | None = None
+    linked_figure_ids: list[str] | None = None
+    linked_table_ids: list[str] | None = None
     table_csv: str | None = None
     equation_latex: str | None = None

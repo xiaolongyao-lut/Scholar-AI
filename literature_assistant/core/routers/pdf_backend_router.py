@@ -19,20 +19,23 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from feature_flags import is_enabled
-from credential_store import CredentialNotFoundError
+from credential_store import CredentialNotFoundError, RuntimeCredentialStore
 from pdf_backends import (
     ENV_VAR,
     OcrEngine,
     OcrRuntimeConfig,
     OcrReadinessStatus,
     build_ocr_engine,
+    infer_remote_ocr_provider,
     list_ocr_engine_info,
     ocr_engine_next_safe_local_actions,
     public_ocr_status,
+    remote_ocr_endpoint_path,
     resolve_ocr_runtime_config,
     select_ocr_engine,
     write_ocr_runtime_config,
 )
+from pdf_backends.ocr_engine import OcrImageResult
 from project_paths import REPO_ROOT, WORKSPACE_ARTIFACTS_ROOT
 
 
@@ -41,6 +44,8 @@ _MARKER_PKG = "marker-pdf"
 _MARKER_IMPORT_PROBE = "marker.converters.pdf"
 _MAX_OCR_PROBE_IMAGE_BYTES = 10 * 1024 * 1024
 _MAX_OCR_PROBE_BASE64_CHARS = 16 * 1024 * 1024
+_MAX_OCR_PROBE_REGION_SAMPLES = 5
+_MAX_OCR_PROBE_REGION_PREVIEW_CHARS = 120
 _OCR_PROBE_IMAGE_SUFFIXES = {
     ".bmp",
     ".jpeg",
@@ -51,6 +56,14 @@ _OCR_PROBE_IMAGE_SUFFIXES = {
     ".webp",
 }
 _OCR_READINESS_STATUS_VALUES = set(OcrReadinessStatus.__args__)
+
+
+def _get_ocr_credential_store() -> RuntimeCredentialStore:
+    """Return the shared credential store without importing routers at module load."""
+
+    from routers.credentials_router import get_credential_store
+
+    return get_credential_store()
 
 
 class PDFBackendStatus(BaseModel):
@@ -172,6 +185,14 @@ class OcrExecutionProbeRequest(BaseModel):
     preview_chars: int = Field(default=240, ge=0, le=1000)
 
 
+class OcrExecutionRegionSample(BaseModel):
+    """Bounded coordinate sample from one structured OCR region."""
+
+    block_type: str
+    text_preview: str
+    bbox: tuple[float, float, float, float]
+
+
 class OcrExecutionProbeResponse(BaseModel):
     """Bounded proof that one OCR engine executed on one image payload."""
 
@@ -187,6 +208,8 @@ class OcrExecutionProbeResponse(BaseModel):
     text_length: int
     text_sha256: str
     text_preview: str
+    region_count: int = Field(ge=0)
+    region_samples: list[OcrExecutionRegionSample] = Field(default_factory=list)
     duration_ms: int
 
 
@@ -209,6 +232,39 @@ class OcrExecutionBlockedResponse(BaseModel):
     readiness_status: OcrReadinessStatus
     readiness_blockers: list[str] = Field(default_factory=list)
     next_safe_local_actions: list[str] = Field(default_factory=list)
+
+
+def _read_probe_ocr_result(
+    engine: OcrEngine,
+    image: bytes | Path,
+    *,
+    language: str,
+) -> OcrImageResult:
+    """Prefer structured OCR output while retaining legacy engine support."""
+
+    structured_method = getattr(engine, "ocr_image_result", None)
+    if callable(structured_method):
+        result = structured_method(image, language=language)
+        if not isinstance(result, OcrImageResult):
+            raise TypeError("ocr_image_result must return OcrImageResult")
+        return result
+    text = engine.ocr_image(image, language=language)
+    if not isinstance(text, str):
+        raise TypeError("ocr_image must return a string")
+    return OcrImageResult(text=text)
+
+
+def _probe_region_samples(result: OcrImageResult) -> list[OcrExecutionRegionSample]:
+    """Project structured regions to a small response-safe coordinate sample."""
+
+    return [
+        OcrExecutionRegionSample(
+            block_type=region.block_type,
+            text_preview=region.markdown.strip()[:_MAX_OCR_PROBE_REGION_PREVIEW_CHARS],
+            bbox=region.bbox,
+        )
+        for region in result.regions[:_MAX_OCR_PROBE_REGION_SAMPLES]
+    ]
 
 
 def _sha256_hex(data: bytes) -> str:
@@ -309,11 +365,19 @@ def _decode_probe_image(
 def _resolve_probe_engine(request: OcrExecutionProbeRequest) -> OcrEngine:
     """Return the selected OCR engine or raise a bounded preflight error."""
 
+    credential_store = _get_ocr_credential_store()
     if request.engine is not None and str(request.engine).strip():
-        return build_ocr_engine(str(request.engine).strip(), request.engine_config)
+        return build_ocr_engine(
+            str(request.engine).strip(),
+            request.engine_config,
+            credential_store=credential_store,
+        )
 
     runtime_config = resolve_ocr_runtime_config()
-    engine, warning = select_ocr_engine(runtime_config)
+    engine, warning = select_ocr_engine(
+        runtime_config,
+        credential_store=credential_store,
+    )
     if engine is None:
         raise ValueError(str(warning or "no OCR engine selected"))
     return engine
@@ -342,32 +406,6 @@ def _ocr_health_response_payload(engine: OcrEngine, health: Any) -> dict[str, An
         )
     )
     return payload
-
-
-def _remote_ocr_provider_from_credential(
-    provider_name: str,
-    model_name: str,
-) -> str:
-    """Infer a remote OCR provider preset from saved credential metadata."""
-
-    text = f"{provider_name} {model_name}".strip().lower()
-    if "mistral" in text:
-        return "mistral"
-    if "mineru" in text or "magic-pdf" in text:
-        return "mineru"
-    return "generic"
-
-
-def _remote_ocr_endpoint_for_provider(provider: str, base_url: str) -> str:
-    """Return provider-specific endpoint path without duplicating base path."""
-
-    normalized = str(provider or "generic").strip().lower()
-    url = str(base_url or "").strip().rstrip("/")
-    if normalized == "mistral":
-        return "" if url.endswith("/ocr") else "/ocr"
-    if normalized == "mineru":
-        return "" if url.endswith("/file-urls/batch") else "/v4/file-urls/batch"
-    return "/ocr"
 
 
 def _ocr_execution_blocked_payload(
@@ -441,7 +479,7 @@ def _probe_marker_installed() -> tuple[bool, str | None]:
 def get_pdf_backend_status() -> PDFBackendStatus:
     """Return current core PDF backend wiring."""
     backend, source = _resolve_active_backend()
-    ocr_status = public_ocr_status()
+    ocr_status = public_ocr_status(credential_store=_get_ocr_credential_store())
     marker_installed, marker_version = _probe_marker_installed()
     return PDFBackendStatus(
         active_backend=backend,
@@ -474,14 +512,23 @@ def get_pdf_backend_status() -> PDFBackendStatus:
 def list_ocr_engines() -> list[OcrEnginePublicInfo]:
     """Return registered OCR engines with availability metadata."""
 
-    return [OcrEnginePublicInfo(**item.as_dict()) for item in list_ocr_engine_info()]
+    runtime_config = resolve_ocr_runtime_config()
+    return [
+        OcrEnginePublicInfo(**item.as_dict())
+        for item in list_ocr_engine_info(
+            engine_config=runtime_config.engine_config,
+            credential_store=_get_ocr_credential_store(),
+        )
+    ]
 
 
 @router.get("/ocr-status", response_model=OcrStatusResponse)
 def get_ocr_status() -> OcrStatusResponse:
     """Return the redacted OCR runtime status."""
 
-    return OcrStatusResponse(**public_ocr_status())
+    return OcrStatusResponse(
+        **public_ocr_status(credential_store=_get_ocr_credential_store())
+    )
 
 
 @router.post("/ocr-engine", response_model=OcrEngineSelectionResponse)
@@ -495,6 +542,7 @@ def select_ocr_engine_endpoint(
     """
 
     try:
+        credential_store = _get_ocr_credential_store()
         config = OcrRuntimeConfig(
             policy=request.policy,
             engine=request.engine,
@@ -505,7 +553,11 @@ def select_ocr_engine_endpoint(
         if request.policy == "engine" and not request.engine:
             raise ValueError("policy 'engine' requires an engine id")
         if request.engine:
-            build_ocr_engine(request.engine, request.engine_config)
+            build_ocr_engine(
+                request.engine,
+                request.engine_config,
+                credential_store=credential_store,
+            )
         path = write_ocr_runtime_config(config)
         resolved = resolve_ocr_runtime_config(config_path=path)
     except (TypeError, ValueError) as exc:
@@ -514,7 +566,9 @@ def select_ocr_engine_endpoint(
     return OcrEngineSelectionResponse(
         saved=True,
         config_path=str(path),
-        status=OcrStatusResponse(**public_ocr_status(resolved)),
+        status=OcrStatusResponse(
+            **public_ocr_status(resolved, credential_store=credential_store)
+        ),
     )
 
 
@@ -523,6 +577,7 @@ def check_ocr_engine_health(request: OcrHealthRequest) -> OcrHealthResponse:
     """Run a lightweight readiness probe for one OCR engine."""
 
     try:
+        credential_store = _get_ocr_credential_store()
         runtime_config = resolve_ocr_runtime_config()
         if request.engine:
             engine_config = (
@@ -530,13 +585,29 @@ def check_ocr_engine_health(request: OcrHealthRequest) -> OcrHealthResponse:
                 if request.engine_config
                 else runtime_config.engine_config
             )
-            engine = build_ocr_engine(request.engine, engine_config)
+            engine = build_ocr_engine(
+                request.engine,
+                engine_config,
+                credential_store=credential_store,
+            )
         else:
-            status = public_ocr_status(runtime_config)
-            selected = status.get("selected_engine")
-            if not isinstance(selected, str) or not selected:
-                raise ValueError(str(status.get("warning") or "no OCR engine selected"))
-            engine = build_ocr_engine(selected, runtime_config.engine_config)
+            # Keep a configured-but-unavailable engine inspectable.  Selection
+            # intentionally returns ``None`` for unavailable engines because
+            # ingestion must not run them; a health request needs the engine's
+            # bounded readiness blocker so the UI can explain the repair.
+            if runtime_config.engine:
+                engine = build_ocr_engine(
+                    runtime_config.engine,
+                    runtime_config.engine_config,
+                    credential_store=credential_store,
+                )
+            else:
+                engine, warning = select_ocr_engine(
+                    runtime_config,
+                    credential_store=credential_store,
+                )
+                if engine is None:
+                    raise ValueError(str(warning or "no OCR engine selected"))
         health = engine.health_check()
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -549,10 +620,9 @@ def apply_ocr_credential(
 ) -> OcrEngineSelectionResponse:
     """Apply a saved OCR credential to the remote OCR runtime config."""
 
-    from routers.credentials_router import get_credential_store
-
+    credential_store = _get_ocr_credential_store()
     try:
-        credential = get_credential_store().get_internal(request.credential_id)
+        credential = credential_store.get_internal(request.credential_id)
     except CredentialNotFoundError as exc:
         raise HTTPException(
             status_code=404,
@@ -577,31 +647,44 @@ def apply_ocr_credential(
                 f"got {credential.category.value}"
             ),
         )
+    if credential.protocol.value != "ocr":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "credential protocol mismatch: expected ocr, "
+                f"got {credential.protocol.value}"
+            ),
+        )
 
-    provider = (
-        request.provider.strip().lower()
-        if isinstance(request.provider, str) and request.provider.strip()
-        else _remote_ocr_provider_from_credential(credential.provider, credential.model)
-    )
+    current_runtime_config = resolve_ocr_runtime_config()
+    # Credential metadata owns the adapter family so stale clients cannot
+    # redirect a saved key into an incompatible OCR protocol.
+    provider = infer_remote_ocr_provider(credential.provider, credential.model)
+    endpoint_path = remote_ocr_endpoint_path(provider, credential.base_url)
     engine_config: dict[str, Any] = {
+        "credential_id": credential.credential_id,
         "provider": provider,
         "base_url": credential.base_url,
-        "endpoint_path": _remote_ocr_endpoint_for_provider(provider, credential.base_url),
-        "api_key": credential.api_key,
         "model": credential.model,
         "allow_remote_upload": request.allow_remote_upload,
         "allow_insecure_http": request.allow_insecure_http,
         "timeout_seconds": request.timeout_seconds,
     }
+    if endpoint_path:
+        engine_config["endpoint_path"] = endpoint_path
     config = OcrRuntimeConfig(
         policy="engine",
         engine="remote_api",
-        language="en",
+        language=current_runtime_config.language,
         source="config",
         engine_config=engine_config,
     )
     try:
-        build_ocr_engine("remote_api", engine_config)
+        build_ocr_engine(
+            "remote_api",
+            engine_config,
+            credential_store=credential_store,
+        )
         path = write_ocr_runtime_config(config)
         resolved = resolve_ocr_runtime_config(config_path=path)
     except (TypeError, ValueError) as exc:
@@ -610,7 +693,9 @@ def apply_ocr_credential(
     return OcrEngineSelectionResponse(
         saved=True,
         config_path=str(path),
-        status=OcrStatusResponse(**public_ocr_status(resolved)),
+        status=OcrStatusResponse(
+            **public_ocr_status(resolved, credential_store=credential_store)
+        ),
     )
 
 
@@ -652,7 +737,7 @@ def run_ocr_execution_probe(
                     reason=unavailable,
                 ),
             )
-        text = engine.ocr_image(image_input, language=language)
+        result = _read_probe_ocr_result(engine, image_input, language=language)
     except HTTPException:
         raise
     except FileNotFoundError as exc:
@@ -662,7 +747,7 @@ def run_ocr_execution_probe(
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)[:500]) from exc
 
-    text_value = str(text)
+    text_value = result.text
     preview_chars = request.preview_chars
     duration_ms = int((time.perf_counter() - started) * 1000)
     return OcrExecutionProbeResponse(
@@ -678,5 +763,7 @@ def run_ocr_execution_probe(
         text_length=len(text_value),
         text_sha256=_sha256_hex(text_value.encode("utf-8")),
         text_preview=text_value[:preview_chars],
+        region_count=len(result.regions),
+        region_samples=_probe_region_samples(result),
         duration_ms=duration_ms,
     )

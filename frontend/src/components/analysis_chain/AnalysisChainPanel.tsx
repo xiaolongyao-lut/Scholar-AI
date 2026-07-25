@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
 import type { AnalysisChainPayload } from '@/services/discussionApi';
+import { EvidencePill, type EvidenceRefLike } from '@/components/evidence/EvidencePill';
 
 /**
  * Shared collapsible renderer for a 6-field AnalysisChain.
@@ -25,6 +26,12 @@ interface AnalysisChainPanelProps {
   title?: string;
   /** Wrapper class — caller controls outer spacing/borders. */
   className?: string;
+  /** Active project id forwarded to evidence pills for locator upgrade. */
+  projectId?: string | null;
+  /** Selection bus glue — focused evidence id (chunk_id / evidence_id). */
+  selectedEvidenceId?: string | null;
+  onSelectEvidence?: (evidence: EvidenceRefLike) => void;
+  navigateEvidenceAfterSelect?: boolean;
 }
 
 function _hasContent(chain: AnalysisChainPayload): boolean {
@@ -45,6 +52,10 @@ export function AnalysisChainPanel({
   onExpandedChange,
   title,
   className,
+  projectId,
+  selectedEvidenceId,
+  onSelectEvidence,
+  navigateEvidenceAfterSelect = false,
 }: AnalysisChainPanelProps) {
   const { t } = useI18n();
   const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
@@ -91,11 +102,19 @@ export function AnalysisChainPanel({
           <FieldList
             label={t('analysis_chain.field_evidence') || '证据'}
             values={chain.evidence}
+            projectId={projectId}
+            selectedEvidenceId={selectedEvidenceId}
+            onSelectEvidence={onSelectEvidence}
+            navigateEvidenceAfterSelect={navigateEvidenceAfterSelect}
           />
           <Field label={t('analysis_chain.field_boundary') || '适用范围'} value={chain.boundary} />
           <FieldList
             label={t('analysis_chain.field_counter_evidence') || '反证'}
             values={chain.counter_evidence}
+            projectId={projectId}
+            selectedEvidenceId={selectedEvidenceId}
+            onSelectEvidence={onSelectEvidence}
+            navigateEvidenceAfterSelect={navigateEvidenceAfterSelect}
           />
           <Field
             label={t('analysis_chain.field_next_action') || '下一步'}
@@ -120,7 +139,21 @@ function Field({ label, value }: { label: string; value?: string }) {
   );
 }
 
-function FieldList({ label, values }: { label: string; values?: string[] }) {
+function FieldList({
+  label,
+  values,
+  projectId,
+  selectedEvidenceId,
+  onSelectEvidence,
+  navigateEvidenceAfterSelect,
+}: {
+  label: string;
+  values?: string[];
+  projectId?: string | null;
+  selectedEvidenceId?: string | null;
+  onSelectEvidence?: (evidence: EvidenceRefLike) => void;
+  navigateEvidenceAfterSelect?: boolean;
+}) {
   const filtered = (values ?? []).map((v) => v.trim()).filter(Boolean);
   if (filtered.length === 0) return null;
   return (
@@ -130,11 +163,69 @@ function FieldList({ label, values }: { label: string; values?: string[] }) {
       </dt>
       <dd>
         <ul className="ml-4 list-disc space-y-0.5 leading-relaxed">
-          {filtered.map((value, idx) => (
-            <li key={idx}>{value}</li>
-          ))}
+          {filtered.map((value, idx) => {
+            const evidenceRef = parseAnalysisEvidenceRef(value, idx);
+            return (
+              <li key={idx}>
+                <span>{evidenceRef ? formatAnalysisEvidenceSummary(evidenceRef, idx) : value}</span>
+                {evidenceRef ? (
+                  <span className="ml-2 inline-flex align-baseline">
+                    <EvidencePill
+                      evidence={evidenceRef}
+                      projectId={projectId}
+                      selected={
+                        !!selectedEvidenceId &&
+                        (evidenceRef.evidence_id === selectedEvidenceId || evidenceRef.chunk_id === selectedEvidenceId)
+                      }
+                      onActivate={onSelectEvidence}
+                      navigateAfterActivate={navigateEvidenceAfterSelect}
+                      labelOverride={`打开证据 ${idx + 1}`}
+                      title={`打开证据 ${idx + 1}`}
+                    />
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       </dd>
     </div>
   );
+}
+
+function parseAnalysisEvidenceRef(value: string, index: number): EvidenceRefLike | null {
+  const chunkId = readKeyedValue(value, 'chunk_id');
+  const materialId = readKeyedValue(value, 'material_id');
+  if (!chunkId && !materialId) return null;
+  const page = parsePage(readKeyedValue(value, 'page'));
+  const source = readKeyedValue(value, 'source') ?? `证据 ${index + 1}`;
+  return {
+    evidence_id: chunkId ?? materialId,
+    chunk_id: chunkId,
+    material_id: materialId,
+    page,
+    source,
+    text: value,
+    source_type: 'project',
+    source_kind: 'local',
+  };
+}
+
+function formatAnalysisEvidenceSummary(evidence: EvidenceRefLike, index: number): string {
+  const source = String(evidence.source ?? '').trim();
+  const page = typeof evidence.page === 'number' && evidence.page > 0 ? ` · p.${evidence.page}` : '';
+  return `[${index + 1}] ${source || `证据 ${index + 1}`}${page}`;
+}
+
+function readKeyedValue(value: string, key: string): string | null {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`(?:^|[;\\s])${escaped}=([^;\\n]+)`).exec(value);
+  const raw = match?.[1]?.trim() ?? '';
+  return raw ? raw : null;
+}
+
+function parsePage(value: string | null): number | null {
+  if (!value || !/^-?\d{1,5}$/.test(value.trim())) return null;
+  const page = Number.parseInt(value.trim(), 10);
+  return Number.isFinite(page) && page > 0 ? page : null;
 }

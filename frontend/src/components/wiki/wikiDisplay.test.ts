@@ -14,8 +14,8 @@ describe('wiki display sanitization', () => {
   });
 
   it('hides routes, structured blobs, and raw identifiers', () => {
-    expect(formatWikiError('GET /api/wiki/graph failed')).toBe('读取 Wiki 信息失败，请稍后重试。');
-    expect(formatWikiWarning('{"detail":"page_store_path missing"}')).toBe('检测到一项需要处理的 Wiki 状态。');
+    expect(formatWikiError('GET /api/wiki/graph failed')).toBe('读取知识库信息失败，请稍后重试。');
+    expect(formatWikiWarning('{"detail":"page_store_path missing"}')).toBe('检测到一项需要处理的知识库状态。');
     expect(sanitizeWikiVisibleText('source_id missing', '隐藏')).toBe('隐藏');
   });
 
@@ -25,7 +25,7 @@ describe('wiki display sanitization', () => {
 
   it('maps source manifest warnings to user-facing integrity text', () => {
     expect(formatWikiWarning('Wiki query index source manifest hash differs from the current generated wiki pages.')).toBe(
-      'Wiki 来源清单已变化，检索索引需要重新生成。',
+      '来源清单已变化，检索索引需要重新生成。',
     );
   });
 });

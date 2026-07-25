@@ -9,9 +9,7 @@ const repoRoot = path.resolve(frontendRoot, '..');
 const schemaPath = path.resolve(frontendRoot, 'openapi', 'modular-pipeline-openapi.json');
 const typesPath = path.resolve(frontendRoot, 'src', 'generated', 'openapi.ts');
 const backendRoots = [
-  path.resolve(repoRoot, 'literature_assistant', 'core', 'python_adapter_server.py'),
-  path.resolve(repoRoot, 'literature_assistant', 'core', 'routers'),
-  path.resolve(repoRoot, 'literature_assistant', 'core', 'models'),
+  path.resolve(repoRoot, 'literature_assistant', 'core'),
 ];
 
 function latestMtimeMs(targetPath) {

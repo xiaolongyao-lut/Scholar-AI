@@ -153,11 +153,23 @@ htmlcov/
 !/frontend/src/test/setup.ts
 !/frontend/src/components/chat/MessageRenderer.test.tsx
 !/frontend/src/components/chat/MessageBubble.test.tsx
+!/frontend/src/components/chat/relatedFigures.test.ts
 !/frontend/src/components/DiscussionPanel/DiscussionPanel.evidencePills.test.tsx
 !/frontend/src/components/evidence/EvidencePill.test.tsx
+!/frontend/src/pages/UploadBatchSummary.test.tsx
 !/frontend/src/components/graph/DimensionGraphViewer.test.tsx
 !/frontend/src/components/graph/GraphPayloadViewer.test.tsx
 !/frontend/src/components/graph/semanticReviewSpec.test.ts
+!/frontend/src/components/PdfViewer/PdfReaderShell.test.tsx
+!/frontend/src/components/PdfViewer/PdfViewer.test.tsx
+!/frontend/src/lib/pdfQuoteAnchor.test.ts
+!/frontend/src/components/chat/ChatInput.test.tsx
+!/frontend/src/contexts/SmartReadContext.test.tsx
+!/frontend/src/pages/Dialog.test.tsx
+!/frontend/src/pages/AgentSidebar.test.tsx
+!/frontend/src/pages/LiteratureAcquisition.test.tsx
+!/frontend/src/services/agentSidebarApi.test.ts
+!/frontend/src/services/acquisitionApi.test.ts
 !/frontend/src/components/inspiration/SparkEvidencePills.test.tsx
 !/frontend/src/components/mcp/McpPendingCallPoller.test.tsx
 !/frontend/src/hooks/useJobEventPolling.test.tsx
@@ -174,6 +186,7 @@ htmlcov/
 !/frontend/src/services/wikiApi.test.ts
 !/frontend/src/services/knowledgeApi.test.tsx
 !/frontend/src/pages/Jobs.test.tsx
+!/frontend/src/pages/KnowledgeBase.test.tsx
 !/frontend/src/pages/Settings.test.tsx
 /frontend/playwright.config.ts
 /frontend/vite.config.e2e.ts
@@ -222,7 +235,9 @@ htmlcov/
 !/tests/
 /tests/*
 # Public-source candidate tests stay path-explicit until the full tests tree is reviewed.
+!/tests/test_acquisition_consistency.py
 !/tests/test_chat_hybrid_retrieval.py
+!/tests/test_chat_router_multimodal.py
 !/tests/test_chunk_vector_store_dim_allowlist.py
 !/tests/test_credentials_sampling.py
 !/tests/test_credentials_strategy_hint_mapping.py
@@ -232,8 +247,10 @@ htmlcov/
 !/tests/test_embedding_key_probe.py
 !/tests/test_evolution_release_hardening.py
 !/tests/test_local_rerank_status_endpoint.py
+!/tests/test_intelligent_chat_evidence_roles.py
 !/tests/test_metadata_linter_api.py
 !/tests/test_pdf_backend_router.py
+!/tests/test_formula_candidates.py
 !/tests/test_ocr_classifier.py
 !/tests/test_ocr_engine_registry.py
 !/tests/test_ocr_ingestion.py
@@ -269,7 +286,9 @@ htmlcov/
 !/tests/live_provider_direct_workflow_smoke.py
 !/tests/test_mcp_phase2_tool_loop.py
 !/tests/test_runtime_router_contract.py
+!/tests/test_resources_chunk_locator.py
 !/tests/test_runtime_lifecycle_app_contract.py
+!/tests/test_terminal_output.py
 !/tests/test_knowledge_router.py
 !/tests/test_agent_bridge_router.py
 !/tests/test_agent_workspace_router.py

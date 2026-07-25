@@ -26,8 +26,11 @@ import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/contexts/I18nContext';
 import { getWritingBackendService } from '@/services/writingBackend';
+import { getWritingRuntimeClient } from '@/services/runtimeClient';
 import { useWriting } from '@/contexts/WritingContext';
 import { getApiBaseUrl } from '@/services/apiBaseUrl';
+import { UploadBatchSummary } from './UploadBatchSummaryView';
+import type { JobEventSnapshot } from '@/types/runtime';
 import axios from 'axios';
 import { PageHeader } from '@/components/common/PageHeader';
 import { StatusPill } from '@/components/common/StatusPill';
@@ -59,24 +62,34 @@ interface UploadBatchItem {
   title: string;
   content_length?: number;
   chunks?: number;
-  status: 'ok' | 'error' | 'duplicate' | 'queued';
+  status: 'ok' | 'error' | 'duplicate' | 'queued' | 'skipped';
   error?: string;
   job_id?: string;
   session_id?: string;
   open_url?: string;
   message?: string;
+  batch_id?: string;
+  batch_index?: number;
+  batch_total?: number;
 }
 
 interface UploadBatchResult {
   project_id: string;
+  batch_id: string;
+  submitted_at: string;
   total_files: number;
+  accepted_files: number;
+  completed_files: number;
   successful_files: number;
-  duplicate_files?: number;
-  queued_files?: number;
+  duplicate_files: number;
+  skipped_files: number;
+  queued_files: number;
   failed_files: number;
   total_chunks: number;
   results: UploadBatchItem[];
 }
+
+type MaterialsLoadPhase = 'idle' | 'loading' | 'refreshing' | 'ready' | 'error';
 
 const _typeColors: Record<KBDocumentType, string> = {
   pdf: 'text-red-500 bg-red-50 dark:bg-red-500/15 dark:text-red-300',
@@ -89,6 +102,10 @@ const _typeColors: Record<KBDocumentType, string> = {
 const KNOWLEDGE_INTERNAL_TEXT_PATTERN = /(?:\/api\/|\/resources\/|\/runtime\/|\/pipeline\/|\/memory\/|\/skills\/|\/capabilities\/|https?:\/\/|[A-Za-z]:[\\/]|api[_\s-]?key|base[_\s-]?url|authorization|bearer|token|secret|password|credential|env=|env_refs|capability_[a-z0-9_]*|server_id|tool_call_id|credential_id|workspace_root|source_folder|material_id|job_id|session_id|[{}[\]"`])/i;
 const KNOWLEDGE_IDENTIFIER_TEXT_PATTERN = /\b(?:[A-Z][A-Z0-9]+_[A-Z0-9_]+|(?:env|credential|capability|server|tool|workspace|source|material|job|session)_[a-z0-9_]+)\b/;
 const KNOWLEDGE_ERROR_TEXT_LIMIT = 120;
+const UPLOAD_JOB_POLL_INTERVAL_MS = 2500;
+const UPLOAD_JOB_POLL_MAX_ROUNDS = 120;
+const UPLOAD_JOB_EVENT_LIMIT = 50;
+const UPLOAD_JOB_TIMEOUT_NOTICE = '后台处理时间较长，可在任务中心继续查看；当前文献列表会保持不变。';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -147,6 +164,87 @@ function isAbortLikeError(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false;
   const value = err as { name?: unknown; code?: unknown };
   return value.name === 'AbortError' || value.code === 'ERR_CANCELED';
+}
+
+function readNonNegativeInteger(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined;
+  return Math.floor(value);
+}
+
+function readUploadTaskSummary(snapshot: JobEventSnapshot): Record<string, unknown> {
+  const summary = snapshot.job.material_processing_task_summary;
+  return isRecord(summary) ? summary : {};
+}
+
+function resolveUploadTerminalStatus(snapshot: JobEventSnapshot): 'completed' | 'failed' | 'cancelled' | null {
+  const runtimeStatuses = [snapshot.status.status, snapshot.job.status]
+    .map((status) => String(status || '').trim().toLowerCase());
+  const taskStatus = String(readUploadTaskSummary(snapshot).status || '').trim().toLowerCase();
+  const allStatuses = [...runtimeStatuses, taskStatus];
+  if (allStatuses.includes('failed') || allStatuses.includes('approval_rejected')) return 'failed';
+  if (allStatuses.includes('cancelled')) return 'cancelled';
+  if (allStatuses.includes('completed')) return 'completed';
+  return null;
+}
+
+function settleUploadBatchItem(item: UploadBatchItem, snapshot: JobEventSnapshot): UploadBatchItem {
+  const terminalStatus = resolveUploadTerminalStatus(snapshot);
+  if (!terminalStatus) return item;
+
+  const taskSummary = readUploadTaskSummary(snapshot);
+  if (terminalStatus === 'completed') {
+    const chunks = readNonNegativeInteger(taskSummary.chunks)
+      ?? readNonNegativeInteger(item.chunks)
+      ?? 0;
+    const contentLength = readNonNegativeInteger(taskSummary.content_length)
+      ?? readNonNegativeInteger(item.content_length);
+    return {
+      ...item,
+      status: 'ok',
+      chunks,
+      ...(contentLength === undefined ? {} : { content_length: contentLength }),
+      error: undefined,
+      message: '文本提取已完成。',
+    };
+  }
+
+  const fallback = terminalStatus === 'cancelled'
+    ? '后台处理已取消。'
+    : '文献后台处理失败，请到任务中心查看详情。';
+  const rawError = typeof snapshot.job.error === 'string'
+    ? snapshot.job.error
+    : typeof snapshot.status.error === 'string'
+      ? snapshot.status.error
+      : typeof taskSummary.error === 'string'
+        ? taskSummary.error
+        : '';
+  return {
+    ...item,
+    status: 'error',
+    error: sanitizeKnowledgeVisibleError(rawError, fallback),
+    message: undefined,
+  };
+}
+
+function rebuildUploadBatchSummary(
+  summary: UploadBatchResult,
+  results: UploadBatchItem[],
+): UploadBatchResult {
+  const successfulFiles = results.filter((item) => item.status === 'ok').length;
+  return {
+    ...summary,
+    completed_files: successfulFiles,
+    successful_files: successfulFiles,
+    duplicate_files: results.filter((item) => item.status === 'duplicate').length,
+    skipped_files: results.filter((item) => item.status === 'skipped').length,
+    queued_files: results.filter((item) => item.status === 'queued').length,
+    failed_files: results.filter((item) => item.status === 'error').length,
+    total_chunks: results.reduce(
+      (total, item) => total + (item.status === 'ok' ? (readNonNegativeInteger(item.chunks) ?? 0) : 0),
+      0,
+    ),
+    results,
+  };
 }
 
 interface ScanResultItem {
@@ -210,13 +308,26 @@ export function KnowledgeBase() {
   const [editingFolder, setEditingFolder] = useState(false);
   const [folderDraft, setFolderDraft] = useState('');
   const [savingFolder, setSavingFolder] = useState(false);
+  const [materialsLoadPhase, setMaterialsLoadPhase] = useState<MaterialsLoadPhase>('idle');
+  const [materialsLoadError, setMaterialsLoadError] = useState<string | null>(null);
+  const [materialsSnapshotProjectId, setMaterialsSnapshotProjectId] = useState<string | null>(null);
+  const [materialsLoadProjectId, setMaterialsLoadProjectId] = useState<string | null>(null);
+  const { activeProjectId, setActiveProjectId } = useWriting();
+  const materialsSnapshotProjectIdRef = useRef<string | null>(null);
+  const activeProjectIdRef = useRef(activeProjectId);
+  activeProjectIdRef.current = activeProjectId;
+  const materialsRequestSequenceRef = useRef(0);
+  const materialsLatestSequenceByProjectRef = useRef(new Map<string, number>());
+  const materialsInFlightRef = useRef(new Map<string, { sequence: number; promise: Promise<void> }>());
+  const docsRef = useRef<KBDocument[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const scanAbortControllerRef = useRef<AbortController | null>(null);
   const uploadStopRequestedRef = useRef(false);
   const scanStopRequestedRef = useRef(false);
   const routeProjectAppliedRef = useRef<string | null>(null);
-  const { activeProjectId, setActiveProjectId } = useWriting();
+  const uploadSummaryRef = useRef<UploadBatchResult | null>(null);
+  uploadSummaryRef.current = uploadSummary;
   const queryProjectId = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return (params.get('project_id') ?? params.get('project') ?? '').trim();
@@ -242,61 +353,127 @@ export function KnowledgeBase() {
       setProjectSourceFolder('');
       setProjectSourceFolderRef(null);
       setProjectTitle('');
-      return;
+      return undefined;
     }
+    const projectId = activeProjectId;
+    const abortController = new AbortController();
+    let cancelled = false;
     const baseUrl = getApiBaseUrl();
-    axios.get(`${baseUrl}/resources/project/${activeProjectId}`, { timeout: 8000 })
+    axios.get(`${baseUrl}/resources/project/${projectId}`, {
+      signal: abortController.signal,
+      timeout: 8000,
+    })
       .then(res => {
+        if (cancelled || activeProjectIdRef.current !== projectId) return;
         const data = res.data as ProjectSourcePayload;
         setProjectSourceFolder(data.source_folder ?? '');
         setProjectSourceFolderRef(data.source_folder_ref ?? null);
         setProjectTitle(data.title ?? '');
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        if (cancelled || isAbortLikeError(err) || activeProjectIdRef.current !== projectId) return;
         setProjectSourceFolder('');
         setProjectSourceFolderRef(null);
         setProjectTitle('');
       });
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
   }, [activeProjectId]);
 
-  const loadMaterials = useCallback(async () => {
-    if (!activeProjectId) {
-      setDocs([]);
-      return;
-    }
-    try {
-      const svc = getWritingBackendService();
-      const materials = await svc.listMaterials(activeProjectId);
-      let chunkCounts: Record<string, number> = {};
-      try {
-        const baseUrl = getApiBaseUrl();
-        const { data } = await axios.get(`${baseUrl}/resources/chunks`, {
-          params: { project_id: activeProjectId },
-          timeout: 15000,
-        });
-        for (const chunk of (data.chunks ?? [])) {
-          const materialId = chunk.material_id;
-          chunkCounts[materialId] = (chunkCounts[materialId] || 0) + 1;
-        }
-      } catch {
-        chunkCounts = {};
+  const loadMaterials = useCallback((options: { projectId?: string; force?: boolean } = {}): Promise<void> => {
+    const projectId = (options.projectId ?? activeProjectIdRef.current).trim();
+    const force = options.force === true;
+    if (!projectId) {
+      if (!activeProjectIdRef.current) {
+        docsRef.current = [];
+        setDocs([]);
+        materialsSnapshotProjectIdRef.current = null;
+        setMaterialsSnapshotProjectId(null);
+        setMaterialsLoadProjectId(null);
+        setMaterialsLoadError(null);
+        setMaterialsLoadPhase('ready');
       }
-      setDocs(materials.map(material => {
-        const chunks = chunkCounts[material.material_id] || 0;
-        return {
-          id: material.material_id,
-          name: material.title,
-          type: inferDocumentType(material.title || ''),
-          size: '',
-          addedAt: material.created_at ? new Date(material.created_at).toISOString().slice(0, 10) : '',
-          chunks,
-          status: chunks > 0 ? 'indexed' : 'no_text',
-        };
-      }));
-    } catch {
-      setDocs([]);
+      return Promise.resolve();
     }
-  }, [activeProjectId]);
+
+    const existing = materialsInFlightRef.current.get(projectId);
+    if (existing && !force) {
+      return existing.promise;
+    }
+
+    const sequence = ++materialsRequestSequenceRef.current;
+    materialsLatestSequenceByProjectRef.current.set(projectId, sequence);
+    const isCurrentRequest = (): boolean => (
+      activeProjectIdRef.current === projectId
+      && materialsLatestSequenceByProjectRef.current.get(projectId) === sequence
+    );
+    const hasSnapshot = materialsSnapshotProjectIdRef.current === projectId;
+    if (activeProjectIdRef.current === projectId) {
+      setMaterialsLoadProjectId(projectId);
+      setMaterialsLoadPhase(hasSnapshot ? 'refreshing' : 'loading');
+      setMaterialsLoadError(null);
+    }
+
+    const request = (async (): Promise<void> => {
+      try {
+        const svc = getWritingBackendService();
+        const materials = await svc.listMaterials(projectId);
+        let chunkCounts: Record<string, number> = {};
+        try {
+          const baseUrl = getApiBaseUrl();
+          const { data } = await axios.get(`${baseUrl}/resources/chunks`, {
+            params: { project_id: projectId },
+            timeout: 15000,
+          });
+          const chunks = isRecord(data) && Array.isArray(data.chunks) ? data.chunks : [];
+          for (const chunk of chunks) {
+            if (!isRecord(chunk) || typeof chunk.material_id !== 'string') continue;
+            const materialId = chunk.material_id;
+            chunkCounts[materialId] = (chunkCounts[materialId] || 0) + 1;
+          }
+        } catch {
+          // Preserve known counts when the optional chunk summary is unavailable.
+          chunkCounts = materialsSnapshotProjectIdRef.current === projectId
+            ? Object.fromEntries(docsRef.current.map((doc) => [doc.id, doc.chunks]))
+            : {};
+        }
+        const nextDocs: KBDocument[] = materials.map(material => {
+          const chunks = chunkCounts[material.material_id] || 0;
+          return {
+            id: material.material_id,
+            name: material.title,
+            type: inferDocumentType(material.title || ''),
+            size: '',
+            addedAt: material.created_at ? new Date(material.created_at).toISOString().slice(0, 10) : '',
+            chunks,
+            status: chunks > 0 ? 'indexed' : 'no_text',
+          };
+        });
+        if (!isCurrentRequest()) return;
+        docsRef.current = nextDocs;
+        setDocs(nextDocs);
+        materialsSnapshotProjectIdRef.current = projectId;
+        setMaterialsSnapshotProjectId(projectId);
+        setMaterialsLoadProjectId(projectId);
+        setMaterialsLoadError(null);
+        setMaterialsLoadPhase('ready');
+      } catch {
+        if (!isCurrentRequest()) return;
+        setMaterialsLoadProjectId(projectId);
+        setMaterialsLoadPhase('error');
+        setMaterialsLoadError('文献列表暂时无法加载，请稍后重试。');
+      } finally {
+        const current = materialsInFlightRef.current.get(projectId);
+        if (current?.sequence === sequence) {
+          materialsInFlightRef.current.delete(projectId);
+        }
+      }
+    })();
+    materialsInFlightRef.current.set(projectId, { sequence, promise: request });
+    return request;
+  }, []);
 
   const openPdfInWorkbench = useCallback((materialId: string, page?: number) => {
     const normalizedMaterialId = materialId.trim();
@@ -329,22 +506,153 @@ export function KnowledgeBase() {
       const baseUrl = getApiBaseUrl();
       await axios.delete(`${baseUrl}/resources/material/${encodeURIComponent(materialId)}`, { timeout: 15000 });
       if (expandedDocId === materialId) setExpandedDocId(null);
-      await loadMaterials();
+      await loadMaterials({ projectId: activeProjectIdRef.current, force: true });
     } catch (err) {
       window.alert(`删除失败：${formatKnowledgeActionError(err)}`);
     }
   }, [expandedDocId, loadMaterials]);
 
   useEffect(() => {
-    void loadMaterials();
-  }, [loadMaterials]);
+    void loadMaterials({ projectId: activeProjectId, force: true });
+  }, [activeProjectId, loadMaterials]);
+
+  const uploadPollingBatchKey = uploadSummary?.project_id === activeProjectId
+    ? `${uploadSummary.project_id}:${uploadSummary.batch_id}`
+    : null;
 
   useEffect(() => {
-    if (docs.length === 0) return;
+    const initialSummary = uploadSummaryRef.current;
+    if (!uploadPollingBatchKey || !initialSummary || initialSummary.project_id !== activeProjectId) {
+      return undefined;
+    }
+
+    const trackedResults = initialSummary.results.some(
+      (item) => item.status === 'queued' && typeof item.job_id === 'string' && item.job_id.trim(),
+    );
+    if (!trackedResults) return undefined;
+
+    let cancelled = false;
+    let timeoutId: number | null = null;
+    let wakePendingWait: (() => void) | null = null;
+    let workingSummary = initialSummary;
+
+    const clearPendingTimeout = (): void => {
+      if (timeoutId === null) return;
+      window.clearTimeout(timeoutId);
+      timeoutId = null;
+    };
+
+    const finishPendingWait = (): void => {
+      clearPendingTimeout();
+      const resolve = wakePendingWait;
+      wakePendingWait = null;
+      resolve?.();
+    };
+
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === 'hidden') {
+        clearPendingTimeout();
+        return;
+      }
+      finishPendingWait();
+    };
+
+    const waitForNextPoll = (delayMs: number): Promise<void> => new Promise((resolve) => {
+      if (cancelled) {
+        resolve();
+        return;
+      }
+      wakePendingWait = resolve;
+      if (document.visibilityState !== 'hidden') {
+        timeoutId = window.setTimeout(finishPendingWait, delayMs);
+      }
+    });
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    const pollUploadJobs = async (): Promise<void> => {
+      const runtimeClient = getWritingRuntimeClient();
+      for (let round = 0; round < UPLOAD_JOB_POLL_MAX_ROUNDS && !cancelled; round += 1) {
+        if (document.visibilityState === 'hidden') {
+          await waitForNextPoll(UPLOAD_JOB_POLL_INTERVAL_MS);
+          if (cancelled) return;
+        }
+
+        let resultsChanged = false;
+        let reachedTerminalState = false;
+        const nextResults = [...workingSummary.results];
+
+        for (let index = 0; index < nextResults.length && !cancelled; index += 1) {
+          const item = nextResults[index];
+          const jobId = item.status === 'queued' ? item.job_id?.trim() : '';
+          if (!jobId) continue;
+          if (document.visibilityState === 'hidden') break;
+
+          try {
+            const snapshot = await runtimeClient.getJobEventSnapshot(jobId, {
+              afterSequence: null,
+              limit: UPLOAD_JOB_EVENT_LIMIT,
+            });
+            if (cancelled) return;
+            const settledItem = settleUploadBatchItem(item, snapshot);
+            if (settledItem !== item) {
+              nextResults[index] = settledItem;
+              resultsChanged = true;
+              reachedTerminalState = true;
+            }
+          } catch {
+            // A transient detail failure must not turn a still-running import into a failed file.
+          }
+        }
+
+        if (resultsChanged) {
+          workingSummary = rebuildUploadBatchSummary(workingSummary, nextResults);
+          setUploadSummary((current) => (
+            current?.project_id === workingSummary.project_id && current.batch_id === workingSummary.batch_id
+              ? workingSummary
+              : current
+          ));
+        }
+
+        if (reachedTerminalState && activeProjectIdRef.current === workingSummary.project_id) {
+          await loadMaterials({ projectId: workingSummary.project_id, force: true });
+          if (cancelled) return;
+        }
+
+        const remainingTrackedJobs = workingSummary.results.some(
+          (item) => item.status === 'queued' && typeof item.job_id === 'string' && item.job_id.trim(),
+        );
+        if (!remainingTrackedJobs) return;
+        await waitForNextPoll(UPLOAD_JOB_POLL_INTERVAL_MS);
+      }
+
+      if (!cancelled) {
+        setUploadNotice((current) => current || UPLOAD_JOB_TIMEOUT_NOTICE);
+      }
+    };
+
+    void pollUploadJobs();
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      finishPendingWait();
+    };
+  }, [activeProjectId, loadMaterials, uploadPollingBatchKey]);
+
+  useEffect(() => {
+    setUploadSummary((current) => (
+      current && current.project_id !== activeProjectId ? null : current
+    ));
+    setUploadNotice('');
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    const currentDocs = materialsSnapshotProjectId === activeProjectId ? docs : [];
+    if (currentDocs.length === 0) return;
     const params = new URLSearchParams(location.search);
     const targetId = params.get('openPdf');
     if (!targetId) return;
-    const doc = docs.find(d => d.id === targetId);
+    const doc = currentDocs.find(d => d.id === targetId);
     if (doc && doc.type === 'pdf') {
       const pageParam = params.get('page');
       const page = pageParam ? Number(pageParam) : undefined;
@@ -352,7 +660,7 @@ export function KnowledgeBase() {
     } else if (doc) {
       navigate('/knowledge', { replace: true });
     }
-  }, [docs, location.search, navigate, openPdfInWorkbench]);
+  }, [activeProjectId, docs, location.search, materialsSnapshotProjectId, navigate, openPdfInWorkbench]);
 
   const handleUpdateSourceFolder = useCallback(async () => {
     if (!activeProjectId || savingFolder) return;
@@ -480,7 +788,9 @@ export function KnowledgeBase() {
         timeout: Math.max(120000, pickedFiles.length * 45000),
         signal: abortController.signal,
       });
-      setUploadSummary(data);
+      if (activeProjectIdRef.current === projectId) {
+        setUploadSummary(data);
+      }
     } catch (err: unknown) {
       if (uploadStopRequestedRef.current || isAbortLikeError(err)) {
         setUploadNotice('已停止导入。');
@@ -488,10 +798,18 @@ export function KnowledgeBase() {
         return;
       }
       const errorMessage = formatKnowledgeActionError(err);
+      if (activeProjectIdRef.current !== projectId) return;
       setUploadSummary({
         project_id: projectId,
+        batch_id: 'batch_local_error',
+        submitted_at: new Date().toISOString(),
         total_files: pickedFiles.length,
+        accepted_files: 0,
+        completed_files: 0,
         successful_files: 0,
+        duplicate_files: 0,
+        skipped_files: 0,
+        queued_files: 0,
         failed_files: pickedFiles.length,
         total_chunks: 0,
         results: pickedFiles.map(file => ({
@@ -501,7 +819,9 @@ export function KnowledgeBase() {
         })),
       });
     } finally {
-      await loadMaterials();
+      if (activeProjectIdRef.current === projectId) {
+        await loadMaterials({ projectId, force: true });
+      }
       if (uploadAbortControllerRef.current === abortController) {
         uploadAbortControllerRef.current = null;
       }
@@ -533,13 +853,23 @@ export function KnowledgeBase() {
     void handleUploadFiles(e.dataTransfer.files);
   };
 
-  const filteredDocs = docs.filter(doc => {
+  const visibleDocs = materialsSnapshotProjectId === activeProjectId ? docs : [];
+  const hasCurrentMaterialsSnapshot = materialsSnapshotProjectId === activeProjectId;
+  const currentMaterialsLoadError = materialsLoadProjectId === activeProjectId ? materialsLoadError : null;
+  const isInitialMaterialsLoading = Boolean(activeProjectId)
+    && !hasCurrentMaterialsSnapshot
+    && !currentMaterialsLoadError;
+  const isMaterialsRefreshing = Boolean(activeProjectId)
+    && hasCurrentMaterialsSnapshot
+    && materialsLoadProjectId === activeProjectId
+    && materialsLoadPhase === 'refreshing';
+  const filteredDocs = visibleDocs.filter(doc => {
     if (collectionFilter !== 'all' && doc.status !== collectionFilter) return false;
     return !search || doc.name.toLowerCase().includes(search.toLowerCase());
   });
-  const totalChunks = docs.reduce((sum, doc) => sum + doc.chunks, 0);
-  const indexedCount = docs.filter(doc => doc.status === 'indexed').length;
-  const noTextCount = docs.filter(doc => doc.status === 'no_text').length;
+  const totalChunks = visibleDocs.reduce((sum, doc) => sum + doc.chunks, 0);
+  const indexedCount = visibleDocs.filter(doc => doc.status === 'indexed').length;
+  const noTextCount = visibleDocs.filter(doc => doc.status === 'no_text').length;
   const _recentSucceeded = (uploadSummary?.results ?? []).filter(item => item.status === 'ok').slice(0, 4);
   const _recentQueued = (uploadSummary?.results ?? []).filter(item => item.status === 'queued').slice(0, 4);
   const _recentFailed = (uploadSummary?.results ?? []).filter(item => item.status === 'error').slice(0, 4);
@@ -552,9 +882,9 @@ export function KnowledgeBase() {
   //   - right: paper detail drawer (when a row is selected, xl+ only)
   // Upload and scan flows live above this branch. R5/R5.1: no raw IDs,
   // friendly Chinese only.
-  const selectedDoc = expandedDocId ? docs.find((d) => d.id === expandedDocId) ?? null : null;
+  const selectedDoc = expandedDocId ? visibleDocs.find((d) => d.id === expandedDocId) ?? null : null;
   const collectionGroups = [
-    { id: 'all' as const, label: '全部文献', count: docs.length },
+    { id: 'all' as const, label: '全部文献', count: visibleDocs.length },
     { id: 'indexed' as const, label: '已索引', count: indexedCount },
     { id: 'no_text' as const, label: '未提取文本', count: noTextCount },
   ];
@@ -697,7 +1027,7 @@ export function KnowledgeBase() {
               最近打开
             </h3>
             <ul className="space-y-0.5 text-[11px] text-foreground/70">
-              {docs.slice(0, 5).map((d) => (
+              {visibleDocs.slice(0, 5).map((d) => (
                 <li key={`recent-${d.id}`}>
                   <button
                     type="button"
@@ -709,8 +1039,10 @@ export function KnowledgeBase() {
                   </button>
                 </li>
               ))}
-              {docs.length === 0 && (
-                <li className="px-2 py-1 text-foreground/40">尚无文献</li>
+              {visibleDocs.length === 0 && (
+                <li className="px-2 py-1 text-foreground/40">
+                  {isInitialMaterialsLoading ? '正在加载文献…' : '尚无文献'}
+                </li>
               )}
             </ul>
           </div>
@@ -727,12 +1059,16 @@ export function KnowledgeBase() {
               <>
                 <button
                   type="button"
-                  onClick={() => void loadMaterials()}
-                  disabled={uploading || !activeProjectId}
+                  onClick={() => void loadMaterials({ projectId: activeProjectId, force: true })}
+                  disabled={uploading || !activeProjectId || isMaterialsRefreshing}
                   className="inline-flex items-center gap-1.5 rounded-md border border-outline-variant/60 bg-surface-low px-2.5 py-1.5 font-label text-xs text-foreground/75 transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50"
                 >
-                  <RefreshCw size={12} /> {t('common.refresh')}
+                  <RefreshCw size={12} className={isMaterialsRefreshing ? 'animate-spin' : undefined} />
+                  {isMaterialsRefreshing ? '正在刷新' : t('common.refresh')}
                 </button>
+                {isMaterialsRefreshing && (
+                  <span role="status" className="sr-only">正在刷新</span>
+                )}
                 <button
                   type="button"
                   onClick={() => void handleChooseSourceFolder()}
@@ -765,7 +1101,7 @@ export function KnowledgeBase() {
 
               {/* A16c: 元数据 Linter — 紧凑单行 */}
               <div className="mb-2 rounded border border-outline-variant/30 bg-surface-low/30 px-2 py-1.5">
-                <MetadataLinterPanel projectId={activeProjectId} onComplete={() => void loadMaterials()} />
+                <MetadataLinterPanel projectId={activeProjectId} onComplete={() => void loadMaterials({ projectId: activeProjectId, force: true })} />
               </div>
 
               {/* A16b: 项目级 PDF 重新解析(marker / pymupdf 都可用,见 Settings → 实验性功能) */}
@@ -775,14 +1111,14 @@ export function KnowledgeBase() {
                 </div>
                 <ReparseWithMarkerButton
                   projectId={activeProjectId}
-                  onComplete={() => void loadMaterials()}
+                  onComplete={() => void loadMaterials({ projectId: activeProjectId, force: true })}
                 />
               </div>
 
               {/* Filter chip row */}
               <div className="mb-3 flex flex-wrap items-center gap-1.5">
                 {([
-                  { id: 'all', label: '全部', count: docs.length },
+                  { id: 'all', label: '全部', count: visibleDocs.length },
                   { id: 'indexed', label: '已索引', count: indexedCount },
                   { id: 'no_text', label: '未提取文本', count: noTextCount },
                   { id: 'chunks', label: `共 ${totalChunks} 检索片段`, disabled: true },
@@ -808,6 +1144,22 @@ export function KnowledgeBase() {
                   </button>
                 ))}
               </div>
+
+              {currentMaterialsLoadError && hasCurrentMaterialsSnapshot && (
+                <div
+                  role="alert"
+                  className="mb-3 flex items-center justify-between gap-3 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-800/50 dark:bg-amber-500/10 dark:text-amber-200"
+                >
+                  <span>{currentMaterialsLoadError}</span>
+                  <button
+                    type="button"
+                    onClick={() => void loadMaterials({ projectId: activeProjectId, force: true })}
+                    className="shrink-0 rounded-md border border-current/25 px-2 py-1 font-medium hover:bg-white/40 dark:hover:bg-black/10"
+                  >
+                    重试刷新
+                  </button>
+                </div>
+              )}
 
               {/* Upload drop zone (compact) */}
               <div
@@ -865,31 +1217,7 @@ export function KnowledgeBase() {
               {/* Upload summary (compact strip) */}
               {uploadSummary && (
                 <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-outline-variant/40 bg-surface-low px-3 py-2 text-[11px]">
-                  <CheckCircle2 size={12} className="text-emerald-600 dark:text-emerald-300" />
-                  <span className="text-foreground/75">
-                    {t('kb.upload_summary_success', {
-                      success: uploadSummary.successful_files,
-                      total: uploadSummary.total_files,
-                    })}
-                  </span>
-                  <StatusPill tone="primary">
-                    {t('kb.upload_summary_chunks', { count: uploadSummary.total_chunks })}
-                  </StatusPill>
-                  {uploadSummary.failed_files > 0 && (
-                    <StatusPill tone="warning">
-                      {t('kb.upload_summary_failed', { count: uploadSummary.failed_files })}
-                    </StatusPill>
-                  )}
-                  {(uploadSummary.duplicate_files ?? 0) > 0 && (
-                    <StatusPill tone="primary">
-                      {t('kb.upload_summary_duplicate', { count: uploadSummary.duplicate_files ?? 0 })}
-                    </StatusPill>
-                  )}
-                  {(uploadSummary.queued_files ?? 0) > 0 && (
-                    <StatusPill tone="warning">
-                      后台提取 {uploadSummary.queued_files ?? 0}
-                    </StatusPill>
-                  )}
+                  <UploadBatchSummary result={uploadSummary} />
                 </div>
               )}
 
@@ -955,10 +1283,26 @@ export function KnowledgeBase() {
               </div>
 
               {/* Paper table */}
-              {filteredDocs.length === 0 ? (
+              {isInitialMaterialsLoading ? (
+                <div role="status" className="flex min-h-40 items-center justify-center gap-2 text-sm text-foreground/55">
+                  <Loader2 size={16} className="animate-spin text-primary" />
+                  正在加载文献…
+                </div>
+              ) : currentMaterialsLoadError && !hasCurrentMaterialsSnapshot ? (
+                <div role="alert" className="flex min-h-40 flex-col items-center justify-center gap-3 text-sm text-foreground/60">
+                  <span>{currentMaterialsLoadError}</span>
+                  <button
+                    type="button"
+                    onClick={() => void loadMaterials({ projectId: activeProjectId, force: true })}
+                    className="inline-flex items-center gap-1 rounded-md border border-outline-variant/60 bg-surface-low px-2.5 py-1.5 text-xs hover:border-primary/50 hover:text-primary"
+                  >
+                    <RefreshCw size={12} /> 重试
+                  </button>
+                </div>
+              ) : filteredDocs.length === 0 ? (
                 <EmptyState
-                  title={docs.length === 0 ? t('kb.empty_title') : t('kb.no_search_results')}
-                  description={docs.length === 0 ? t('kb.empty_desc') : t('kb.no_search_results_desc')}
+                  title={visibleDocs.length === 0 ? t('kb.empty_title') : t('kb.no_search_results')}
+                  description={visibleDocs.length === 0 ? t('kb.empty_desc') : t('kb.no_search_results_desc')}
                   icon={<Database size={28} />}
                 />
               ) : (

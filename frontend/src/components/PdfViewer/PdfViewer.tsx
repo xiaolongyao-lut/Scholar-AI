@@ -1,7 +1,24 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { ChevronLeft, ChevronRight, Download, Maximize2, Printer, Search, ZoomIn, ZoomOut, Sparkles, Highlighter, PanelRight, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Image as ImageIcon, Maximize2, Printer, Search, ZoomIn, ZoomOut, Sparkles, Highlighter, PanelRight, Trash2, ScanSearch, Sigma, Table2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { normalizePdfUrlBbox, toPdfHighlightRect, type PdfBbox } from '@/lib/pdfAnchor';
+import {
+  buildPdfQuotePageSearchOrder,
+  countPdfQuoteOccurrences,
+  normalizePdfQuote,
+  resolvePdfQuoteAnchor,
+  type PdfQuoteAnchorMatch,
+} from '@/lib/pdfQuoteAnchor';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -18,7 +35,13 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 interface PdfViewerProps {
   url: string;
   materialId: string;
+  /** Temporarily disables PDF-to-chat selection while an answer is running. */
+  analysisDisabled?: boolean;
   initialPage?: number;
+  /** Normalized visual anchor, or the safe fallback when a text quote cannot be resolved. */
+  initialBbox?: PdfBbox;
+  /** Bounded exact text anchor resolved before a coarse text-block bbox. */
+  initialQuote?: string;
   /** Multi-tab: when supplied, skip the internal fetch and render these
    *  bytes directly. The LRU cache lives in PdfTabsContext, so the
    *  parent passes a cache hit here and only falls back to URL fetch
@@ -34,9 +57,14 @@ interface PdfViewerProps {
   scale?: number;
   onScaleChange?: (scale: number) => void;
   onAnalyzeText?: (text: string, page: number, anchor?: PdfSelectionAnchor) => void;
+  onAnalyzeRegion?: (selection: PdfRegionCapture) => void;
+  /** Formula detector output. Each candidate is selected as one atomic region. */
+  formulaCandidates?: readonly PdfFormulaCandidate[];
+  /** Visual selections owned by the parent; rendered as persistent, inert outlines. */
+  selectedVisualRegions?: readonly PdfSelectedVisualRegion[];
   onAddHighlight?: (highlight: { page: number; text: string; color: string; rects?: Array<{ x: number; y: number; w: number; h: number }> }) => void;
   onDeleteHighlight?: (index: number) => void;
-  highlights?: Array<{ page: number; text: string; color: string; rects?: Array<{ x: number; y: number; w: number; h: number }> }>;
+  highlights?: PdfViewerHighlight[];
   /** Track C F3: when true, the built-in highlight side panel + its
    *  toolbar toggle are not rendered. Used by PdfReaderShell (L2)
    *  which provides its own right-side sidebar. */
@@ -58,6 +86,15 @@ interface PdfViewerProps {
   className?: string;
 }
 
+interface PdfViewerHighlight {
+  page: number;
+  text: string;
+  color: string;
+  rects?: Array<{ x: number; y: number; w: number; h: number }>;
+}
+
+type CitationAnchorStatus = 'idle' | 'resolving' | 'matched' | 'page_only';
+
 export interface PdfOutlineEntry {
   title: string;
   page?: number;
@@ -67,6 +104,50 @@ export interface PdfOutlineEntry {
 export interface PdfSelectionAnchor {
   page: number;
   rects: Array<{ x: number; y: number; w: number; h: number }>;
+}
+
+export type PdfVisualSelectionKind = 'figure' | 'table' | 'formula' | 'region';
+
+type PdfDragSelectionKind = Exclude<PdfVisualSelectionKind, 'formula'>;
+
+export interface PdfFormulaCandidate {
+  candidateId: string;
+  page: number;
+  bbox: PdfBbox;
+  chunkId?: string;
+  text?: string;
+}
+
+export interface PdfSelectedVisualRegion {
+  kind: PdfVisualSelectionKind;
+  page: number;
+  bbox: PdfBbox;
+  candidateId?: string;
+}
+
+const EMPTY_FORMULA_CANDIDATES: readonly PdfFormulaCandidate[] = [];
+const EMPTY_SELECTED_VISUAL_REGIONS: readonly PdfSelectedVisualRegion[] = [];
+const PDF_VISUAL_SELECTION_KINDS: ReadonlySet<PdfVisualSelectionKind> = new Set([
+  'figure',
+  'table',
+  'formula',
+  'region',
+]);
+
+export interface PdfRegionCapture {
+  kind: PdfVisualSelectionKind;
+  page: number;
+  bbox: PdfBbox;
+  label: string;
+  candidateId?: string;
+  chunkId?: string;
+  text?: string;
+  image: {
+    mime: 'image/png' | 'image/jpeg';
+    data_b64: string;
+    size: number;
+    name: string;
+  };
 }
 
 type SearchStatus = 'idle' | 'searching' | 'done' | 'error';
@@ -86,6 +167,9 @@ interface SelectionToolbarPosition {
 }
 
 const PDF_LOAD_DETAIL_FALLBACK = 'PDF 文件读取失败，请稍后重试。';
+const PDF_REGION_MIN_SIZE_PX = 24;
+const PDF_REGION_CAPTURE_MAX_EDGE = 1600;
+const PDF_REGION_CAPTURE_MAX_BYTES = 4 * 1024 * 1024;
 const PDF_LOAD_INTERNAL_DETAIL_PATTERN =
   /(?:env=|env_refs|capability_[a-z0-9_]*|api[_\s-]?key|base[_\s-]?url|authorization|bearer|token|secret|https?:\/\/|\/api\/[^\s"'<>，。；,;)]*|\/runtime\/[^\s"'<>，。；,;)]*|\/resources\/[^\s"'<>，。；,;)]*|[A-Za-z]:\\[^\s"'<>]*|[{}[\]"`]|[A-Za-z0-9+/]{32,}={0,2})/i;
 const SELECTION_TOOLBAR_MARGIN_PX = 8;
@@ -161,15 +245,118 @@ function selectionAnchorElement(selection: Selection): Element | null {
   return node.parentElement;
 }
 
+function clampRatio(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function isDragSelectionKind(kind: PdfVisualSelectionKind | null): kind is PdfDragSelectionKind {
+  return kind !== null && kind !== 'formula';
+}
+
+function regionBbox(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+): PdfBbox {
+  const left = clampRatio(Math.min(start.x, end.x));
+  const top = clampRatio(Math.min(start.y, end.y));
+  const right = clampRatio(Math.max(start.x, end.x));
+  const bottom = clampRatio(Math.max(start.y, end.y));
+  return [left, top, right - left, bottom - top];
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, mime: 'image/png' | 'image/jpeg', quality?: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('无法生成选区内容'));
+    }, mime, quality);
+  });
+}
+
+async function capturePdfRegion(
+  pageElement: HTMLDivElement,
+  bbox: PdfBbox,
+  kind: PdfVisualSelectionKind,
+  page: number,
+  metadata: Pick<PdfRegionCapture, 'candidateId' | 'chunkId' | 'text'> = {},
+): Promise<PdfRegionCapture> {
+  const sourceCanvas = pageElement.querySelector<HTMLCanvasElement>('canvas.react-pdf__Page__canvas, canvas');
+  if (!sourceCanvas || sourceCanvas.width <= 0 || sourceCanvas.height <= 0) {
+    throw new Error('当前页尚未完成渲染，请稍后重试。');
+  }
+  const [x, y, width, height] = bbox;
+  const sourceX = Math.max(0, Math.floor(x * sourceCanvas.width));
+  const sourceY = Math.max(0, Math.floor(y * sourceCanvas.height));
+  const sourceWidth = Math.max(1, Math.min(sourceCanvas.width - sourceX, Math.ceil(width * sourceCanvas.width)));
+  const sourceHeight = Math.max(1, Math.min(sourceCanvas.height - sourceY, Math.ceil(height * sourceCanvas.height)));
+  const scale = Math.min(1, PDF_REGION_CAPTURE_MAX_EDGE / Math.max(sourceWidth, sourceHeight));
+  const output = document.createElement('canvas');
+  output.width = Math.max(1, Math.round(sourceWidth * scale));
+  output.height = Math.max(1, Math.round(sourceHeight * scale));
+  const context = output.getContext('2d');
+  if (!context) throw new Error('当前环境无法裁剪 PDF 区域。');
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, output.width, output.height);
+  context.drawImage(
+    sourceCanvas,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    output.width,
+    output.height,
+  );
+
+  let mime: 'image/png' | 'image/jpeg' = 'image/png';
+  let blob = await canvasToBlob(output, mime);
+  if (blob.size > PDF_REGION_CAPTURE_MAX_BYTES) {
+    mime = 'image/jpeg';
+    blob = await canvasToBlob(output, mime, 0.9);
+  }
+  if (blob.size > PDF_REGION_CAPTURE_MAX_BYTES) {
+    throw new Error('框选区域过大，请缩小范围后重试。');
+  }
+  const extension = mime === 'image/png' ? 'png' : 'jpg';
+  const labelByKind: Record<PdfVisualSelectionKind, string> = {
+    figure: '选中的图',
+    table: '选中的表',
+    formula: '选中的公式',
+    region: '选中的区域',
+  };
+  return {
+    kind,
+    page,
+    bbox,
+    label: labelByKind[kind],
+    ...(metadata.candidateId ? { candidateId: metadata.candidateId } : {}),
+    ...(metadata.chunkId ? { chunkId: metadata.chunkId } : {}),
+    ...(metadata.text ? { text: metadata.text } : {}),
+    image: {
+      mime,
+      data_b64: await blobToBase64(blob),
+      size: blob.size,
+      name: `pdf-page-${page}-${kind}.${extension}`,
+    },
+  };
+}
+
 export function PdfViewer({
   url,
   materialId,
+  analysisDisabled = false,
   initialPage,
+  initialBbox,
+  initialQuote,
   bytes,
   onBytesLoaded,
   scale: controlledScale,
   onScaleChange,
   onAnalyzeText,
+  onAnalyzeRegion,
+  formulaCandidates = EMPTY_FORMULA_CANDIDATES,
+  selectedVisualRegions = EMPTY_SELECTED_VISUAL_REGIONS,
   onAddHighlight,
   onDeleteHighlight,
   highlights = [],
@@ -191,6 +378,17 @@ export function PdfViewer({
   const [selectedText, setSelectedText] = useState('');
   const [showAIBtn, setShowAIBtn] = useState(false);
   const [btnPos, setBtnPos] = useState({ x: 0, y: 0 });
+  const [regionMode, setRegionMode] = useState<PdfVisualSelectionKind | null>(null);
+  const [regionDraft, setRegionDraft] = useState<{
+    page: number;
+    pointerId: number;
+    start: { x: number; y: number };
+    current: { x: number; y: number };
+  } | null>(null);
+  const [regionStatus, setRegionStatus] = useState<string | null>(null);
+  const [pendingFormulaCandidateId, setPendingFormulaCandidateId] = useState<string | null>(null);
+  const analysisDisabledRef = useRef(analysisDisabled);
+  const formulaCaptureInFlightRef = useRef(false);
   const [showPanel, setShowPanel] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -198,6 +396,70 @@ export function PdfViewer({
   const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle');
   const [searchResults, setSearchResults] = useState<PdfSearchResult[]>([]);
   const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
+  const [citationQuoteHighlight, setCitationQuoteHighlight] = useState<PdfViewerHighlight | null>(null);
+  const [citationAnchorStatus, setCitationAnchorStatus] = useState<CitationAnchorStatus>('idle');
+  const citationBboxRect = useMemo(() => toPdfHighlightRect(initialBbox), [initialBbox]);
+  const normalizedCitationQuote = useMemo(
+    () => normalizePdfQuote(initialQuote),
+    [initialQuote],
+  );
+  const citationAnchorInputKey = useMemo(() => JSON.stringify([
+    materialId,
+    url,
+    loadAttempt,
+    initialPage ?? null,
+    normalizedCitationQuote,
+    citationBboxRect?.x ?? null,
+    citationBboxRect?.y ?? null,
+    citationBboxRect?.w ?? null,
+    citationBboxRect?.h ?? null,
+  ]), [citationBboxRect, initialPage, loadAttempt, materialId, normalizedCitationQuote, url]);
+  const [citationBboxFallbackKey, setCitationBboxFallbackKey] = useState<string | null>(null);
+  const citationTargetPage = useMemo(() => (
+    typeof initialPage === 'number'
+    && Number.isSafeInteger(initialPage)
+    && initialPage >= 1
+    && initialPage <= numPages
+      ? initialPage
+      : null
+  ), [initialPage, numPages]);
+  const activeCitationBboxRect = citationBboxRect
+    && (!normalizedCitationQuote || citationBboxFallbackKey === citationAnchorInputKey)
+    ? citationBboxRect
+    : null;
+  const citationBboxHighlight = useMemo<PdfViewerHighlight | null>(() => {
+    if (!activeCitationBboxRect || citationTargetPage === null) return null;
+    return {
+      page: citationTargetPage,
+      text: '引用区域',
+      color: '#60A5FA',
+      rects: [{ ...activeCitationBboxRect }],
+    };
+  }, [activeCitationBboxRect, citationTargetPage]);
+  const citationBboxActivationKey = useMemo(() => {
+    if (!activeCitationBboxRect || citationTargetPage === null) return null;
+    return JSON.stringify([
+      materialId,
+      url,
+      loadAttempt,
+      scale,
+      citationTargetPage,
+      activeCitationBboxRect.x,
+      activeCitationBboxRect.y,
+      activeCitationBboxRect.w,
+      activeCitationBboxRect.h,
+    ]);
+  }, [activeCitationBboxRect, citationTargetPage, loadAttempt, materialId, scale, url]);
+  const activeCitationBboxActivationKeyRef = useRef<string | null>(null);
+  const pendingCitationBboxRenderKeyRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    activeCitationBboxActivationKeyRef.current = citationBboxActivationKey;
+    pendingCitationBboxRenderKeyRef.current = citationBboxActivationKey;
+  }, [citationBboxActivationKey]);
+  const citationQuotePages = useMemo(
+    () => buildPdfQuotePageSearchOrder(initialPage, numPages),
+    [initialPage, numPages],
+  );
   const [visiblePageWindow, setVisiblePageWindow] = useState<{ first: number; last: number }>(() => {
     const initialWindowPage = initialPage ?? 1;
     return { first: initialWindowPage, last: initialWindowPage };
@@ -207,6 +469,68 @@ export function PdfViewer({
   const onPageChangeRef = useRef(onPageChange);
   const [fullscreenAvailable, setFullscreenAvailable] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const formulaCandidatesByPage = useMemo(() => {
+    const grouped = new Map<number, PdfFormulaCandidate[]>();
+    for (const candidate of formulaCandidates) {
+      const candidateId = typeof candidate.candidateId === 'string' ? candidate.candidateId.trim() : '';
+      const page = candidate.page;
+      const bbox = normalizePdfUrlBbox(candidate.bbox);
+      if (!candidateId || !Number.isSafeInteger(page) || page < 1 || !bbox) continue;
+      const normalized: PdfFormulaCandidate = {
+        candidateId,
+        page,
+        bbox,
+        ...(typeof candidate.chunkId === 'string' && candidate.chunkId.trim()
+          ? { chunkId: candidate.chunkId.trim() }
+          : {}),
+        ...(typeof candidate.text === 'string' && candidate.text.trim()
+          ? { text: candidate.text.trim() }
+          : {}),
+      };
+      const pageCandidates = grouped.get(page) ?? [];
+      pageCandidates.push(normalized);
+      grouped.set(page, pageCandidates);
+    }
+    return grouped;
+  }, [formulaCandidates]);
+
+  const selectedVisualRegionsByPage = useMemo(() => {
+    const grouped = new Map<number, PdfSelectedVisualRegion[]>();
+    for (const selection of selectedVisualRegions) {
+      const page = selection.page;
+      const bbox = normalizePdfUrlBbox(selection.bbox);
+      if (
+        !Number.isSafeInteger(page)
+        || page < 1
+        || !PDF_VISUAL_SELECTION_KINDS.has(selection.kind)
+        || !bbox
+      ) continue;
+      const normalized: PdfSelectedVisualRegion = {
+        kind: selection.kind,
+        page,
+        bbox,
+        ...(typeof selection.candidateId === 'string' && selection.candidateId.trim()
+          ? { candidateId: selection.candidateId.trim() }
+          : {}),
+      };
+      const pageSelections = grouped.get(page) ?? [];
+      pageSelections.push(normalized);
+      grouped.set(page, pageSelections);
+    }
+    return grouped;
+  }, [selectedVisualRegions]);
+
+  useEffect(() => {
+    analysisDisabledRef.current = analysisDisabled;
+    if (!analysisDisabled) return;
+    setRegionMode(null);
+    setRegionDraft(null);
+    setRegionStatus(null);
+    setShowAIBtn(false);
+    setSelectedText('');
+    window.getSelection()?.removeAllRanges();
+  }, [analysisDisabled]);
   // 0.1.8.1: fetch the PDF bytes ourselves and feed them to <Document>
   // instead of letting react-pdf / pdf.js fetch the URL. pdf.js's internal
   // fetch path was misreading CORS preflight responses ("Unexpected server
@@ -562,6 +886,11 @@ export function PdfViewer({
   }, [fullscreenAvailable]);
 
   const handleMouseUp = useCallback(() => {
+    if (analysisDisabled || isDragSelectionKind(regionMode)) {
+      setShowAIBtn(false);
+      setSelectedText('');
+      return;
+    }
     const sel = window.getSelection();
     const text = sel?.toString().trim() || '';
     if (text.length > 2 && sel && sel.rangeCount > 0) {
@@ -581,7 +910,7 @@ export function PdfViewer({
       setShowAIBtn(false);
       setSelectedText('');
     }
-  }, []);
+  }, [analysisDisabled, regionMode]);
 
   const computeSelectionRectsAndPage = useCallback((): PdfSelectionAnchor => {
     const sel = window.getSelection();
@@ -609,13 +938,13 @@ export function PdfViewer({
   }, [pageNumber]);
 
   const handleAnalyze = useCallback(() => {
-    if (selectedText && onAnalyzeText) {
+    if (!analysisDisabled && selectedText && onAnalyzeText) {
       const anchor = computeSelectionRectsAndPage();
       onAnalyzeText(selectedText, anchor.page, anchor);
     }
     setShowAIBtn(false);
     window.getSelection()?.removeAllRanges();
-  }, [computeSelectionRectsAndPage, selectedText, onAnalyzeText]);
+  }, [analysisDisabled, computeSelectionRectsAndPage, selectedText, onAnalyzeText]);
 
   const goToPage = useCallback((target: number) => {
     if (!numPages || numPages <= 0) return;
@@ -694,6 +1023,9 @@ export function PdfViewer({
   // Tracks which page has been programmatically scrolled to so the
   // IntersectionObserver doesn't fight the imperative scroll.
   const pendingScrollPageRef = useRef<number | null>(null);
+  const deferredObservedPageRef = useRef<number | null>(null);
+  const pendingScrollReleaseTimerRef = useRef<number | null>(null);
+  const scrollLockGenerationRef = useRef(0);
   // Pdf document instance — needed to resolve internal-link annotations
   // (the "[14]" citation references that ship as Link annotations in
   // every modern journal PDF).
@@ -701,6 +1033,129 @@ export function PdfViewer({
   // Flash pulse for the destination page after a link jump so the user
   // notices the scroll actually moved.
   const [flashPage, setFlashPage] = useState<number | null>(null);
+
+  const scrollToPageAnchor = useCallback((
+    target: number,
+    rects: readonly { x: number; y: number; w: number; h: number }[],
+  ): boolean => {
+    if (!numPages || numPages <= 0) return false;
+    const clamped = Math.max(1, Math.min(numPages, Math.floor(target)));
+    const pageElement = pageRefsRef.current[clamped - 1];
+    const container = scrollContainerRef.current;
+    const validRects = rects.filter((rect) => (
+      Number.isFinite(rect.x)
+      && Number.isFinite(rect.y)
+      && Number.isFinite(rect.w)
+      && Number.isFinite(rect.h)
+      && rect.w > 0
+      && rect.h > 0
+    ));
+    if (!pageElement || !container || validRects.length === 0) return false;
+
+    const left = Math.min(...validRects.map((rect) => rect.x));
+    const right = Math.max(...validRects.map((rect) => rect.x + rect.w));
+    const top = Math.min(...validRects.map((rect) => rect.y));
+    const bottom = Math.max(...validRects.map((rect) => rect.y + rect.h));
+    const anchorCenterX = Math.max(0, Math.min(1, (left + right) / 2));
+    const anchorCenterY = Math.max(0, Math.min(1, (top + bottom) / 2));
+    const pageRect = pageElement.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    if (
+      !Number.isFinite(pageRect.left)
+      || !Number.isFinite(pageRect.width)
+      || pageRect.width <= 0
+      || !Number.isFinite(pageRect.top)
+      || !Number.isFinite(pageRect.height)
+      || pageRect.height <= 0
+      || !Number.isFinite(containerRect.left)
+      || !Number.isFinite(containerRect.top)
+    ) {
+      return false;
+    }
+
+    const desiredLeft = container.scrollLeft
+      + (pageRect.left - containerRect.left)
+      + (pageRect.width * anchorCenterX)
+      - (container.clientWidth / 2);
+    const desiredTop = container.scrollTop
+      + (pageRect.top - containerRect.top)
+      + (pageRect.height * anchorCenterY)
+      - (container.clientHeight / 2);
+    const maxScrollLeft = container.scrollWidth - container.clientWidth;
+    const maxScrollTop = container.scrollHeight - container.clientHeight;
+    const boundedLeft = maxScrollLeft > 0
+      ? Math.max(0, Math.min(maxScrollLeft, desiredLeft))
+      : Math.max(0, desiredLeft);
+    const boundedTop = maxScrollTop > 0
+      ? Math.max(0, Math.min(maxScrollTop, desiredTop))
+      : Math.max(0, desiredTop);
+    container.scrollTo({ left: boundedLeft, top: boundedTop, behavior: 'smooth' });
+    setPageNumber(clamped);
+    return true;
+  }, [numPages]);
+
+  const goToPageWithScrollLock = useCallback((target: number): void => {
+    if (!numPages || numPages <= 0) return;
+    const clamped = Math.max(1, Math.min(numPages, Math.floor(target)));
+    const generation = scrollLockGenerationRef.current + 1;
+    scrollLockGenerationRef.current = generation;
+    if (pendingScrollReleaseTimerRef.current !== null) {
+      window.clearTimeout(pendingScrollReleaseTimerRef.current);
+    }
+    pendingScrollPageRef.current = clamped;
+    deferredObservedPageRef.current = null;
+    goToPage(clamped);
+    pendingScrollReleaseTimerRef.current = window.setTimeout(() => {
+      if (scrollLockGenerationRef.current !== generation) return;
+      if (pendingScrollPageRef.current === clamped) {
+        pendingScrollPageRef.current = null;
+        const deferredPage = deferredObservedPageRef.current;
+        deferredObservedPageRef.current = null;
+        if (deferredPage !== null) {
+          setPageNumber((previous) => (previous === deferredPage ? previous : deferredPage));
+        }
+      }
+      pendingScrollReleaseTimerRef.current = null;
+    }, 600);
+  }, [goToPage, numPages]);
+
+  const goToPageAnchorWithScrollLock = useCallback((
+    target: number,
+    rects: readonly { x: number; y: number; w: number; h: number }[],
+  ): void => {
+    if (!numPages || numPages <= 0) return;
+    const clamped = Math.max(1, Math.min(numPages, Math.floor(target)));
+    const generation = scrollLockGenerationRef.current + 1;
+    scrollLockGenerationRef.current = generation;
+    if (pendingScrollReleaseTimerRef.current !== null) {
+      window.clearTimeout(pendingScrollReleaseTimerRef.current);
+    }
+    pendingScrollPageRef.current = clamped;
+    deferredObservedPageRef.current = null;
+    if (!scrollToPageAnchor(clamped, rects)) goToPage(clamped);
+    pendingScrollReleaseTimerRef.current = window.setTimeout(() => {
+      if (scrollLockGenerationRef.current !== generation) return;
+      if (pendingScrollPageRef.current === clamped) {
+        pendingScrollPageRef.current = null;
+        const deferredPage = deferredObservedPageRef.current;
+        deferredObservedPageRef.current = null;
+        if (deferredPage !== null) {
+          setPageNumber((previous) => (previous === deferredPage ? previous : deferredPage));
+        }
+      }
+      pendingScrollReleaseTimerRef.current = null;
+    }, 600);
+  }, [goToPage, numPages, scrollToPageAnchor]);
+
+  useEffect(() => () => {
+    scrollLockGenerationRef.current += 1;
+    if (pendingScrollReleaseTimerRef.current !== null) {
+      window.clearTimeout(pendingScrollReleaseTimerRef.current);
+    }
+    pendingScrollReleaseTimerRef.current = null;
+    pendingScrollPageRef.current = null;
+    deferredObservedPageRef.current = null;
+  }, []);
 
   useEffect(() => {
     const handleDocumentMouseUp = () => {
@@ -713,13 +1168,171 @@ export function PdfViewer({
   // When the external initialPage / pendingPage changes, scroll to it.
   // Wait for the pages to mount (numPages > 0) before issuing the scroll.
   useEffect(() => {
-    if (initialPage === undefined || numPages <= 0) return;
-    pendingScrollPageRef.current = initialPage;
-    goToPage(initialPage);
-    // Release the lock after the scroll settles.
-    const t = setTimeout(() => { pendingScrollPageRef.current = null; }, 600);
-    return () => clearTimeout(t);
-  }, [initialPage, numPages, goToPage]);
+    if (numPages <= 0) return;
+    const hasCitationAnchorInput = initialBbox !== undefined || normalizedCitationQuote !== null;
+    if (hasCitationAnchorInput && citationTargetPage === null) {
+      setPageNumber(1);
+      return;
+    }
+    if (initialPage === undefined) return;
+    if (activeCitationBboxRect) {
+      if (citationTargetPage !== null) {
+        goToPageAnchorWithScrollLock(citationTargetPage, [activeCitationBboxRect]);
+      }
+      return;
+    }
+    goToPageWithScrollLock(citationTargetPage ?? initialPage);
+  }, [
+    activeCitationBboxRect,
+    citationTargetPage,
+    goToPageAnchorWithScrollLock,
+    goToPageWithScrollLock,
+    initialBbox,
+    initialPage,
+    normalizedCitationQuote,
+    numPages,
+  ]);
+
+  useEffect(() => {
+    setCitationQuoteHighlight(null);
+    if (!normalizedCitationQuote) {
+      setCitationBboxFallbackKey(null);
+      setCitationAnchorStatus(citationBboxRect && citationTargetPage !== null ? 'matched' : 'idle');
+      return undefined;
+    }
+    if (citationQuotePages.length === 0 || numPages <= 0) {
+      setCitationBboxFallbackKey(null);
+      setCitationAnchorStatus('page_only');
+      return undefined;
+    }
+
+    const pdf = pdfDocRef.current;
+    if (!pdf || typeof pdf.getPage !== 'function') {
+      if (citationBboxRect && citationTargetPage !== null) {
+        setCitationBboxFallbackKey(citationAnchorInputKey);
+        setCitationAnchorStatus('matched');
+      } else {
+        setCitationBboxFallbackKey(null);
+        setCitationAnchorStatus('page_only');
+      }
+      return undefined;
+    }
+
+    let cancelled = false;
+    let observer: MutationObserver | null = null;
+    let retryTimer: number | null = null;
+    let finalTimer: number | null = null;
+    setCitationAnchorStatus('resolving');
+
+    const disposeWatchers = (): void => {
+      observer?.disconnect();
+      observer = null;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      if (finalTimer !== null) window.clearTimeout(finalTimer);
+      retryTimer = null;
+      finalTimer = null;
+    };
+    const finishFallback = (): void => {
+      if (cancelled) return;
+      disposeWatchers();
+      setCitationQuoteHighlight(null);
+      if (citationBboxRect && citationTargetPage !== null) {
+        setCitationBboxFallbackKey(citationAnchorInputKey);
+        setCitationAnchorStatus('matched');
+      } else {
+        setCitationBboxFallbackKey(null);
+        setCitationAnchorStatus('page_only');
+      }
+    };
+    const finishMatched = (page: number, match: PdfQuoteAnchorMatch): void => {
+      if (cancelled) return;
+      disposeWatchers();
+      setCitationBboxFallbackKey(null);
+      setCitationQuoteHighlight({
+        page,
+        text: match.quote,
+        color: '#60A5FA',
+        rects: match.rects.map((rect) => ({ ...rect })),
+      });
+      setCitationAnchorStatus('matched');
+      goToPageAnchorWithScrollLock(page, match.rects);
+      setFlashPage(page);
+    };
+
+    void (async () => {
+      try {
+        let matchedPage: number | null = null;
+        for (const page of citationQuotePages) {
+          const pdfPage = await pdf.getPage?.(page);
+          if (cancelled) return;
+          if (!pdfPage || typeof pdfPage.getTextContent !== 'function') {
+            finishFallback();
+            return;
+          }
+          const occurrences = countPdfQuoteOccurrences(
+            extractPdfTextContent(await pdfPage.getTextContent()),
+            normalizedCitationQuote,
+          );
+          if (cancelled) return;
+          if (occurrences > 1 || (occurrences === 1 && matchedPage !== null)) {
+            finishFallback();
+            return;
+          }
+          if (occurrences === 1) matchedPage = page;
+        }
+
+        if (matchedPage === null) {
+          finishFallback();
+          return;
+        }
+
+        const mapRenderedTextLayer = (): boolean => {
+          const pageElement = pageRefsRef.current[matchedPage - 1];
+          const textLayer = pageElement?.querySelector<HTMLElement>(
+            '.react-pdf__Page__textContent.textLayer, .textLayer',
+          );
+          if (!textLayer) return false;
+          const resolution = resolvePdfQuoteAnchor(textLayer, normalizedCitationQuote);
+          if (resolution.status === 'matched') {
+            finishMatched(matchedPage, resolution.match);
+            return true;
+          }
+          if (resolution.status === 'ambiguous') {
+            finishFallback();
+            return true;
+          }
+          return false;
+        };
+        const scheduleMap = (): void => {
+          if (cancelled || retryTimer !== null) return;
+          retryTimer = window.setTimeout(() => {
+            retryTimer = null;
+            mapRenderedTextLayer();
+          }, 0);
+        };
+
+        if (typeof MutationObserver !== 'undefined' && pageWrapperRef.current) {
+          observer = new MutationObserver(scheduleMap);
+          observer.observe(pageWrapperRef.current, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+          });
+        }
+        scheduleMap();
+        finalTimer = window.setTimeout(() => {
+          if (!mapRenderedTextLayer()) finishFallback();
+        }, 4000);
+      } catch {
+        finishFallback();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      disposeWatchers();
+    };
+  }, [citationAnchorInputKey, citationBboxRect, citationQuotePages, citationTargetPage, goToPageAnchorWithScrollLock, loadAttempt, normalizedCitationQuote, numPages]);
 
   // IntersectionObserver: pick the page whose center is closest to the
   // viewport center. This is the Zotero-style "page-the-user-is-reading"
@@ -755,7 +1368,13 @@ export function PdfViewer({
         if (best) {
           // Don't override a programmatic scroll target mid-flight; the
           // observer fires on every layout shift during smooth scroll.
-          if (pendingScrollPageRef.current && pendingScrollPageRef.current !== best.page) return;
+          if (pendingScrollPageRef.current) {
+            if (pendingScrollPageRef.current !== best.page) {
+              deferredObservedPageRef.current = best.page;
+              return;
+            }
+            deferredObservedPageRef.current = null;
+          }
           setPageNumber((prev) => (prev === best!.page ? prev : best!.page));
         }
       },
@@ -877,14 +1496,24 @@ export function PdfViewer({
   // Group highlights by page once so each page's overlay only sees its
   // own rects — O(N) instead of O(N*pages).
   const highlightsByPage = useMemo(() => {
-    const m = new Map<number, typeof highlights>();
+    const m = new Map<number, PdfViewerHighlight[]>();
     for (const h of highlights ?? []) {
       const list = m.get(h.page);
       if (list) list.push(h);
       else m.set(h.page, [h]);
     }
+    if (citationQuoteHighlight) {
+      const list = m.get(citationQuoteHighlight.page);
+      if (list) list.push(citationQuoteHighlight);
+      else m.set(citationQuoteHighlight.page, [citationQuoteHighlight]);
+    }
+    if (citationBboxHighlight) {
+      const list = m.get(citationBboxHighlight.page);
+      if (list) list.push(citationBboxHighlight);
+      else m.set(citationBboxHighlight.page, [citationBboxHighlight]);
+    }
     return m;
-  }, [highlights]);
+  }, [citationBboxHighlight, citationQuoteHighlight, highlights]);
   const heavyPageWindow = useMemo(() => {
     if (!numPages || numPages <= 0) {
       return { first: 1, last: 0 };
@@ -910,9 +1539,10 @@ export function PdfViewer({
       for (const page of highlightsByPage.keys()) {
         if (page >= 1 && page <= numPages) pages.add(page);
       }
+      for (const page of citationQuotePages) pages.add(page);
     }
     return pages;
-  }, [flashPage, highlightsByPage, numPages, pageNumber]);
+  }, [citationQuotePages, flashPage, highlightsByPage, numPages, pageNumber]);
   const shouldRenderPdfPage = useCallback((pageNo: number): boolean => {
     if (!numPages || numPages <= PDF_VIRTUALIZATION_THRESHOLD) return true;
     return (
@@ -930,9 +1560,173 @@ export function PdfViewer({
     });
   }, []);
 
+  const handlePdfPageRenderSuccess = useCallback((
+    pageNo: number,
+    expectedActivationKey: string | null,
+  ): void => {
+    const pageElement = pageRefsRef.current[pageNo - 1];
+    updateMeasuredPageHeight(pageNo, pageElement);
+    if (
+      !expectedActivationKey
+      || activeCitationBboxActivationKeyRef.current !== expectedActivationKey
+      || pendingCitationBboxRenderKeyRef.current !== expectedActivationKey
+      || !citationBboxRect
+      || citationTargetPage === null
+      || pageNo !== citationTargetPage
+    ) return;
+    pendingCitationBboxRenderKeyRef.current = null;
+    goToPageAnchorWithScrollLock(citationTargetPage, [citationBboxRect]);
+  }, [citationBboxRect, citationTargetPage, goToPageAnchorWithScrollLock, updateMeasuredPageHeight]);
+
+  const toggleRegionMode = useCallback((kind: PdfVisualSelectionKind): void => {
+    if (analysisDisabled) return;
+    setRegionMode((current) => current === kind ? null : kind);
+    setRegionDraft(null);
+    setRegionStatus(null);
+    setShowAIBtn(false);
+    setSelectedText('');
+    window.getSelection()?.removeAllRanges();
+  }, [analysisDisabled]);
+
+  const handleRegionPointerDown = useCallback((
+    page: number,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void => {
+    if (analysisDisabled || !isDragSelectionKind(regionMode) || event.button !== 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = {
+      x: clampRatio((event.clientX - rect.left) / rect.width),
+      y: clampRatio((event.clientY - rect.top) / rect.height),
+    };
+    setRegionStatus(null);
+    setRegionDraft({ page, pointerId: event.pointerId, start: point, current: point });
+  }, [analysisDisabled, regionMode]);
+
+  const handleRegionPointerMove = useCallback((
+    page: number,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void => {
+    if (analysisDisabled || !isDragSelectionKind(regionMode) || !regionDraft || regionDraft.page !== page || regionDraft.pointerId !== event.pointerId) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    event.preventDefault();
+    setRegionDraft((current) => current ? {
+      ...current,
+      current: {
+        x: clampRatio((event.clientX - rect.left) / rect.width),
+        y: clampRatio((event.clientY - rect.top) / rect.height),
+      },
+    } : null);
+  }, [analysisDisabled, regionDraft, regionMode]);
+
+  const finishRegionSelection = useCallback(async (
+    page: number,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): Promise<void> => {
+    if (analysisDisabled || !isDragSelectionKind(regionMode) || !regionDraft || regionDraft.page !== page || regionDraft.pointerId !== event.pointerId) return;
+    const selectionKind = regionMode;
+    const pageElement = event.currentTarget;
+    const pageRect = pageElement.getBoundingClientRect();
+    event.preventDefault();
+    event.stopPropagation();
+    const end = {
+      x: clampRatio((event.clientX - pageRect.left) / pageRect.width),
+      y: clampRatio((event.clientY - pageRect.top) / pageRect.height),
+    };
+    const bbox = regionBbox(regionDraft.start, end);
+    setRegionDraft(null);
+    if (pageElement.hasPointerCapture(event.pointerId)) {
+      pageElement.releasePointerCapture(event.pointerId);
+    }
+    if (bbox[2] * pageRect.width < PDF_REGION_MIN_SIZE_PX || bbox[3] * pageRect.height < PDF_REGION_MIN_SIZE_PX) {
+      setRegionStatus('框选范围太小，请重新拖拽。');
+      return;
+    }
+    setRegionStatus('正在准备选区内容…');
+    try {
+      const capture = await capturePdfRegion(pageElement, bbox, selectionKind, page);
+      if (!analysisDisabledRef.current) {
+        onAnalyzeRegion?.(capture);
+      }
+      setRegionStatus(null);
+    } catch (error) {
+      setRegionStatus(error instanceof Error ? error.message : '框选失败，请重试。');
+    }
+  }, [analysisDisabled, onAnalyzeRegion, regionDraft, regionMode]);
+
+  const cancelRegionSelection = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (regionDraft && event.currentTarget.hasPointerCapture(regionDraft.pointerId)) {
+      event.currentTarget.releasePointerCapture(regionDraft.pointerId);
+    }
+    setRegionDraft(null);
+  }, [regionDraft]);
+
+  const handleFormulaCandidateClick = useCallback(async (
+    candidate: PdfFormulaCandidate,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ): Promise<void> => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (
+      analysisDisabled
+      || regionMode !== 'formula'
+      || formulaCaptureInFlightRef.current
+    ) return;
+    const pageElement = event.currentTarget.closest('[data-page-number]') as HTMLDivElement | null;
+    if (!pageElement) {
+      setRegionStatus('无法定位公式所在页面，请重新加载后重试。');
+      return;
+    }
+
+    formulaCaptureInFlightRef.current = true;
+    setPendingFormulaCandidateId(candidate.candidateId);
+    setRegionStatus('正在准备公式内容…');
+    try {
+      const capture = await capturePdfRegion(
+        pageElement,
+        candidate.bbox,
+        'formula',
+        candidate.page,
+        {
+          candidateId: candidate.candidateId,
+          chunkId: candidate.chunkId,
+          text: candidate.text,
+        },
+      );
+      if (!analysisDisabledRef.current) {
+        onAnalyzeRegion?.(capture);
+      }
+      setRegionStatus(null);
+    } catch (error) {
+      setRegionStatus(error instanceof Error ? error.message : '公式选择失败，请重试。');
+    } finally {
+      formulaCaptureInFlightRef.current = false;
+      setPendingFormulaCandidateId(null);
+    }
+  }, [analysisDisabled, onAnalyzeRegion, regionMode]);
+
+  const activeSelectionStatus = regionStatus ?? (
+    regionMode === 'formula'
+      ? formulaCandidatesByPage.size > 0
+        ? '整条公式选择已开启；可连续选择公式，也可直接划选正文。'
+        : '当前文献尚未识别到可整体选择的公式；正文仍可直接划选。'
+      : regionMode
+        ? `拖拽框选${regionMode === 'figure' ? '图' : regionMode === 'table' ? '表' : '区域'}；可连续选择多个内容。`
+        : null
+  );
+  const selectionStatusIsWarning = Boolean(
+    regionStatus || (regionMode === 'formula' && formulaCandidatesByPage.size === 0),
+  );
+
   return (
     <div
       ref={viewerRootRef}
+      data-testid="pdf-viewer"
+      data-citation-anchor-status={citationAnchorStatus}
       className={cn(
         'pdf-canvas flex flex-col h-full bg-gray-100 dark:bg-neutral-900',
         isFullscreen && 'h-screen w-screen',
@@ -1075,6 +1869,67 @@ export function PdfViewer({
           >
             <ZoomIn size={14} />
           </button>
+          {onAnalyzeRegion && (
+            <>
+              <span className="mx-1 h-4 w-px bg-outline-variant/70" aria-hidden />
+              <button
+                type="button"
+                onClick={() => toggleRegionMode('figure')}
+                disabled={analysisDisabled}
+                className={cn(
+                  'inline-flex h-7 items-center gap-1 rounded px-2 text-[10px] font-label text-foreground/75 transition-colors hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent',
+                  regionMode === 'figure' && 'bg-primary/12 text-primary ring-1 ring-primary/35',
+                )}
+                aria-pressed={regionMode === 'figure'}
+                title="拖拽框选图，并附到本次提问"
+              >
+                <ImageIcon size={13} aria-hidden />
+                图
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleRegionMode('table')}
+                disabled={analysisDisabled}
+                className={cn(
+                  'inline-flex h-7 items-center gap-1 rounded px-2 text-[10px] font-label text-foreground/75 transition-colors hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent',
+                  regionMode === 'table' && 'bg-primary/12 text-primary ring-1 ring-primary/35',
+                )}
+                aria-pressed={regionMode === 'table'}
+                title="拖拽框选表，并附到本次提问"
+              >
+                <Table2 size={13} aria-hidden />
+                表
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleRegionMode('formula')}
+                disabled={analysisDisabled}
+                className={cn(
+                  'inline-flex h-7 items-center gap-1 rounded px-2 text-[10px] font-label text-foreground/75 transition-colors hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent',
+                  regionMode === 'formula' && 'bg-primary/12 text-primary ring-1 ring-primary/35',
+                )}
+                aria-pressed={regionMode === 'formula'}
+                title="按完整公式选择，并附到本次提问"
+              >
+                <Sigma size={13} aria-hidden />
+                公式
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleRegionMode('region')}
+                disabled={analysisDisabled}
+                className={cn(
+                  'inline-flex h-7 items-center gap-1 rounded px-2 text-[10px] font-label text-foreground/75 transition-colors hover:bg-surface-high hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent',
+                  regionMode === 'region' && 'bg-primary/12 text-primary ring-1 ring-primary/35',
+                )}
+                aria-pressed={regionMode === 'region'}
+                title="拖拽框选任意区域，并附到本次提问"
+              >
+                <ScanSearch size={13} aria-hidden />
+                区域
+              </button>
+            </>
+          )}
           {!hideHighlightPanel && (
             <button
               onClick={() => setShowPanel(v => !v)}
@@ -1090,12 +1945,43 @@ export function PdfViewer({
         </div>
       </div>
 
+      {activeSelectionStatus && (
+        <div
+          className={cn(
+            'flex min-h-8 items-center justify-between gap-3 border-b border-outline-variant/60 px-3 py-1 text-[11px] font-label',
+            selectionStatusIsWarning
+              ? 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200'
+              : 'bg-primary/10 text-foreground/70',
+          )}
+          role="status"
+        >
+          <span>{activeSelectionStatus}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setRegionMode(null);
+              setRegionDraft(null);
+              setRegionStatus(null);
+            }}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-foreground/55 hover:bg-surface-high hover:text-foreground"
+            aria-label={regionMode === 'formula' ? '退出公式选择' : '取消框选'}
+            title={regionMode === 'formula' ? '退出公式选择' : '取消框选'}
+          >
+            <X size={13} aria-hidden />
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 flex min-h-0">
         {/* PDF pages — continuous vertical scroll (Zotero-style). */}
         <div
           ref={scrollContainerRef}
-          className="flex-1 overflow-auto flex flex-col items-center py-4 gap-4"
+          className={cn(
+            'flex-1 overflow-auto flex flex-col items-center py-4 gap-4',
+            analysisDisabled && 'select-none',
+          )}
           onMouseUp={handleMouseUp}
+          aria-disabled={analysisDisabled || undefined}
         >
           {loadError ? (
             <div className="flex flex-col items-center gap-3 py-8 px-4 text-center">
@@ -1125,6 +2011,8 @@ export function PdfViewer({
                 {Array.from({ length: numPages }, (_, i) => {
                   const pageNo = i + 1;
                   const pageHighlights = highlightsByPage.get(pageNo) ?? [];
+                  const pageFormulaCandidates = formulaCandidatesByPage.get(pageNo) ?? EMPTY_FORMULA_CANDIDATES;
+                  const pageSelectedVisualRegions = selectedVisualRegionsByPage.get(pageNo) ?? EMPTY_SELECTED_VISUAL_REGIONS;
                   const isFlashing = flashPage === pageNo;
                   const renderPage = shouldRenderPdfPage(pageNo);
                   const placeholderHeight = measuredPageHeights[pageNo] ?? Math.round(PDF_DEFAULT_PAGE_HEIGHT_PX * scale);
@@ -1136,15 +2024,27 @@ export function PdfViewer({
                         updateMeasuredPageHeight(pageNo, el);
                       }}
                       data-page-number={pageNo}
+                      onPointerDown={(event) => handleRegionPointerDown(pageNo, event)}
+                      onPointerMove={(event) => handleRegionPointerMove(pageNo, event)}
+                      onPointerUp={(event) => { void finishRegionSelection(pageNo, event); }}
+                      onPointerCancel={cancelRegionSelection}
                       className={cn(
                         'relative inline-block shadow-sm transition-shadow',
                         isFlashing && 'ring-2 ring-primary/60 shadow-lg',
+                        isDragSelectionKind(regionMode) && 'cursor-crosshair select-none touch-none',
                       )}
                       style={renderPage ? undefined : { minHeight: placeholderHeight }}
                       aria-label={`PDF 第 ${pageNo} 页`}
                     >
                       {renderPage ? (
-                        <Page pageNumber={pageNo} scale={scale} />
+                        <Page
+                          pageNumber={pageNo}
+                          scale={scale}
+                          onRenderSuccess={() => handlePdfPageRenderSuccess(
+                            pageNo,
+                            citationBboxActivationKey,
+                          )}
+                        />
                       ) : (
                         <div
                           className="flex w-[min(72vw,760px)] items-center justify-center rounded border border-dashed border-outline-variant/50 bg-surface-lowest text-[11px] text-foreground/45"
@@ -1159,6 +2059,13 @@ export function PdfViewer({
                             (h.rects ?? []).map((r, ri) => (
                               <div
                                 key={`${hi}-${ri}`}
+                                data-testid={
+                                  h === citationQuoteHighlight
+                                    ? 'pdf-citation-quote-highlight'
+                                    : h === citationBboxHighlight
+                                      ? 'pdf-citation-bbox-highlight'
+                                      : undefined
+                                }
                                 style={{
                                   position: 'absolute',
                                   left: `${r.x * 100}%`,
@@ -1173,6 +2080,60 @@ export function PdfViewer({
                               />
                             )),
                           )}
+                        </div>
+                      )}
+                      {renderPage && pageSelectedVisualRegions.length > 0 && (
+                        <div className="pointer-events-none absolute inset-0 z-10" aria-hidden>
+                          {pageSelectedVisualRegions.map((selection, selectionIndex) => (
+                            <div
+                              key={`${selection.candidateId ?? selection.kind}-${selection.bbox.join('-')}-${selectionIndex}`}
+                              data-testid="pdf-selected-visual-region"
+                              data-selection-kind={selection.kind}
+                              className="absolute rounded-sm border-2 border-primary/80 bg-primary/5 shadow-[0_0_0_1px_rgba(255,255,255,0.65)]"
+                              style={{
+                                left: `${selection.bbox[0] * 100}%`,
+                                top: `${selection.bbox[1] * 100}%`,
+                                width: `${selection.bbox[2] * 100}%`,
+                                height: `${selection.bbox[3] * 100}%`,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {renderPage && regionMode === 'formula' && pageFormulaCandidates.length > 0 && (
+                        <div className="pointer-events-none absolute inset-0 z-20" role="group" aria-label={`第 ${pageNo} 页公式`}>
+                          {pageFormulaCandidates.map((candidate, candidateIndex) => (
+                            <button
+                              key={candidate.candidateId}
+                              type="button"
+                              data-formula-candidate-id={candidate.candidateId}
+                              className="pointer-events-auto absolute border border-transparent bg-transparent transition-colors hover:border-primary/70 hover:bg-primary/5 focus-visible:border-primary focus-visible:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:pointer-events-none disabled:opacity-50"
+                              style={{
+                                left: `${candidate.bbox[0] * 100}%`,
+                                top: `${candidate.bbox[1] * 100}%`,
+                                width: `${candidate.bbox[2] * 100}%`,
+                                height: `${candidate.bbox[3] * 100}%`,
+                              }}
+                              aria-label={`选择第 ${pageNo} 页公式 ${candidateIndex + 1}`}
+                              title="选择整条公式"
+                              disabled={analysisDisabled || pendingFormulaCandidateId !== null}
+                              onClick={(event) => { void handleFormulaCandidateClick(candidate, event); }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {regionDraft?.page === pageNo && (
+                        <div className="pointer-events-none absolute inset-0 z-20" aria-hidden>
+                          <div
+                            data-testid="pdf-region-draft"
+                            className="absolute border-2 border-primary bg-primary/10 shadow-[0_0_0_9999px_rgba(15,23,42,0.18)]"
+                            style={{
+                              left: `${regionBbox(regionDraft.start, regionDraft.current)[0] * 100}%`,
+                              top: `${regionBbox(regionDraft.start, regionDraft.current)[1] * 100}%`,
+                              width: `${regionBbox(regionDraft.start, regionDraft.current)[2] * 100}%`,
+                              height: `${regionBbox(regionDraft.start, regionDraft.current)[3] * 100}%`,
+                            }}
+                          />
                         </div>
                       )}
                     </div>
@@ -1236,7 +2197,7 @@ export function PdfViewer({
       </div>
 
       {/* Floating AI analysis button — appears on text selection */}
-      {showAIBtn && selectedText && (
+      {!analysisDisabled && showAIBtn && selectedText && (
         <div
           className="fixed z-50 flex gap-1"
           style={{ left: btnPos.x, top: btnPos.y }}
@@ -1370,6 +2331,7 @@ interface PdfRef { num: number; gen: number }
 
 interface PdfTextItemLike {
   str?: unknown;
+  hasEOL?: unknown;
 }
 
 interface PdfTextContentLike {
@@ -1396,13 +2358,13 @@ interface PdfDocumentLike {
 
 function extractPdfTextContent(content: PdfTextContentLike): string {
   if (!content || !Array.isArray(content.items)) return '';
-  return content.items
-    .map((item: unknown) => {
-      const textItem = item as PdfTextItemLike | null;
-      return typeof textItem?.str === 'string' ? textItem.str : '';
-    })
-    .filter((text) => text.length > 0)
-    .join(' ');
+  const fragments: string[] = [];
+  for (const item of content.items) {
+    const textItem = item as PdfTextItemLike | null;
+    if (typeof textItem?.str === 'string') fragments.push(textItem.str);
+    if (textItem?.hasEOL === true) fragments.push('\n');
+  }
+  return fragments.join('');
 }
 
 async function resolveDestPage(pdf: PdfDocumentLike, dest: string | unknown[] | null | undefined): Promise<number | undefined> {

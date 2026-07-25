@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import sys
 from pathlib import Path
@@ -16,6 +17,9 @@ if _CORE not in sys.path:
 
 from pdf_backends import (  # noqa: E402
     OcrEngineHealth,
+    PDFParseResult,
+    PDFParserProvenance,
+    StructuredBlock,
     build_ocr_engine,
     clear_ocr_engines_for_tests,
     register_ocr_engine,
@@ -84,6 +88,52 @@ class _FailingOcrEngine(_RecordingOcrEngine):
         raise RuntimeError("mock runtime adapter is not wired")
 
 
+class _EmptyTextOcrEngine(_RecordingOcrEngine):
+    """Available OCR engine that returns no searchable page text."""
+
+    def ocr_image(self, image: bytes | str | Path, language: str) -> str:
+        del image, language
+        return "   "
+
+
+class _StructuredOcrEngine(_RecordingOcrEngine):
+    """OCR engine stub exposing the optional layout-aware result contract."""
+
+    def ocr_image_result(self, image: bytes | Path, *, language: str = "en") -> Any:
+        from pdf_backends.ocr_engine import OcrImageRegion, OcrImageResult
+
+        if not isinstance(image, (bytes, Path)):
+            raise TypeError("image must be bytes or pathlib.Path")
+        self.calls.append((image, language))
+        return OcrImageResult(
+            text="first located sentence\nFigure 2 located caption",
+            regions=(
+                OcrImageRegion(
+                    markdown="first located sentence",
+                    bbox=(0.1, 0.2, 0.7, 0.08),
+                    block_type="Paragraph",
+                ),
+                OcrImageRegion(
+                    markdown="Figure 2 located caption",
+                    bbox=(0.15, 0.45, 0.6, 0.35),
+                    block_type="FigureCaption",
+                ),
+            ),
+        )
+
+
+class _EmptyStructuredOcrEngine(_RecordingOcrEngine):
+    """Layout-aware OCR engine that recognizes a blank page."""
+
+    def ocr_image_result(self, image: bytes | Path, *, language: str = "en") -> Any:
+        from pdf_backends.ocr_engine import OcrImageResult
+
+        if not isinstance(image, (bytes, Path)):
+            raise TypeError("image must be bytes or pathlib.Path")
+        self.calls.append((image, language))
+        return OcrImageResult(text="", regions=())
+
+
 @pytest.fixture(autouse=True)
 def _reset_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
     clear_ocr_engines_for_tests()
@@ -113,6 +163,21 @@ def _classification(
         strategy=strategy,
         total_pages=len(text_pages or []) + len(ocr_pages or []) + len(mixed_pages or []),
         avg_text_density=120.0,
+    )
+
+
+def _parser_provenance() -> PDFParserProvenance:
+    """Return deterministic parser provenance for OCR copy tests."""
+
+    return PDFParserProvenance(
+        backend_name="pymupdf",
+        parser_name="pymupdf",
+        parser_version="1.27.1",
+        parser_version_source="module",
+        backend_contract="scholar-ai.pdf-parser.pymupdf-fallback-compat/v1",
+        backend_fingerprint="sha256:" + "a" * 64,
+        outcome="succeeded",
+        attempted_parsers=("pymupdf",),
     )
 
 
@@ -224,7 +289,11 @@ def test_text_pdf_makes_zero_ocr_calls(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setenv("LITASSIST_OCR_POLICY", "engine")
     monkeypatch.setenv("LITASSIST_OCR_ENGINE", "mock")
 
-    payload = ExtractedDocumentPayload(content="already extracted text")
+    parser_provenance = _parser_provenance()
+    payload = ExtractedDocumentPayload(
+        content="already extracted text",
+        parser_provenance=parser_provenance,
+    )
     result = apply_pdf_ocr_if_needed(
         "text.pdf",
         pdf_path,
@@ -237,6 +306,7 @@ def test_text_pdf_makes_zero_ocr_calls(tmp_path: Path, monkeypatch: pytest.Monke
     assert _RecordingOcrEngine.calls == []
     assert result.ocr_report is not None
     assert result.ocr_report.strategy == "text_only"
+    assert result.parser_provenance is parser_provenance
 
 
 def test_scanned_pdf_without_available_engine_degrades_visibly(
@@ -245,6 +315,7 @@ def test_scanned_pdf_without_available_engine_degrades_visibly(
 ) -> None:
     pdf_path = tmp_path / "scan.pdf"
     pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    monkeypatch.setenv("LITASSIST_OCR_CONFIG_PATH", str(tmp_path / "missing-ocr-config.json"))
     monkeypatch.setenv("LITASSIST_OCR_POLICY", "engine")
     monkeypatch.setenv("LITASSIST_OCR_ENGINE", "remote_api")
 
@@ -342,10 +413,23 @@ def test_mock_engine_merges_scanned_and_mixed_page_text(
         rendered_pages.append(page_index)
         return f"page-{page_index + 1}".encode("ascii")
 
+    parser_provenance = _parser_provenance()
+    parser_block = StructuredBlock(
+        block_id="parser-page-3",
+        page=3,
+        bbox=[0.1, 0.1, 0.8, 0.2],
+        block_type="Text",
+        markdown="base parser text",
+    )
     result = apply_pdf_ocr_if_needed(
         "mixed.pdf",
         pdf_path,
-        ExtractedDocumentPayload(content="base parser text"),
+        ExtractedDocumentPayload(
+            content="base parser text",
+            blocks=[parser_block],
+            parser_provenance=parser_provenance,
+            parser_output_sha256="sha256:" + "a" * 64,
+        ),
         classifier=_StaticClassifier(
             _classification(text_pages=[2], ocr_pages=[0], mixed_pages=[1], strategy="hybrid")
         ),
@@ -356,8 +440,126 @@ def test_mock_engine_merges_scanned_and_mixed_page_text(
     assert _RecordingOcrEngine.calls == [(b"page-1", "zh"), (b"page-2", "zh")]
     assert "[OCR Page 1]\nmock text zh page-1" in result.content
     assert "[OCR Page 2]\nmock text zh page-2" in result.content
+    assert result.blocks is not None
+    assert result.blocks[0] is parser_block
+    assert [
+        (block.page, block.bbox, block.block_type, block.markdown)
+        for block in result.blocks[1:]
+    ] == [
+        (1, None, "Text", "mock text zh page-1"),
+        (2, None, "Text", "mock text zh page-2"),
+    ]
     assert result.ocr_report is not None
     assert result.ocr_report.applied_pages == [0, 1]
+    assert result.ocr_report.engine_name == "mock"
+    assert result.ocr_report.engine_implementation_fingerprint is not None
+    assert result.ocr_report.engine_implementation_fingerprint.startswith("sha256:")
+    assert result.ocr_report.config_fingerprint is not None
+    expected_ocr_output = (
+        "[OCR Page 1]\nmock text zh page-1\n\n"
+        "[OCR Page 2]\nmock text zh page-2"
+    )
+    assert result.ocr_report.output_sha256 == (
+        "sha256:" + hashlib.sha256(expected_ocr_output.encode("utf-8")).hexdigest()
+    )
+    assert "warning" not in result.ocr_report.revision_payload()
+    assert result.parser_provenance is parser_provenance
+    assert result.parser_output_sha256 == "sha256:" + "a" * 64
+
+
+def test_layout_aware_ocr_preserves_sentence_and_figure_regions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdf_path = tmp_path / "structured-ocr.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    register_ocr_engine("mock", lambda config: _StructuredOcrEngine(config))
+    monkeypatch.setenv("LITASSIST_OCR_POLICY", "engine")
+    monkeypatch.setenv("LITASSIST_OCR_ENGINE", "mock")
+
+    result = apply_pdf_ocr_if_needed(
+        "structured-ocr.pdf",
+        pdf_path,
+        ExtractedDocumentPayload(content="", blocks=None),
+        classifier=_StaticClassifier(
+            _classification(text_pages=[], ocr_pages=[0], mixed_pages=[], strategy="ocr_only")
+        ),
+        render_page=lambda _path, _page: b"page-1",
+    )
+
+    assert _RecordingOcrEngine.calls == [(b"page-1", "en")]
+    assert result.blocks is not None
+    assert [
+        (
+            block.page,
+            block.bbox,
+            block.bbox_unit,
+            block.block_type,
+            block.markdown,
+        )
+        for block in result.blocks
+    ] == [
+        (1, [0.1, 0.2, 0.7, 0.08], "normalized_ratio", "Paragraph", "first located sentence"),
+        (
+            1,
+            [0.15, 0.45, 0.6, 0.35],
+            "normalized_ratio",
+            "FigureCaption",
+            "Figure 2 located caption",
+        ),
+    ]
+
+
+def test_empty_ocr_result_preserves_no_blocks_sentinel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdf_path = tmp_path / "empty-ocr.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    register_ocr_engine("mock", lambda config: _EmptyTextOcrEngine(config))
+    monkeypatch.setenv("LITASSIST_OCR_POLICY", "engine")
+    monkeypatch.setenv("LITASSIST_OCR_ENGINE", "mock")
+
+    result = apply_pdf_ocr_if_needed(
+        "empty-ocr.pdf",
+        pdf_path,
+        ExtractedDocumentPayload(content="base parser text", blocks=None),
+        classifier=_StaticClassifier(
+            _classification(text_pages=[], ocr_pages=[0], mixed_pages=[], strategy="ocr_only")
+        ),
+        render_page=lambda _path, _page: b"page-1",
+    )
+
+    assert result.blocks is None
+    assert result.ocr_report is not None
+    assert result.ocr_report.warning == "OCR engine returned no text"
+
+
+def test_empty_structured_ocr_result_preserves_no_blocks_sentinel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdf_path = tmp_path / "empty-structured-ocr.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    register_ocr_engine("mock", lambda config: _EmptyStructuredOcrEngine(config))
+    monkeypatch.setenv("LITASSIST_OCR_POLICY", "engine")
+    monkeypatch.setenv("LITASSIST_OCR_ENGINE", "mock")
+
+    result = apply_pdf_ocr_if_needed(
+        "empty-structured-ocr.pdf",
+        pdf_path,
+        ExtractedDocumentPayload(content="base parser text", blocks=None),
+        classifier=_StaticClassifier(
+            _classification(text_pages=[], ocr_pages=[0], mixed_pages=[], strategy="ocr_only")
+        ),
+        render_page=lambda _path, _page: b"page-1",
+    )
+
+    assert _RecordingOcrEngine.calls == [(b"page-1", "en")]
+    assert result.blocks is None
+    assert result.ocr_report is not None
+    assert result.ocr_report.applied_pages == []
+    assert result.ocr_report.warning == "OCR engine returned no text"
 
 
 def test_real_classifier_routes_scanned_and_mixed_pages_through_ingestion(
@@ -451,7 +653,7 @@ def test_batch_pdf_parse_results_are_ocr_post_processed(
     service = UnifiedBatchUploadService(
         persist_upload=lambda *_args: None,
         load_doc_store=lambda _project_id: {},
-        save_doc_store=lambda *_args: None,
+        update_doc_store=lambda _project_id, updater: updater({}),
         extract_payload=lambda _filename, _path: pytest.fail("batch parse should supply payload"),
         truncate_content=lambda text: text,
         ensure_extracted_text=lambda _filename, text: text,
@@ -470,7 +672,7 @@ def test_batch_pdf_parse_results_are_ocr_post_processed(
                 source_path=pdf_path,
                 display_name="batch.pdf",
                 source_relative_path="batch.pdf",
-                source_fingerprint="fp",
+                source_fingerprint="sha256:" + "a" * 64,
                 source_size=pdf_path.stat().st_size,
             )
         ],
@@ -481,3 +683,72 @@ def test_batch_pdf_parse_results_are_ocr_post_processed(
     assert isinstance(payload, ExtractedDocumentPayload)
     assert payload.content == "batch parser text\nOCR batch text"
     assert seen == [("batch.pdf", pdf_path, "batch parser text")]
+
+
+def test_typed_batch_pdf_result_keeps_parser_provenance_through_ocr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdf_path = tmp_path / "typed-batch.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    provenance = _parser_provenance()
+
+    def _apply_ocr(
+        _filename: str,
+        _source_path: Path,
+        payload: ExtractedDocumentPayload,
+    ) -> ExtractedDocumentPayload:
+        return ExtractedDocumentPayload(
+            content=payload.content + "\nOCR typed batch",
+            blocks=payload.blocks,
+            markdown_full=payload.markdown_full,
+            parser_provenance=payload.parser_provenance,
+            parser_output_sha256=payload.parser_output_sha256,
+        )
+
+    monkeypatch.setattr(upload_service_module, "apply_pdf_ocr_if_needed", _apply_ocr)
+    service = UnifiedBatchUploadService(
+        persist_upload=lambda *_args: None,
+        load_doc_store=lambda _project_id: {},
+        update_doc_store=lambda _project_id, updater: updater({}),
+        extract_payload=lambda _filename, _path: pytest.fail(
+            "typed batch parse should supply payload"
+        ),
+        truncate_content=lambda text: text,
+        ensure_extracted_text=lambda _filename, text: text,
+        write_material_document_content=lambda *_args, **_kwargs: {"chunks": 1},
+        safe_upload_filename=lambda name: name,
+    )
+    monkeypatch.setattr(
+        service,
+        "_try_parse_pdf_batch",
+        lambda _paths, _max_workers: [
+            PDFParseResult(
+                text="typed batch parser text",
+                blocks=None,
+                markdown_full=None,
+                provenance=provenance,
+            )
+        ],
+    )
+
+    result = service._extract_sources_sync(
+        [
+            BatchSource(
+                source_path=pdf_path,
+                display_name="typed-batch.pdf",
+                source_relative_path="typed-batch.pdf",
+                source_fingerprint="sha256:" + "b" * 64,
+                source_size=pdf_path.stat().st_size,
+            )
+        ],
+        max_workers=None,
+    )
+
+    payload = result[pdf_path]
+    assert isinstance(payload, ExtractedDocumentPayload)
+    assert payload.parser_provenance == provenance
+    assert payload.parser_output_sha256 == (
+        "sha256:" + hashlib.sha256(b"typed batch parser text").hexdigest()
+    )
+    assert payload.content.endswith("OCR typed batch")

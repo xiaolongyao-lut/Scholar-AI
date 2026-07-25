@@ -107,6 +107,7 @@ def _redact_secrets(text: str) -> str:
         return s
 
     text = re.sub(r"\b[A-Za-z0-9]{32,}\b", _maybe, text)
+    text = re.sub(r"\b[A-Za-z0-9_-]{24,}\b", _maybe, text)
     return text
 
 
@@ -143,6 +144,14 @@ def _extract_provider_error_message(body: str) -> str | None:
         if isinstance(cand, str) and cand.strip():
             return _redact_secrets(cand.strip())[:240]
     return None
+
+
+def _extract_json_provider_error_message(body: str) -> str | None:
+    """Extract provider error text only from JSON-looking response bodies."""
+
+    if not isinstance(body, str) or not body.strip().startswith("{"):
+        return None
+    return _extract_provider_error_message(body)
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +203,16 @@ _PROBE_CHAT_PATHS: dict[str, str] = {
     "anthropic_messages": "/messages",
 }
 
+
+def _strip_known_terminal_endpoint(base_url: str) -> str:
+    """Remove a pasted chat/response/messages endpoint from a provider base."""
+
+    trimmed = (base_url or "").strip().rstrip("/")
+    for suffix in sorted(set(_PROBE_CHAT_PATHS.values()), key=len, reverse=True):
+        if trimmed.endswith(suffix):
+            return trimmed[: -len(suffix)].rstrip("/")
+    return trimmed
+
 _SCHOLAR_PROBE_SYSTEM_PROMPT = (
     "You are a Scholar AI model-readiness probe. Follow the user's evidence "
     "and return only the requested compact JSON object."
@@ -210,6 +229,13 @@ _SCHOLAR_PROBE_RESPONSE_TEMPLATE = {
     "evidence_ids": ["S1"],
     "limits": "仅依据给定材料判断。",
 }
+_SCHOLAR_TOOL_PROBE_USER_PROMPT = (
+    "Scholar AI 正在验证模型是否能在文献问答流程中调用本地证据工具。\n"
+    "材料 S1：检索增强生成在回答前引用原文证据，可以降低幻觉风险，并帮助用户回到来源核对。\n"
+    "问题：根据材料，为什么回答中要保留证据编号？\n"
+    "请调用 capability_probe，并把 status 设为 scholar_evidence_tool_ready。"
+)
+_TOOL_CHOICE_FALLBACK_STATUS_CODES = frozenset({400, 422})
 
 
 def _chat_probe_url(base_url: str, protocol: str) -> str | None:
@@ -226,7 +252,8 @@ def _chat_probe_url(base_url: str, protocol: str) -> str | None:
     trimmed = base_url.strip().rstrip("/")
     if trimmed.endswith(suffix):
         return trimmed
-    return f"{trimmed}{suffix}"
+    normalized_base = _strip_known_terminal_endpoint(trimmed)
+    return f"{normalized_base}{suffix}"
 
 
 def _chat_probe_payload(
@@ -565,8 +592,7 @@ def _build_models_url(base_url: str) -> str:
     trimmed = base_url.strip().rstrip("/")
     if not trimmed:
         return ""
-    if trimmed.endswith("/chat/completions"):
-        trimmed = trimmed[: -len("/chat/completions")]
+    trimmed = _strip_known_terminal_endpoint(trimmed)
     if trimmed.endswith("/v1"):
         return f"{trimmed}/models"
     return f"{trimmed}/v1/models"
@@ -670,14 +696,17 @@ def _ordinary_chat_probe_payload(
     provider: str = "",
     base_url: str = "",
 ) -> dict[str, Any]:
-    """Return a real-model one-token chat payload for capability probes."""
+    """Return a real-model Scholar AI chat payload for capability probes."""
 
     if not isinstance(model, str) or not model.strip():
         raise ValueError("model must be a non-empty string")
     payload = {
         "model": model.strip(),
-        "messages": [{"role": "user", "content": "Reply with ok."}],
-        "max_tokens": 8,
+        "messages": [
+            {"role": "system", "content": _SCHOLAR_PROBE_SYSTEM_PROMPT},
+            {"role": "user", "content": _SCHOLAR_PROBE_USER_PROMPT},
+        ],
+        "max_tokens": 180,
         "temperature": 0,
     }
     apply_openai_chat_payload_compat(
@@ -688,6 +717,26 @@ def _ordinary_chat_probe_payload(
         top_k=None,
     )
     return payload
+
+
+def _capability_probe_parameters_schema() -> dict[str, Any]:
+    """Return the tiny Scholar AI schema used by all tool-capability protocols."""
+
+    return {
+        "type": "object",
+        "properties": {
+            "status": {
+                "type": "string",
+                "enum": ["scholar_evidence_tool_ready"],
+            }
+        },
+        "required": ["status"],
+        "additionalProperties": False,
+    }
+
+
+def _capability_probe_description() -> str:
+    return "Reports whether Scholar AI evidence-tool calls reach the model."
 
 
 def _forced_tool_choice_probe_payload(
@@ -705,7 +754,7 @@ def _forced_tool_choice_probe_payload(
         "messages": [
             {
                 "role": "user",
-                "content": "Call capability_probe with status=ok.",
+                "content": _SCHOLAR_TOOL_PROBE_USER_PROMPT,
             }
         ],
         "tools": [
@@ -713,18 +762,9 @@ def _forced_tool_choice_probe_payload(
                 "type": "function",
                 "function": {
                     "name": "capability_probe",
-                    "description": "Reports whether forced tool calls reach the model.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "status": {
-                                "type": "string",
-                                "enum": ["ok"],
-                            }
-                        },
-                        "required": ["status"],
-                        "additionalProperties": False,
-                    },
+                    "description": _capability_probe_description(),
+                    "strict": True,
+                    "parameters": _capability_probe_parameters_schema(),
                 },
             }
         ],
@@ -743,6 +783,148 @@ def _forced_tool_choice_probe_payload(
         top_k=None,
     )
     return payload
+
+
+def _legacy_function_call_probe_payload(
+    model: str,
+    *,
+    provider: str = "",
+    base_url: str = "",
+) -> dict[str, Any]:
+    """Return the legacy Chat Completions function-call probe payload."""
+
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("model must be a non-empty string")
+    payload = {
+        "model": model.strip(),
+        "messages": [
+            {
+                "role": "user",
+                "content": _SCHOLAR_TOOL_PROBE_USER_PROMPT,
+            }
+        ],
+        "functions": [
+            {
+                "name": "capability_probe",
+                "description": _capability_probe_description(),
+                "parameters": _capability_probe_parameters_schema(),
+            }
+        ],
+        "function_call": {"name": "capability_probe"},
+        "max_tokens": 32,
+        "temperature": 0,
+    }
+    apply_openai_chat_payload_compat(
+        payload,
+        provider=provider,
+        base_url=base_url,
+        model=model.strip(),
+        top_k=None,
+    )
+    return payload
+
+
+def _required_tool_choice_probe_payload(
+    model: str,
+    *,
+    provider: str = "",
+    base_url: str = "",
+) -> dict[str, Any]:
+    """Return a forced tool probe using the string `required` selector."""
+
+    payload = _forced_tool_choice_probe_payload(
+        model,
+        provider=provider,
+        base_url=base_url,
+    )
+    payload["tool_choice"] = "required"
+    return payload
+
+
+def _ordinary_responses_probe_payload(model: str) -> dict[str, Any]:
+    """Return a Scholar AI OpenAI Responses API probe payload."""
+
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("model must be a non-empty string")
+    return {
+        "model": model.strip(),
+        "input": [
+            {"role": "system", "content": _SCHOLAR_PROBE_SYSTEM_PROMPT},
+            {"role": "user", "content": _SCHOLAR_PROBE_USER_PROMPT},
+        ],
+        "max_output_tokens": 180,
+        "temperature": 0,
+    }
+
+
+def _forced_responses_tool_choice_probe_payload(
+    model: str,
+    *,
+    required: bool = False,
+) -> dict[str, Any]:
+    """Return an OpenAI Responses API function-call probe payload."""
+
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("model must be a non-empty string")
+    tool_name = "capability_probe"
+    payload: dict[str, Any] = {
+        "model": model.strip(),
+        "input": _SCHOLAR_TOOL_PROBE_USER_PROMPT,
+        "tools": [
+            {
+                "type": "function",
+                "name": tool_name,
+                "description": _capability_probe_description(),
+                "parameters": _capability_probe_parameters_schema(),
+                "strict": True,
+            }
+        ],
+        "tool_choice": "required" if required else {"type": "function", "name": tool_name},
+        "max_output_tokens": 32,
+        "temperature": 0,
+    }
+    return payload
+
+
+def _ordinary_anthropic_messages_probe_payload(model: str) -> dict[str, Any]:
+    """Return a Scholar AI Anthropic Messages API probe payload."""
+
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("model must be a non-empty string")
+    return {
+        "model": model.strip(),
+        "max_tokens": 180,
+        "temperature": 0,
+        "system": _SCHOLAR_PROBE_SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": _SCHOLAR_PROBE_USER_PROMPT}],
+    }
+
+
+def _forced_anthropic_tool_choice_probe_payload(
+    model: str,
+    *,
+    any_tool: bool = False,
+) -> dict[str, Any]:
+    """Return an Anthropic Messages API tool-use probe payload."""
+
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("model must be a non-empty string")
+    tool_name = "capability_probe"
+    return {
+        "model": model.strip(),
+        "max_tokens": 64,
+        "temperature": 0,
+        "messages": [{"role": "user", "content": _SCHOLAR_TOOL_PROBE_USER_PROMPT}],
+        "tools": [
+            {
+                "name": tool_name,
+                "description": _capability_probe_description(),
+                "input_schema": _capability_probe_parameters_schema(),
+                "strict": True,
+            }
+        ],
+        "tool_choice": {"type": "any"} if any_tool else {"type": "tool", "name": tool_name},
+    }
 
 
 def _json_object_response(response: httpx.Response) -> dict[str, Any] | None:
@@ -783,6 +965,38 @@ def _contains_forced_tool_call(payload: dict[str, Any], tool_name: str) -> bool:
     return False
 
 
+def _contains_responses_function_call(payload: dict[str, Any], tool_name: str) -> bool:
+    """Detect a named function call in an OpenAI Responses API response."""
+
+    if not isinstance(payload, dict):
+        return False
+    output = payload.get("output")
+    if not isinstance(output, list):
+        return False
+    for item in output:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "function_call" and item.get("name") == tool_name:
+            return True
+    return False
+
+
+def _contains_anthropic_tool_use(payload: dict[str, Any], tool_name: str) -> bool:
+    """Detect a named tool_use block in an Anthropic Messages response."""
+
+    if not isinstance(payload, dict):
+        return False
+    content = payload.get("content")
+    if not isinstance(content, list):
+        return False
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "tool_use" and item.get("name") == tool_name:
+            return True
+    return False
+
+
 def _probe_failure(
     result: ToolCallingProbeResult,
     *,
@@ -798,6 +1012,281 @@ def _probe_failure(
     result.status_code = status_code
     result.error = _redact_secrets(error)[:320]
     result.provider_message = _redact_secrets(provider_message)[:240] if provider_message else None
+    return result
+
+
+def _probe_openai_chat_tool_choice_fallbacks(
+    client: httpx.Client,
+    result: ToolCallingProbeResult,
+    *,
+    headers: dict[str, str],
+    model: str,
+    provider: str,
+    base_url: str,
+    provider_message: str | None,
+    original_status_code: int,
+) -> ToolCallingProbeResult:
+    """Try standard Chat Completions fallbacks after named tool choice fails."""
+
+    required_response = client.post(
+        result.chat_url,
+        json=_required_tool_choice_probe_payload(
+            model,
+            provider=provider,
+            base_url=base_url,
+        ),
+        headers=headers,
+    )
+    result.status_code = required_response.status_code
+    result.stage = "required_tool_choice"
+    if 200 <= required_response.status_code < 400:
+        required_data = _json_object_response(required_response)
+        if required_data is not None and _contains_forced_tool_call(required_data, "capability_probe"):
+            result.forced_tool_choice_ok = True
+            result.ok = True
+            return result
+
+    legacy_response = client.post(
+        result.chat_url,
+        json=_legacy_function_call_probe_payload(
+            model,
+            provider=provider,
+            base_url=base_url,
+        ),
+        headers=headers,
+    )
+    result.status_code = legacy_response.status_code
+    result.stage = "legacy_function_call"
+    if 200 <= legacy_response.status_code < 400:
+        legacy_data = _json_object_response(legacy_response)
+        if legacy_data is not None and _contains_forced_tool_call(legacy_data, "capability_probe"):
+            result.forced_tool_choice_ok = True
+            result.ok = True
+            return result
+
+    return _probe_failure(
+        result,
+        stage="forced_tool_choice",
+        status_code=original_status_code,
+        error="forced_tool_choice_not_returned",
+        provider_message=provider_message,
+    )
+
+
+def _probe_openai_responses_tool_choice_fallback(
+    client: httpx.Client,
+    result: ToolCallingProbeResult,
+    *,
+    headers: dict[str, str],
+    model: str,
+    provider_message: str | None,
+    original_status_code: int,
+) -> ToolCallingProbeResult:
+    """Try the standard Responses `required` fallback after named choice fails."""
+
+    required_response = client.post(
+        result.chat_url,
+        json=_forced_responses_tool_choice_probe_payload(model, required=True),
+        headers=headers,
+    )
+    result.status_code = required_response.status_code
+    result.stage = "responses_required_tool_choice"
+    if 200 <= required_response.status_code < 400:
+        required_data = _json_object_response(required_response)
+        if required_data is not None and _contains_responses_function_call(required_data, "capability_probe"):
+            result.forced_tool_choice_ok = True
+            result.ok = True
+            return result
+    return _probe_failure(
+        result,
+        stage="responses_function_choice",
+        status_code=original_status_code,
+        error="forced_tool_choice_not_returned",
+        provider_message=provider_message,
+    )
+
+
+def _probe_anthropic_tool_choice_fallback(
+    client: httpx.Client,
+    result: ToolCallingProbeResult,
+    *,
+    headers: dict[str, str],
+    model: str,
+    provider_message: str | None,
+    original_status_code: int,
+) -> ToolCallingProbeResult:
+    """Try Anthropic's `any` selector after named tool choice fails."""
+
+    any_response = client.post(
+        result.chat_url,
+        json=_forced_anthropic_tool_choice_probe_payload(model, any_tool=True),
+        headers=headers,
+    )
+    result.status_code = any_response.status_code
+    result.stage = "anthropic_any_tool_choice"
+    if 200 <= any_response.status_code < 400:
+        any_data = _json_object_response(any_response)
+        if any_data is not None and _contains_anthropic_tool_use(any_data, "capability_probe"):
+            result.forced_tool_choice_ok = True
+            result.ok = True
+            return result
+    return _probe_failure(
+        result,
+        stage="anthropic_tool_choice",
+        status_code=original_status_code,
+        error="forced_tool_choice_not_returned",
+        provider_message=provider_message,
+    )
+
+
+def _probe_openai_responses_tool_calling(
+    client: httpx.Client,
+    result: ToolCallingProbeResult,
+    *,
+    headers: dict[str, str],
+    model: str,
+) -> ToolCallingProbeResult:
+    """Run the Responses API ordinary-response + forced-function probe."""
+
+    ordinary_response = client.post(
+        result.chat_url,
+        json=_ordinary_responses_probe_payload(model),
+        headers=headers,
+    )
+    result.status_code = ordinary_response.status_code
+    result.stage = "ordinary_response"
+    if not 200 <= ordinary_response.status_code < 400:
+        provider_message = _extract_provider_error_message(ordinary_response.text or "")
+        return _probe_failure(
+            result,
+            stage="ordinary_response",
+            status_code=ordinary_response.status_code,
+            error=f"HTTP {ordinary_response.status_code}" + (f": {provider_message}" if provider_message else ""),
+            provider_message=provider_message,
+        )
+    if _json_object_response(ordinary_response) is None:
+        return _probe_failure(
+            result,
+            stage="ordinary_response",
+            status_code=ordinary_response.status_code,
+            error="non_json_success",
+        )
+    result.chat_ok = True
+
+    tool_response = client.post(
+        result.chat_url,
+        json=_forced_responses_tool_choice_probe_payload(model),
+        headers=headers,
+    )
+    result.status_code = tool_response.status_code
+    result.stage = "responses_function_choice"
+    if not 200 <= tool_response.status_code < 400:
+        provider_message = _extract_provider_error_message(tool_response.text or "")
+        if tool_response.status_code in _TOOL_CHOICE_FALLBACK_STATUS_CODES:
+            return _probe_openai_responses_tool_choice_fallback(
+                client,
+                result,
+                headers=headers,
+                model=model,
+                provider_message=provider_message,
+                original_status_code=tool_response.status_code,
+            )
+        return _probe_failure(
+            result,
+            stage="responses_function_choice",
+            status_code=tool_response.status_code,
+            error=f"HTTP {tool_response.status_code}" + (f": {provider_message}" if provider_message else ""),
+            provider_message=provider_message,
+        )
+    data = _json_object_response(tool_response)
+    if data is None or not _contains_responses_function_call(data, "capability_probe"):
+        provider_message = _extract_json_provider_error_message(tool_response.text or "")
+        return _probe_openai_responses_tool_choice_fallback(
+            client,
+            result,
+            headers=headers,
+            model=model,
+            provider_message=provider_message,
+            original_status_code=tool_response.status_code,
+        )
+    result.forced_tool_choice_ok = True
+    result.ok = True
+    return result
+
+
+def _probe_anthropic_messages_tool_calling(
+    client: httpx.Client,
+    result: ToolCallingProbeResult,
+    *,
+    headers: dict[str, str],
+    model: str,
+) -> ToolCallingProbeResult:
+    """Run the Anthropic Messages ordinary-message + forced-tool-use probe."""
+
+    result.models_ok = True
+    ordinary_response = client.post(
+        result.chat_url,
+        json=_ordinary_anthropic_messages_probe_payload(model),
+        headers=headers,
+    )
+    result.status_code = ordinary_response.status_code
+    result.stage = "ordinary_message"
+    if not 200 <= ordinary_response.status_code < 400:
+        provider_message = _extract_provider_error_message(ordinary_response.text or "")
+        return _probe_failure(
+            result,
+            stage="ordinary_message",
+            status_code=ordinary_response.status_code,
+            error=f"HTTP {ordinary_response.status_code}" + (f": {provider_message}" if provider_message else ""),
+            provider_message=provider_message,
+        )
+    if _json_object_response(ordinary_response) is None:
+        return _probe_failure(
+            result,
+            stage="ordinary_message",
+            status_code=ordinary_response.status_code,
+            error="non_json_success",
+        )
+    result.chat_ok = True
+
+    tool_response = client.post(
+        result.chat_url,
+        json=_forced_anthropic_tool_choice_probe_payload(model),
+        headers=headers,
+    )
+    result.status_code = tool_response.status_code
+    result.stage = "anthropic_tool_choice"
+    if not 200 <= tool_response.status_code < 400:
+        provider_message = _extract_provider_error_message(tool_response.text or "")
+        if tool_response.status_code in _TOOL_CHOICE_FALLBACK_STATUS_CODES:
+            return _probe_anthropic_tool_choice_fallback(
+                client,
+                result,
+                headers=headers,
+                model=model,
+                provider_message=provider_message,
+                original_status_code=tool_response.status_code,
+            )
+        return _probe_failure(
+            result,
+            stage="anthropic_tool_choice",
+            status_code=tool_response.status_code,
+            error=f"HTTP {tool_response.status_code}" + (f": {provider_message}" if provider_message else ""),
+            provider_message=provider_message,
+        )
+    data = _json_object_response(tool_response)
+    if data is None or not _contains_anthropic_tool_use(data, "capability_probe"):
+        provider_message = _extract_json_provider_error_message(tool_response.text or "")
+        return _probe_anthropic_tool_choice_fallback(
+            client,
+            result,
+            headers=headers,
+            model=model,
+            provider_message=provider_message,
+            original_status_code=tool_response.status_code,
+        )
+    result.forced_tool_choice_ok = True
+    result.ok = True
     return result
 
 
@@ -845,7 +1334,12 @@ def probe_openai_tool_calling_capability(
         return _probe_failure(result, stage="configuration", error="base_url is required")
     if not normalized_model:
         return _probe_failure(result, stage="configuration", error="model is required")
-    if normalized_protocol != "openai_chat_completions":
+    supported_protocols = {
+        "openai_chat_completions",
+        "openai_responses",
+        "anthropic_messages",
+    }
+    if normalized_protocol not in supported_protocols:
         return _probe_failure(
             result,
             stage="configuration",
@@ -871,6 +1365,14 @@ def probe_openai_tool_calling_capability(
     }
     try:
         with httpx.Client(timeout=timeout_s, follow_redirects=False) as client:
+            if normalized_protocol == "anthropic_messages":
+                return _probe_anthropic_messages_tool_calling(
+                    client,
+                    result,
+                    headers=headers,
+                    model=normalized_model,
+                )
+
             models_response = client.get(result.models_url, headers=headers)
             result.status_code = models_response.status_code
             result.stage = "models"
@@ -884,6 +1386,14 @@ def probe_openai_tool_calling_capability(
                     provider_message=provider_message,
                 )
             result.models_ok = True
+
+            if normalized_protocol == "openai_responses":
+                return _probe_openai_responses_tool_calling(
+                    client,
+                    result,
+                    headers=headers,
+                    model=normalized_model,
+                )
 
             chat_response = client.post(
                 result.chat_url,
@@ -920,6 +1430,17 @@ def probe_openai_tool_calling_capability(
             result.stage = "forced_tool_choice"
             if not 200 <= tool_response.status_code < 400:
                 provider_message = _extract_provider_error_message(tool_response.text or "")
+                if tool_response.status_code in _TOOL_CHOICE_FALLBACK_STATUS_CODES:
+                    return _probe_openai_chat_tool_choice_fallbacks(
+                        client,
+                        result,
+                        headers=headers,
+                        model=normalized_model,
+                        provider=provider,
+                        base_url=normalized_base,
+                        provider_message=provider_message,
+                        original_status_code=tool_response.status_code,
+                    )
                 return _probe_failure(
                     result,
                     stage="forced_tool_choice",
@@ -929,13 +1450,16 @@ def probe_openai_tool_calling_capability(
                 )
             data = _json_object_response(tool_response)
             if data is None or not _contains_forced_tool_call(data, "capability_probe"):
-                provider_message = _extract_provider_error_message(tool_response.text or "")
-                return _probe_failure(
+                provider_message = _extract_json_provider_error_message(tool_response.text or "")
+                return _probe_openai_chat_tool_choice_fallbacks(
+                    client,
                     result,
-                    stage="forced_tool_choice",
-                    status_code=tool_response.status_code,
-                    error="forced_tool_choice_not_returned",
+                    headers=headers,
+                    model=normalized_model,
+                    provider=provider,
+                    base_url=normalized_base,
                     provider_message=provider_message,
+                    original_status_code=tool_response.status_code,
                 )
             result.forced_tool_choice_ok = True
             result.ok = True

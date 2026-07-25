@@ -24,8 +24,15 @@ import { useI18n } from '@/contexts/I18nContext';
 import { EmptyState } from '@/components/common/EmptyState';
 import { PageHeader } from '@/components/common/PageHeader';
 import { StatusPill, type StatusTone } from '@/components/common/StatusPill';
+import { RuntimeJobDetailPanel } from '@/components/jobs/RuntimeJobDetailPanel';
+import { useRuntimeJobDetail } from '@/hooks/useRuntimeJobDetail';
 import { getWritingRuntimeClient } from '@/services/runtimeClient';
-import { formatJobError, formatJobName, formatJobRuntimeError } from './jobsDisplay';
+import {
+  formatJobError,
+  formatJobName,
+  formatJobRuntimeError,
+  sanitizeJobVisibleText,
+} from './jobsDisplay';
 import type { WritingJob, JobStatus as RuntimeJobStatus, WritingRuntimeClient } from '@/types/runtime';
 
 type JobStatus = 'running' | 'completed' | 'failed' | 'queued' | 'paused' | 'cancelled';
@@ -40,7 +47,7 @@ interface Job {
   type: string;
   source: JobSource;
   status: JobStatus;
-  progress: number;
+  progress: number | null;
   startedAt: string;
   duration?: string;
   error?: string;
@@ -123,6 +130,23 @@ const BULK_ACTION_STATUSES: Record<Exclude<BulkJobAction, 'delete'>, ReadonlySet
   retry: new Set<JobStatus>(['failed', 'cancelled', 'queued']),
 };
 
+const LINTER_REFRESH_ERROR = '元数据检查任务仍显示上次结果，请稍后重试。';
+const LINTER_REQUEST_TIMEOUT_MS = 15000;
+
+async function fetchLinterTasksWithTimeout(url: string): Promise<unknown> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), LINTER_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error('Linter task refresh failed');
+    }
+    return await response.json();
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 export function Jobs() {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -133,39 +157,66 @@ export function Jobs() {
   const [bulkFeedback, setBulkFeedback] = useState<BulkFeedback | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedSnapshot, setHasLoadedSnapshot] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [detailJobKey, setDetailJobKey] = useState<string | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const loadJobsInFlightRef = useRef<Promise<void> | null>(null);
 
-  const loadJobs = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      // 1. 加载 runtime 任务
-      const client = getWritingRuntimeClient();
-      const runtimeJobs = await client.listJobs({ limit: 100 });
-      const mappedRuntimeJobs = runtimeJobs.map(mapRuntimeJob);
+  const detailJob = useMemo(
+    () => jobs.find((job) => job.key === detailJobKey && job.source === 'runtime') ?? null,
+    [detailJobKey, jobs],
+  );
+  const { detail: runtimeJobDetail, retry: retryRuntimeJobDetail } = useRuntimeJobDetail({
+    jobId: detailJob?.id ?? null,
+  });
 
-      // 2. 加载 Linter 任务
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      let linterJobs: Job[] = [];
+  const loadJobs = useCallback((): Promise<void> => {
+    const activeRequest = loadJobsInFlightRef.current;
+    if (activeRequest) return activeRequest;
+
+    const request = (async (): Promise<void> => {
+      setLoading(true);
+      setLoadError(null);
       try {
-        const response = await fetch(`${baseUrl}/api/linter/tasks/list`);
-        if (response.ok) {
-          const linterTasks = await response.json();
-          linterJobs = parseLinterTasks(linterTasks).map(mapLinterTask);
-        }
-      } catch (err) {
-        console.warn('加载 Linter 任务失败:', err);
-      }
+        // 1. 加载 runtime 任务
+        const client = getWritingRuntimeClient();
+        const runtimeJobs = await client.listJobs({ limit: 100 });
+        const mappedRuntimeJobs = runtimeJobs.map(mapRuntimeJob);
 
-      // 3. 合并所有任务
-      setJobs([...mappedRuntimeJobs, ...linterJobs]);
-    } catch (err) {
-      setLoadError(formatJobError(err));
-      setJobs([]);
-    } finally {
-      setLoading(false);
-    }
+        // 2. 加载 Linter 任务
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        let linterJobs: Job[] | null = null;
+        let linterRefreshError: string | null = null;
+        try {
+          const linterTasks = await fetchLinterTasksWithTimeout(`${baseUrl}/api/linter/tasks/list`);
+          linterJobs = parseLinterTasks(linterTasks).map(mapLinterTask);
+        } catch {
+          linterRefreshError = LINTER_REFRESH_ERROR;
+          console.warn('加载 Linter 任务失败，将保留上次结果。');
+        }
+
+        // 3. 合并所有任务
+        setJobs((current) => [
+          ...mappedRuntimeJobs,
+          ...(linterJobs ?? current.filter((job) => job.source === 'linter')),
+        ]);
+        setHasLoadedSnapshot(true);
+        setLoadError(linterRefreshError);
+      } catch (err) {
+        setLoadError(formatJobError(err));
+      } finally {
+        setLoading(false);
+      }
+    })();
+
+    loadJobsInFlightRef.current = request;
+    void request.finally(() => {
+      if (loadJobsInFlightRef.current === request) {
+        loadJobsInFlightRef.current = null;
+      }
+    });
+    return request;
   }, []);
 
   useEffect(() => {
@@ -175,6 +226,12 @@ export function Jobs() {
       return next.size === current.size ? current : next;
     });
   }, [jobs]);
+
+  useEffect(() => {
+    if (detailJobKey && !loading && !detailJob) {
+      setDetailJobKey(null);
+    }
+  }, [detailJob, detailJobKey, loading]);
 
   useEffect(() => {
     void loadJobs();
@@ -248,6 +305,9 @@ export function Jobs() {
     try {
       const client = getWritingRuntimeClient();
       await client.startJob(jobId);
+      if (detailJob?.id === jobId) {
+        retryRuntimeJobDetail();
+      }
       await loadJobs();
     } catch (err) {
       setLoadError(formatJobError(err));
@@ -325,13 +385,17 @@ export function Jobs() {
 
     const client = getWritingRuntimeClient();
     const failedKeys = new Set<string>();
+    let selectedDetailRetried = false;
     setBulkActionLoading(action);
     setBulkFeedback(null);
 
     for (const job of targetJobs) {
       try {
         await runBulkJobAction(client, job.id, action);
-      } catch (err) {
+        if (action === 'retry' && detailJob?.key === job.key) {
+          selectedDetailRetried = true;
+        }
+      } catch {
         failedKeys.add(job.key);
       }
     }
@@ -352,6 +416,9 @@ export function Jobs() {
         ? `已处理 ${succeeded} 个，${failedKeys.size} 个失败。`
         : `已处理 ${succeeded} 个任务。`,
     });
+    if (selectedDetailRetried) {
+      retryRuntimeJobDetail();
+    }
 
     try {
       await loadJobs();
@@ -367,8 +434,14 @@ export function Jobs() {
     navigate(route);
   };
 
+  const openJobDetail = (job: Job): void => {
+    if (job.source !== 'runtime') return;
+    setDetailJobKey(job.key);
+  };
+
   const handleJobRouteKeyDown = (event: React.KeyboardEvent<HTMLElement>, route: string | undefined) => {
     if (!route) return;
+    if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       navigate(route);
@@ -517,13 +590,42 @@ export function Jobs() {
           </div>
         ) : null}
 
+        {hasLoadedSnapshot && loadError ? (
+          <div
+            role="alert"
+            aria-live="polite"
+            className="mb-4 flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-amber-300/70 bg-amber-50/80 px-3 py-2.5 text-amber-900 dark:border-amber-700/45 dark:bg-amber-950/30 dark:text-amber-100"
+          >
+            <XCircle size={14} className="shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1 font-label text-xs">任务列表暂未更新：{loadError}</span>
+            <button
+              type="button"
+              onClick={() => void loadJobs()}
+              disabled={loading}
+              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-current/20 px-2.5 font-label text-xs font-medium transition-colors hover:bg-amber-100/70 disabled:opacity-50 dark:hover:bg-amber-900/40"
+            >
+              {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              重试
+            </button>
+          </div>
+        ) : null}
+
+        {detailJob ? (
+          <RuntimeJobDetailPanel
+            jobName={detailJob.name}
+            detail={runtimeJobDetail}
+            onClose={() => setDetailJobKey(null)}
+            onRetry={retryRuntimeJobDetail}
+          />
+        ) : null}
+
         {/* Job list */}
-        {loading ? (
+        {loading && !hasLoadedSnapshot ? (
           <div className="flex min-h-0 flex-1 items-center justify-center gap-2 rounded-md border border-outline-variant/60 bg-surface-lowest px-4 py-10 text-sm text-foreground/50">
             <Loader2 size={16} className="animate-spin" />
             正在加载任务
           </div>
-        ) : loadError ? (
+        ) : !hasLoadedSnapshot && loadError ? (
           <div className="min-h-0 flex-1 overflow-y-auto">
             <EmptyState
               title="任务加载失败"
@@ -586,6 +688,18 @@ export function Jobs() {
               {filtered.map((job) => {
                 const cfg = statusConfig[job.status];
                 const canControlJob = job.source === 'runtime';
+                const isDetailJob = detailJobKey === job.key;
+                const detailProjectionReady = isDetailJob
+                  && runtimeJobDetail.jobId === job.id;
+                const displayedProgress = detailProjectionReady
+                  ? runtimeJobDetail.progress
+                  : job.progress;
+                const displayedStage = detailProjectionReady
+                  ? runtimeJobDetail.stage
+                  : job.stage;
+                const displayedMessage = detailProjectionReady
+                  ? runtimeJobDetail.message
+                  : job.message;
                 const tone: StatusTone =
                   job.status === 'running' ? 'warning'
                   : job.status === 'completed' ? 'success'
@@ -595,7 +709,7 @@ export function Jobs() {
                   : 'neutral';
                 return (
                   <li
-                    key={job.id}
+                    key={job.key}
                     role={job.route ? 'button' : undefined}
                     tabIndex={job.route ? 0 : undefined}
                     onClick={() => handleJobRoute(job.route)}
@@ -603,6 +717,7 @@ export function Jobs() {
                     className={cn(
                       'group flex flex-col gap-2 px-4 py-3.5 transition-colors hover:bg-surface-default/40',
                       job.route && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      isDetailJob && 'bg-primary/[0.045]',
                     )}
                   >
                     <div className="flex items-center gap-3">
@@ -624,15 +739,33 @@ export function Jobs() {
                         <div className="mt-0.5 flex flex-wrap items-center gap-2 font-label text-[10px] text-foreground/45">
                           <span>{t('jobs.started_at')} {job.startedAt}</span>
                           {job.duration && <span>{t('jobs.duration')} {job.duration}</span>}
-                          {job.stage && <span>{job.stage}</span>}
+                          {displayedStage && <span>{displayedStage}</span>}
                         </div>
-                        {job.message ? (
-                          <p className="mt-1 line-clamp-1 text-xs text-foreground/55">{job.message}</p>
+                        {displayedMessage ? (
+                          <p className="mt-1 line-clamp-1 text-xs text-foreground/55">{displayedMessage}</p>
                         ) : null}
                       </div>
                       <StatusPill tone={tone}>{t(cfg.textKey)}</StatusPill>
                       {job.route ? <ChevronRight size={14} className="shrink-0 text-foreground/28 group-hover:text-primary" /> : null}
                       <div className="flex shrink-0 items-center gap-1">
+                        {canControlJob && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openJobDetail(job);
+                            }}
+                            title="查看任务详情"
+                            aria-label={`查看任务详情 ${job.name}`}
+                            aria-pressed={isDetailJob}
+                            className={cn(
+                              'inline-flex h-7 w-7 items-center justify-center rounded-md text-foreground/55 transition-colors hover:bg-surface-high hover:text-primary',
+                              isDetailJob && 'bg-primary/10 text-primary',
+                            )}
+                          >
+                            <Activity size={13} />
+                          </button>
+                        )}
                         {canControlJob && (job.status === 'failed' || job.status === 'cancelled') && (
                           <button
                             type="button"
@@ -728,13 +861,23 @@ export function Jobs() {
 
                     {/* Progress bar for running jobs */}
                     {(job.status === 'running' || job.status === 'paused') && (
-                      <div className="h-1.5 overflow-hidden rounded-full bg-surface-high">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${job.progress}%` }}
-                          transition={{ duration: 0.5 }}
-                          className={cn('h-full rounded-full', job.status === 'paused' ? 'bg-amber-400' : 'bg-primary')}
-                        />
+                      <div
+                        role="progressbar"
+                        aria-label={`${job.name} 进度`}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={displayedProgress ?? undefined}
+                        aria-valuetext={displayedProgress === null ? '进度未知' : `${displayedProgress}%`}
+                        className="h-1.5 overflow-hidden rounded-full bg-surface-high"
+                      >
+                        {displayedProgress !== null ? (
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${displayedProgress}%` }}
+                            transition={{ duration: 0.5 }}
+                            className={cn('h-full rounded-full', job.status === 'paused' ? 'bg-amber-400' : 'bg-primary')}
+                          />
+                        ) : null}
                       </div>
                     )}
 
@@ -765,12 +908,12 @@ function mapRuntimeJob(job: WritingJob): Job {
     type: job.kind,
     source: 'runtime',
     status,
-    progress: readProgress(metadata, status),
+    progress: readProgress(metadata),
     startedAt: formatJobTime(job.started_at ?? job.created_at),
     duration: formatDuration(job.started_at, job.completed_at),
     error: formatJobRuntimeError(job.error),
-    stage: readVisibleString(metadata.progress_stage),
-    message: readVisibleString(metadata.progress_message),
+    stage: readSafeJobText(metadata.progress_stage),
+    message: readSafeJobText(metadata.progress_message),
     route: readJobRoute(metadata),
   };
 }
@@ -802,11 +945,11 @@ function mapLinterTask(task: LinterTask): Job {
     source: 'linter',
     status,
     progress: progressPct,
-    startedAt: task.created_at || new Date().toISOString(),
+    startedAt: formatJobTime(readVisibleString(task.created_at)),
     duration: undefined,
-    error: readVisibleString(task.error),
+    error: formatJobRuntimeError(task.error),
     stage: undefined,
-    message: readVisibleString(progress.message) ?? `${current}/${total} 条文献`,
+    message: readSafeJobText(progress.message) ?? `${current}/${total} 条文献`,
     route: '/knowledge',
   };
 }
@@ -817,6 +960,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readVisibleString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function readSafeJobText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const visible = sanitizeJobVisibleText(value, '');
+  return visible || undefined;
 }
 
 function parseLinterTasks(value: unknown): LinterTask[] {
@@ -888,13 +1037,17 @@ function readJobRoute(metadata: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
-function readProgress(metadata: Record<string, unknown>, status: JobStatus): number {
+function readProgress(metadata: Record<string, unknown>): number | null {
   const raw = metadata.progress;
-  const numeric = typeof raw === 'number' ? raw : Number(raw);
+  const numeric = typeof raw === 'number'
+    ? raw
+    : typeof raw === 'string' && raw.trim()
+      ? Number(raw)
+      : Number.NaN;
   if (Number.isFinite(numeric)) {
     return Math.max(0, Math.min(100, Math.round(numeric)));
   }
-  return jobProgress(status);
+  return null;
 }
 
 function mapRuntimeStatus(status: RuntimeJobStatus): JobStatus {
@@ -919,18 +1072,10 @@ function mapRuntimeStatus(status: RuntimeJobStatus): JobStatus {
   }
 }
 
-function jobProgress(status: JobStatus): number {
-  if (status === 'completed') return 100;
-  if (status === 'failed' || status === 'cancelled') return 100;
-  if (status === 'paused') return 50;
-  if (status === 'running') return 60;
-  return 0;
-}
-
 function formatJobTime(value: string | null | undefined): string {
   if (!value) return '—';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleString();
 }
 

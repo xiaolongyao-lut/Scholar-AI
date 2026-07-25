@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from literature_assistant.core.graph_payload import adapt_edge, adapt_node
+from literature_assistant.core.knowledge_graph.citation_graph_projection import (
+    build_citation_candidate_graph_edge,
+)
+from literature_assistant.core.knowledge_graph.citation_models import CitesCandidate
 from literature_assistant.core.knowledge_graph.models import (
     EvidenceGraphEdge,
     EvidenceGraphNode,
@@ -14,6 +19,7 @@ from literature_assistant.core.knowledge_graph.models import (
     EvidenceGraphProvenanceRef,
     EvidenceGraphRelation,
     EvidenceGraphScope,
+    default_evidence_graph_direction,
 )
 from literature_assistant.core.wiki.graph import (
     WikiGraphEdge,
@@ -49,6 +55,11 @@ _RELATION_MAP: dict[str, EvidenceGraphRelation] = {
     "cites": "cites",
     "related": "related",
 }
+
+MAX_ANSWER_TURN_MESSAGES = 8
+MAX_ANSWER_TURN_EVIDENCE_REFS = 128
+MAX_ANSWER_CITATION_EDGES = 64
+_GRAPH_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,255}$")
 
 
 def empty_evidence_graph(scope: EvidenceGraphScope, *, warning: str | None = None) -> EvidenceGraphPayload:
@@ -102,6 +113,10 @@ def build_evidence_graph_from_smart_read_session(
         raise TypeError("session must be a mapping")
     if not isinstance(scope, EvidenceGraphScope):
         raise TypeError("scope must be an EvidenceGraphScope")
+    if scope.kind == "question":
+        raise ValueError(
+            "question scope requires build_evidence_graph_from_answer_turn with session_id and turn_id"
+        )
     session_id = _required_text(session.get("session_id"), "session.session_id")
     messages = session.get("messages")
     if not isinstance(messages, list):
@@ -123,7 +138,6 @@ def build_evidence_graph_from_smart_read_session(
     }
     edges_by_id: dict[str, EvidenceGraphEdge] = {}
     latest_question_id: str | None = None
-    matched_question_ids: set[str] = set()
 
     for index, message in enumerate(messages):
         if not isinstance(message, Mapping):
@@ -134,8 +148,6 @@ def build_evidence_graph_from_smart_read_session(
         if role == "user":
             question_id = f"question:{_stable_token(message_id)}"
             latest_question_id = question_id
-            if _question_matches_scope(message, scope):
-                matched_question_ids.add(question_id)
             nodes_by_id[question_id] = EvidenceGraphNode(
                 id=question_id,
                 label=_compact_label(content, fallback="SmartRead question"),
@@ -155,6 +167,7 @@ def build_evidence_graph_from_smart_read_session(
                     source=f"session:{session_id}",
                     target=question_id,
                     relation="contains",
+                    direction="directed",
                     status="candidate",
                     created_by="runtime_capture",
                     updated_at=updated_at,
@@ -168,7 +181,7 @@ def build_evidence_graph_from_smart_read_session(
         raw_refs = message.get("evidence_refs")
         if not isinstance(raw_refs, list):
             continue
-        question_id = _nearest_question_for_assistant(latest_question_id, matched_question_ids, scope)
+        question_id = latest_question_id
         for ref_index, raw_ref in enumerate(raw_refs):
             if not isinstance(raw_ref, Mapping):
                 continue
@@ -213,6 +226,7 @@ def build_evidence_graph_from_smart_read_session(
                     source=source_node_id,
                     target=chunk_node_id,
                     relation="contains",
+                    direction="directed",
                     status="trusted",
                     provenance_refs=[provenance],
                     created_by="runtime_capture",
@@ -228,6 +242,7 @@ def build_evidence_graph_from_smart_read_session(
                         source=question_id,
                         target=chunk_node_id,
                         relation="derived_from",
+                        direction="directed",
                         status="trusted",
                         confidence=_optional_float(raw_ref.get("score")),
                         provenance_refs=[provenance],
@@ -237,7 +252,7 @@ def build_evidence_graph_from_smart_read_session(
                     ),
                 )
 
-    filtered_nodes = _filter_session_nodes_for_scope(list(nodes_by_id.values()), list(edges_by_id.values()), matched_question_ids, scope)
+    filtered_nodes = list(nodes_by_id.values())
     filtered_ids = {node.id for node in filtered_nodes}
     filtered_edges = [
         edge for edge in edges_by_id.values()
@@ -252,6 +267,350 @@ def build_evidence_graph_from_smart_read_session(
         nodes=filtered_nodes,
         edges=filtered_edges,
         warnings=warnings,
+    )
+
+
+def build_evidence_graph_from_answer_turn(
+    session: Mapping[str, Any],
+    *,
+    session_id: str,
+    turn_id: str,
+    scope: EvidenceGraphScope,
+    citation_candidates: Sequence[CitesCandidate] = (),
+) -> EvidenceGraphPayload:
+    """Project exactly one persisted answer turn without question-text matching.
+
+    Args:
+        session: Persisted SmartRead session mapping containing message records.
+        session_id: Exact owning session identity expected in ``session``.
+        turn_id: Exact turn identity shared by the user and assistant messages.
+        scope: ``question`` scope whose ref is the turn id, or the legacy
+            ``smart_read_session`` scope used by the compatibility endpoint.
+        citation_candidates: Project-local candidates already filtered to the
+            exact session and turn by the read-only controller.
+
+    Returns:
+        A bounded read-only graph containing only messages whose persisted
+        ``turn_id`` equals the requested turn. Missing turns are represented by
+        an empty payload with a stable warning instead of a session-wide fallback.
+
+    Raises:
+        TypeError: If ``session`` or ``scope`` has the wrong runtime type.
+        ValueError: If identifiers, scope, or persisted session identity are invalid.
+    """
+
+    if not isinstance(session, Mapping):
+        raise TypeError("session must be a mapping")
+    if not isinstance(scope, EvidenceGraphScope):
+        raise TypeError("scope must be an EvidenceGraphScope")
+    normalized_session_id = _required_graph_identifier(session_id, "session_id")
+    normalized_turn_id = _required_graph_identifier(turn_id, "turn_id")
+    persisted_session_id = _required_graph_identifier(
+        session.get("session_id"),
+        "session.session_id",
+    )
+    if persisted_session_id != normalized_session_id:
+        raise ValueError("persisted session id does not match the requested session_id")
+    if scope.kind not in {"question", "smart_read_session"}:
+        raise ValueError("answer turn graphs require question or smart_read_session scope")
+    if scope.kind == "question" and scope.ref.strip() != normalized_turn_id:
+        raise ValueError("question graph scope ref must equal turn_id")
+    normalized_candidates, candidate_warnings = _answer_citation_candidates(
+        citation_candidates,
+        project_id=_optional_text(session.get("project_id")),
+        session_id=normalized_session_id,
+        turn_id=normalized_turn_id,
+    )
+
+    raw_messages = session.get("messages")
+    messages = raw_messages if isinstance(raw_messages, list) else []
+    exact_messages = [
+        message
+        for message in messages
+        if isinstance(message, Mapping)
+        and _optional_text(message.get("turn_id")) == normalized_turn_id
+    ]
+    if not exact_messages:
+        return empty_evidence_graph(
+            scope,
+            warning=(
+                "answer_turn_not_found: no persisted messages match the requested "
+                "session_id and turn_id."
+            ),
+        )
+
+    warnings: list[str] = list(candidate_warnings)
+    if len(exact_messages) > MAX_ANSWER_TURN_MESSAGES:
+        warnings.append(
+            f"Answer turn messages were limited to {MAX_ANSWER_TURN_MESSAGES}; "
+            f"{len(exact_messages) - MAX_ANSWER_TURN_MESSAGES} messages were omitted."
+        )
+        exact_messages = exact_messages[:MAX_ANSWER_TURN_MESSAGES]
+
+    bounded_messages: list[dict[str, Any]] = []
+    remaining_refs = MAX_ANSWER_TURN_EVIDENCE_REFS
+    omitted_refs = 0
+    for message in exact_messages:
+        bounded_message = dict(message)
+        raw_refs = message.get("evidence_refs")
+        if isinstance(raw_refs, list):
+            kept_refs = raw_refs[:remaining_refs]
+            omitted_refs += max(0, len(raw_refs) - len(kept_refs))
+            bounded_message["evidence_refs"] = kept_refs
+            remaining_refs -= len(kept_refs)
+        bounded_messages.append(bounded_message)
+    if omitted_refs:
+        warnings.append(
+            f"Answer turn evidence refs were limited to {MAX_ANSWER_TURN_EVIDENCE_REFS}; "
+            f"{omitted_refs} refs were omitted."
+        )
+    if not any(_optional_text(message.get("role")) == "user" for message in bounded_messages):
+        warnings.append("answer_turn_missing_question: the persisted turn has no user message.")
+
+    bounded_session = dict(session)
+    bounded_session["session_id"] = normalized_session_id
+    bounded_session["messages"] = bounded_messages
+    session_scope = (
+        EvidenceGraphScope(kind="smart_read_session", ref=normalized_session_id)
+        if scope.kind == "question"
+        else scope
+    )
+    payload = build_evidence_graph_from_smart_read_session(
+        bounded_session,
+        scope=session_scope,
+    )
+    return _shape_answer_argument_graph(
+        payload,
+        messages=bounded_messages,
+        session_id=normalized_session_id,
+        turn_id=normalized_turn_id,
+        scope=scope,
+        citation_candidates=normalized_candidates,
+        warnings=warnings,
+    )
+
+
+def _answer_citation_candidates(
+    candidates: Sequence[CitesCandidate],
+    *,
+    project_id: str | None,
+    session_id: str,
+    turn_id: str,
+) -> tuple[tuple[CitesCandidate, ...], tuple[str, ...]]:
+    if isinstance(candidates, (str, bytes)) or not isinstance(candidates, Sequence):
+        raise TypeError("citation_candidates must be a sequence of CitesCandidate records")
+    normalized = tuple(candidates)
+    if any(not isinstance(candidate, CitesCandidate) for candidate in normalized):
+        raise TypeError("citation_candidates must contain only CitesCandidate records")
+    if normalized and project_id is None:
+        raise ValueError("answer citation candidates require persisted session project_id")
+    if any(
+        candidate.project_id != project_id
+        or candidate.session_id != session_id
+        or candidate.turn_id != turn_id
+        for candidate in normalized
+    ):
+        raise ValueError("answer citation candidates must match project_id, session_id, and turn_id")
+    candidate_ids = [candidate.candidate_id for candidate in normalized]
+    if len(candidate_ids) != len(set(candidate_ids)):
+        raise ValueError("citation_candidates must not contain duplicate candidate ids")
+    ranked = sorted(normalized, key=lambda item: (item.created_at, item.candidate_id))
+    if len(ranked) <= MAX_ANSWER_CITATION_EDGES:
+        return tuple(ranked), ()
+    warning = (
+        f"Answer citation relationships were limited to {MAX_ANSWER_CITATION_EDGES}; "
+        f"{len(ranked) - MAX_ANSWER_CITATION_EDGES} candidates were omitted."
+    )
+    return tuple(ranked[:MAX_ANSWER_CITATION_EDGES]), (warning,)
+
+
+def _shape_answer_argument_graph(
+    payload: EvidenceGraphPayload,
+    *,
+    messages: Sequence[Mapping[str, Any]],
+    session_id: str,
+    turn_id: str,
+    scope: EvidenceGraphScope,
+    citation_candidates: Sequence[CitesCandidate],
+    warnings: Sequence[str],
+) -> EvidenceGraphPayload:
+    """Add the answer claim and orient one exact argument chain."""
+
+    nodes_by_id: dict[str, EvidenceGraphNode] = {}
+    for node in payload.nodes:
+        metadata = {
+            **node.metadata,
+            "projection_scope": "answer_turn",
+            "session_id": session_id,
+            "turn_id": turn_id,
+        }
+        node_type = node.type
+        if node.metadata.get("role") == "user":
+            metadata["argument_role"] = "question"
+        elif node.type == "chunk":
+            metadata["argument_role"] = "evidence"
+        elif node.type == "source":
+            metadata["argument_role"] = "paper"
+            node_type = "paper"
+        nodes_by_id[node.id] = EvidenceGraphNode.model_validate(
+            {
+                **node.model_dump(mode="python"),
+                "type": node_type,
+                "metadata": metadata,
+            }
+        )
+
+    latest_question_id: str | None = None
+    assistant_claims: dict[str, tuple[str, str | None]] = {}
+    for index, message in enumerate(messages):
+        role = _optional_text(message.get("role"))
+        message_id = _optional_text(message.get("id")) or f"message-{index}"
+        if role == "user":
+            latest_question_id = f"question:{_stable_token(message_id)}"
+            continue
+        if role != "assistant":
+            continue
+        claim_id = f"claim:{_stable_token(message_id)}"
+        nodes_by_id[claim_id] = EvidenceGraphNode(
+            id=claim_id,
+            label=_compact_label(message.get("content"), fallback="Answer claim"),
+            type="claim",
+            status="candidate",
+            metadata={
+                "source_store": "smart_read_session",
+                "projection_scope": "answer_turn",
+                "argument_role": "claim",
+                "session_id": session_id,
+                "turn_id": turn_id,
+                "message_id": message_id,
+                "role": "assistant",
+                "generated_in": _optional_text(message.get("generated_in")),
+            },
+        )
+        assistant_claims[message_id] = (claim_id, latest_question_id)
+
+    edges_by_id: dict[str, EvidenceGraphEdge] = {}
+    for edge in payload.edges:
+        edge_payload = edge.model_dump(mode="python")
+        edge_metadata = {
+            **edge.metadata,
+            "projection_scope": "answer_turn",
+            "session_id": session_id,
+            "turn_id": turn_id,
+        }
+        assistant_message_id = _optional_text(edge.metadata.get("assistant_message_id"))
+        if edge.relation == "derived_from" and assistant_message_id in assistant_claims:
+            claim_id, _question_id = assistant_claims[assistant_message_id]
+            edge_payload.update(
+                {
+                    "id": f"edge:{_stable_token(claim_id + ':derived_from:' + edge.target)}",
+                    "source": claim_id,
+                    "metadata": {**edge_metadata, "argument_link": "claim_to_evidence"},
+                }
+            )
+        elif (
+            edge.relation == "contains"
+            and edge.source.startswith("source:")
+            and edge.target.startswith("chunk:")
+        ):
+            edge_payload.update(
+                {
+                    "id": f"edge:{_stable_token(edge.target + ':derived_from:' + edge.source)}",
+                    "source": edge.target,
+                    "target": edge.source,
+                    "relation": "derived_from",
+                    "direction": "directed",
+                    "metadata": {**edge_metadata, "argument_link": "evidence_to_paper"},
+                }
+            )
+        else:
+            edge_payload["metadata"] = edge_metadata
+        shaped_edge = EvidenceGraphEdge.model_validate(edge_payload)
+        edges_by_id.setdefault(shaped_edge.id, shaped_edge)
+
+    for assistant_message_id, (claim_id, question_id) in assistant_claims.items():
+        if question_id is None or question_id not in nodes_by_id:
+            continue
+        edge = EvidenceGraphEdge(
+            id=f"edge:{_stable_token(question_id + ':contains:' + claim_id)}",
+            source=question_id,
+            target=claim_id,
+            relation="contains",
+            direction="directed",
+            status="candidate",
+            created_by="runtime_capture",
+            updated_at=payload.updated_at,
+            metadata={
+                "source_store": "smart_read_session",
+                "projection_scope": "answer_turn",
+                "argument_link": "question_to_claim",
+                "session_id": session_id,
+                "turn_id": turn_id,
+                "assistant_message_id": assistant_message_id,
+            },
+        )
+        edges_by_id.setdefault(edge.id, edge)
+
+    material_node_ids: dict[str, str] = {}
+    for node in nodes_by_id.values():
+        if node.metadata.get("argument_role") != "paper":
+            continue
+        for provenance_ref in node.provenance_refs:
+            if provenance_ref.material_id:
+                material_node_ids.setdefault(provenance_ref.material_id, node.id)
+    for candidate in citation_candidates:
+        endpoint_labels = {
+            candidate.source_material_id: candidate.source_material_id,
+            candidate.target_material_id: (
+                candidate.target_material_title or candidate.target_material_id
+            ),
+        }
+        for material_id, label in endpoint_labels.items():
+            if material_id in material_node_ids:
+                continue
+            node_id = f"source:{_stable_token(material_id)}"
+            nodes_by_id[node_id] = EvidenceGraphNode(
+                id=node_id,
+                label=_compact_label(label, fallback="Paper"),
+                type="paper",
+                status="trusted",
+                provenance_refs=[EvidenceGraphProvenanceRef(material_id=material_id)],
+                metadata={
+                    "source_store": "citation_candidate_store",
+                    "projection_scope": "answer_turn",
+                    "argument_role": "paper",
+                    "project_id": candidate.project_id,
+                    "session_id": session_id,
+                    "turn_id": turn_id,
+                    "material_id": material_id,
+                },
+            )
+            material_node_ids[material_id] = node_id
+        citation_edge = build_citation_candidate_graph_edge(
+            candidate,
+            extra_metadata={
+                "projection_scope": "answer_turn",
+                "argument_link": "paper_cites_paper",
+                "session_id": session_id,
+                "turn_id": turn_id,
+            },
+        )
+        citation_payload = citation_edge.model_dump(mode="python")
+        citation_payload.update(
+            {
+                "source": material_node_ids[candidate.source_material_id],
+                "target": material_node_ids[candidate.target_material_id],
+            }
+        )
+        shaped_citation_edge = EvidenceGraphEdge.model_validate(citation_payload)
+        edges_by_id.setdefault(shaped_citation_edge.id, shaped_citation_edge)
+
+    return EvidenceGraphPayload(
+        scope=scope,
+        updated_at=payload.updated_at,
+        nodes=list(nodes_by_id.values()),
+        edges=list(edges_by_id.values()),
+        warnings=[*warnings, *payload.warnings],
     )
 
 
@@ -282,11 +641,13 @@ def _edge_from_wiki(edge: WikiGraphEdge) -> EvidenceGraphEdge:
     status = "trusted" if provenance_refs else "candidate"
     if not provenance_refs:
         metadata.setdefault("trust_reason", "missing_provenance")
+    relation = _RELATION_MAP.get(adapted.relation, "related")
     return EvidenceGraphEdge(
         id=edge.edge_id,
         source=edge.source_id,
         target=edge.target_id,
-        relation=_RELATION_MAP.get(adapted.relation, "related"),
+        relation=relation,
+        direction=default_evidence_graph_direction(relation),
         status=status,
         confidence=adapted.confidence,
         provenance_refs=provenance_refs,
@@ -454,6 +815,13 @@ def _required_text(value: object, field_name: str) -> str:
     return text
 
 
+def _required_graph_identifier(value: object, field_name: str) -> str:
+    text = _required_text(value, field_name)
+    if not _GRAPH_IDENTIFIER_RE.fullmatch(text):
+        raise ValueError(f"{field_name} has an unsupported identifier shape")
+    return text
+
+
 def _optional_text(value: object) -> str | None:
     if value is None:
         return None
@@ -492,43 +860,3 @@ def _compact_label(value: object, *, fallback: str = "Evidence") -> str:
     text = _optional_text(value) or fallback
     collapsed = " ".join(text.split())
     return collapsed[:120] if len(collapsed) > 120 else collapsed
-
-
-def _question_matches_scope(message: Mapping[str, Any], scope: EvidenceGraphScope) -> bool:
-    if scope.kind != "question" or not scope.ref.strip():
-        return False
-    ref = scope.ref.strip()
-    return ref in {
-        _optional_text(message.get("id")) or "",
-        _optional_text(message.get("content")) or "",
-    }
-
-
-def _nearest_question_for_assistant(
-    latest_question_id: str | None,
-    matched_question_ids: set[str],
-    scope: EvidenceGraphScope,
-) -> str | None:
-    if scope.kind == "question" and scope.ref.strip() and matched_question_ids:
-        return sorted(matched_question_ids)[-1]
-    return latest_question_id
-
-
-def _filter_session_nodes_for_scope(
-    nodes: list[EvidenceGraphNode],
-    edges: list[EvidenceGraphEdge],
-    matched_question_ids: set[str],
-    scope: EvidenceGraphScope,
-) -> list[EvidenceGraphNode]:
-    if scope.kind != "question" or not scope.ref.strip() or not matched_question_ids:
-        return nodes
-    keep = set(matched_question_ids)
-    keep.update(node.id for node in nodes if node.type == "session")
-    for edge in edges:
-        if edge.source in matched_question_ids and edge.relation == "derived_from":
-            keep.add(edge.target)
-    evidence_nodes = set(keep)
-    for edge in edges:
-        if edge.relation == "contains" and edge.target in evidence_nodes:
-            keep.add(edge.source)
-    return [node for node in nodes if node.id in keep]

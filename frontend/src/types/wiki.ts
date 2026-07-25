@@ -33,6 +33,21 @@ export interface WikiStatusModel extends WikiStatus {
   manifest_drilldown: WikiManifestDrilldownModel;
 }
 
+export interface WikiRevalidationModel {
+  enabled: boolean;
+  stale: boolean;
+  can_apply: boolean;
+  applied: boolean;
+  integrity_status: string;
+  source_manifest_hash: string;
+  indexed_source_manifest_hash: string;
+  source_page_count: number | null;
+  indexed_page_count: number;
+  manifest_drilldown: WikiManifestDrilldownModel;
+  warnings: string[];
+  message: string;
+}
+
 export interface WikiManifestDrilldownItemModel extends WikiManifestDrilldownItem {
   kind: string;
   page_path: string;
@@ -127,6 +142,84 @@ export interface WikiReviewDecisionModel {
   reason: string;
   decided_at: string;
   decided_by: string;
+  promotion_receipt: WikiReviewPromotionReceiptModel | null;
+}
+
+export interface WikiPageRevisionReviewTargetModel {
+  schema_version: 'scholar-ai-wiki-page-revision-target/v1' | 'scholar-ai-wiki-page-revision-target/v2';
+  type: 'wiki_page_revision';
+  page_id: string;
+  page_path: string;
+  expected_content_hash: string;
+  expected_status: 'draft' | 'review';
+}
+
+export interface WikiAnnotationNoteReviewTargetModel {
+  schema_version: 'scholar-ai-annotation-note-review-target/v1';
+  type: 'annotation_note';
+  project_id: string;
+  material_id: string;
+  note_id: string;
+  expected_updated_at: string;
+  expected_content_hash: string;
+  required_scope: 'wiki_review';
+}
+
+export type WikiReviewTargetModel =
+  | WikiPageRevisionReviewTargetModel
+  | WikiAnnotationNoteReviewTargetModel;
+
+export interface WikiReviewPromotionReceiptModel {
+  schema_version: 'scholar-ai-wiki-promotion-receipt/v1' | 'scholar-ai-wiki-promotion-receipt/v2';
+  receipt_id: string;
+  review_item_id: string;
+  request_id: string;
+  expected_item_revision: string;
+  request_fingerprint: string;
+  outcome: 'promoted';
+  target: WikiPageRevisionReviewTargetModel;
+  before_content_hash: string;
+  after_content_hash: string;
+  previous_status: 'draft' | 'review';
+  promoted_status: 'final';
+  promoted_at: string;
+  promoted_by: string;
+}
+
+export interface WikiReviewPromotionIntentModel {
+  schema_version: 'scholar-ai-wiki-promotion-intent/v1' | 'scholar-ai-wiki-promotion-intent/v2';
+  operation_id: string;
+  review_item_id: string;
+  request_id: string;
+  expected_item_revision: string;
+  request_fingerprint: string;
+  reason: string;
+  target: WikiPageRevisionReviewTargetModel;
+  before_content_hash: string;
+  after_content_hash: string;
+  previous_status: 'draft' | 'review';
+  promoted_status: 'final';
+  promoted_at: string;
+  promoted_by: string;
+}
+
+export interface WikiReviewPromotionWithdrawalReceiptModel {
+  schema_version: 'scholar-ai-wiki-promotion-withdrawal-receipt/v1';
+  receipt_id: string;
+  review_item_id: string;
+  promotion_operation_id: string;
+  promotion_request_id: string;
+  promotion_request_fingerprint: string;
+  expected_item_revision: string;
+  resulting_item_revision: string;
+  withdrawal_request_fingerprint: string;
+  outcome: 'withdrawn';
+  target: WikiPageRevisionReviewTargetModel;
+  before_content_hash: string;
+  planned_after_content_hash: string;
+  reason: string;
+  withdrawn_at: string;
+  withdrawn_by: string;
 }
 
 export interface WikiReviewItemModel {
@@ -139,12 +232,58 @@ export interface WikiReviewItemModel {
   created_at: string;
   source: string;
   metadata: Record<string, unknown>;
+  schema_version: number;
+  item_revision: string;
+  target: WikiReviewTargetModel | null;
+  promotion_intent: WikiReviewPromotionIntentModel | null;
+  promotion_withdrawal_receipts?: WikiReviewPromotionWithdrawalReceiptModel[];
+  allowed_actions: Array<'approve' | 'reject' | 'withdraw'>;
   decision: WikiReviewDecisionModel | null;
 }
 
 export interface WikiReviewListModel {
   enabled: boolean;
   items: WikiReviewItemModel[];
+}
+
+interface WikiReviewDecisionInputBaseModel {
+  item_id: string;
+  reason: string;
+  decided_by?: string;
+  request_id?: string;
+  expected_item_revision: string;
+}
+
+export interface WikiPageReviewDecisionInputModel extends WikiReviewDecisionInputBaseModel {
+  target_type: 'wiki_page_revision';
+  expected_target_content_hash: string;
+}
+
+export interface WikiAnnotationReviewDecisionInputModel extends WikiReviewDecisionInputBaseModel {
+  target_type: 'annotation_note';
+  expected_target_content_hash: string;
+}
+
+export interface WikiUnboundReviewDecisionInputModel extends WikiReviewDecisionInputBaseModel {
+  target_type: 'unbound';
+  expected_target_content_hash?: never;
+}
+
+export type WikiReviewDecisionInputModel =
+  | WikiPageReviewDecisionInputModel
+  | WikiAnnotationReviewDecisionInputModel
+  | WikiUnboundReviewDecisionInputModel;
+
+export interface WikiReviewPromotionWithdrawalInputModel {
+  item_id: string;
+  reason: string;
+  expected_item_revision: string;
+  expected_promotion_operation_id: string;
+}
+
+export interface WikiReviewPromotionWithdrawalModel {
+  item: WikiReviewItemModel;
+  withdrawal_receipt: WikiReviewPromotionWithdrawalReceiptModel;
 }
 
 export interface WikiGraphNodeModel {
@@ -184,6 +323,64 @@ export interface WikiGraphModel extends WikiGraphResponse {
   enabled: boolean;
   graph: Record<string, unknown>;
   structuredGraph: WikiGraphStructuredModel | null;
+}
+
+export type WikiGraphReviewOperationKind =
+  | 'merge_duplicate_nodes'
+  | 'disambiguate_nodes'
+  | 'add_node_evidence'
+  | 'add_relation_evidence';
+
+export interface WikiGraphReviewNodeInputModel {
+  node_id: string;
+  page_path: string;
+  label?: string | null;
+  disambiguation?: string | null;
+}
+
+export interface WikiGraphReviewEdgeInputModel {
+  edge_id?: string;
+  source: string;
+  target: string;
+  relation: string;
+  source_path: string;
+  target_path?: string | null;
+  frontmatter_field?: string | null;
+}
+
+export interface WikiGraphReviewApplyInputModel {
+  operation_kind: WikiGraphReviewOperationKind;
+  review_item_key?: string;
+  keep_node_id?: string | null;
+  merge_node_ids?: string[];
+  nodes: WikiGraphReviewNodeInputModel[];
+  edges?: WikiGraphReviewEdgeInputModel[];
+  evidence_refs?: Record<string, unknown>[];
+  decided_by?: string;
+}
+
+export interface WikiGraphReviewPageSnapshotModel {
+  page_path: string;
+  content: string;
+  content_hash: string;
+  expected_current_hash: string;
+}
+
+export interface WikiGraphReviewApplyModel {
+  enabled: boolean;
+  operation_id: string;
+  operation_kind: string;
+  updated_page_paths: string[];
+  snapshots: WikiGraphReviewPageSnapshotModel[];
+  message: string;
+  warnings: string[];
+}
+
+export interface WikiGraphReviewUndoInputModel {
+  operation_id: string;
+  operation_kind?: string;
+  snapshots: WikiGraphReviewPageSnapshotModel[];
+  decided_by?: string;
 }
 
 export interface WikiCompileDryRunInputModel {

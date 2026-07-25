@@ -30,7 +30,7 @@ def client():
 @pytest.fixture
 def mock_wiki_service():
     """Mock WikiService for testing."""
-    with patch("wiki.service.get_wiki_service") as mock_get:
+    with patch("literature_assistant.core.wiki.service.get_wiki_service") as mock_get:
         service = MagicMock()
         mock_get.return_value = service
         yield service
@@ -43,10 +43,18 @@ def mock_wiki_enabled():
         yield
 
 
+def _review_target_page_store() -> MagicMock:
+    """Return a readable draft store for version-bound review unit tests."""
+
+    store = MagicMock()
+    store.read_page.return_value = "rendered private wiki draft"
+    return store
+
+
 class TestWikiPageCreate:
     """G2: POST /api/wiki/pages endpoint."""
 
-    def test_create_page_success(self, client, mock_wiki_service, mock_wiki_enabled):
+    def test_create_page_success(self, client, mock_wiki_service, mock_wiki_enabled, tmp_path):
         """Successful create returns slug."""
         from wiki.models import WikiPage, WikiPageKind, WikiPageStatus
 
@@ -63,15 +71,23 @@ class TestWikiPageCreate:
         )
         mock_wiki_service.create_page.return_value = page
 
-        resp = client.post(
-            "/api/wiki/pages",
-            json={
-                "title": "Test Page",
-                "kind": "synthesis",
-                "body": "Test content",
-                "status": "draft",
-            },
-        )
+        review_queue_path = tmp_path / "runtime" / "review_queue.jsonl"
+        with patch(
+            "routers.wiki_router.wiki_review_queue_path",
+            lambda: review_queue_path,
+        ), patch(
+            "routers.wiki_router._page_store",
+            return_value=_review_target_page_store(),
+        ):
+            resp = client.post(
+                "/api/wiki/pages",
+                json={
+                    "title": "Test Page",
+                    "kind": "synthesis",
+                    "body": "Test content",
+                    "status": "draft",
+                },
+            )
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
@@ -161,8 +177,8 @@ class TestWikiPageUpdate:
         )
         assert resp.status_code == 404
 
-    def test_update_page_partial(self, client, mock_wiki_service, mock_wiki_enabled):
-        """Partial update only changes specified fields."""
+    def test_update_page_cannot_bypass_review_to_final(self, client, mock_wiki_service, mock_wiki_enabled):
+        """Ordinary updates cannot promote a page to final."""
         from wiki.models import WikiPage, WikiPageKind, WikiPageStatus
 
         page = WikiPage(
@@ -182,14 +198,9 @@ class TestWikiPageUpdate:
             "/api/wiki/pages/synthesis-test-page",
             json={"status": "final"},
         )
-        assert resp.status_code == 200
-
-        # Verify only status was passed to service
-        mock_wiki_service.update_page.assert_called_once()
-        call_kwargs = mock_wiki_service.update_page.call_args.kwargs
-        assert call_kwargs["status"] == "final"
-        assert call_kwargs["title"] is None
-        assert call_kwargs["body"] is None
+        assert resp.status_code == 409
+        assert "explicit review approval" in resp.text
+        mock_wiki_service.update_page.assert_not_called()
 
     def test_update_page_wiki_disabled(self, client, mock_wiki_service):
         """Update when wiki disabled returns 404."""
@@ -226,6 +237,82 @@ class TestWikiPageDelete:
         with patch("routers.wiki_router.wiki_enabled", return_value=False):
             resp = client.delete("/api/wiki/pages/test-page")
             assert resp.status_code == 404
+
+    def test_delete_restore_api_persists_tombstone_and_hides_archived_page(
+        self, client, monkeypatch, tmp_path
+    ):
+        """Ordinary API deletion archives, hides, and explicitly restores a page."""
+        from literature_assistant.core.wiki.page_store import WikiPageStore
+        from literature_assistant.core.wiki.service import WikiService
+        import routers.wiki_router as wiki_router
+        import literature_assistant.core.wiki.service as wiki_service_module
+
+        store = WikiPageStore(tmp_path / "wiki", create=True)
+        service = WikiService(store)
+        page = service.create_page(title="Retention", kind="synthesis", body="Retained body", status="final")
+        monkeypatch.setattr(wiki_router, "wiki_enabled", lambda: True)
+        monkeypatch.setattr(wiki_router, "_page_store", lambda create=False: store)
+        monkeypatch.setattr(wiki_router, "_rebuild_review_graph", lambda _user: None)
+        monkeypatch.setattr(wiki_service_module, "get_wiki_service", lambda: service)
+
+        page_path = tmp_path / "wiki" / "synthesis" / f"{page.stable_slug}.md"
+        before_hash = hashlib.sha256(page_path.read_bytes()).hexdigest()
+        deleted = client.delete(
+            f"/api/wiki/pages/{page.stable_slug}",
+            params={"expected_current_hash": before_hash, "user_id": "local-user"},
+        )
+        assert deleted.status_code == 200
+        deleted_payload = deleted.json()
+        assert deleted_payload["status"] == "archived"
+        assert deleted_payload["receipt_id"]
+        assert page_path.exists()
+
+        assert client.get("/api/wiki/pages", params={"user_id": "local-user"}).json()["pages"] == []
+        assert client.get(
+            f"/api/wiki/pages/{page.stable_slug}.md", params={"user_id": "local-user"}
+        ).status_code == 404
+        retention = client.get(
+            f"/api/wiki/pages/{page.stable_slug}/retention", params={"user_id": "local-user"}
+        )
+        assert retention.status_code == 200
+        retention_payload = retention.json()
+        assert retention_payload["archive_receipt"]["receipt_id"] == deleted_payload["receipt_id"]
+
+        restored = client.post(
+            f"/api/wiki/pages/{page.stable_slug}/restore",
+            params={"user_id": "local-user"},
+            json={
+                "archive_receipt_id": deleted_payload["receipt_id"],
+                "expected_current_hash": retention_payload["current_content_hash"],
+            },
+        )
+        assert restored.status_code == 200
+        assert restored.json()["status"] == "final"
+        assert client.get("/api/wiki/pages", params={"user_id": "local-user"}).json()["pages"]
+
+    def test_delete_api_rejects_stale_content_hash(self, client, monkeypatch, tmp_path):
+        """A stale Wiki delete precondition leaves the page active."""
+        from literature_assistant.core.wiki.page_store import WikiPageStore
+        from literature_assistant.core.wiki.service import WikiService
+        import routers.wiki_router as wiki_router
+        import literature_assistant.core.wiki.service as wiki_service_module
+
+        store = WikiPageStore(tmp_path / "wiki", create=True)
+        service = WikiService(store)
+        page = service.create_page(title="CAS", kind="synthesis", body="v1")
+        monkeypatch.setattr(wiki_router, "wiki_enabled", lambda: True)
+        monkeypatch.setattr(wiki_router, "_page_store", lambda create=False: store)
+        monkeypatch.setattr(wiki_service_module, "get_wiki_service", lambda: service)
+        page_path = tmp_path / "wiki" / "synthesis" / f"{page.stable_slug}.md"
+        stale_hash = hashlib.sha256(page_path.read_bytes()).hexdigest()
+        service.update_page(page.stable_slug, body="v2")
+
+        response = client.delete(
+            f"/api/wiki/pages/{page.stable_slug}",
+            params={"expected_current_hash": stale_hash, "user_id": "local-user"},
+        )
+        assert response.status_code == 409
+        assert service.get_page(page.stable_slug) is not None
 
 
 class TestWikiImport:
@@ -274,6 +361,9 @@ class TestWikiImport:
 
         with patch("routers.wiki_router.REPO_ROOT", tmp_path), patch(
             "routers.wiki_router.wiki_review_queue_path", lambda: review_queue_path
+        ), patch(
+            "routers.wiki_router._page_store",
+            return_value=_review_target_page_store(),
         ):
             resp = client.post(
                 "/api/wiki/import?user_id=owner123",
@@ -376,6 +466,9 @@ class TestWikiImport:
 
         with patch("routers.wiki_router.REPO_ROOT", tmp_path), patch(
             "routers.wiki_router.wiki_review_queue_path", lambda: review_queue_path
+        ), patch(
+            "routers.wiki_router._page_store",
+            return_value=_review_target_page_store(),
         ), patch("routers.wiki_router.get_writing_runtime", lambda: runtime):
             resp = client.post(
                 "/api/wiki/import?user_id=owner123",
@@ -483,7 +576,7 @@ class TestWikiImport:
         assert data["imported"] == 0
         assert data["errored"] == 1
         assert "Failed to create pending import review entry" in data["pages"][0]["error"]
-        mock_wiki_service.delete_page.assert_called_once_with("synthesis-broken-review")
+        mock_wiki_service.purge_page.assert_called_once_with("synthesis-broken-review")
 
     def test_import_markdown_overwrite_rolls_back_update_when_review_queue_fails(
         self,
@@ -587,6 +680,9 @@ class TestWikiImport:
         with patch("routers.wiki_router.REPO_ROOT", tmp_path), patch(
             "routers.wiki_router.wiki_review_queue_path", lambda: review_queue_path
         ), patch(
+            "routers.wiki_router._page_store",
+            return_value=_review_target_page_store(),
+        ), patch(
             "routers.wiki_router._record_wiki_import_runtime_action",
             side_effect=ValueError("runtime unavailable"),
         ):
@@ -601,7 +697,7 @@ class TestWikiImport:
         assert data["errored"] == 1
         assert "Failed to create pending import runtime action" in data["pages"][0]["error"]
         assert ReviewQueue(review_queue_path).list_items() == []
-        mock_wiki_service.delete_page.assert_called_once_with("synthesis-runtime-failure")
+        mock_wiki_service.purge_page.assert_called_once_with("synthesis-runtime-failure")
 
     def test_import_markdown_apply_rolls_back_review_item_when_runtime_metadata_update_fails(
         self,
@@ -632,6 +728,9 @@ class TestWikiImport:
 
         with patch("routers.wiki_router.REPO_ROOT", tmp_path), patch(
             "routers.wiki_router.wiki_review_queue_path", lambda: review_queue_path
+        ), patch(
+            "routers.wiki_router._page_store",
+            return_value=_review_target_page_store(),
         ), patch("routers.wiki_router.get_writing_runtime", lambda: runtime), patch(
             "routers.wiki_router.ReviewQueue.update_metadata",
             side_effect=OSError("metadata write failed"),
@@ -648,7 +747,7 @@ class TestWikiImport:
         assert "Failed to create pending import runtime action" in data["pages"][0]["error"]
         assert ReviewQueue(review_queue_path).list_items() == []
         assert runtime.list_sessions() == []
-        mock_wiki_service.delete_page.assert_called_once_with("synthesis-metadata-failure")
+        mock_wiki_service.purge_page.assert_called_once_with("synthesis-metadata-failure")
 
     def test_import_markdown_skips_existing_without_overwrite(self, client, mock_wiki_service, mock_wiki_enabled, tmp_path):
         """Existing slugs are skipped by default to avoid overwriting local wiki pages."""
@@ -761,7 +860,8 @@ class TestWikiImport:
             ), patch("routers.agent_bridge_router.SourceVault", lambda: vault), patch(
                 "routers.knowledge_router._agent_bridge_router.SourceVault", lambda: vault
             ), patch(
-                "wiki.service.get_wiki_service", return_value=service
+                "literature_assistant.core.wiki.service.get_wiki_service",
+                return_value=service,
             ):
                 resp = client.post(
                     "/api/wiki/import?user_id=owner123",
@@ -1103,11 +1203,11 @@ class TestWikiServiceCRUD:
 
         versions = service.list_page_versions(page.stable_slug)
         assert [item["version"] for item in versions] == [1, 2, 3]
-        assert [item["action"] for item in versions] == ["create", "update", "delete"]
+        assert [item["action"] for item in versions] == ["create", "update", "archive"]
         assert versions[0]["body_hash"] != versions[1]["body_hash"]
 
-    def test_delete_page_removes_file(self, tmp_path):
-        """delete_page removes page file."""
+    def test_delete_page_archives_file_and_preserves_receipt(self, tmp_path):
+        """delete_page keeps a tombstone and persisted archive receipt."""
         from wiki.service import WikiService
         from wiki.page_store import WikiPageStore
 
@@ -1119,7 +1219,20 @@ class TestWikiServiceCRUD:
         assert page_file.exists()
 
         service.delete_page(page.stable_slug)
-        assert not page_file.exists()
+        assert page_file.exists()
+        assert service.get_page(page.stable_slug) is None
+        archived = service.get_page(page.stable_slug, include_archived=True)
+        assert archived is not None
+        assert archived.status.value == "archived"
+        retention = service.get_page_retention(page.stable_slug)
+        assert retention is not None
+        assert retention["archive_receipt"]["operation"] == "archive"
+        restored = service.restore_page(
+            page.stable_slug,
+            expected_archive_receipt_id=retention["archive_receipt"]["receipt_id"],
+            expected_current_hash=retention["current_content_hash"],
+        )
+        assert restored.status.value == "draft"
 
     def test_delete_page_not_found_raises_error(self, tmp_path):
         """delete_page raises ValueError for non-existent page."""

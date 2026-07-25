@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from starlette.routing import Match
 from urllib.parse import urlsplit
 
 import routers.resources_router as resources_router
+from routers.resources_router import endpoints_search_upload as search_upload
 from python_adapter_server import app
 
 
@@ -88,6 +90,8 @@ def _write_chunk_fixture(project_id: str, *, content: str | None = None) -> None
                     "chunk_type": "body",
                     "source_relative_path": "papers/attention.pdf",
                     "source_labels": ["bm25", "dense"],
+                    "anchor_kind": "text",
+                    "bbox_unit": "normalized_ratio",
                     "figure_candidate": "figure:attention-1",
                     "private_note": "SHOULD_NOT_LEAK_PRIVATE",
                     "locator": {
@@ -96,6 +100,7 @@ def _write_chunk_fixture(project_id: str, *, content: str | None = None) -> None
                         "page": 7,
                         "chunk_index": 2,
                         "bbox": [0.1, 0.2, 0.3, 0.4],
+                        "bbox_unit": "normalized_ratio",
                         "text": "SHOULD_NOT_LEAK_LOCATOR_TEXT",
                     },
                 },
@@ -131,6 +136,27 @@ def test_scan_dedupe_key_collapses_translation_outputs() -> None:
     assert resources_router._is_translated_scan_derivative(mono) is True
     assert resources_router._is_translated_scan_derivative(dual) is True
     assert resources_router._is_translated_scan_derivative(original) is False
+
+
+def test_scan_source_fingerprint_hashes_bytes_not_size_or_mtime(tmp_path: Path) -> None:
+    """Same-size replacements with a restored mtime must have a new identity."""
+
+    root = tmp_path / "papers"
+    root.mkdir()
+    source = root / "paper.pdf"
+    source.write_bytes(b"%PDF-old-bytes-%%EOF")
+    fixed_ns = 1_750_000_000_123_456_700
+    os.utime(source, ns=(fixed_ns, fixed_ns))
+    first = resources_router._build_source_fingerprint(root, source)
+
+    source.write_bytes(b"%PDF-new-bytes-%%EOF")
+    os.utime(source, ns=(fixed_ns, fixed_ns))
+    second = resources_router._build_source_fingerprint(root, source)
+
+    assert len(source.read_bytes()) == len(b"%PDF-old-bytes-%%EOF")
+    assert first.startswith("sha256:")
+    assert second.startswith("sha256:")
+    assert first != second
 
 
 def test_collect_pending_scan_candidates_skips_translation_and_copy_duplicates(
@@ -232,8 +258,11 @@ def test_batch_upload_skips_translated_and_non_literature_pdfs() -> None:
 
 
 @pytest.mark.asyncio
-async def test_single_upload_skips_normalized_duplicate_before_persist(monkeypatch: Any) -> None:
-    """Duplicate filename variants should be blocked before source persistence."""
+async def test_same_filename_different_content_is_not_title_deduped(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """Normalized title similarity cannot override a different content hash."""
 
     class _Upload:
         filename = "Sun - Application of adjustable ring mode laser (1).pdf"
@@ -245,19 +274,46 @@ async def test_single_upload_skips_normalized_duplicate_before_persist(monkeypat
             "mat-existing": {
                 "title": "Sun - Application of adjustable ring mode laser.pdf",
                 "source_relative_path": "Sun - Application of adjustable ring mode laser.pdf",
+                "source_fingerprint": f"sha256:{'1' * 64}",
             }
         },
     )
+    persisted: list[str] = []
 
-    async def _fail_persist(*_args: Any, **_kwargs: Any) -> None:
-        raise AssertionError("duplicate upload should not be persisted")
+    async def _persist(*_args: Any, **_kwargs: Any) -> Any:
+        persisted.append("called")
+        return type(
+            "Uploaded",
+            (),
+            {
+                "path": tmp_path / "Sun - Application of adjustable ring mode laser (1).pdf",
+                "fingerprint": f"sha256:{'2' * 64}",
+                "size": 4096,
+                "created": True,
+            },
+        )()
 
-    monkeypatch.setattr(resources_router, "_persist_upload_to_source_file", _fail_persist)
+    def _reserve(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        return {
+            "material_id": "mat-new",
+            "title": _Upload.filename,
+            "content_length": 0,
+            "chunks": 0,
+            "status": "queued",
+        }
+
+    async def _start(*_args: Any, **_kwargs: Any) -> tuple[str, str]:
+        return "session-new", "job-new"
+
+    monkeypatch.setattr(resources_router, "_persist_upload_to_source_file", _persist)
+    monkeypatch.setattr(resources_router, "_create_pending_uploaded_document", _reserve)
+    monkeypatch.setattr(resources_router, "_start_uploaded_document_extraction_job", _start)
 
     result = await resources_router._ingest_uploaded_document("proj-upload-dedupe", _Upload(), store=object())
 
-    assert result["status"] == "skipped"
-    assert result["decision"] == "scan_duplicate"
+    assert persisted == ["called"]
+    assert result["status"] == "queued"
+    assert result["material_id"] == "mat-new"
 
 
 def test_search_refs_returns_refs_without_full_chunk_fields(monkeypatch: Any) -> None:
@@ -340,7 +396,15 @@ def test_search_refs_returns_refs_without_full_chunk_fields(monkeypatch: Any) ->
         "figure_candidate",
         "figure_candidate_detail",
         "image_paths",
+        "quote",
+        "anchor_kind",
+        "content_hash",
+        "locator_hash",
+        "chunk_hash",
+        "embedding_input_hash",
+        "hash_version",
     }
+    stored_chunk = resources_router._load_chunk_store(project_id)["mat_alpha"][0]  # type: ignore[attr-defined]
     assert ref["metadata"] | {"figure_candidate_detail": None} == {
         "material_id": "mat_alpha",
         "title": "Transformer Attention Review",
@@ -359,6 +423,13 @@ def test_search_refs_returns_refs_without_full_chunk_fields(monkeypatch: Any) ->
         "figure_candidate": "figure:attention-1",
         "figure_candidate_detail": None,
         "image_paths": [],
+        "quote": "Transformer attention improves sequence modeling and retrieval quality.",
+        "anchor_kind": "text",
+        "content_hash": stored_chunk["content_hash"],
+        "locator_hash": stored_chunk["locator_hash"],
+        "chunk_hash": stored_chunk["chunk_hash"],
+        "embedding_input_hash": stored_chunk["embedding_input_hash"],
+        "hash_version": stored_chunk["hash_version"],
     }
     detail = ref["metadata"]["figure_candidate_detail"]
     assert detail["id"] == "figure:attention-1"
@@ -374,6 +445,85 @@ def test_search_refs_returns_refs_without_full_chunk_fields(monkeypatch: Any) ->
     assert "SHOULD_NOT_LEAK" not in serialized
     assert "ocr" not in serialized.lower()
     assert "private_note" not in serialized
+
+
+def test_search_ref_quote_is_exact_bounded_and_text_only() -> None:
+    source_text = ("x" * 160) + "\n" + ("y" * 200)
+    multiline_source = "Context.\nMethod line uses 1.0 mm\nand runs at 150 Hz."
+    text_metadata = search_upload._chunk_search_ref_metadata(
+        {
+            "chunk_id": "text-quote",
+            "material_id": "mat-text",
+            "chunk_type": "body",
+            "summary": "A paraphrase that must stay independent.",
+            "content": "[文献: Ping]\n" + source_text,
+        },
+        material_id="mat-text",
+        chunk_id="text-quote",
+    )
+    multiline_metadata = search_upload._chunk_search_ref_metadata(
+        {
+            "chunk_id": "text-multiline-quote",
+            "material_id": "mat-text",
+            "chunk_type": "body",
+            "raw_content": multiline_source,
+        },
+        material_id="mat-text",
+        chunk_id="text-multiline-quote",
+        query="1.0 mm 150 Hz",
+    )
+    visual_metadata = search_upload._chunk_search_ref_metadata(
+        {
+            "chunk_id": "visual-caption",
+            "material_id": "mat-visual",
+            "chunk_type": "figure_caption",
+            "raw_content": "Figure 7. Surface appearance.",
+        },
+        material_id="mat-visual",
+        chunk_id="visual-caption",
+    )
+
+    assert text_metadata.anchor_kind == "text"
+    assert text_metadata.quote == source_text[:320].rstrip()
+    assert text_metadata.quote in source_text
+    assert not text_metadata.quote.endswith("…")
+    assert multiline_metadata.quote is not None
+    assert "1.0 mm" in multiline_metadata.quote
+    assert "150 Hz" in multiline_metadata.quote
+    assert "\n" in multiline_metadata.quote
+    assert multiline_metadata.quote in multiline_source
+    assert visual_metadata.anchor_kind == "visual"
+    assert visual_metadata.quote is None
+
+
+def test_search_refs_uses_selective_material_load_when_fts_is_current(
+    monkeypatch: Any,
+) -> None:
+    client = _client()
+    project_id = _create_project(client, title="Selective Search Refs Project")["project_id"]
+    _write_chunk_fixture(
+        project_id,
+        content="Ping used circular oscillation with amplitude 1.0 mm at 150 Hz.",
+    )
+
+    def _unexpected_full_load(_project_id: str) -> dict[str, list[dict[str, Any]]]:
+        raise AssertionError("healthy FTS search must not load the full project chunk store")
+
+    monkeypatch.setattr(resources_router, "_load_chunk_store", _unexpected_full_load)
+
+    response = client.get(
+        "/resources/chunks/search-refs",
+        params={
+            "project_id": project_id,
+            "query": "circular oscillation amplitude 1.0 mm 150 Hz",
+            "top_k": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_refs"] == 1
+    assert payload["refs"][0]["chunk_id"] == "chunk_alpha_1"
 
 
 def test_search_refs_blends_pixel_backed_visual_refs_for_appearance_query() -> None:
@@ -463,6 +613,80 @@ def test_search_refs_blends_pixel_backed_visual_refs_for_appearance_query() -> N
     assert visual_refs[0]["metadata"]["figure_candidate_detail"]["asset_path"] == (
         "figure_assets/extracted/Ping/p0010_img001.jpeg"
     )
+
+
+def test_search_refs_expands_body_linked_figure_to_caption_asset_without_mutation() -> None:
+    """A body hit can surface the caption-bound image it references."""
+
+    client = _client()
+    project = _create_project(client)
+    project_id = project["project_id"]
+    chunk_store = {
+        "mat_surface": [
+            {
+                "chunk_id": "surface_body_ref",
+                "material_id": "mat_surface",
+                "title": "AlSi10Mg weld surface discussion",
+                "content": "AlSi10Mg 上表面焊缝外观和形貌。图3显示了焊缝表面形貌随功率的变化。",
+                "raw_content": "图3显示了焊缝表面形貌随功率的变化。",
+                "page": 10,
+                "chunk_index": 20,
+                "chunk_type": "body",
+                "bbox": [0.15, 0.62, 0.68, 0.12],
+                "linked_figure_ids": ["figure:surface-paper:3"],
+            },
+            {
+                "chunk_id": "surface_caption_fig3",
+                "material_id": "mat_surface",
+                "title": "AlSi10Mg weld surface figure",
+                "content": "图3. 焊缝表面形貌。",
+                "raw_content": "图3. 焊缝表面形貌。",
+                "page": 10,
+                "chunk_index": 21,
+                "chunk_type": "figure_caption",
+                "bbox": [0.12, 0.18, 0.72, 0.32],
+                "figure_id": "figure:surface-paper:3",
+                "image_paths": ["figure_assets/extracted/surface/p0010_cap001.png"],
+            },
+        ],
+        "mat_text": [
+            {
+                "chunk_id": f"surface_text_{index}",
+                "material_id": "mat_text",
+                "title": f"AlSi10Mg process note {index}",
+                "content": "AlSi10Mg process parameters and porosity suppression.",
+                "page": index + 1,
+                "chunk_index": index,
+            }
+            for index in range(3)
+        ],
+    }
+    resources_router._save_chunk_store(project_id, chunk_store)  # type: ignore[attr-defined]
+
+    response = client.get(
+        "/resources/chunks/search-refs",
+        params={
+            "project_id": project_id,
+            "query": "AlSi10Mg 上表面 焊缝 外观 形貌 图片",
+            "top_k": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    refs_by_chunk = {ref["chunk_id"]: ref for ref in response.json()["refs"]}
+    ref = refs_by_chunk["surface_body_ref"]
+    assert ref["metadata"]["image_paths"] == ["figure_assets/extracted/surface/p0010_cap001.png"]
+    assert ref["metadata"]["figure_candidate"] == "figure:surface-paper:3"
+    assert ref["metadata"]["figure_candidate_detail"]["source"] == "linked_caption_chunk"
+    assert ref["metadata"]["figure_candidate_detail"]["asset_path"] == (
+        "figure_assets/extracted/surface/p0010_cap001.png"
+    )
+    assert "visual_linked_caption_asset" in ref["metadata"]["source_labels"]
+    assert "visual_image_asset" in ref["metadata"]["source_labels"]
+
+    persisted = resources_router._load_chunk_store(project_id)  # type: ignore[attr-defined]
+    assert "image_paths" not in persisted["mat_surface"][0]
+    assert persisted["mat_surface"][0]["linked_figure_ids"] == ["figure:surface-paper:3"]
 
 
 def test_search_refs_blends_project_figure_asset_files_without_mutating_chunks() -> None:

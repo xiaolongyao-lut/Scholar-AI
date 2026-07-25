@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Settings as _SettingsIcon, Key, Cpu, Network, FolderOpen, Layers, Server,
   Activity, ArrowLeft, Check, ChevronRight, Info, Zap,
@@ -19,9 +19,13 @@ import { listFeatureFlags, setFeatureFlag, type FeatureFlagEntry } from '@/servi
 import { getUnifiedSettings, type UnifiedSettings, type SettingsApiConfig } from '@/services/settingsApi';
 import {
   checkOcrHealth,
+  classifyOcrExecutionProbeError,
   fetchOcrStatus,
+  runOcrExecutionProbe,
   saveOcrEngineSelection,
   type OcrEnginePublicInfo,
+  type OcrExecutionFailure,
+  type OcrExecutionProbeResponse,
   type OcrHealthResponse,
   type OcrPolicy,
   type OcrStatusResponse,
@@ -540,21 +544,85 @@ interface ChatPublicConfig {
 
 interface ChatContextCompressionConfig {
   enabled: boolean;
+  model_auto_compact_token_limit: number;
   trigger_tokens: number;
+  model_context_window: number;
+  tool_output_token_limit: number;
   target_tokens: number;
   keep_recent_turns: number;
   updated_at: string;
 }
 
-const CHAT_COMPRESSION_TRIGGER_DEFAULT = 24000;
-const CHAT_COMPRESSION_TRIGGER_MIN = 4096;
-const CHAT_COMPRESSION_TRIGGER_MAX = 128000;
+const CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT = 150000;
+const CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN = 4096;
+const CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MAX = 1000000;
+const CHAT_MODEL_CONTEXT_WINDOW_DEFAULT = 258400;
+const CHAT_MODEL_CONTEXT_WINDOW_MIN = 8192;
+const CHAT_MODEL_CONTEXT_WINDOW_MAX = 2000000;
+const CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT = 8000;
+const CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MIN = 256;
+const CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MAX = 32000;
 const CHAT_COMPRESSION_TARGET_DEFAULT = 2000;
 const CHAT_COMPRESSION_TARGET_MIN = 512;
 const CHAT_COMPRESSION_TARGET_MAX = 16000;
 const CHAT_COMPRESSION_KEEP_RECENT_DEFAULT = 6;
 const CHAT_COMPRESSION_KEEP_RECENT_MIN = 1;
 const CHAT_COMPRESSION_KEEP_RECENT_MAX = 20;
+
+function boundedInteger(
+  value: unknown,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  return typeof value === 'number'
+    && Number.isInteger(value)
+    && value >= minimum
+    && value <= maximum
+    ? value
+    : fallback;
+}
+
+function normalizeChatContextCompressionConfig(
+  value: Partial<ChatContextCompressionConfig> | null | undefined,
+): ChatContextCompressionConfig {
+  const autoCompactTokenLimit = boundedInteger(
+    value?.model_auto_compact_token_limit ?? value?.trigger_tokens,
+    CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT,
+    CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN,
+    CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MAX,
+  );
+  return {
+    enabled: typeof value?.enabled === 'boolean' ? value.enabled : true,
+    model_auto_compact_token_limit: autoCompactTokenLimit,
+    trigger_tokens: autoCompactTokenLimit,
+    model_context_window: boundedInteger(
+      value?.model_context_window,
+      CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
+      CHAT_MODEL_CONTEXT_WINDOW_MIN,
+      CHAT_MODEL_CONTEXT_WINDOW_MAX,
+    ),
+    tool_output_token_limit: boundedInteger(
+      value?.tool_output_token_limit,
+      CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT,
+      CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MIN,
+      CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MAX,
+    ),
+    target_tokens: boundedInteger(
+      value?.target_tokens,
+      CHAT_COMPRESSION_TARGET_DEFAULT,
+      CHAT_COMPRESSION_TARGET_MIN,
+      CHAT_COMPRESSION_TARGET_MAX,
+    ),
+    keep_recent_turns: boundedInteger(
+      value?.keep_recent_turns,
+      CHAT_COMPRESSION_KEEP_RECENT_DEFAULT,
+      CHAT_COMPRESSION_KEEP_RECENT_MIN,
+      CHAT_COMPRESSION_KEEP_RECENT_MAX,
+    ),
+    updated_at: typeof value?.updated_at === 'string' ? value.updated_at : '',
+  };
+}
 
 interface EmbeddingPublicConfig {
   provider: string;
@@ -718,7 +786,7 @@ interface OcrSettingsForm {
   baseUrl: string;
   endpointPath: string;
   responseTextPath: string;
-  provider: 'generic' | 'mistral' | 'mineru';
+  provider: 'generic' | 'mistral' | 'mineru' | 'paddle_jobs';
   model: string;
   credentialId: string;
   language: string;
@@ -755,7 +823,12 @@ function readStringConfig(value: unknown): string {
 }
 
 function readOcrProviderConfig(value: unknown): OcrSettingsForm['provider'] {
-  return value === 'mistral' || value === 'mineru' || value === 'generic' ? value : 'generic';
+  return value === 'mistral'
+    || value === 'mineru'
+    || value === 'paddle_jobs'
+    || value === 'generic'
+    ? value
+    : 'generic';
 }
 
 function readBooleanConfig(value: unknown): boolean {
@@ -782,13 +855,15 @@ function ocrStatusToSettingsForm(status: OcrStatusResponse | null): OcrSettingsF
   const config = status.engine_config && typeof status.engine_config === 'object'
     ? status.engine_config
     : {};
+  const provider = readOcrProviderConfig(config.provider);
   return {
     selectedEngine: status.configured_engine ?? '',
     apiKey: '',
     baseUrl: readStringConfig(config.base_url),
-    endpointPath: readStringConfig(config.endpoint_path) || DEFAULT_OCR_FORM.endpointPath,
+    endpointPath: readStringConfig(config.endpoint_path)
+      || (provider === 'paddle_jobs' ? '' : DEFAULT_OCR_FORM.endpointPath),
     responseTextPath: readStringConfig(config.response_text_path),
-    provider: readOcrProviderConfig(config.provider),
+    provider,
     model: readStringConfig(config.model),
     credentialId: readStringConfig(config.credential_id),
     language: status.language || DEFAULT_OCR_FORM.language,
@@ -805,7 +880,6 @@ function ocrStatusToSettingsForm(status: OcrStatusResponse | null): OcrSettingsF
 function buildRemoteOcrEngineConfig(form: OcrSettingsForm): Record<string, unknown> {
   const config: Record<string, unknown> = {
     base_url: form.baseUrl.trim(),
-    endpoint_path: form.endpointPath.trim() || DEFAULT_OCR_FORM.endpointPath,
     provider: form.provider,
     model: form.model.trim(),
     credential_id: form.credentialId.trim(),
@@ -813,6 +887,9 @@ function buildRemoteOcrEngineConfig(form: OcrSettingsForm): Record<string, unkno
     allow_insecure_http: form.allowInsecureHttp,
     timeout_seconds: form.remoteTimeoutSeconds,
   };
+  if (form.provider !== 'paddle_jobs') {
+    config.endpoint_path = form.endpointPath.trim() || DEFAULT_OCR_FORM.endpointPath;
+  }
   if (form.apiKey.trim()) {
     config.api_key = form.apiKey.trim();
   }
@@ -946,6 +1023,7 @@ function inferOcrProviderFromCredential(
   const text = `${credential.provider} ${credential.model}`.toLowerCase();
   if (text.includes('mistral')) return 'mistral';
   if (text.includes('mineru') || text.includes('magic-pdf')) return 'mineru';
+  if (text.includes('paddleocr') || text.includes('paddle ocr')) return 'paddle_jobs';
   return 'generic';
 }
 
@@ -956,11 +1034,43 @@ function endpointPathForOcrCredential(
   const url = credential.base_url.trim().replace(/\/+$/, '');
   if (provider === 'mistral') return url.endsWith('/ocr') ? '' : '/ocr';
   if (provider === 'mineru') return url.endsWith('/file-urls/batch') ? '' : '/v4/file-urls/batch';
+  if (provider === 'paddle_jobs') return '';
   return '/ocr';
+}
+
+function createDisposableOcrProbeImageBase64(): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = 960;
+  canvas.height = 240;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Canvas 2D context is unavailable.');
+  }
+
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#111827';
+  context.textBaseline = 'alphabetic';
+  context.font = '700 36px Arial, sans-serif';
+  context.fillText('SCHOLAR AI OCR TEST 2026', 48, 70);
+  context.font = '600 30px Arial, sans-serif';
+  context.fillText('POSITION SAMPLE', 48, 172);
+
+  const dataUrl = canvas.toDataURL('image/png');
+  const prefix = 'data:image/png;base64,';
+  if (!dataUrl.startsWith(prefix)) {
+    throw new Error('Canvas did not produce a PNG data URL.');
+  }
+  const imageBase64 = dataUrl.slice(prefix.length).trim();
+  if (!imageBase64 || !/^[A-Za-z0-9+/]+={0,2}$/.test(imageBase64)) {
+    throw new Error('Canvas produced invalid PNG base64 data.');
+  }
+  return imageBase64;
 }
 
 function OcrApiSettingsCard(): JSX.Element {
   const trackedTimeout = useTrackedTimeout();
+  const executionInFlight = useRef(false);
   const [status, setStatus] = useState<OcrStatusResponse | null>(null);
   const [form, setForm] = useState<OcrSettingsForm>(DEFAULT_OCR_FORM);
   const [policy, setPolicy] = useState<OcrPolicy>('auto');
@@ -970,6 +1080,9 @@ function OcrApiSettingsCard(): JSX.Element {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [health, setHealth] = useState<OcrHealthResponse | null>(null);
+  const [executing, setExecuting] = useState(false);
+  const [executionReceipt, setExecutionReceipt] = useState<OcrExecutionProbeResponse | null>(null);
+  const [executionFailure, setExecutionFailure] = useState<OcrExecutionFailure | null>(null);
   const [selectedOcrCredentialId, setSelectedOcrCredentialId] = useState('');
   const fieldDescriptionIds = {
     policy: 'ocr-policy-purpose',
@@ -1014,6 +1127,12 @@ function OcrApiSettingsCard(): JSX.Element {
   const showLocalFields = Boolean(configuredEngine && configuredEngine !== 'remote_api');
   const autoSelectionActive = policy !== 'none' && !configuredEngine;
   const patchForm = (patch: Partial<OcrSettingsForm>) => setForm((current) => ({ ...current, ...patch }));
+
+  const handleOcrCredentialSelected = useCallback((credentialId: string) => {
+    setSelectedOcrCredentialId(credentialId);
+    setForm((current) => ({ ...current, credentialId }));
+    setHealth(null);
+  }, []);
 
   const handleOcrCredentialApplied = useCallback((credential: RuntimeCredentialPublic) => {
     setSelectedOcrCredentialId(credential.credential_id);
@@ -1084,6 +1203,41 @@ function OcrApiSettingsCard(): JSX.Element {
       setError(formatSettingsActionError(err, 'OCR 健康检查失败。'));
     } finally {
       setChecking(false);
+    }
+  };
+
+  const handleExecutionProbe = async () => {
+    if (executionInFlight.current) return;
+    const engineForExecution = activeEngineName;
+    if (!engineForExecution) {
+      setExecutionReceipt(null);
+      setExecutionFailure({
+        category: 'blocked',
+        title: 'OCR 执行受阻',
+        detail: '当前没有可执行的 OCR 引擎，请先刷新状态或选择一个引擎。',
+      });
+      return;
+    }
+
+    executionInFlight.current = true;
+    setExecuting(true);
+    setExecutionReceipt(null);
+    setExecutionFailure(null);
+    try {
+      const receipt = await runOcrExecutionProbe({
+        confirm_execution: true,
+        image_base64: createDisposableOcrProbeImageBase64(),
+        engine: engineForExecution,
+        engine_config: buildOcrEngineConfig(engineForExecution, form),
+        language: form.language.trim() || DEFAULT_OCR_FORM.language,
+        preview_chars: 240,
+      });
+      setExecutionReceipt(receipt);
+    } catch (err: unknown) {
+      setExecutionFailure(classifyOcrExecutionProbeError(err));
+    } finally {
+      executionInFlight.current = false;
+      setExecuting(false);
     }
   };
 
@@ -1375,7 +1529,7 @@ function OcrApiSettingsCard(): JSX.Element {
               <AppliedCredentialPicker
                 subsystem="ocr"
                 selectedId={selectedOcrCredentialId || form.credentialId}
-                onSelectedIdChange={setSelectedOcrCredentialId}
+                onSelectedIdChange={handleOcrCredentialSelected}
                 onApplied={handleOcrCredentialApplied}
                 disabled={loading || saving || checking}
               />
@@ -1384,7 +1538,7 @@ function OcrApiSettingsCard(): JSX.Element {
           <Field
             label="服务类型"
             htmlFor="ocr-provider"
-            tooltip="Mistral 可作为同步页级 OCR；MinerU 是异步整篇文档解析服务，不会作为页级 OCR 自动执行。"
+            tooltip="Mistral 使用同步页级 OCR；PaddleOCR AIStudio 使用异步任务；MinerU 是整篇文档解析服务。"
             description="决定后端按哪种官方接口组装请求；自定义接口选择 Generic。"
           >
             <select
@@ -1395,18 +1549,25 @@ function OcrApiSettingsCard(): JSX.Element {
             >
               <option value="generic">Generic 自定义 OCR JSON</option>
               <option value="mistral">Mistral OCR</option>
+              <option value="paddle_jobs">PaddleOCR AIStudio 异步任务</option>
               <option value="mineru">MinerU 文档解析</option>
             </select>
           </Field>
           <Field
             label="模型 / 解析模式"
             htmlFor="ocr-model"
-            description="Mistral 默认 mistral-ocr-latest；MinerU 可填 pipeline、vlm 或 MinerU-HTML。"
+            description="Mistral 默认 mistral-ocr-latest；PaddleOCR 可填 PaddleOCR-VL-1.6；MinerU 可填 pipeline、vlm 或 MinerU-HTML。"
           >
             <TextInput
               id="ocr-model"
               value={form.model}
-              placeholder={form.provider === 'mistral' ? 'mistral-ocr-latest' : form.provider === 'mineru' ? 'pipeline' : 'model'}
+              placeholder={form.provider === 'mistral'
+                ? 'mistral-ocr-latest'
+                : form.provider === 'paddle_jobs'
+                  ? 'PaddleOCR-VL-1.6'
+                  : form.provider === 'mineru'
+                    ? 'pipeline'
+                    : 'model'}
               mono
               onChange={(value) => patchForm({ model: value })}
             />
@@ -1557,6 +1718,44 @@ function OcrApiSettingsCard(): JSX.Element {
             ) : null}
           </div>
         ) : null}
+        {executionFailure ? (
+          <div
+            role="alert"
+            className="mt-4 border-t border-red-500/20 pt-4 text-xs leading-relaxed text-red-700 dark:text-red-300"
+          >
+            <div className="font-medium">{executionFailure.title}</div>
+            <div className="mt-1">{executionFailure.detail}</div>
+          </div>
+        ) : null}
+        {executionReceipt ? (
+          <div aria-live="polite" className="mt-4 border-t border-emerald-500/20 pt-4 text-xs text-foreground/65">
+            <div className="flex items-center gap-2 font-medium text-emerald-700 dark:text-emerald-300">
+              <CheckCircle2 size={15} />
+              OCR 执行已确认
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-foreground/55">
+              <span>引擎：{executionReceipt.engine}</span>
+              <span>耗时：{executionReceipt.duration_ms} ms</span>
+              <span>识别区域：{executionReceipt.region_count}</span>
+            </div>
+            <pre className="mt-3 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-surface-lowest p-3 font-mono text-[11px] leading-relaxed text-foreground/75">
+              {executionReceipt.text_preview}
+            </pre>
+            {executionReceipt.region_samples.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {executionReceipt.region_samples.map((sample, index) => (
+                  <div key={`${sample.block_type}-${index}`} className="border-l-2 border-primary/25 pl-3">
+                    <div className="font-medium text-foreground/70">{sample.block_type}</div>
+                    {sample.text_preview ? <div className="mt-0.5 text-foreground/60">{sample.text_preview}</div> : null}
+                    <div className="mt-0.5 font-mono text-[10px] text-foreground/45">
+                      x {sample.bbox[0].toFixed(3)} · y {sample.bbox[1].toFixed(3)} · 宽 {sample.bbox[2].toFixed(3)} · 高 {sample.bbox[3].toFixed(3)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
@@ -1567,6 +1766,15 @@ function OcrApiSettingsCard(): JSX.Element {
           >
             {checking ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
             检查当前引擎
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleExecutionProbe()}
+            disabled={executing || checking || saving || loading || !activeEngineName || policy === 'none'}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-high px-3 py-2 text-xs font-medium text-foreground/65 transition-colors hover:border-primary/35 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {executing ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+            {executing ? '正在执行 OCR 测试' : '执行 OCR 测试'}
           </button>
           <button
             type="button"
@@ -1776,13 +1984,9 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
   const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>([]);
   const [discoverStatus, setDiscoverStatus] = useState<'idle' | 'loading' | 'ok' | 'fail'>('idle');
   const [discoverError, setDiscoverError] = useState('');
-  const [compression, setCompression] = useState<ChatContextCompressionConfig>({
-    enabled: true,
-    trigger_tokens: CHAT_COMPRESSION_TRIGGER_DEFAULT,
-    target_tokens: CHAT_COMPRESSION_TARGET_DEFAULT,
-    keep_recent_turns: CHAT_COMPRESSION_KEEP_RECENT_DEFAULT,
-    updated_at: '',
-  });
+  const [compression, setCompression] = useState<ChatContextCompressionConfig>(() => (
+    normalizeChatContextCompressionConfig(null)
+  ));
   const [compressionStatus, setCompressionStatus] = useState<'idle' | 'saving' | 'saved' | 'fail'>('idle');
   const [compressionError, setCompressionError] = useState('');
 
@@ -1794,7 +1998,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
         axios.get<ChatContextCompressionConfig>(`${getApiBaseUrl()}/api/chat/context-compression`),
       ]);
       setConfig(data);
-      setCompression(compressionResponse.data);
+      setCompression(normalizeChatContextCompressionConfig(compressionResponse.data));
       setForm({ provider: data.provider, baseUrl: data.base_url, apiKey: '', model: data.model });
 
       const legacy = readLegacyCredentialBlob('llm');
@@ -1909,11 +2113,12 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
     setCompressionStatus('saving');
     setCompressionError('');
     try {
+      const normalizedCompression = normalizeChatContextCompressionConfig(compression);
       const { data } = await axios.put<ChatContextCompressionConfig>(
         `${getApiBaseUrl()}/api/chat/context-compression`,
-        compression,
+        normalizedCompression,
       );
-      setCompression(data);
+      setCompression(normalizeChatContextCompressionConfig(data));
       setCompressionStatus('saved');
       trackedTimeout(() => setCompressionStatus('idle'), 3000);
     } catch (err: unknown) {
@@ -2023,7 +2228,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
           <SliderInput id="chat-top-p" value={llm.topP} min={0} max={1} step={0.05} ariaLabel={t('settings.top_p')} onChange={v => setLlm({ topP: v })} />
         </Field>
         <Field label={t('settings.max_tokens')} tooltip="单次回复生成上限。" htmlFor="chat-max-tokens">
-          <input id="chat-max-tokens" type="number" value={llm.maxTokens} onChange={e => setLlm({ maxTokens: Number(e.target.value) })}
+          <input id="chat-max-tokens" type="number" min={1} max={compression.model_context_window} step={128} value={llm.maxTokens} onChange={e => setLlm({ maxTokens: Number(e.target.value) })}
             aria-label={t('settings.max_tokens')}
             className="w-full bg-surface-high rounded-lg px-3 py-2 border border-outline-variant/50 text-sm font-mono text-foreground focus:outline-none focus:border-primary/40 transition-colors" />
         </Field>
@@ -2042,9 +2247,9 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
       <div className="rounded-lg border border-outline-variant/40 bg-surface-lowest p-4">
         <div className="flex flex-col gap-3 min-[720px]:flex-row min-[720px]:items-start min-[720px]:justify-between">
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-foreground/75">长对话自动摘要</p>
+            <p className="text-xs font-semibold text-foreground/75">回答模型上下文预算</p>
             <p className="mt-1 text-[11px] leading-relaxed text-foreground/50">
-              旧消息自动整理成摘要。
+              输入、输出和工具结果共用模型上下文窗口。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -2056,16 +2261,47 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
             />
           </div>
         </div>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <Field label="开始整理的长度" tooltip="数值越大，越晚整理。" htmlFor="chat-compression-trigger">
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <Field label="模型上下文窗口" tooltip="回答模型支持的输入与输出 token 总量。" htmlFor="chat-model-context-window">
             <input
-              id="chat-compression-trigger"
+              id="chat-model-context-window"
               type="number"
-              min={CHAT_COMPRESSION_TRIGGER_MIN}
-              max={CHAT_COMPRESSION_TRIGGER_MAX}
+              min={CHAT_MODEL_CONTEXT_WINDOW_MIN}
+              max={CHAT_MODEL_CONTEXT_WINDOW_MAX}
               step={512}
-              value={compression.trigger_tokens}
-              onChange={event => setCompression(prev => ({ ...prev, trigger_tokens: Number(event.target.value) }))}
+              value={compression.model_context_window}
+              onChange={event => setCompression(prev => ({ ...prev, model_context_window: Number(event.target.value) }))}
+              className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 font-mono text-sm text-foreground focus:border-primary/40 focus:outline-none"
+            />
+          </Field>
+          <Field label="自动整理触发长度" tooltip="会话估算达到此 token 数后整理较早内容。" htmlFor="chat-auto-compact-limit">
+            <input
+              id="chat-auto-compact-limit"
+              type="number"
+              min={CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN}
+              max={CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MAX}
+              step={512}
+              value={compression.model_auto_compact_token_limit}
+              onChange={event => {
+                const nextValue = Number(event.target.value);
+                setCompression(prev => ({
+                  ...prev,
+                  model_auto_compact_token_limit: nextValue,
+                  trigger_tokens: nextValue,
+                }));
+              }}
+              className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 font-mono text-sm text-foreground focus:border-primary/40 focus:outline-none"
+            />
+          </Field>
+          <Field label="工具输出总上限" tooltip="单次回答中送入模型的工具结果累计 token 上限。" htmlFor="chat-tool-output-limit">
+            <input
+              id="chat-tool-output-limit"
+              type="number"
+              min={CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MIN}
+              max={CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MAX}
+              step={256}
+              value={compression.tool_output_token_limit}
+              onChange={event => setCompression(prev => ({ ...prev, tool_output_token_limit: Number(event.target.value) }))}
               className="w-full rounded-lg border border-outline-variant/50 bg-surface-high px-3 py-2 font-mono text-sm text-foreground focus:border-primary/40 focus:outline-none"
             />
           </Field>
@@ -2099,9 +2335,9 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
             compressionStatus === 'saved' ? 'text-emerald-600 dark:text-emerald-300' : compressionStatus === 'fail' ? 'text-red-600 dark:text-red-300' : 'text-foreground/40',
           )}>
             {compressionStatus === 'saved'
-              ? '长对话自动摘要设置已保存。'
+              ? '回答模型预算设置已保存。'
               : compressionStatus === 'fail'
-                ? compressionError || '长对话自动摘要设置保存失败。'
+                ? compressionError || '回答模型预算设置保存失败。'
                 : compression.updated_at ? `上次更新：${compression.updated_at}` : '保存后，对新的智能研读对话生效。'}
           </p>
           <button
@@ -2111,7 +2347,7 @@ function SectionChat({ t, settings, onChange, isDirty }: { t: (k: string, p?: Re
             className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
           >
             {compressionStatus === 'saving' ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-            {compressionStatus === 'saved' ? '已保存' : '保存摘要设置'}
+            {compressionStatus === 'saved' ? '已保存' : '保存预算设置'}
           </button>
         </div>
       </div>
@@ -2987,7 +3223,7 @@ function SectionSampling({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [taskDefaults, setTaskDefaults] = useState<Record<string, TaskDefaults>>({});
-  const [modelMaxTokens, setModelMaxTokens] = useState(32768);
+  const [modelMaxTokens, setModelMaxTokens] = useState(CHAT_MODEL_CONTEXT_WINDOW_DEFAULT);
   const [userOverrides, setUserOverrides] = useState<Record<string, SamplingParams>>({});
   const [expandedTask, setExpandedTask] = useState<string | null>('chat');
   const [saveStatus, setSaveStatus] = useState<Record<string, 'idle' | 'saving' | 'saved' | 'error'>>({});
@@ -3008,7 +3244,7 @@ function SectionSampling({
     // task_defaults entirely or for any individual task the backend forgot.
     // Keeps the panel usable on older backends + offline / partial responses.
     const FALLBACK_TASK_DEFAULTS: Record<string, TaskDefaults> = {
-      chat: { temperature: 0.35, top_p: 0.8, top_k: 40, max_tokens: 1536 },
+      chat: { temperature: 0.35, top_p: 0.8, top_k: 40, max_tokens: 12000 },
       inspiration: { temperature: 0.6, top_p: 0.85, top_k: 40, max_tokens: 1024 },
       extraction: { temperature: 0.05, top_p: 0.5, top_k: 20, max_tokens: 1536 },
       summarization: { temperature: 0.2, top_p: 0.75, top_k: 30, max_tokens: 1024 },
@@ -3020,7 +3256,7 @@ function SectionSampling({
         ? data.task_defaults
         : {};
       setTaskDefaults({ ...FALLBACK_TASK_DEFAULTS, ...backendDefaults });
-      setModelMaxTokens(data?.model_max_tokens ?? 32768);
+      setModelMaxTokens(data?.model_max_tokens ?? CHAT_MODEL_CONTEXT_WINDOW_DEFAULT);
       setUserOverrides(data?.tasks ?? {});
     } catch (err) {
       const msg = formatSettingsActionError(err);

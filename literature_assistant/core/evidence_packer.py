@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Optional, TypedDict, Union
 
 try:
@@ -28,11 +29,29 @@ class EvidenceReference(TypedDict):
     source_hint: NotRequired[str]
     rank: NotRequired[int]
     query_overlap_tokens: NotRequired[list[str]]
+    bbox: NotRequired[list[float]]
+    bbox_unit: NotRequired[str]
+    figure_candidate: NotRequired[str]
+    figure_candidate_detail: NotRequired[dict[str, Any]]
+    image_paths: NotRequired[list[str]]
+
+
+_QUOTE_MAX_CHARS = 320
+_QUOTE_SENTENCE_BOUNDARY = re.compile(
+    r"(?<=[.!?。！？])(?:\s+|$)|(?:\r?\n[^\S\r\n]*){2,}"
+)
+_PDF_BBOX_UNITS = {
+    "normalized_ratio",
+    "normalized_1000",
+    "pdf_points",
+    "css_pixels",
+}
 
 
 def _get_text(candidate: dict[str, Any]) -> str:
     return str(
-        candidate.get("text")
+        candidate.get("raw_content")
+        or candidate.get("text")
         or candidate.get("content")
         or candidate.get("source_text")
         or candidate.get("claim")
@@ -44,8 +63,159 @@ def _get_compressed_text(candidate: dict[str, Any]) -> str:
     return str(candidate.get("compressed_text") or "").strip()
 
 
-def _get_quote(candidate: dict[str, Any]) -> str:
-    return str(candidate.get("quote") or "").strip()
+def _bounded_verbatim_quote(text: str, query_tokens: set[str]) -> str:
+    """Return a source substring bounded around a query-token occurrence."""
+
+    stripped = text.strip()
+    if len(stripped) <= _QUOTE_MAX_CHARS:
+        return stripped
+
+    lowered = stripped.casefold()
+    positions = [
+        position
+        for token in sorted(query_tokens, key=len, reverse=True)
+        if token
+        for position in [lowered.find(token.casefold())]
+        if position >= 0
+    ]
+    anchor = min(positions) if positions else 0
+    start = max(0, anchor - (_QUOTE_MAX_CHARS // 4))
+    end = min(len(stripped), start + _QUOTE_MAX_CHARS)
+    start = max(0, end - _QUOTE_MAX_CHARS)
+    return stripped[start:end].strip()
+
+
+def _select_query_quote(text: str, query_tokens: Optional[set[str]]) -> str:
+    """Select a verbatim source sentence only when the query supports it."""
+
+    normalized_query = {
+        str(token).strip().casefold()
+        for token in (query_tokens or set())
+        if str(token).strip()
+    }
+    if not text.strip() or not normalized_query:
+        return ""
+
+    best_segment = ""
+    best_overlap = 0
+    for segment in _QUOTE_SENTENCE_BOUNDARY.split(text):
+        candidate = segment.strip()
+        if not candidate:
+            continue
+        overlap = len(normalized_query & _token_set(candidate))
+        if overlap > best_overlap:
+            best_segment = candidate
+            best_overlap = overlap
+
+    if best_overlap <= 0:
+        return ""
+    return _bounded_verbatim_quote(best_segment, normalized_query)
+
+
+def _get_quote(
+    candidate: dict[str, Any],
+    *,
+    query_tokens: Optional[set[str]] = None,
+) -> str:
+    explicit_quote = str(candidate.get("quote") or "").strip()
+    if explicit_quote:
+        return explicit_quote
+    return _select_query_quote(_get_text(candidate), query_tokens)
+
+
+def _coerce_bbox(value: Any) -> Optional[list[float]]:
+    if not isinstance(value, list) or len(value) != 4:
+        return None
+    bbox: list[float] = []
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            return None
+        number = float(item)
+        if number != number or number in (float("inf"), float("-inf")):
+            return None
+        bbox.append(number)
+    return bbox
+
+
+def _bbox_matches_unit(bbox: list[float], unit: str) -> bool:
+    if unit == "normalized_ratio":
+        x, y, width, height = bbox
+        return (
+            x >= 0.0
+            and y >= 0.0
+            and width > 0.0
+            and height > 0.0
+            and x <= 1.0
+            and y <= 1.0
+            and x + width <= 1.0001
+            and y + height <= 1.0001
+        )
+    if unit == "normalized_1000":
+        return all(0.0 <= item <= 1000.0 for item in bbox)
+    if unit in {"pdf_points", "css_pixels"}:
+        return all(item >= 0.0 for item in bbox)
+    return False
+
+
+def _coerce_bbox_anchor(
+    bbox_value: Any,
+    unit_value: Any,
+) -> Optional[tuple[list[float], str]]:
+    bbox = _coerce_bbox(bbox_value)
+    if bbox is None:
+        return None
+    unit = str(unit_value or "normalized_ratio").strip()
+    if unit not in _PDF_BBOX_UNITS or not _bbox_matches_unit(bbox, unit):
+        return None
+    return bbox, unit
+
+
+def _coerce_image_paths(value: Any, *, limit: int = 8) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    paths: list[str] = []
+    for item in value:
+        path = str(item or "").strip()
+        if not path or path in paths:
+            continue
+        paths.append(path[:260])
+        if len(paths) >= limit:
+            break
+    return paths
+
+
+def _coerce_figure_candidate_detail(value: Any) -> Optional[dict[str, Any]]:
+    if not isinstance(value, dict):
+        return None
+
+    allowed_text_keys = {
+        "id",
+        "figure_id",
+        "kind",
+        "label",
+        "caption",
+        "chunk_id",
+        "asset_path",
+        "source",
+    }
+    detail: dict[str, Any] = {}
+    for key in allowed_text_keys:
+        cleaned = str(value.get(key) or "").strip()
+        if cleaned:
+            detail[key] = cleaned[:320]
+
+    page = value.get("page")
+    if isinstance(page, int) and not isinstance(page, bool) and page > 0:
+        detail["page"] = page
+
+    image_paths = _coerce_image_paths(value.get("image_paths"), limit=4)
+    if image_paths:
+        detail["image_paths"] = image_paths
+
+    anchor = _coerce_bbox_anchor(value.get("bbox"), value.get("bbox_unit"))
+    if anchor is not None:
+        detail["bbox"], detail["bbox_unit"] = anchor
+    return detail or None
 
 
 def _get_label(candidate: dict[str, Any]) -> str:
@@ -145,7 +315,7 @@ def build_evidence_reference(
         "material_id": _get_material_id(candidate),
         "text": text,
         "compressed_text": compressed_text,
-        "quote": _get_quote(candidate),
+        "quote": _get_quote(candidate, query_tokens=query_tokens),
         "label": _get_label(candidate),
     }
 
@@ -169,6 +339,24 @@ def build_evidence_reference(
     source_labels = _get_source_labels(candidate)
     if source_labels:
         reference["source_labels"] = source_labels
+
+    anchor = _coerce_bbox_anchor(candidate.get("bbox"), candidate.get("bbox_unit"))
+    if anchor is not None:
+        reference["bbox"], reference["bbox_unit"] = anchor
+
+    figure_candidate = str(candidate.get("figure_candidate") or "").strip()
+    if figure_candidate:
+        reference["figure_candidate"] = figure_candidate[:260]
+
+    figure_candidate_detail = _coerce_figure_candidate_detail(
+        candidate.get("figure_candidate_detail")
+    )
+    if figure_candidate_detail is not None:
+        reference["figure_candidate_detail"] = figure_candidate_detail
+
+    image_paths = _coerce_image_paths(candidate.get("image_paths"))
+    if image_paths:
+        reference["image_paths"] = image_paths
 
     if rank is not None:
         reference["rank"] = rank

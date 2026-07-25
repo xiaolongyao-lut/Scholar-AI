@@ -90,10 +90,31 @@ def load_user_sampling() -> dict[str, dict[str, float | int]]:
         return {}
 
 
-def save_user_sampling(payload: dict[str, Any]) -> None:
-    """Validate and persist per-task sampling overrides."""
+def save_user_sampling(
+    payload: dict[str, Any],
+    *,
+    max_tokens_limit: int | None = None,
+) -> None:
+    """Validate and persist per-task sampling overrides.
+
+    Args:
+        payload: Per-task sampling overrides keyed by task name.
+        max_tokens_limit: Optional active model-context ceiling. The sampling
+            endpoint supplies this value so a saved output budget cannot exceed
+            the model context configured for answer generation.
+
+    Raises:
+        ValueError: If the payload shape, a sampling value, or the configured
+            output-token ceiling is invalid.
+    """
     if not isinstance(payload, dict):
         raise ValueError("tasks payload must be an object")
+    if max_tokens_limit is not None and (
+        isinstance(max_tokens_limit, bool)
+        or not isinstance(max_tokens_limit, int)
+        or max_tokens_limit < 1
+    ):
+        raise ValueError("max_tokens_limit must be a positive integer")
 
     sanitized: dict[str, dict[str, float | int]] = {}
     for task, overrides in payload.items():
@@ -103,6 +124,15 @@ def save_user_sampling(payload: dict[str, Any]) -> None:
             raise ValueError(f"{task} overrides must be an object")
 
         resolved = resolve_llm_params(task, user_overrides=overrides)
+        if (
+            max_tokens_limit is not None
+            and overrides.get("max_tokens") is not None
+            and int(resolved["max_tokens"]) > max_tokens_limit
+        ):
+            raise ValueError(
+                "max_tokens exceeds the configured model context window "
+                f"({max_tokens_limit})"
+            )
         sanitized[task] = {
             key: resolved[key]
             for key in _ALLOWED_KEYS

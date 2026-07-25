@@ -8,8 +8,10 @@ from typing import Any, Mapping
 from literature_assistant.core.wiki.llm_gateway import LLMGateway, LLMRequest, validate_json_response
 from literature_assistant.core.wiki.models import WikiPageKind, WikiPageStatus
 from literature_assistant.core.wiki.page_store import (
+    PageRevisionConflictError,
+    RenderedPage,
     WikiPageStore,
-    render_page,
+    render_generated_page,
     stable_slug,
 )
 from literature_assistant.core.wiki.observability import WikiObservabilitySink
@@ -158,6 +160,15 @@ class WikiCompiler:
         self.observability_sink = observability_sink
         self.llm_gateway = llm_gateway or LLMGateway(stub_mode=True)
 
+    def _write_generated_page(self, rendered: RenderedPage) -> str | None:
+        """Write one compiler page or return a bounded manual-edit conflict."""
+
+        try:
+            self.page_store.write_rendered(rendered)
+        except PageRevisionConflictError as exc:
+            return f"Compile conflict for {rendered.relative_path.as_posix()}: {exc}"
+        return None
+
     def compile_source(
         self,
         source_id: str,
@@ -222,8 +233,21 @@ class WikiCompiler:
                 CompileResult(1, 0, 0, [], budget_checks=[budget_check], cost_estimate=cost_estimate),
                 {"source_id": source_id, "dry_run": dry_run},
             )
-        rendered = render_page(relative_path, frontmatter, body)
-        self.page_store.write_rendered(rendered)
+        rendered = render_generated_page(relative_path, frontmatter, body)
+        write_error = self._write_generated_page(rendered)
+        if write_error is not None:
+            return self._observe_compile_result(
+                "wiki.compiler.source",
+                CompileResult(
+                    0,
+                    0,
+                    1,
+                    [write_error],
+                    budget_checks=[budget_check],
+                    cost_estimate=cost_estimate,
+                ),
+                {"source_id": source_id, "dry_run": dry_run},
+            )
         return self._observe_compile_result(
             "wiki.compiler.source",
             CompileResult(1, 0, 0, [], budget_checks=[budget_check], cost_estimate=cost_estimate),
@@ -265,8 +289,14 @@ class WikiCompiler:
                 CompileResult(1, 0, 0, []),
                 {"source_id": source_id, "dry_run": dry_run},
             )
-        rendered = render_page(relative_path, frontmatter, body)
-        self.page_store.write_rendered(rendered)
+        rendered = render_generated_page(relative_path, frontmatter, body)
+        write_error = self._write_generated_page(rendered)
+        if write_error is not None:
+            return self._observe_compile_result(
+                "wiki.compiler.paper",
+                CompileResult(0, 0, 1, [write_error]),
+                {"source_id": source_id, "dry_run": dry_run},
+            )
         return self._observe_compile_result(
             "wiki.compiler.paper",
             CompileResult(1, 0, 0, []),
@@ -351,8 +381,21 @@ class WikiCompiler:
                 CompileResult(1, 0, 0, [], budget_checks=[budget_check], cost_estimate=cost_estimate),
                 {"source_id": source_id, "dry_run": dry_run},
             )
-        rendered = render_page(relative_path, frontmatter, body)
-        self.page_store.write_rendered(rendered)
+        rendered = render_generated_page(relative_path, frontmatter, body)
+        write_error = self._write_generated_page(rendered)
+        if write_error is not None:
+            return self._observe_compile_result(
+                "wiki.compiler.paper_llm",
+                CompileResult(
+                    0,
+                    0,
+                    1,
+                    [write_error],
+                    budget_checks=[budget_check],
+                    cost_estimate=cost_estimate,
+                ),
+                {"source_id": source_id, "dry_run": dry_run},
+            )
         return self._observe_compile_result(
             "wiki.compiler.paper_llm",
             CompileResult(1, 0, 0, [], budget_checks=[budget_check], cost_estimate=cost_estimate),
@@ -406,6 +449,8 @@ class WikiCompiler:
                 {"source_id": source_id, "dry_run": dry_run},
             )
         created = 0
+        skipped = 0
+        errors: list[str] = []
         for concept in concepts:
             name = concept.get("name", "")
             if not name:
@@ -426,12 +471,16 @@ class WikiCompiler:
             if dry_run:
                 created += 1
                 continue
-            rendered = render_page(relative_path, frontmatter, body)
-            self.page_store.write_rendered(rendered)
+            rendered = render_generated_page(relative_path, frontmatter, body)
+            write_error = self._write_generated_page(rendered)
+            if write_error is not None:
+                skipped += 1
+                errors.append(write_error)
+                continue
             created += 1
         return self._observe_compile_result(
             "wiki.compiler.concepts_llm",
-            CompileResult(created, 0, 0, []),
+            CompileResult(created, 0, skipped, errors),
             {"source_id": source_id, "dry_run": dry_run, "concept_count": len(concepts)},
         )
 
@@ -481,6 +530,8 @@ class WikiCompiler:
                 {"source_id": source_id, "dry_run": dry_run},
             )
         created = 0
+        skipped = 0
+        errors: list[str] = []
         for claim in claims:
             claim_text = claim.get("claim_text", "")
             if not claim_text:
@@ -506,12 +557,16 @@ class WikiCompiler:
             if dry_run:
                 created += 1
                 continue
-            rendered = render_page(relative_path, frontmatter, body)
-            self.page_store.write_rendered(rendered)
+            rendered = render_generated_page(relative_path, frontmatter, body)
+            write_error = self._write_generated_page(rendered)
+            if write_error is not None:
+                skipped += 1
+                errors.append(write_error)
+                continue
             created += 1
         return self._observe_compile_result(
             "wiki.compiler.claims_llm",
-            CompileResult(created, 0, 0, []),
+            CompileResult(created, 0, skipped, errors),
             {"source_id": source_id, "dry_run": dry_run, "claim_count": len(claims)},
         )
 
@@ -560,8 +615,10 @@ class WikiCompiler:
         body = "\n".join(body_parts)
         if dry_run:
             return CompileResult(1, 0, 0, [])
-        rendered = render_page(relative_path, frontmatter, body)
-        self.page_store.write_rendered(rendered)
+        rendered = render_generated_page(relative_path, frontmatter, body)
+        write_error = self._write_generated_page(rendered)
+        if write_error is not None:
+            return CompileResult(0, 0, 1, [write_error])
         return CompileResult(1, 0, 0, [])
 
     def compile_project(

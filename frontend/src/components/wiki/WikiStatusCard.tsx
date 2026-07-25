@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2, Database, FileText, GitBranch, RefreshCw, ShieldCheck } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import type { WikiStatusModel } from '@/types/wiki';
+import type { WikiRevalidationModel, WikiStatusModel } from '@/types/wiki';
 import { formatWikiError, formatWikiPageLabel, formatWikiWarning } from './wikiDisplay';
 
 interface WikiStatusCardProps {
@@ -9,6 +9,11 @@ interface WikiStatusCardProps {
   isLoading: boolean;
   error: string | null;
   onRefresh: () => void;
+  revalidation?: WikiRevalidationModel | null;
+  isRevalidationLoading?: boolean;
+  revalidationError?: string | null;
+  onPreflightRevalidation?: () => void;
+  onApplyRevalidation?: (expectedSourceManifestHash: string) => void;
 }
 
 interface StatusMetric {
@@ -18,7 +23,17 @@ interface StatusMetric {
   icon: typeof Database;
 }
 
-export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStatusCardProps) {
+export function WikiStatusCard({
+  status,
+  isLoading,
+  error,
+  onRefresh,
+  revalidation = null,
+  isRevalidationLoading = false,
+  revalidationError = null,
+  onPreflightRevalidation,
+  onApplyRevalidation,
+}: WikiStatusCardProps) {
   const metrics: StatusMetric[] = status ? [
     { id: 'graph-file', label: '图谱文件', active: status.graph_json_exists, icon: GitBranch },
     { id: 'graph-db', label: '图谱数据库', active: status.graph_db_exists, icon: Database },
@@ -201,6 +216,46 @@ export function WikiStatusCard({ status, isLoading, error, onRefresh }: WikiStat
                   ) : null}
                 </div>
               ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {status?.enabled && status.stale && onPreflightRevalidation ? (
+        <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-4">
+          <div className="font-label text-[11px] tracking-[0.2em] text-foreground/45">重新验证</div>
+          <p className="mt-2 text-sm leading-6 text-foreground/60">
+            先检查来源变化；只有再次确认后才重建检索索引，不会改写页面或自动批准候选。
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onPreflightRevalidation}
+              disabled={isRevalidationLoading}
+              className="rounded-lg border border-outline-variant/50 bg-surface-lowest px-3 py-1.5 text-xs font-label text-foreground/65 disabled:cursor-wait disabled:opacity-50"
+            >
+              {isRevalidationLoading ? '正在检查…' : '检查变化'}
+            </button>
+            {revalidation?.can_apply && onApplyRevalidation ? (
+              <button
+                type="button"
+                onClick={() => onApplyRevalidation(revalidation.source_manifest_hash)}
+                disabled={isRevalidationLoading}
+                className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-label text-primary disabled:cursor-wait disabled:opacity-50"
+              >
+                确认重新验证
+              </button>
+            ) : null}
+          </div>
+          {revalidation ? (
+            <div className="mt-3 text-xs text-foreground/55">
+              源页 {revalidation.source_page_count ?? '未知'} · 索引页 {revalidation.indexed_page_count} ·
+              变化 {revalidation.manifest_drilldown.missing_count + revalidation.manifest_drilldown.extra_count + revalidation.manifest_drilldown.mismatched_count} 项
+            </div>
+          ) : null}
+          {revalidationError ? (
+            <div className="mt-2 text-xs text-red-600 dark:text-red-300" role="alert">
+              {formatWikiError(revalidationError, '重新验证失败，请稍后重试。')}
             </div>
           ) : null}
         </div>

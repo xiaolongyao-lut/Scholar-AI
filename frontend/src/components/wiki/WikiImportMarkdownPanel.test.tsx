@@ -117,4 +117,21 @@ describe('WikiImportMarkdownPanel', () => {
     await waitFor(() => expect(openDialog).toHaveBeenCalled());
     expect(screen.getByDisplayValue('C:\\notes\\selected.md')).toBeInTheDocument();
   });
+
+  it('requires a second confirmation before overwrite mode can write', () => {
+    render(<WikiImportMarkdownPanel isWikiEnabled reviewQueueCount={1} />);
+
+    fireEvent.change(screen.getByLabelText('Markdown 路径'), {
+      target: { value: 'C:\\notes\\candidate.md' },
+    });
+    fireEvent.click(screen.getByLabelText('先预览'));
+    fireEvent.click(screen.getByLabelText('我确认写入'));
+    fireEvent.click(screen.getByLabelText('允许更新同名自动生成页（人工页受保护）'));
+
+    expect(screen.getByRole('button', { name: '写入待确认' })).toBeDisabled();
+    expect(screen.getByText('我确认只更新允许覆盖的自动生成页')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('我确认只更新允许覆盖的自动生成页'));
+    expect(screen.getByRole('button', { name: '写入待确认' })).toBeEnabled();
+  });
 });

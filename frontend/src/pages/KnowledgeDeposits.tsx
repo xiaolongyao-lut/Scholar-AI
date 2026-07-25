@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 // 待确认 = InsightPoolPanel (EvolutionInbox + Wiki review 入口)
 // 已沉淀 = KnowledgeLibraryPanel (WikiWorkbench embedded)
 // 来源   = SourceVaultPanel (原文与分块)
-// 关联   = EvidenceGraphWorkbench (证据图谱)
+// 证据图谱 = EvidenceGraphWorkbench (合并、消歧、补证据)
 type WorkbenchSectionId = 'sources' | 'knowledge' | 'insights' | 'graph';
 
 interface WorkbenchSection {
@@ -83,12 +83,12 @@ const WORKBENCH_SECTIONS: WorkbenchSection[] = [
     id: 'graph',
     param: 'graph',
     path: '/wiki?section=graph',
-    label: '关联',
-    legacyLabel: '证据图谱',
-    detail: '关系视图',
+    label: '证据图谱',
+    legacyLabel: '关联',
+    detail: '合并、消歧、补证据',
     advancedDetail: '可信关系过滤',
     icon: <GitBranch size={16} />,
-    primary: false,
+    primary: true,
   },
 ];
 
@@ -215,7 +215,7 @@ export function KnowledgeDeposits() {
               <ChevronDown size={12} className={cn('transition-transform', advancedOpen ? 'rotate-0' : '-rotate-90')} />
               更多
             </span>
-            <span className="text-foreground/40">来源与关联</span>
+            <span className="text-foreground/40">来源材料</span>
           </summary>
           <div
             role="tablist"

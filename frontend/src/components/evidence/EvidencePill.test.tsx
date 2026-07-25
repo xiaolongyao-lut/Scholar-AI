@@ -39,6 +39,25 @@ describe('EvidencePill', () => {
     expect(btn.textContent).toContain('p.7');
   });
 
+  it('exposes cited-project evidence role without adding a separate evidence summary', () => {
+    render(
+      <MemoryRouter>
+        <EvidencePill
+          evidence={{
+            source: 'Referenced paper',
+            material_id: 'm-cited',
+            evidence_role: 'cited_project_material',
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    const button = screen.getByRole('button');
+    expect(button).toHaveAttribute('data-evidence-role', 'cited_project_material');
+    expect(button).toHaveAttribute('title', expect.stringContaining('被引项目文献'));
+    expect(screen.queryByText('证据摘要')).not.toBeInTheDocument();
+  });
+
   it('never displays raw chunk_id / material_id as user-visible text (R5)', () => {
     render(
       <MemoryRouter>
@@ -83,6 +102,9 @@ describe('EvidencePill', () => {
     expect(onActivate).toHaveBeenCalledTimes(1);
     // No navigation
     expect(screen.getByTestId('location').textContent).toBe('/');
+    expect(
+      screen.getByRole('button').querySelector('[data-navigation-status]')?.getAttribute('data-navigation-status'),
+    ).toBe('selected');
   });
 
   it('can select evidence and still navigate for Workbench evidence focus', async () => {
@@ -108,10 +130,14 @@ describe('EvidencePill', () => {
       expect(parsed.searchParams.get('tab')).toBe('reader');
       expect(parsed.searchParams.get('page')).toBe('3');
       expect(parsed.searchParams.get('chunk')).toBe('c1');
+      expect(
+        screen.getByRole('button').querySelector('[data-navigation-status]')?.getAttribute('data-navigation-status'),
+      ).toBe('opened');
     });
   });
 
-  it('navigates with given page when ref has page', async () => {
+  it('keeps the given page and attempts locator enrichment when bbox is missing', async () => {
+    locateChunkMock.mockResolvedValueOnce(null);
     render(
       <MemoryRouter>
         <EvidencePill
@@ -133,7 +159,10 @@ describe('EvidencePill', () => {
       expect(parsed.searchParams.get('page')).toBe('5');
       expect(parsed.searchParams.get('chunk')).toBe('c1');
     });
-    expect(locateChunkMock).not.toHaveBeenCalled();
+    expect(locateChunkMock).toHaveBeenCalledWith('c1', 'p1');
+    expect(
+      screen.getByRole('button').querySelector('[data-navigation-status]')?.getAttribute('data-navigation-status'),
+    ).toBe('opened');
   });
 
   it('includes normalized bbox when ref carries a page-level target box', async () => {
@@ -210,6 +239,100 @@ describe('EvidencePill', () => {
     });
   });
 
+  it('keeps a text quote alongside the locator bbox and its resolved page', async () => {
+    locateChunkMock.mockResolvedValueOnce({
+      material_id: 'm1',
+      chunk_id: 'c-page-only',
+      page: 7,
+      chunk_index: 3,
+      bbox: [0.14, 0.28, 0.32, 0.09],
+      bbox_unit: 'normalized_ratio',
+    });
+    render(
+      <MemoryRouter>
+        <EvidencePill
+          evidence={{
+            source: 'src',
+            material_id: 'm1',
+            page: 5,
+            chunk_id: 'c-page-only',
+            quote: 'The exact cited sentence.',
+          }}
+          projectId="p1"
+        />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+
+    await waitFor(() => {
+      const parsed = parseLocationUrl(screen.getByTestId('location').textContent ?? '');
+      expect(parsed.searchParams.get('page')).toBe('7');
+      expect(parsed.searchParams.get('bbox')).toBe('0.14,0.28,0.32,0.09');
+      expect(parsed.searchParams.get('quote')).toBe('The exact cited sentence.');
+    });
+    expect(locateChunkMock).toHaveBeenCalledWith('c-page-only', 'p1');
+  });
+
+  it('carries a bounded exact quote when bbox enrichment is unavailable', async () => {
+    locateChunkMock.mockResolvedValueOnce(null);
+    render(
+      <MemoryRouter>
+        <EvidencePill
+          evidence={{
+            source: 'src',
+            material_id: 'm1',
+            page: 5,
+            chunk_id: 'c-quote',
+            text: 'A broader evidence window.',
+            quote: '  The exact\n cited sentence.  ',
+          }}
+          projectId="p1"
+        />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+
+    await waitFor(() => {
+      const parsed = parseLocationUrl(screen.getByTestId('location').textContent ?? '');
+      expect(parsed.searchParams.get('page')).toBe('5');
+      expect(parsed.searchParams.get('bbox')).toBeNull();
+      expect(parsed.searchParams.get('quote')).toBe('The exact cited sentence.');
+    });
+  });
+
+  it('does not use quote search for a visual anchor without bbox', async () => {
+    locateChunkMock.mockResolvedValueOnce(null);
+    render(
+      <MemoryRouter>
+        <EvidencePill
+          evidence={{
+            source: 'src',
+            material_id: 'm1',
+            page: 5,
+            chunk_id: 'c-visual',
+            quote: 'Figure 2 caption text.',
+            anchor_kind: 'visual',
+          }}
+          projectId="p1"
+        />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+
+    await waitFor(() => {
+      const parsed = parseLocationUrl(screen.getByTestId('location').textContent ?? '');
+      expect(parsed.searchParams.get('page')).toBe('5');
+      expect(parsed.searchParams.get('quote')).toBeNull();
+      expect(parsed.searchParams.get('anchor_kind')).toBe('visual');
+    });
+  });
+
   it('uses locator material_id when a persisted evidence ref only carries chunk_id', async () => {
     locateChunkMock.mockResolvedValueOnce({
       material_id: 'm-located',
@@ -270,7 +393,7 @@ describe('EvidencePill', () => {
     expect(locateChunkMock).toHaveBeenCalledTimes(1);
   });
 
-  it('does nothing when material_id is missing and no onActivate', () => {
+  it('reports unavailable target when material_id is missing and no onActivate', async () => {
     render(
       <MemoryRouter>
         <EvidencePill evidence={{ source: 'src' }} />
@@ -279,6 +402,67 @@ describe('EvidencePill', () => {
     );
     fireEvent.click(screen.getByRole('button'));
     expect(screen.getByTestId('location').textContent).toBe('/');
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button').querySelector('[data-navigation-status]')?.getAttribute('data-navigation-status'),
+      ).toBe('unavailable');
+    });
+  });
+
+  it('reports locator failure when chunk lookup rejects', async () => {
+    locateChunkMock.mockRejectedValueOnce(new Error('locator failed'));
+    render(
+      <MemoryRouter>
+        <EvidencePill evidence={{ source: 'src', chunk_id: 'c-missing' }} projectId="p1" />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location').textContent).toBe('/');
+      expect(
+        screen.getByRole('button').querySelector('[data-navigation-status]')?.getAttribute('data-navigation-status'),
+      ).toBe('locator_failed');
+    });
+  });
+
+  it('retries locator lookup after a transient locator failure', async () => {
+    locateChunkMock
+      .mockRejectedValueOnce(new Error('transient locator failure'))
+      .mockResolvedValueOnce({
+        material_id: 'm-recovered',
+        chunk_id: 'c-retry',
+        page: 6,
+      });
+    render(
+      <MemoryRouter>
+        <EvidencePill evidence={{ source: 'src', chunk_id: 'c-retry' }} projectId="p1" />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    const button = screen.getByRole('button');
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(
+        button.querySelector('[data-navigation-status]')?.getAttribute('data-navigation-status'),
+      ).toBe('locator_failed');
+    });
+
+    fireEvent.click(button);
+    await waitFor(() => {
+      const url = screen.getByTestId('location').textContent ?? '';
+      const parsed = parseLocationUrl(url);
+      expect(parsed.pathname).toBe('/dialog');
+      expect(parsed.searchParams.get('material_id')).toBe('m-recovered');
+      expect(parsed.searchParams.get('page')).toBe('6');
+      expect(
+        button.querySelector('[data-navigation-status]')?.getAttribute('data-navigation-status'),
+      ).toBe('opened');
+    });
+    expect(locateChunkMock).toHaveBeenCalledTimes(2);
   });
 
   describe('source_labels 召回路径 chip', () => {
@@ -332,6 +516,27 @@ describe('EvidencePill', () => {
       expect(chip?.textContent).toBe('语义匹配');
     });
 
+    it('显示 fallback lexical 和 wiki joint recall 标签', () => {
+      render(
+        <MemoryRouter>
+          <EvidencePill
+            showSourceLabels
+            evidence={{
+              source: 'wiki',
+              material_id: 'wiki',
+              source_type: 'wiki',
+              source_labels: ['wiki_joint_recall', 'lexical'],
+            }}
+          />
+        </MemoryRouter>,
+      );
+      const chip = screen.getByRole('button').querySelector('[data-source-label]');
+      expect(chip?.textContent).toBe('Wiki 扩展');
+      const tooltip = screen.getByRole('button').getAttribute('title') ?? '';
+      expect(tooltip).toContain('Wiki 扩展');
+      expect(tooltip).toContain('词面匹配');
+    });
+
     it('未识别标签 (project_chunks) 不渲染 chip', () => {
       render(
         <MemoryRouter>
@@ -367,6 +572,48 @@ describe('EvidencePill', () => {
       expect(tooltip).toContain('上下文兄弟');
       expect(tooltip).toContain('语义匹配');
       expect(tooltip).toContain('关键词');
+    });
+  });
+
+  describe('citation_level badge', () => {
+    it('显示 未标注 when backend citation_level is absent and does not infer from bbox', () => {
+      render(
+        <MemoryRouter>
+          <EvidencePill
+            showCitationLevel
+            evidence={{
+              source: 'src',
+              material_id: 'm1',
+              page: 5,
+              bbox: [0.1, 0.2, 0.3, 0.4],
+            }}
+          />
+        </MemoryRouter>,
+      );
+
+      const badge = screen.getByLabelText('引用等级: 未标注');
+      expect(badge).toHaveAttribute('data-citation-level', 'unlabeled');
+      expect(badge.textContent).toBe('未标注');
+      expect(screen.queryByText('精确框')).toBeNull();
+    });
+
+    it('only displays exact precision when backend sends exact_bbox', () => {
+      render(
+        <MemoryRouter>
+          <EvidencePill
+            showCitationLevel
+            evidence={{
+              source: 'src',
+              material_id: 'm1',
+              citation_level: 'exact_bbox',
+            }}
+          />
+        </MemoryRouter>,
+      );
+
+      const badge = screen.getByLabelText('引用等级: 精确框');
+      expect(badge).toHaveAttribute('data-citation-level', 'exact_bbox');
+      expect(badge.textContent).toBe('精确框');
     });
   });
 });

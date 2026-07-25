@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import isfinite
 from pathlib import Path
 from typing import Any, Literal, Mapping, Protocol, runtime_checkable
 
@@ -17,6 +18,81 @@ OcrReadinessStatus = Literal[
     "platform_unsupported",
     "unavailable",
 ]
+
+
+@dataclass(frozen=True)
+class OcrImageRegion:
+    """Located OCR content within one rendered page image.
+
+    Args:
+        markdown: Non-empty searchable text or Markdown for the region.
+        bbox: Normalized ``(x, y, width, height)`` rectangle. Coordinates are
+            ratios of the rendered page dimensions and must remain inside it.
+        block_type: Structural type projected to ``StructuredBlock``.
+    """
+
+    markdown: str
+    bbox: tuple[float, float, float, float]
+    block_type: str = "Text"
+
+    def __post_init__(self) -> None:
+        """Reject malformed region data before it reaches chunk locators."""
+
+        if not isinstance(self.markdown, str):
+            raise TypeError("markdown must be a string")
+        if not self.markdown.strip():
+            raise ValueError("markdown must be non-empty")
+        if not isinstance(self.bbox, tuple) or len(self.bbox) != 4:
+            raise TypeError("bbox must be a four-number tuple")
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            for value in self.bbox
+        ):
+            raise TypeError("bbox must contain only finite numbers")
+        bbox = tuple(float(value) for value in self.bbox)
+        if not all(isfinite(value) for value in bbox):
+            raise ValueError("bbox must contain only finite numbers")
+        x, y, width, height = bbox
+        if (
+            x < 0.0
+            or y < 0.0
+            or width <= 0.0
+            or height <= 0.0
+            or x > 1.0
+            or y > 1.0
+            or x + width > 1.0001
+            or y + height > 1.0001
+        ):
+            raise ValueError("bbox must be a positive normalized rectangle inside the page")
+        if not isinstance(self.block_type, str) or not self.block_type.strip():
+            raise ValueError("block_type must be a non-empty string")
+        if len(self.block_type.strip()) > 80:
+            raise ValueError("block_type must be 80 characters or fewer")
+        object.__setattr__(self, "bbox", bbox)
+
+
+@dataclass(frozen=True)
+class OcrImageResult:
+    """Optional layout-aware result for one rendered page image.
+
+    Args:
+        text: Full searchable page text. Empty text is valid for blank pages.
+        regions: Located page regions. Legacy engines may omit this capability
+            and continue returning only text from ``ocr_image``.
+    """
+
+    text: str
+    regions: tuple[OcrImageRegion, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Validate values crossing an OCR adapter boundary."""
+
+        if not isinstance(self.text, str):
+            raise TypeError("text must be a string")
+        if not isinstance(self.regions, tuple):
+            raise TypeError("regions must be a tuple")
+        if not all(isinstance(region, OcrImageRegion) for region in self.regions):
+            raise TypeError("regions must contain only OcrImageRegion values")
 
 
 @dataclass(frozen=True)

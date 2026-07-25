@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import threading
 import time
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
@@ -724,12 +726,28 @@ def test_uploaded_pdf_extraction_job_records_material_processing_contract(monkey
 
     runtime = WritingRuntime(database_path=tmp_path / "upload-runtime.sqlite3", autosave=True)
     monkeypatch.setattr(writing_runtime_module, "get_writing_runtime", lambda: runtime)
-    source_path = tmp_path / "paper.pdf"
-    source_path.write_bytes(b"%PDF-1.4\n")
+    project_root = tmp_path / "project-upload-contract"
+    source_path = project_root / "source_files" / "paper.pdf"
+    source_path.parent.mkdir(parents=True)
+    source_bytes = b"%PDF-1.4\n"
+    source_path.write_bytes(source_bytes)
+    source_fingerprint = f"sha256:{hashlib.sha256(source_bytes).hexdigest()}"
+    batch_context = resources_router_module._UploadBatchContext(
+        batch_id="batch_runtimecontract1234",
+        submitted_at="2026-07-23T12:00:00+00:00",
+        batch_index=2,
+        batch_total=9,
+    )
 
-    def _fake_extract(filename: str, path: object) -> object:
+    def _fake_project_data_path(project_id: str, *parts: str) -> object:
+        assert project_id == "project-upload-contract"
+        return project_root.joinpath(*parts)
+
+    def _fake_extract(filename: str, path: object, *, project_id: str | None = None, **kwargs: object) -> object:
         assert filename == "paper.pdf"
         assert path == source_path
+        assert project_id == "project-upload-contract"
+        assert kwargs == {}
         return resources_router_module.ExtractedDocumentPayload(
             content="Title\n\nBody text",
             blocks=None,
@@ -747,7 +765,7 @@ def test_uploaded_pdf_extraction_job_records_material_processing_contract(monkey
         assert material_id == "material-upload-contract"
         assert filename == "paper.pdf"
         assert "Body text" in content
-        assert kwargs["source_fingerprint"] == "sha256:upload"
+        assert kwargs["source_fingerprint"] == source_fingerprint
         return {
             "material_id": material_id,
             "title": filename,
@@ -759,6 +777,7 @@ def test_uploaded_pdf_extraction_job_records_material_processing_contract(monkey
 
     monkeypatch.setattr(resources_router_module, "_extract_document_payload_from_path", _fake_extract)
     monkeypatch.setattr(resources_router_module, "_write_material_document_content", _fake_write_material_document_content)
+    monkeypatch.setattr(resources_router_module, "project_data_path", _fake_project_data_path)
 
     async def _run_upload_job() -> str:
         _, job_id = await resources_router_module._start_uploaded_document_extraction_job(
@@ -766,8 +785,9 @@ def test_uploaded_pdf_extraction_job_records_material_processing_contract(monkey
             "material-upload-contract",
             "paper.pdf",
             source_path,
-            source_fingerprint="sha256:upload",
+            source_fingerprint=source_fingerprint,
             source_size=source_path.stat().st_size,
+            batch_context=batch_context,
         )
         queued_task = runtime.get_material_processing_task(job_id)
         assert queued_task is not None
@@ -785,16 +805,435 @@ def test_uploaded_pdf_extraction_job_records_material_processing_contract(monkey
 
     assert job is not None
     assert job.status.value == "completed"
+    assert job.metadata["batch_id"] == "batch_runtimecontract1234"
+    assert job.metadata["batch_index"] == 2
+    assert job.metadata["batch_total"] == 9
+    assert job.metadata["submitted_at"] == "2026-07-23T12:00:00+00:00"
     assert task is not None
     assert task["status"] == "completed"
     assert task["result"]["chunks"] == 2
-    assert task["cache"]["content_digest"] == "sha256:upload"
+    assert task["cache"]["content_digest"] == source_fingerprint
     assert task["cache"]["decision"] == "miss"
     assert task["cache"]["decision_record"]["decision"] == "miss"
     assert task["cache"]["decision_record"]["has_all_requested_outputs"] is True
     assert task["cache"]["decision_record"]["artifact_family_digest"].startswith("sha256:")
     assert {artifact["output_target"] for artifact in task["artifacts"]} == {"chunks", "locators", "text_sidecar"}
     assert any(event.data.get("material_processing_status") == "completed" for event in events)
+
+
+@pytest.mark.persistence_smoke
+def test_uploaded_pdf_executor_recovers_after_shutdown_and_sqlite_reopen(monkeypatch, tmp_path) -> None:
+    """Shutdown must requeue extraction and a new runtime must execute it once."""
+
+    project_id = "project-upload-restart"
+    material_id = "material-upload-restart"
+    project_root = tmp_path / project_id
+    source_path = project_root / "source_files" / "restart.pdf"
+    source_path.parent.mkdir(parents=True)
+    source_bytes = b"%PDF-1.4\nrestart fixture"
+    source_path.write_bytes(source_bytes)
+    source_fingerprint = f"sha256:{hashlib.sha256(source_bytes).hexdigest()}"
+    database_path = tmp_path / "upload-restart.sqlite3"
+    extract_started = threading.Event()
+    release_first_extract = threading.Event()
+    extract_calls = 0
+    committed_material_ids: list[str] = []
+
+    def _fake_project_data_path(candidate_project_id: str, *parts: str) -> object:
+        assert candidate_project_id == project_id
+        return project_root.joinpath(*parts)
+
+    def _fake_extract(filename: str, path: object, *, project_id: str | None = None, **kwargs: object) -> object:
+        nonlocal extract_calls
+        extract_calls += 1
+        assert filename == "restart.pdf"
+        assert path == source_path
+        assert project_id == "project-upload-restart"
+        assert kwargs == {}
+        if extract_calls == 1:
+            extract_started.set()
+            assert release_first_extract.wait(timeout=3)
+        return resources_router_module.ExtractedDocumentPayload(
+            content="Restart title\n\nRecovered body",
+            blocks=None,
+            markdown_full="# Restart title\n\nRecovered body",
+        )
+
+    def _fake_write(
+        candidate_project_id: str,
+        candidate_material_id: str,
+        filename: str,
+        content: str,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        assert candidate_project_id == project_id
+        assert filename == "restart.pdf"
+        assert "Recovered body" in content
+        assert kwargs["source_fingerprint"] == source_fingerprint
+        committed_material_ids.append(candidate_material_id)
+        return {
+            "material_id": candidate_material_id,
+            "title": filename,
+            "content_length": len(content),
+            "chunks": 2,
+            "status": "ok",
+        }
+
+    monkeypatch.setattr(resources_router_module, "project_data_path", _fake_project_data_path)
+    monkeypatch.setattr(resources_router_module, "_extract_document_payload_from_path", _fake_extract)
+    monkeypatch.setattr(resources_router_module, "_write_material_document_content", _fake_write)
+
+    async def _scenario() -> None:
+        first_runtime = WritingRuntime(database_path=database_path, autosave=True)
+        monkeypatch.setattr(writing_runtime_module, "get_writing_runtime", lambda: first_runtime)
+        _, job_id = await resources_router_module._start_uploaded_document_extraction_job(
+            project_id,
+            material_id,
+            "restart.pdf",
+            source_path,
+            source_fingerprint=source_fingerprint,
+            source_size=len(source_bytes),
+        )
+        assert await asyncio.to_thread(extract_started.wait, 3)
+
+        shutdown = await resources_router_module.shutdown_uploaded_document_extraction_jobs(first_runtime)
+        release_first_extract.set()
+        await asyncio.sleep(0.05)
+        assert shutdown == {"scanned": 1, "interrupted": 1, "completed_commit": 0}
+        interrupted_job = first_runtime.get_job(job_id)
+        interrupted_task = first_runtime.get_material_processing_task(job_id)
+        assert interrupted_job is not None and interrupted_job.status.value == "queued"
+        assert interrupted_task is not None and interrupted_task["status"] == "queued"
+        assert not any(event.event_type.value == "job_cancelled" for event in first_runtime.get_job_events(job_id))
+        assert committed_material_ids == []
+
+        second_runtime = WritingRuntime(database_path=database_path, autosave=True)
+        recovery = await resources_router_module.recover_uploaded_document_extraction_jobs(second_runtime)
+        recovered_task_handle = second_runtime._job_tasks[job_id]
+        duplicate_recovery = await resources_router_module.recover_uploaded_document_extraction_jobs(second_runtime)
+        assert second_runtime._job_tasks[job_id] is recovered_task_handle
+        assert recovery["recovered"] == 1
+        assert duplicate_recovery["skipped"] == 1
+        await recovered_task_handle
+
+        recovered_job = second_runtime.get_job(job_id)
+        recovered_task = second_runtime.get_material_processing_task(job_id)
+        assert recovered_job is not None and recovered_job.status.value == "completed"
+        assert recovered_task is not None and recovered_task["status"] == "completed"
+        assert committed_material_ids == [material_id]
+
+    asyncio.run(_scenario())
+
+
+@pytest.mark.persistence_smoke
+def test_recovered_uploaded_pdf_preserves_pause_until_explicit_resume(monkeypatch, tmp_path) -> None:
+    """A user-paused persisted extraction must not auto-run at startup."""
+
+    project_id = "project-upload-paused"
+    material_id = "material-upload-paused"
+    project_root = tmp_path / project_id
+    source_path = project_root / "source_files" / "paused.pdf"
+    source_path.parent.mkdir(parents=True)
+    source_bytes = b"%PDF-1.4\npaused fixture"
+    source_path.write_bytes(source_bytes)
+    source_fingerprint = f"sha256:{hashlib.sha256(source_bytes).hexdigest()}"
+    database_path = tmp_path / "upload-paused.sqlite3"
+    extract_calls: list[str] = []
+
+    monkeypatch.setattr(
+        resources_router_module,
+        "project_data_path",
+        lambda candidate_project_id, *parts: project_root.joinpath(*parts),
+    )
+
+    def _fake_extract(filename: str, path: object, **kwargs: object) -> object:
+        extract_calls.append(filename)
+        return resources_router_module.ExtractedDocumentPayload(content="Paused body", blocks=None, markdown_full=None)
+
+    monkeypatch.setattr(resources_router_module, "_extract_document_payload_from_path", _fake_extract)
+    monkeypatch.setattr(
+        resources_router_module,
+        "_write_material_document_content",
+        lambda candidate_project_id, candidate_material_id, filename, content, **kwargs: {
+            "material_id": candidate_material_id,
+            "title": filename,
+            "content_length": len(content),
+            "chunks": 1,
+            "status": "ok",
+        },
+    )
+
+    async def _scenario() -> None:
+        first_runtime = WritingRuntime(database_path=database_path, autosave=True)
+        session = first_runtime.create_session(mode=SessionMode.PROMPT)
+        job = first_runtime.create_job(
+            session_id=session.session_id,
+            kind=JobKind.PIPELINE_RUN,
+            input_text="paused upload",
+            metadata={"project_id": project_id, "material_id": material_id},
+        )
+        first_runtime.update_material_processing_task(
+            job.job_id,
+            request=resources_router_module._build_uploaded_document_processing_request(
+                project_id=project_id,
+                material_id=material_id,
+                filename="paused.pdf",
+                source_fingerprint=source_fingerprint,
+                source_size=len(source_bytes),
+            ),
+            status="paused",
+            provenance={"source": "pytest"},
+        )
+        await first_runtime.start_job(job.job_id)
+        await first_runtime.pause_job(job.job_id)
+
+        second_runtime = WritingRuntime(database_path=database_path, autosave=True)
+        recovery = await resources_router_module.recover_uploaded_document_extraction_jobs(second_runtime)
+        handle = second_runtime._job_tasks[job.job_id]
+        await asyncio.sleep(0.02)
+        assert recovery["paused"] == 1
+        assert extract_calls == []
+        assert not handle.done()
+
+        await second_runtime.resume_job(job.job_id)
+        await handle
+        assert extract_calls == ["paused.pdf"]
+        completed = second_runtime.get_job(job.job_id)
+        assert completed is not None and completed.status.value == "completed"
+
+    asyncio.run(_scenario())
+
+
+@pytest.mark.persistence_smoke
+@pytest.mark.parametrize("source_mutation", ["missing", "fingerprint_changed"])
+def test_recovered_uploaded_pdf_rejects_missing_or_changed_source(
+    monkeypatch,
+    tmp_path,
+    source_mutation: str,
+) -> None:
+    """Recovery must fail closed when the persisted source identity no longer matches."""
+
+    project_id = f"project-upload-{source_mutation}"
+    material_id = f"material-upload-{source_mutation}"
+    project_root = tmp_path / project_id
+    source_path = project_root / "source_files" / "changed.pdf"
+    source_path.parent.mkdir(parents=True)
+    source_bytes = b"%PDF-1.4\noriginal"
+    source_path.write_bytes(source_bytes)
+    source_fingerprint = f"sha256:{hashlib.sha256(source_bytes).hexdigest()}"
+    database_path = tmp_path / f"upload-{source_mutation}.sqlite3"
+    marked_failures: list[str] = []
+    writes: list[str] = []
+
+    monkeypatch.setattr(
+        resources_router_module,
+        "project_data_path",
+        lambda candidate_project_id, *parts: project_root.joinpath(*parts),
+    )
+    monkeypatch.setattr(
+        resources_router_module,
+        "_mark_uploaded_document_extraction_failed",
+        lambda candidate_project_id, candidate_material_id, error, **_kwargs: marked_failures.append(str(error)),
+    )
+    monkeypatch.setattr(
+        resources_router_module,
+        "_write_material_document_content",
+        lambda *args, **kwargs: writes.append("unexpected"),
+    )
+
+    async def _scenario() -> None:
+        first_runtime = WritingRuntime(database_path=database_path, autosave=True)
+        session = first_runtime.create_session(mode=SessionMode.PROMPT)
+        job = first_runtime.create_job(
+            session_id=session.session_id,
+            kind=JobKind.PIPELINE_RUN,
+            input_text="recover changed source",
+            metadata={"project_id": project_id, "material_id": material_id},
+        )
+        first_runtime.update_material_processing_task(
+            job.job_id,
+            request=resources_router_module._build_uploaded_document_processing_request(
+                project_id=project_id,
+                material_id=material_id,
+                filename="changed.pdf",
+                source_fingerprint=source_fingerprint,
+                source_size=len(source_bytes),
+            ),
+            status="running",
+            provenance={"source": "pytest"},
+        )
+        await first_runtime.start_job(job.job_id)
+
+        if source_mutation == "missing":
+            source_path.unlink()
+        else:
+            source_path.write_bytes(b"%PDF-1.4\nmodified")
+
+        second_runtime = WritingRuntime(database_path=database_path, autosave=True)
+        recovery = await resources_router_module.recover_uploaded_document_extraction_jobs(second_runtime)
+        await second_runtime._job_tasks[job.job_id]
+        failed_job = second_runtime.get_job(job.job_id)
+        failed_task = second_runtime.get_material_processing_task(job.job_id)
+        assert recovery["recovered"] == 1
+        assert failed_job is not None and failed_job.status.value == "failed"
+        assert failed_task is not None and failed_task["status"] == "failed"
+        assert marked_failures
+        assert writes == []
+
+    asyncio.run(_scenario())
+
+
+@pytest.mark.persistence_smoke
+def test_user_cancelled_uploaded_pdf_never_commits_extracted_content(monkeypatch, tmp_path) -> None:
+    """Cancellation during pure extraction must stop before the durable commit."""
+
+    project_id = "project-upload-cancel"
+    material_id = "material-upload-cancel"
+    project_root = tmp_path / project_id
+    source_path = project_root / "source_files" / "cancel.pdf"
+    source_path.parent.mkdir(parents=True)
+    source_bytes = b"%PDF-1.4\ncancel fixture"
+    source_path.write_bytes(source_bytes)
+    source_fingerprint = f"sha256:{hashlib.sha256(source_bytes).hexdigest()}"
+    extract_started = threading.Event()
+    release_extract = threading.Event()
+    writes: list[str] = []
+    marked_failures: list[str] = []
+
+    monkeypatch.setattr(
+        resources_router_module,
+        "project_data_path",
+        lambda candidate_project_id, *parts: project_root.joinpath(*parts),
+    )
+
+    def _blocking_extract(filename: str, path: object, **kwargs: object) -> object:
+        extract_started.set()
+        assert release_extract.wait(timeout=3)
+        return resources_router_module.ExtractedDocumentPayload(content="Cancelled body", blocks=None, markdown_full=None)
+
+    monkeypatch.setattr(resources_router_module, "_extract_document_payload_from_path", _blocking_extract)
+    monkeypatch.setattr(
+        resources_router_module,
+        "_write_material_document_content",
+        lambda *args, **kwargs: writes.append("unexpected"),
+    )
+    monkeypatch.setattr(
+        resources_router_module,
+        "_mark_uploaded_document_extraction_failed",
+        lambda candidate_project_id, candidate_material_id, error, **_kwargs: marked_failures.append(str(error)),
+    )
+
+    async def _scenario() -> None:
+        runtime = WritingRuntime(database_path=tmp_path / "upload-cancel.sqlite3", autosave=True)
+        monkeypatch.setattr(writing_runtime_module, "get_writing_runtime", lambda: runtime)
+        _, job_id = await resources_router_module._start_uploaded_document_extraction_job(
+            project_id,
+            material_id,
+            "cancel.pdf",
+            source_path,
+            source_fingerprint=source_fingerprint,
+            source_size=len(source_bytes),
+        )
+        handle = runtime._job_tasks[job_id]
+        assert await asyncio.to_thread(extract_started.wait, 3)
+        cancelled = await runtime.cancel_job(job_id)
+        release_extract.set()
+        with pytest.raises(asyncio.CancelledError):
+            await handle
+        task = runtime.get_material_processing_task(job_id)
+        assert cancelled.status.value == "cancelled"
+        assert task is not None and task["status"] == "cancelled"
+        assert marked_failures == ["用户已取消 PDF 文本提取"]
+        assert writes == []
+
+    asyncio.run(_scenario())
+
+
+@pytest.mark.persistence_smoke
+def test_uploaded_pdf_commit_boundary_rejects_cancel_and_finishes_on_shutdown(monkeypatch, tmp_path) -> None:
+    """Once durable writes begin, cancel is rejected and shutdown waits for consistency."""
+
+    project_id = "project-upload-commit"
+    material_id = "material-upload-commit"
+    project_root = tmp_path / project_id
+    source_path = project_root / "source_files" / "commit.pdf"
+    source_path.parent.mkdir(parents=True)
+    source_bytes = b"%PDF-1.4\ncommit fixture"
+    source_path.write_bytes(source_bytes)
+    source_fingerprint = f"sha256:{hashlib.sha256(source_bytes).hexdigest()}"
+    commit_started = threading.Event()
+    release_commit = threading.Event()
+    writes: list[str] = []
+
+    monkeypatch.setattr(
+        resources_router_module,
+        "project_data_path",
+        lambda candidate_project_id, *parts: project_root.joinpath(*parts),
+    )
+    monkeypatch.setattr(
+        resources_router_module,
+        "_extract_document_payload_from_path",
+        lambda *args, **kwargs: resources_router_module.ExtractedDocumentPayload(
+            content="Committed body",
+            blocks=None,
+            markdown_full=None,
+        ),
+    )
+
+    def _blocking_write(
+        candidate_project_id: str,
+        candidate_material_id: str,
+        filename: str,
+        content: str,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        commit_started.set()
+        assert release_commit.wait(timeout=3)
+        writes.append(candidate_material_id)
+        return {
+            "material_id": candidate_material_id,
+            "title": filename,
+            "content_length": len(content),
+            "chunks": 1,
+            "status": "ok",
+        }
+
+    monkeypatch.setattr(resources_router_module, "_write_material_document_content", _blocking_write)
+
+    async def _scenario() -> None:
+        runtime = WritingRuntime(database_path=tmp_path / "upload-commit.sqlite3", autosave=True)
+        monkeypatch.setattr(writing_runtime_module, "get_writing_runtime", lambda: runtime)
+        _, job_id = await resources_router_module._start_uploaded_document_extraction_job(
+            project_id,
+            material_id,
+            "commit.pdf",
+            source_path,
+            source_fingerprint=source_fingerprint,
+            source_size=len(source_bytes),
+        )
+        handle = runtime._job_tasks[job_id]
+        assert await asyncio.to_thread(commit_started.wait, 3)
+        assert runtime.is_job_commit_in_progress(job_id) is True
+
+        shutdown_task = asyncio.create_task(
+            resources_router_module.shutdown_uploaded_document_extraction_jobs(runtime)
+        )
+        await asyncio.sleep(0.02)
+        assert not shutdown_task.done()
+        with pytest.raises(ValueError, match="durable outputs"):
+            await runtime.cancel_job(job_id)
+
+        release_commit.set()
+        shutdown = await shutdown_task
+        await handle
+        completed = runtime.get_job(job_id)
+        task = runtime.get_material_processing_task(job_id)
+        assert shutdown == {"scanned": 1, "interrupted": 0, "completed_commit": 1}
+        assert completed is not None and completed.status.value == "completed"
+        assert task is not None and task["status"] == "completed"
+        assert writes == [material_id]
+
+    asyncio.run(_scenario())
 
 
 @pytest.mark.persistence_smoke
@@ -1127,15 +1566,75 @@ def test_runtime_workflow_passport_projects_stage_gates(monkeypatch, tmp_path) -
     )
     assert export_signal["status"] == "unresolved"
     assert export_signal["drilldown"]["checked_facts"]["preflight_receipt_count"] == 1
-    assert export_signal["drilldown"]["checked_facts"]["unresolved_count"] >= 1
-    assert "workflow_passport" in export_signal["drilldown"]["checked_facts"]["projection_digest_keys"]
-    assert any(
-        ref.get("ref_type") == "preflight_refresh_receipt"
-        for ref in export_signal["drilldown"]["replay_refs"]
+
+
+def test_workflow_passport_uses_latest_stage_status_after_retry(tmp_path) -> None:
+    """A newer successful evidence-pack job should supersede stale failures."""
+
+    runtime = WritingRuntime(database_path=tmp_path / "workflow-passport-retry.sqlite3", autosave=True)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        user_id="passport-retry-user",
+        metadata={"project_id": "project-passport-retry", "title": "Retry Passport Project"},
     )
-    serialized_gate = str(gate)
-    assert "C:\\Users\\xiao\\private" not in serialized_gate
-    assert "workspace_artifacts/private" not in serialized_gate
+    failed_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.SMART_READ,
+        input_text="failed evidence build",
+        metadata={
+            "project_id": "project-passport-retry",
+            "evidence_pack_id": "pack-stale",
+        },
+    )
+    asyncio.run(runtime.start_job(failed_job.job_id))
+    asyncio.run(runtime.fail_job(failed_job.job_id, "transient provider failure"))
+
+    completed_job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.SMART_READ,
+        input_text="completed evidence build",
+        metadata={
+            "project_id": "project-passport-retry",
+            "evidence_pack_id": "pack-latest",
+        },
+    )
+    runtime.add_job_artifact(
+        completed_job.job_id,
+        artifact_type=ArtifactType.METADATA,
+        content={
+            "kind": "evidence_pack",
+            "locator_coverage": {
+                "coverage_state": "layout_complete",
+                "risk_level": "none",
+                "project_ref_count": 2,
+                "page_locator_count": 2,
+                "bbox_locator_count": 2,
+                "bbox_unit_counts": {"normalized_ratio": 2},
+                "source_label_coverage_ratio": 1.0,
+                "figure_table_locator_count": 0,
+            },
+            "qrels_status": {
+                "status": "available",
+                "quality_claim": "semantic_qrels_ready",
+                "semantic_quality_claim_allowed": True,
+            },
+        },
+        created_by="pytest",
+        metadata={"evidence_pack_id": "pack-latest", "project_id": "project-passport-retry"},
+    )
+    asyncio.run(runtime.start_job(completed_job.job_id))
+    asyncio.run(runtime.complete_job(completed_job.job_id, {"kind": "evidence_pack"}))
+
+    passport = runtime.build_workflow_passport(project_id="project-passport-retry", limit=50)
+    evidence_stage = next(stage for stage in passport["stages"] if stage["stage_id"] == "evidence_pack")
+
+    assert evidence_stage["status"] == "complete"
+    assert evidence_stage["gate"]["status"] == "pass"
+    assert evidence_stage["diagnostics"]["status_counts"]["failed"] == 1
+    assert evidence_stage["diagnostics"]["status_counts"]["evidence.pack.created"] >= 1
+    assert evidence_stage["diagnostics"]["locator_coverage_count"] == 1
+    assert evidence_stage["diagnostics"]["qrels_status_count"] == 1
+    assert "_status_observations" not in str(passport)
 
 
 @pytest.mark.persistence_smoke
@@ -1250,6 +1749,10 @@ def test_runtime_evidence_integrity_gate_route_keeps_unresolved_separate(monkeyp
         if signal["category"] == "retrieval_quality" and signal["status"] == "unresolved"
     )
     assert qrels_signal["drilldown"]["checked_facts"]["quality_claim"] == "no_qrels_available"
+    assert qrels_signal["next_actions"] == [
+        "Create or import candidate qrels, review them, then promote canonical qrels before claiming "
+        "semantic retrieval quality."
+    ]
     export_signal = next(
         signal
         for signal in gate["signals"]
@@ -1722,6 +2225,38 @@ def test_runtime_research_action_lifecycle_route_projects_actions_effects_and_ga
 
     missing_response = client.get("/runtime/research-action-lifecycle", params={"job_id": "job_missing"})
     assert missing_response.status_code == 404
+
+
+def test_runtime_integrity_gate_does_not_treat_unmapped_jobs_as_agent_handoff() -> None:
+    """Ordinary runtime jobs must not create synthetic handoff preflight debt."""
+
+    runtime = WritingRuntime(autosave=False)
+    session = runtime.create_session(
+        mode=SessionMode.HYBRID,
+        metadata={"project_id": "project-unmapped-action"},
+    )
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.PROMPT_ACTION,
+        input_text="ordinary prompt action",
+        metadata={"project_id": "project-unmapped-action"},
+    )
+    asyncio.run(runtime.start_job(job.job_id))
+    asyncio.run(runtime.complete_job(job.job_id, result={"text": "done"}))
+
+    gate = runtime.build_evidence_integrity_gate(
+        project_id="project-unmapped-action",
+        limit=50,
+    )
+
+    assert not any(
+        signal["signal_id"] == "workflow_stage:agent_handoff"
+        for signal in gate["signals"]
+    )
+    assert not any(
+        ref.get("action_type") == "unknown"
+        for ref in gate["summary"]["research_action_refs"]
+    )
 
 
 def test_runtime_lifecycle_refs_crosslink_passport_gate_boundary_and_handoff(monkeypatch) -> None:

@@ -8,6 +8,21 @@ export type PdfBboxUnit =
 
 export type PdfBbox = readonly [number, number, number, number];
 
+export type PdfSelectionKind = 'text' | 'figure' | 'table' | 'formula' | 'region';
+
+export interface PdfContentSelection {
+  kind: PdfSelectionKind;
+  page: number;
+  /** Zero-based index into the request's images array for visual selections. */
+  image_index?: number | null;
+  bbox?: PdfBbox | null;
+  bbox_unit?: typeof PDF_URL_BBOX_UNIT;
+  text?: string | null;
+  label?: string | null;
+  chunk_id?: string | null;
+  candidate_id?: string | null;
+}
+
 export interface PdfHighlightRect {
   x: number;
   y: number;

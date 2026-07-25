@@ -2,8 +2,8 @@
 
 When the flag is on (now the bus default), _build_project_context_chunks
 routes RAG candidate generation through _hybrid_search_project (true BM25
-+ dense + rerank via ContextAwareRetriever), and only falls back to the
-legacy search_project_chunks_for_query when hybrid returns empty.
++ dense + rerank via HybridRetrieverWithRerank) while keeping the legacy keyword
+arm available for exact local recall and RRF fusion.
 
 When the flag is explicitly turned OFF (env var = "0" + cleared override),
 behaviour must be byte-identical to the legacy keyword-overlap path: no
@@ -104,7 +104,7 @@ def test_flag_off_does_not_call_hybrid_search(
 
 # ---------- Flag-on behaviour: hybrid path takes over ----------
 
-def test_flag_on_calls_hybrid_search_first(
+def test_flag_on_calls_hybrid_and_legacy_for_recall_fusion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED", "1")
@@ -115,10 +115,11 @@ def test_flag_on_calls_hybrid_search_first(
     from routers import intelligent_chat_router as router
 
     fake_hybrid = [{"chunk_id": "h_1", "content": "hybrid hit", "title": "t"}]
+    fake_legacy = [{"chunk_id": "leg_1", "content": "legacy hit", "title": "t"}]
 
     with (
         patch.object(router, "_hybrid_search_project", new_callable=AsyncMock, return_value=fake_hybrid) as mock_hybrid,
-        patch.object(router, "search_project_chunks_for_query") as mock_legacy,
+        patch.object(router, "search_project_chunks_for_query", return_value=fake_legacy) as mock_legacy,
     ):
         chunks, _ = asyncio.run(
             router._build_project_context_chunks(
@@ -126,9 +127,10 @@ def test_flag_on_calls_hybrid_search_first(
             )
         )
         mock_hybrid.assert_called_once()
-        # Hybrid returned non-empty → legacy must NOT be invoked.
-        mock_legacy.assert_not_called()
-        assert chunks and chunks[0].content.startswith("hybrid hit")
+        mock_legacy.assert_called_once()
+        contents = {chunk.content for chunk in chunks}
+        assert "hybrid hit" in contents
+        assert "legacy hit" in contents
 
 
 def test_flag_on_falls_back_to_legacy_on_empty_hybrid(
@@ -177,10 +179,60 @@ def test_hybrid_search_project_blank_query_returns_empty() -> None:
     assert asyncio.run(router._hybrid_search_project("proj_x", "   ", top_k=5)) == []
 
 
+def test_hybrid_search_project_uses_rerank_capable_retriever(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SmartRead's hybrid helper should preserve rerank provenance when present."""
+
+    from routers import intelligent_chat_router as router
+    from layers import r_layer_hybrid_retriever as retriever_mod
+
+    fake_chunks = [{"chunk_id": "c1", "content": "laser hardness", "embedding": [0.1, 0.2]}]
+    captured: dict[str, object] = {}
+
+    class _RerankRetriever:
+        def __init__(self, use_reranker: bool | None = None) -> None:
+            captured["use_reranker"] = use_reranker
+
+        async def search(self, raw_data, query: str, top_k: int = 10, focus_keywords=None):
+            captured["raw_chunks"] = raw_data["chunks"]
+            captured["query"] = query
+            captured["top_k"] = top_k
+            captured["focus_keywords"] = focus_keywords
+            return [
+                {
+                    "chunk_id": "c1",
+                    "content": "laser hardness",
+                    "source_labels": ["bm25", "dense", "rerank"],
+                    "rerank_score": 0.91,
+                }
+            ]
+
+    monkeypatch.setattr(router, "load_project_chunks_for_rag", lambda _project_id: fake_chunks)
+    monkeypatch.setattr(retriever_mod, "HybridRetrieverWithRerank", _RerankRetriever)
+
+    result = asyncio.run(
+        router._hybrid_search_project(
+            "proj_x",
+            "laser hardness",
+            top_k=5,
+            boost_keywords=["hardness"],
+        )
+    )
+
+    assert captured["use_reranker"] is None
+    assert captured["raw_chunks"] == fake_chunks
+    assert captured["query"] == "laser hardness"
+    assert captured["top_k"] == 5
+    assert captured["focus_keywords"] == ["hardness"]
+    assert result[0]["source_labels"] == ["bm25", "dense", "rerank"]
+    assert result[0]["rerank_score"] == 0.91
+
+
 def test_hybrid_search_project_retriever_exception_returns_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """If ContextAwareRetriever.hybrid_search raises, the helper must swallow
+    """If the rerank-capable retriever raises, the helper must swallow
     and return [] so the caller falls back to legacy keyword search instead
     of failing the whole chat turn."""
     from routers import intelligent_chat_router as router
@@ -189,12 +241,15 @@ def test_hybrid_search_project_retriever_exception_returns_empty(
     fake_chunks = [{"chunk_id": "c1", "content": "x"}]
 
     class _Boom:
-        async def hybrid_search(self, *_args, **_kwargs):
+        def __init__(self, use_reranker: bool | None = None) -> None:
+            self.use_reranker = use_reranker
+
+        async def search(self, *_args, **_kwargs):
             raise RuntimeError("simulated embedding API down")
 
     with (
         patch.object(router, "load_project_chunks_for_rag", return_value=fake_chunks),
-        patch.object(retriever_mod, "ContextAwareRetriever", _Boom),
+        patch.object(retriever_mod, "HybridRetrieverWithRerank", _Boom),
     ):
         result = asyncio.run(router._hybrid_search_project("proj_x", "q", top_k=5))
         assert result == []

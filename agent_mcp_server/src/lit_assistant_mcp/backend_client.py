@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import time
 from enum import Enum
 from pathlib import Path
@@ -13,6 +14,10 @@ import httpx
 from .repo_root import is_repo_root
 
 DESKTOP_RUNTIME_FILENAME = "desktop-runtime.json"
+DEFAULT_CONNECT_TIMEOUT_SEC = 2
+DEFAULT_READ_TIMEOUT_SEC = 60
+MAX_READ_TIMEOUT_SEC = 300
+READ_TIMEOUT_ENV = "LITASSIST_MCP_BACKEND_READ_TIMEOUT_SEC"
 
 
 class CircuitState(Enum):
@@ -31,8 +36,8 @@ class BackendClient:
         capability_file: str | Path | None = None,
         fail_max: int = 3,
         reset_timeout_sec: int = 30,
-        connect_timeout_sec: int = 2,
-        read_timeout_sec: int = 15,
+        connect_timeout_sec: int = DEFAULT_CONNECT_TIMEOUT_SEC,
+        read_timeout_sec: int | None = None,
     ) -> None:
         """Initialize backend client.
 
@@ -42,8 +47,16 @@ class BackendClient:
             fail_max: Max consecutive failures before opening circuit
             reset_timeout_sec: Seconds to wait before trying half-open
             connect_timeout_sec: Connection timeout
-            read_timeout_sec: Read timeout
+            read_timeout_sec: Read timeout. Defaults to
+                ``LITASSIST_MCP_BACKEND_READ_TIMEOUT_SEC`` when set, otherwise
+                a bounded local-MCP budget that allows heavy read-only tools
+                such as receipt revalidation to finish.
         """
+        resolved_read_timeout_sec = (
+            _read_timeout_from_environment()
+            if read_timeout_sec is None
+            else read_timeout_sec
+        )
         if base_url is not None and (not isinstance(base_url, str) or not base_url.strip()):
             raise ValueError("base_url must be a non-empty string or None")
         if not isinstance(fail_max, int) or fail_max < 1:
@@ -52,8 +65,10 @@ class BackendClient:
             raise ValueError("reset_timeout_sec must be an integer >= 1")
         if not isinstance(connect_timeout_sec, int) or connect_timeout_sec < 1:
             raise ValueError("connect_timeout_sec must be an integer >= 1")
-        if not isinstance(read_timeout_sec, int) or read_timeout_sec < 1:
+        if not isinstance(resolved_read_timeout_sec, int) or resolved_read_timeout_sec < 1:
             raise ValueError("read_timeout_sec must be an integer >= 1")
+        if resolved_read_timeout_sec > MAX_READ_TIMEOUT_SEC:
+            raise ValueError(f"read_timeout_sec must be <= {MAX_READ_TIMEOUT_SEC}")
 
         self._configured_base_url = base_url.rstrip("/") if isinstance(base_url, str) else None
         self.base_url = ""
@@ -61,7 +76,7 @@ class BackendClient:
         self.fail_max = fail_max
         self.reset_timeout_sec = reset_timeout_sec
         self.connect_timeout_sec = connect_timeout_sec
-        self.read_timeout_sec = read_timeout_sec
+        self.read_timeout_sec = resolved_read_timeout_sec
         self.capability_file = _resolve_capability_file(capability_file)
 
         self.state = CircuitState.CLOSED
@@ -99,6 +114,12 @@ class BackendClient:
             ),
         )
         return self.client, None
+
+    def current_base_url(self) -> str | None:
+        """Return the current backend base URL without issuing an HTTP request."""
+
+        resolved = _resolve_backend_base_url(self._configured_base_url)
+        return resolved.rstrip("/") if isinstance(resolved, str) and resolved.strip() else None
 
     def _capability_headers(self) -> dict[str, str]:
         """Return local API capability headers for loopback backends only."""
@@ -139,6 +160,14 @@ class BackendClient:
 
         if self.fail_count >= self.fail_max:
             self.state = CircuitState.OPEN
+
+    def _record_http_error(self, response: httpx.Response) -> None:
+        """Count server failures, while treating 4xx as reachable domain responses."""
+
+        if 400 <= response.status_code < 500:
+            self._record_success()
+            return
+        self._record_failure()
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Perform GET request.
@@ -208,14 +237,8 @@ class BackendClient:
             }
 
         except httpx.HTTPStatusError as e:
-            self._record_failure()
-            error_code = _classify_http_error(e.response)
-            return {
-                "is_error": True,
-                "error_code": error_code,
-                "message": f"Backend returned {e.response.status_code}",
-                "data": None,
-            }
+            self._record_http_error(e.response)
+            return _http_error_result(e.response)
 
         except Exception as e:
             self._record_failure()
@@ -289,14 +312,8 @@ class BackendClient:
             }
 
         except httpx.HTTPStatusError as e:
-            self._record_failure()
-            error_code = _classify_http_error(e.response)
-            return {
-                "is_error": True,
-                "error_code": error_code,
-                "message": f"Backend returned {e.response.status_code}",
-                "data": None,
-            }
+            self._record_http_error(e.response)
+            return _http_error_result(e.response)
 
         except Exception as e:
             self._record_failure()
@@ -385,14 +402,8 @@ class BackendClient:
             }
 
         except httpx.HTTPStatusError as e:
-            self._record_failure()
-            error_code = _classify_http_error(e.response)
-            return {
-                "is_error": True,
-                "error_code": error_code,
-                "message": f"Backend returned {e.response.status_code}",
-                "data": None,
-            }
+            self._record_http_error(e.response)
+            return _http_error_result(e.response)
 
         except Exception as e:
             self._record_failure()
@@ -478,14 +489,8 @@ class BackendClient:
             }
 
         except httpx.HTTPStatusError as e:
-            self._record_failure()
-            error_code = _classify_http_error(e.response)
-            return {
-                "is_error": True,
-                "error_code": error_code,
-                "message": f"Backend returned {e.response.status_code}",
-                "data": None,
-            }
+            self._record_http_error(e.response)
+            return _http_error_result(e.response)
 
         except Exception as e:
             self._record_failure()
@@ -518,6 +523,26 @@ class LocalApiCapability:
             raise ValueError("token must be a non-empty string")
         self.header = header.strip()
         self.token = token.strip()
+
+
+def _read_timeout_from_environment() -> int:
+    """Return the bounded MCP backend read timeout from operator config.
+
+    The default must cover local read-only evidence operations that rebuild
+    derived state, while invalid environment values fail closed during MCP
+    startup instead of silently restoring the old short timeout.
+    """
+
+    raw_value = os.environ.get(READ_TIMEOUT_ENV, "").strip()
+    if not raw_value:
+        return DEFAULT_READ_TIMEOUT_SEC
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{READ_TIMEOUT_ENV} must be an integer") from exc
+    if value < 1 or value > MAX_READ_TIMEOUT_SEC:
+        raise ValueError(f"{READ_TIMEOUT_ENV} must be between 1 and {MAX_READ_TIMEOUT_SEC}")
+    return value
 
 
 def _is_loopback_http_url(value: str) -> bool:
@@ -701,3 +726,40 @@ def _classify_http_error(response: httpx.Response) -> str:
             if isinstance(error, dict) and error.get("code") == "LOCAL_API_CAPABILITY_REQUIRED":
                 return "backend_capability_required"
     return "backend_bad_response"
+
+
+def _http_error_result(response: httpx.Response) -> dict[str, Any]:
+    """Return a bounded MCP error while preserving explicit backend domain codes."""
+
+    fallback_code = _classify_http_error(response)
+    if fallback_code == "backend_capability_required":
+        return {
+            "is_error": True,
+            "error_code": fallback_code,
+            "message": f"Backend returned {response.status_code}",
+            "data": None,
+        }
+
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    detail = payload.get("detail") if isinstance(payload, dict) else None
+    if isinstance(detail, dict):
+        raw_code = detail.get("code")
+        raw_message = detail.get("message")
+        code = str(raw_code or "").strip()
+        message = " ".join(str(raw_message or "").split())
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}", code) and message:
+            return {
+                "is_error": True,
+                "error_code": code,
+                "message": message[:500],
+                "data": None,
+            }
+    return {
+        "is_error": True,
+        "error_code": fallback_code,
+        "message": f"Backend returned {response.status_code}",
+        "data": None,
+    }

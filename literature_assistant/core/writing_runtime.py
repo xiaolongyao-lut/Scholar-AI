@@ -20,12 +20,12 @@ import sqlite3
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Callable
 from urllib.parse import urlencode
 
 from datetime_utils import utc_now_iso_z
-from terminal_output import progress_bar
+from terminal_output import progress_bar, project_task_metrics, sanitize_task_value
 from repositories.writing_runtime_repository import WritingRuntimeRepository
 from harness_protocols import (
     WritingSession,
@@ -55,6 +55,8 @@ def _format_terminal_progress_data(data: dict[str, Any] | None) -> str:
         "skipped",
         "failed",
         "total_chunks",
+        "chunks",
+        "content_length",
         "asset_count",
         "candidate_count",
         "evidence_count",
@@ -65,6 +67,88 @@ def _format_terminal_progress_data(data: dict[str, Any] | None) -> str:
         if key in data:
             parts.append(f"{key}={data[key]}")
     return f" ({', '.join(parts)})" if parts else ""
+
+
+def _bounded_task_log_value(value: Any, *, limit: int = 320) -> str | None:
+    """Return one bounded scalar for structured terminal display context."""
+
+    if value is None or isinstance(value, (dict, list, tuple, set)):
+        return None
+    normalized = sanitize_task_value(value, limit=limit)
+    if normalized == "-":
+        return None
+    return normalized
+
+
+def _bounded_task_integer(value: Any, *, minimum: int, maximum: int) -> int | None:
+    """Return a non-boolean integer inside explicit structured-log bounds."""
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    if value < minimum or value > maximum:
+        return None
+    return value
+
+
+def _safe_task_title(metadata: dict[str, Any]) -> str | None:
+    """Return a bounded title only from explicitly approved metadata fields."""
+
+    for key in ("filename", "title"):
+        candidate = _bounded_task_log_value(metadata.get(key), limit=240)
+        if candidate is None:
+            continue
+        if PureWindowsPath(candidate).is_absolute() or PurePosixPath(candidate).is_absolute():
+            continue
+        return candidate
+    return None
+
+
+def _task_log_metrics(data: dict[str, Any] | None) -> dict[str, int] | None:
+    """Project safe scalar progress metrics and normalize total chunk counts."""
+
+    metrics = project_task_metrics(data)
+    return metrics or None
+
+
+def _task_log_context(
+    job: WritingJob,
+    *,
+    status: str,
+    stage: str | None = None,
+    progress: int | None = None,
+    message: str | None = None,
+    data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the whitelisted display context for one runtime lifecycle log."""
+
+    metadata = job.metadata if isinstance(job.metadata, dict) else {}
+    source = str(metadata.get("source") or "").strip().lower()
+    task_type = "resource_ingest" if source == "resource_ingest" else job.kind.value
+    task: dict[str, Any] = {
+        "task_type": task_type,
+        "status": status,
+        "task_id": _bounded_task_log_value(job.job_id, limit=160) or "-",
+    }
+    batch_index = metadata.get("batch_index")
+    batch_total = metadata.get("batch_total")
+    optional_values = {
+        "title": _safe_task_title(metadata),
+        "batch_index": _bounded_task_integer(batch_index, minimum=1, maximum=999_999_999),
+        "batch_total": _bounded_task_integer(batch_total, minimum=1, maximum=999_999_999),
+        "stage": _bounded_task_log_value(stage, limit=80),
+        "message": _bounded_task_log_value(message),
+        "action": _bounded_task_log_value(job.action_id, limit=120),
+    }
+    for key, value in optional_values.items():
+        if value is not None and not isinstance(value, (dict, list, tuple, set)):
+            task[key] = value
+    normalized_progress = _bounded_task_integer(progress, minimum=0, maximum=100)
+    if normalized_progress is not None:
+        task["progress"] = normalized_progress
+    metrics = _task_log_metrics(data)
+    if metrics is not None:
+        task["metrics"] = metrics
+    return task
 
 _RUNTIME_RECOVERABLE_EXCEPTIONS = (
     AssertionError,
@@ -990,6 +1074,62 @@ def _strongest_passport_status(current: str, candidate: str) -> str:
     return candidate if rank.get(candidate, 0) > rank.get(current, 0) else current
 
 
+def _record_passport_stage_status(
+    row: dict[str, Any],
+    status: str,
+    *,
+    updated_at: Any = None,
+) -> None:
+    """Record one time-ordered progress observation for a passport stage."""
+
+    normalized_status = _safe_projection_string(status)
+    if normalized_status is None:
+        return
+    observations = row.setdefault("_status_observations", [])
+    if not isinstance(observations, list):
+        observations = []
+        row["_status_observations"] = observations
+    observations.append(
+        {
+            "status": normalized_status,
+            "updated_at": _safe_projection_string(updated_at) or "",
+            "ordinal": len(observations),
+        }
+    )
+    row["status"] = _strongest_passport_status(str(row.get("status") or "not_started"), normalized_status)
+
+
+def _resolve_passport_stage_status(row: dict[str, Any]) -> None:
+    """Use the newest progress observation as the current stage status.
+
+    Historical failed/cancelled jobs remain visible in diagnostics, but a later
+    successful retry should unblock the stage unless an explicit blocker was
+    recorded.
+    """
+
+    observations = row.get("_status_observations")
+    if not isinstance(observations, list) or not observations:
+        return
+    candidates = [item for item in observations if isinstance(item, dict)]
+    decisive_candidates = [
+        item
+        for item in candidates
+        if _safe_projection_string(item.get("status")) != "in_progress"
+    ]
+    latest = max(
+        decisive_candidates or candidates,
+        key=lambda item: (
+            str(item.get("updated_at") or ""),
+            int(item.get("ordinal") or 0),
+        ),
+        default=None,
+    )
+    if isinstance(latest, dict):
+        status = _safe_projection_string(latest.get("status"))
+        if status is not None:
+            row["status"] = status
+
+
 def _stage_matches_workflow_state(stage: dict[str, Any], state: dict[str, Any]) -> bool:
     """Return true when a writing workflow state belongs to one passport stage."""
 
@@ -1419,8 +1559,11 @@ def _record_passport_preflight_receipts(
     diagnostics["preflight_receipt_count"] = int(diagnostics.get("preflight_receipt_count") or 0) + len(receipts)
     latest = receipts[-1]
     counts = _receipt_validation_counts(latest)
-    diagnostics["blocker_count"] = int(diagnostics.get("blocker_count") or 0) + counts["blocker_count"]
-    diagnostics["unresolved_count"] = int(diagnostics.get("unresolved_count") or 0) + counts["unresolved_count"]
+    effective_counts = dict(counts)
+    if _is_recoverable_soft_handoff_receipt(job=job, receipt=latest, counts=counts):
+        effective_counts["unresolved_count"] = 0
+    diagnostics["blocker_count"] = int(diagnostics.get("blocker_count") or 0) + effective_counts["blocker_count"]
+    diagnostics["unresolved_count"] = int(diagnostics.get("unresolved_count") or 0) + effective_counts["unresolved_count"]
     projection_digests = latest.get("projection_digests")
     if isinstance(projection_digests, dict):
         for key in projection_digests:
@@ -1726,6 +1869,7 @@ def _research_action_ref_status(
     job: WritingJob,
     approvals: list[WritingApprovalRequest],
     latest_receipt: dict[str, Any] | None,
+    action_type: str | None = None,
 ) -> str:
     """Return a lightweight lifecycle status without rebuilding Passport/Gate."""
 
@@ -1738,6 +1882,12 @@ def _research_action_ref_status(
     if job.status == JobStatus.CANCELLED:
         return "cancelled"
     if latest_receipt is not None:
+        if action_type == "agent_handoff" and _is_recoverable_soft_handoff_receipt(
+            job=job,
+            receipt=latest_receipt,
+            counts=_receipt_validation_counts(latest_receipt),
+        ):
+            return "completed"
         receipt_status = str(latest_receipt.get("status") or "").strip().lower()
         if receipt_status == "blocked":
             return "blocked"
@@ -1794,8 +1944,13 @@ def _lightweight_research_action_refs_for_jobs(
         artifacts = artifacts_by_job.get(job.job_id, [])
         receipts, receipt_counts = _collect_job_preflight_receipts(job, artifacts if isinstance(artifacts, list) else [])
         latest_receipt = receipts[-1] if receipts else None
-        status = _research_action_ref_status(job=job, approvals=job_approvals, latest_receipt=latest_receipt)
         for action_type in _research_action_types_for_job(job):
+            status = _research_action_ref_status(
+                job=job,
+                approvals=job_approvals,
+                latest_receipt=latest_receipt,
+                action_type=action_type,
+            )
             action_id = _research_action_id_for_type(action_type)
             ref = {
                 "ref_type": "research_action_lifecycle",
@@ -2069,6 +2224,30 @@ def _boundary_recovery_drilldowns(
     return rows
 
 
+def _boundary_signal_next_actions(
+    signals: list[dict[str, Any]],
+    *,
+    statuses: set[str],
+    max_items: int = 8,
+) -> list[str]:
+    """Return concrete signal recovery actions for the top-level boundary."""
+
+    actions: list[str] = []
+    for signal in signals:
+        if len(actions) >= max_items:
+            break
+        if not isinstance(signal, dict):
+            continue
+        status = _safe_projection_string(signal.get("status"))
+        if status not in statuses:
+            continue
+        for action in signal.get("next_actions") or []:
+            _append_unique_text(actions, action, max_items=max_items)
+            if len(actions) >= max_items:
+                break
+    return actions
+
+
 def _workflow_blocking_action_boundary(
     *,
     action_id: str,
@@ -2142,6 +2321,8 @@ def _workflow_blocking_action_boundary(
             "Rebuild the Workflow Passport and Evidence Integrity Gate before executing this action.",
             max_items=8,
         )
+    for action in _boundary_signal_next_actions(signal_rows, statuses={"block", "unresolved"}, max_items=8):
+        _append_unique_text(next_safe_local_actions, action, max_items=8)
     for message in blockers[:3]:
         _append_unique_text(next_safe_local_actions, f"Resolve blocker: {message}", max_items=8)
     for message in unresolved[:3]:
@@ -2218,12 +2399,13 @@ def _workflow_readiness_claims(
     for definition in _READINESS_CLAIM_DEFINITIONS:
         claim_id = str(definition["claim_id"])
         required_readiness = tuple(str(item) for item in definition.get("required_readiness", ()))
+        required_signal_categories = tuple(str(item) for item in definition.get("required_signal_categories", ()))
         missing_readiness = [
             key
             for key in required_readiness
             if not bool(readiness.get(key))
         ]
-        required_signals = _signals_for_categories(signal_rows, tuple(definition["required_signal_categories"]))
+        required_signals = _signals_for_categories(signal_rows, required_signal_categories)
         blocking_signals = _signals_for_categories(signal_rows, tuple(definition["blocked_by_categories"]))
         relevant_signals = _merge_claim_signals(
             required_signals,
@@ -2236,9 +2418,14 @@ def _workflow_readiness_claims(
             for key in missing_readiness:
                 _append_unique_text(unresolved, f"Workflow readiness is missing {key}.", max_items=8)
 
+        no_required_signal_needed = not required_signal_categories and not relevant_signals
+
         if blockers:
             status = "blocked"
             reason = blockers[0]
+        elif no_required_signal_needed and not missing_readiness and not unresolved:
+            status = "ready"
+            reason = "No blocking integrity signals are present for this readiness claim."
         elif signal_status == "unresolved" or missing_readiness or unresolved:
             status = "unresolved"
             reason = unresolved[0] if unresolved else "Integrity gate is unresolved for this readiness claim."
@@ -2884,6 +3071,25 @@ def _receipt_validation_counts(receipt: dict[str, Any]) -> dict[str, int]:
     }
 
 
+def _is_recoverable_soft_handoff_receipt(
+    *,
+    job: "WritingJob",
+    receipt: dict[str, Any],
+    counts: dict[str, int],
+) -> bool:
+    """Return true when an old handoff receipt should not re-block its own stage."""
+
+    if job.status != JobStatus.COMPLETED:
+        return False
+    if _safe_projection_string(receipt.get("action_id")) != "agent.handoff_card":
+        return False
+    if _safe_projection_string(receipt.get("required_claim_id")) != "handoff_readiness":
+        return False
+    if not bool(receipt.get("can_proceed")) or bool(receipt.get("refresh_required")):
+        return False
+    return int(counts.get("blocker_count") or 0) == 0
+
+
 def _compact_refresh_receipt_row(receipt: dict[str, Any], *, ordinal: int) -> dict[str, Any]:
     """Return an agent-safe receipt row without embedding full projections."""
 
@@ -3491,7 +3697,7 @@ def _research_action_types_for_job(job: WritingJob) -> list[str]:
             if cache.get("policy") in {"refresh", "bypass"} or request_cache.get("policy") in {"refresh", "bypass"}:
                 return ["batch_material_reprocess"]
         return ["batch_material_reprocess"]
-    return ["unknown"]
+    return []
 
 
 def _research_action_id_for_type(action_type: str) -> str:
@@ -4240,9 +4446,7 @@ def _qrels_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str
             qrels_status=status_value,
             quality_claim=payload.get("quality_claim"),
         ),
-        next_actions=[
-            "Promote reviewed qrels before claiming semantic retrieval quality."
-        ] if status == "unresolved" else [],
+        next_actions=_qrels_integrity_next_actions(status_value) if status == "unresolved" else [],
         metadata=_compact_projection_mapping(
             payload,
             allowed_keys=(
@@ -4280,6 +4484,19 @@ def _qrels_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str
             ),
         ),
     )
+
+
+def _qrels_integrity_next_actions(status_value: str) -> list[str]:
+    """Return state-specific qrels recovery guidance without implying approval."""
+
+    if status_value == "reviewed":
+        return ["Promote reviewed qrels to canonical before claiming semantic retrieval quality."]
+    if status_value == "candidate":
+        return ["Review candidate qrels, then promote reviewed qrels before claiming semantic retrieval quality."]
+    return [
+        "Create or import candidate qrels, review them, then promote canonical qrels before claiming "
+        "semantic retrieval quality."
+    ]
 
 
 def _citation_verification_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -5468,6 +5685,16 @@ class WritingRuntime:
                 progress_bar(payload.get("progress") if "progress" in payload else None),
                 normalized_message,
                 metrics,
+                extra={
+                    "scholar_task": _task_log_context(
+                        job,
+                        status="in_progress",
+                        stage=normalized_stage,
+                        progress=payload.get("progress"),
+                        message=normalized_message,
+                        data=data,
+                    )
+                },
             )
         metadata = dict(job.metadata)
         metadata.update(
@@ -5504,6 +5731,10 @@ class WritingRuntime:
         if not job:
             raise ValueError(f"Job {job_id} not found")
 
+        active_task = self._job_tasks.get(job_id)
+        if active_task is not None and not active_task.done():
+            return job
+
         # Transition to STARTED
         job = job.with_status(JobStatus.STARTED)
         self._jobs[job_id] = job
@@ -5517,7 +5748,19 @@ class WritingRuntime:
             ),
         )
 
-        self._logger.info("Started job %s", job_id)
+        self._logger.info(
+            "Started job %s",
+            job_id,
+            extra={
+                "scholar_task": _task_log_context(
+                    job,
+                    status="started",
+                    stage="prepare",
+                    progress=0,
+                    message="任务已开始",
+                )
+            },
+        )
 
         if executor:
             task = asyncio.create_task(self._run_job_executor(job_id, executor))
@@ -5525,6 +5768,186 @@ class WritingRuntime:
 
         self._autosave_if_enabled()
         return self.get_job(job_id) or job
+
+    async def recover_job_executor(
+        self,
+        job_id: str,
+        executor: Callable[[WritingJob], Any],
+    ) -> WritingJob:
+        """Attach a rebuildable executor to one persisted non-terminal job.
+
+        Args:
+            job_id: Persisted runtime job identifier.
+            executor: Executor rebuilt from durable job metadata rather than an
+                in-memory request closure.
+
+        Returns:
+            The recovered job. Paused jobs remain paused until an explicit
+            resume; other recoverable jobs are restarted in-place.
+
+        Raises:
+            ValueError: If the job is missing or already terminal.
+        """
+
+        job = self.get_job(job_id)
+        if job is None:
+            raise ValueError(f"Job {job_id} not found")
+        if job.status in {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED}:
+            raise ValueError(f"Cannot recover job in terminal status {job.status.value}")
+        active_task = self._job_tasks.get(job_id)
+        if active_task is not None and not active_task.done():
+            return job
+
+        ctx = self._job_contexts.get(job_id)
+        if ctx is None:
+            ctx = JobExecutionContext(job=job)
+            self._job_contexts[job_id] = ctx
+        ctx.is_cancelled = False
+        ctx.cancel_event.clear()
+        ctx.execution_state.pop("shutdown_interrupted", None)
+
+        if job.status == JobStatus.PAUSED:
+            ctx.is_paused = True
+            ctx.pause_event.clear()
+            recovered = job
+        else:
+            ctx.is_paused = False
+            ctx.pause_event.set()
+            recovered = job.with_status(JobStatus.STARTED)
+            self._jobs[job_id] = recovered
+
+        ctx.job = recovered
+        self._emit_event(
+            recovered.session_id,
+            WritingEvent.create(
+                job_id=job_id,
+                session_id=recovered.session_id,
+                event_type=EventType.JOB_PROGRESS,
+                data={
+                    "stage": "recovery",
+                    "message": "已从持久化任务恢复后台执行器",
+                    "recovered_executor": True,
+                    "paused": recovered.status == JobStatus.PAUSED,
+                },
+            ),
+        )
+        task = asyncio.create_task(self._run_job_executor(job_id, executor))
+        self._job_tasks[job_id] = task
+        self._autosave_if_enabled()
+        return self.get_job(job_id) or recovered
+
+    async def wait_for_job_ready(self, job_id: str) -> WritingJob:
+        """Wait at a cooperative pause boundary and reject cancelled work."""
+
+        job = self.get_job(job_id)
+        if job is None:
+            raise ValueError(f"Job {job_id} not found")
+        ctx = self._job_contexts.get(job_id)
+        if ctx is None:
+            raise ValueError(f"Job {job_id} has no execution context")
+        while ctx.is_paused:
+            await ctx.pause_event.wait()
+        current = self.get_job(job_id)
+        if ctx.is_cancelled or current is None or current.status == JobStatus.CANCELLED:
+            raise asyncio.CancelledError()
+        return current
+
+    def begin_job_commit(self, job_id: str) -> None:
+        """Enter a short non-cancellable side-effect boundary for one job."""
+
+        job = self.get_job(job_id)
+        if job is None:
+            raise ValueError(f"Job {job_id} not found")
+        ctx = self._job_contexts.get(job_id)
+        if ctx is None:
+            raise ValueError(f"Job {job_id} has no execution context")
+        if ctx.is_paused or ctx.is_cancelled or job.status in {JobStatus.PAUSED, JobStatus.CANCELLED}:
+            raise ValueError(f"Job {job_id} is not ready to commit")
+        ctx.execution_state["commit_in_progress"] = True
+
+    def end_job_commit(self, job_id: str) -> None:
+        """Leave a side-effect boundary previously entered by the executor."""
+
+        ctx = self._job_contexts.get(job_id)
+        if ctx is not None:
+            ctx.execution_state.pop("commit_in_progress", None)
+
+    def has_active_job_executor(self, job_id: str) -> bool:
+        """Return whether this process currently owns a live executor task."""
+
+        task = self._job_tasks.get(str(job_id or "").strip())
+        return task is not None and not task.done()
+
+    def is_job_commit_in_progress(self, job_id: str) -> bool:
+        """Return whether a job is inside its non-cancellable commit boundary."""
+
+        ctx = self._job_contexts.get(str(job_id or "").strip())
+        return bool(ctx and ctx.execution_state.get("commit_in_progress"))
+
+    async def interrupt_job_for_shutdown(self, job_id: str) -> WritingJob:
+        """Requeue an active job interrupted by process shutdown.
+
+        This path is deliberately distinct from :meth:`cancel_job`: a process
+        restart is recoverable infrastructure state, not a user cancellation.
+        If persistence has already started, shutdown waits for the short commit
+        boundary so durable outputs and runtime state cannot disagree.
+        """
+
+        job = self.get_job(job_id)
+        if job is None:
+            raise ValueError(f"Job {job_id} not found")
+        task = self._job_tasks.get(job_id)
+        if task is None or task.done():
+            return job
+        if self.is_job_commit_in_progress(job_id):
+            await asyncio.shield(task)
+            return self.get_job(job_id) or job
+
+        ctx = self._job_contexts.get(job_id)
+        if ctx is not None:
+            ctx.execution_state["shutdown_interrupted"] = True
+            ctx.is_paused = False
+            ctx.pause_event.set()
+        preserve_pause = job.status == JobStatus.PAUSED
+        recovery_status = JobStatus.PAUSED if preserve_pause else JobStatus.QUEUED
+        recovery_stage = "paused" if preserve_pause else "queued"
+        recovery_message = (
+            "进程关闭，任务保持暂停"
+            if preserve_pause
+            else "进程关闭，任务将在下次启动时恢复"
+        )
+        metadata = dict(job.metadata)
+        metadata.update(
+            {
+                "progress_stage": recovery_stage,
+                "progress_message": recovery_message,
+            }
+        )
+        requeued = replace(job.with_status(recovery_status), metadata=metadata, error=None)
+        self._jobs[job_id] = requeued
+        if ctx is not None:
+            ctx.job = requeued
+        self._emit_event(
+            requeued.session_id,
+            WritingEvent.create(
+                job_id=job_id,
+                session_id=requeued.session_id,
+                event_type=EventType.JOB_PROGRESS,
+                data={
+                    "stage": recovery_stage,
+                    "message": recovery_message,
+                    "shutdown_interrupted": True,
+                    "paused": preserve_pause,
+                },
+            ),
+        )
+        self._autosave_if_enabled()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return self.get_job(job_id) or requeued
 
     async def _run_job_executor(self, job_id: str, executor: Callable[[WritingJob], Any]) -> None:
         """Run a job executor outside the request path and finalize its result."""
@@ -5536,7 +5959,12 @@ class WritingRuntime:
             ctx = self._job_contexts.get(job_id)
             if ctx and ctx.is_cancelled:
                 return
-            job = job.with_status(JobStatus.IN_PROGRESS)
+            if ctx and ctx.is_paused:
+                await ctx.pause_event.wait()
+            current = self.get_job(job_id)
+            if (ctx and ctx.is_cancelled) or current is None or current.status == JobStatus.CANCELLED:
+                return
+            job = current.with_status(JobStatus.IN_PROGRESS)
             self._jobs[job_id] = job
             self._emit_event(
                 job.session_id,
@@ -5556,6 +5984,9 @@ class WritingRuntime:
                 return
             await self._finalize_executor_result(job_id, executor_result)
         except asyncio.CancelledError:
+            ctx = self._job_contexts.get(job_id)
+            if ctx and ctx.execution_state.get("shutdown_interrupted"):
+                raise
             current = self.get_job(job_id)
             if current and current.status != JobStatus.CANCELLED:
                 await self.cancel_job(job_id)
@@ -5593,6 +6024,8 @@ class WritingRuntime:
             raise ValueError(f"Cannot pause job in status {job.status.value}")
 
         ctx = self._job_contexts.get(job_id)
+        if ctx and ctx.execution_state.get("commit_in_progress"):
+            raise ValueError("Cannot pause a job while durable outputs are being committed")
         if ctx:
             ctx.is_paused = True
             ctx.pause_event.clear()
@@ -5653,6 +6086,8 @@ class WritingRuntime:
             raise ValueError(f"Cannot cancel job already in terminal status {job.status.value}")
 
         ctx = self._job_contexts.get(job_id)
+        if ctx and ctx.execution_state.get("commit_in_progress"):
+            raise ValueError("Cannot cancel a job while durable outputs are being committed")
         if ctx:
             ctx.is_cancelled = True
             ctx.cancel_event.set()
@@ -7217,6 +7652,7 @@ class WritingRuntime:
                 "reproducibility": _new_passport_reproducibility(),
                 "next_actions": [str(stage["next_action"])],
                 "updated_at": None,
+                "_status_observations": [],
             }
 
         objects = projection.get("objects")
@@ -7244,9 +7680,10 @@ class WritingRuntime:
                     continue
                 row = stage_rows[str(stage["stage_id"])]
                 _append_unique_text(row["object_ids"], object_id)
-                row["status"] = _strongest_passport_status(
-                    str(row["status"]),
+                _record_passport_stage_status(
+                    row,
                     _passport_status_from_runtime_status(item.get("status")),
+                    updated_at=item.get("updated_at"),
                 )
                 if item.get("updated_at") and (
                     not row.get("updated_at") or str(item["updated_at"]) > str(row["updated_at"])
@@ -7302,9 +7739,10 @@ class WritingRuntime:
             task = job.metadata.get(_MATERIAL_PROCESSING_TASK_KEY)
             if isinstance(task, dict):
                 ingest_row = stage_rows["material_ingest"]
-                ingest_row["status"] = _strongest_passport_status(
-                    str(ingest_row["status"]),
+                _record_passport_stage_status(
+                    ingest_row,
                     _passport_status_from_runtime_status(task.get("status")),
+                    updated_at=task.get("updated_at"),
                 )
                 _record_passport_material_task(ingest_row, selected_job_id, task)
                 task_request = task.get("request") if isinstance(task.get("request"), dict) else {}
@@ -7336,9 +7774,10 @@ class WritingRuntime:
                 )
                 if read_artifact_count > 0:
                     read_row = stage_rows["material_read"]
-                    read_row["status"] = _strongest_passport_status(
-                        str(read_row["status"]),
+                    _record_passport_stage_status(
+                        read_row,
                         "complete" if task.get("status") == "completed" else "in_progress",
+                        updated_at=task.get("updated_at"),
                     )
                     _record_passport_material_task(read_row, selected_job_id, task)
                     if material_id is not None:
@@ -7357,7 +7796,7 @@ class WritingRuntime:
                         continue
                     row = stage_rows[str(stage["stage_id"])]
                     _append_unique_text(row["object_ids"], _research_object_id("writing_job", job.job_id))
-                    row["status"] = _strongest_passport_status(str(row["status"]), "complete")
+                    _record_passport_stage_status(row, "complete", updated_at=workflow_state.get("updated_at"))
                     if workflow_state.get("updated_at") and (
                         not row.get("updated_at") or str(workflow_state["updated_at"]) > str(row["updated_at"])
                     ):
@@ -7400,9 +7839,10 @@ class WritingRuntime:
                 ):
                     row["updated_at"] = event["timestamp"]
                 status = _safe_projection_string(event.get("status"))
-                row["status"] = _strongest_passport_status(
-                    str(row["status"]),
+                _record_passport_stage_status(
+                    row,
                     _passport_status_from_event(event_type, status),
+                    updated_at=event.get("timestamp"),
                 )
                 boundary = event.get("confirmation_boundary") if isinstance(event.get("confirmation_boundary"), dict) else {}
                 if boundary.get("requires_user_confirmation"):
@@ -7445,7 +7885,10 @@ class WritingRuntime:
             if action_ref.get("requires_user_confirmation"):
                 row["requires_user_confirmation"] = True
                 _append_unique_text(row["blockers"], "Pending research action user confirmation is required.")
-            if action_ref.get("preflight_present") is False and action_ref.get("action_type") != "batch_material_reprocess":
+            if action_ref.get("preflight_present") is False and action_ref.get("action_type") not in {
+                "agent_handoff",
+                "batch_material_reprocess",
+            }:
                 _append_unique_text(row["unresolved"], "Research action preflight evidence is missing.")
         payload_rows = _iter_runtime_metadata_dicts(selected_jobs) + _iter_artifact_dicts(selected_jobs, self._artifacts)
         for source_id, payload in payload_rows:
@@ -7463,11 +7906,12 @@ class WritingRuntime:
         severity_counts: dict[str, int] = {}
         for stage in _WORKFLOW_STAGE_DEFINITIONS:
             row = stage_rows[str(stage["stage_id"])]
+            _resolve_passport_stage_status(row)
             if row["status"] == "not_started" and (row["object_ids"] or row["event_types"] or row["present_artifacts"]):
                 row["status"] = "unresolved"
             gate = _passport_gate_for_stage(stage, row)
             row["gate"] = gate
-            for private_key in ("blockers", "unresolved", "requires_user_confirmation"):
+            for private_key in ("blockers", "unresolved", "requires_user_confirmation", "_status_observations"):
                 row.pop(private_key, None)
             _trim_passport_stage_projection(row)
             stages.append(row)
@@ -8676,7 +9120,20 @@ class WritingRuntime:
         self._sync_job_to_memory_if_enabled(job_id)
         self._schedule_runtime_job_capture(job)
         self._create_checkpoint(job.session_id, kind="job_completed", source_job_id=job_id)
-        self._logger.info("Completed job %s", job_id)
+        self._logger.info(
+            "Completed job %s",
+            job_id,
+            extra={
+                "scholar_task": _task_log_context(
+                    job,
+                    status="completed",
+                    stage="completed",
+                    progress=100,
+                    message="任务已完成",
+                    data=result if isinstance(result, dict) else None,
+                )
+            },
+        )
         self._autosave_if_enabled()
         return job
 
@@ -8702,7 +9159,18 @@ class WritingRuntime:
         self._sync_job_to_memory_if_enabled(job_id)
         self._schedule_runtime_job_capture(job, error=error)
         self._create_checkpoint(job.session_id, kind="job_failed", source_job_id=job_id)
-        self._logger.info("Failed job %s: %s", job_id, error)
+        self._logger.info(
+            "Failed job %s: %s",
+            job_id,
+            error,
+            extra={
+                "scholar_task": _task_log_context(
+                    job,
+                    status="failed",
+                    message=error,
+                )
+            },
+        )
         self._autosave_if_enabled()
         return job
 

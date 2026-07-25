@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 from chunk_chroma_index import ChunkChromaSearchResult, query_chunk_chroma_index
 from chunk_fts_index import ChunkFtsHit, ChunkFtsSearchResult, search_chunk_fts_index
-from chunk_hashing import compute_chunk_hashes
+from chunk_hashing import CHUNK_HASH_VERSION, SUPPORTED_CHUNK_HASH_VERSIONS, compute_chunk_hashes
 from chunk_index_consistency_gate import IndexedChunkRecord, build_chunk_truth_records
 
 
@@ -281,6 +281,7 @@ def _validate_dense_hit(
     hit: IndexedChunkRecord,
     project_id: str,
     expected_contract_hash: str,
+    hash_version: str,
     chunk_lookup: Mapping[tuple[str, str], Mapping[str, Any]],
     counts: dict[str, int],
 ) -> bool:
@@ -294,7 +295,11 @@ def _validate_dense_hit(
     if hit.contract_hash != expected_contract_hash:
         _add_count(counts, "contract_mismatch")
         return False
-    hashes = compute_chunk_hashes(chunk, material_id_hint=hit.material_id)
+    hashes = compute_chunk_hashes(
+        chunk,
+        material_id_hint=hit.material_id,
+        hash_version=hash_version,
+    )
     if hit.chunk_hash != hashes["chunk_hash"] or hit.embedding_input_hash != hashes["embedding_input_hash"]:
         _add_count(counts, "stale")
         return False
@@ -305,6 +310,7 @@ def _validate_dense_hit(
 def _validate_lexical_hit(
     *,
     hit: ChunkFtsHit,
+    hash_version: str,
     chunk_lookup: Mapping[tuple[str, str], Mapping[str, Any]],
     counts: dict[str, int],
 ) -> bool:
@@ -312,7 +318,11 @@ def _validate_lexical_hit(
     if chunk is None:
         _add_count(counts, "corrupt_missing_truth")
         return False
-    hashes = compute_chunk_hashes(chunk, material_id_hint=hit.material_id)
+    hashes = compute_chunk_hashes(
+        chunk,
+        material_id_hint=hit.material_id,
+        hash_version=hash_version,
+    )
     if hit.chunk_hash != hashes["chunk_hash"] or hit.embedding_input_hash != hashes["embedding_input_hash"]:
         _add_count(counts, "stale")
         return False
@@ -417,6 +427,7 @@ def retrieve_candidates(
     *,
     store: Mapping[str, Sequence[Mapping[str, Any]]],
     chunk_store_version: str,
+    hash_version: str = CHUNK_HASH_VERSION,
     fts_db_path: Path,
     chroma_persist_dir: Path | None = None,
     query_embedding: Sequence[float] | None = None,
@@ -438,6 +449,7 @@ def retrieve_candidates(
         material_id: Optional explicit material scope. When set, material balancing is disabled.
         store: Current chunk-store truth mapping.
         chunk_store_version: Content-derived truth-store version.
+        hash_version: Canonical hash contract used by the owning manifest.
         fts_db_path: SQLite FTS5 derived index path.
         chroma_persist_dir: Optional Chroma derived index directory.
         query_embedding: Optional dense query embedding; Gateway never calls provider APIs.
@@ -459,6 +471,8 @@ def retrieve_candidates(
     normalized_intent = _require_non_empty_string(intent, name="intent")
     normalized_material_id = None if material_id is None else _require_non_empty_string(material_id, name="material_id")
     normalized_version = _require_non_empty_string(chunk_store_version, name="chunk_store_version")
+    if hash_version not in SUPPORTED_CHUNK_HASH_VERSIONS:
+        raise ValueError("unsupported chunk hash version")
     _coerce_limit(limit, name="limit")
     _coerce_limit(dense_limit, name="dense_limit")
     _coerce_limit(lexical_limit, name="lexical_limit")
@@ -473,7 +487,11 @@ def retrieve_candidates(
     if not isinstance(visual_budget_intent, int) or visual_budget_intent < 0:
         raise ValueError("visual_budget_intent must be a non-negative integer")
 
-    build_chunk_truth_records(project_id=normalized_project_id, store=store)
+    build_chunk_truth_records(
+        project_id=normalized_project_id,
+        store=store,
+        hash_version=hash_version,
+    )
     chunk_lookup = _store_chunk_lookup(store)
     candidates: dict[tuple[str, str], _CandidateState] = {}
     fallback_reasons: list[str] = []
@@ -504,6 +522,7 @@ def retrieve_candidates(
                 hit=hit,
                 project_id=normalized_project_id,
                 expected_contract_hash=normalized_contract,
+                hash_version=hash_version,
                 chunk_lookup=chunk_lookup,
                 counts=gate_status_counts,
             ):
@@ -542,7 +561,12 @@ def retrieve_candidates(
         for hit in lexical_result.hits:
             if not _matches_material(hit.material_id, normalized_material_id):
                 continue
-            if not _validate_lexical_hit(hit=hit, chunk_lookup=chunk_lookup, counts=gate_status_counts):
+            if not _validate_lexical_hit(
+                hit=hit,
+                hash_version=hash_version,
+                chunk_lookup=chunk_lookup,
+                counts=gate_status_counts,
+            ):
                 continue
             chunk = chunk_lookup[(hit.material_id, hit.chunk_id)]
             page, title, chunk_type, snippet, metadata = _truth_metadata(chunk, snippet=hit.snippet)

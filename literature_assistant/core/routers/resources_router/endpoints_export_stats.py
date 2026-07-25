@@ -5,6 +5,7 @@ All references to module-level helpers go through _rr.X so that pytest
 monkeypatch.setattr(rr, X, ...) keeps affecting the live endpoint behaviour.
 """
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import re
@@ -17,6 +18,12 @@ from models import ProjectExportPayload
 
 import routers.resources_router as _rr
 from csl_style_store import csl_style_store
+from literature_assistant.core.knowledge_graph.reviewed_knowledge_source_sync import (
+    mark_material_deleted,
+)
+from literature_assistant.core.knowledge_graph.reviewed_knowledge_store import (
+    ReviewedKnowledgeStoreError,
+)
 
 try:
     from literature_assistant.core.academic_writing_linter import (
@@ -30,6 +37,41 @@ except ModuleNotFoundError:
         AcademicWritingLintRequest,
         lint_academic_writing,
     )
+
+
+def _invalidate_material_before_delete(project_id: str, material_id: str) -> None:
+    """Record reviewed-source invalidation before a maintenance deletion."""
+
+    try:
+        mark_material_deleted(
+            project_id=project_id,
+            material_id=material_id,
+            occurred_at=datetime.now(timezone.utc),
+        )
+    except (OSError, ValueError, ReviewedKnowledgeStoreError) as exc:
+        _rr.logger.exception(
+            "material deletion invalidation failed project_id=%s material_id=%s",
+            project_id,
+            material_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="无法完成已审核知识来源失效登记，材料未删除",
+        ) from exc
+
+
+def _remove_material_from_persisted_stores(project_id: str, material_id: str) -> None:
+    """Remove one material without overwriting concurrent project updates."""
+
+    def _remove(
+        doc_store: dict[str, dict[str, Any]],
+        chunk_store: dict[str, list[dict[str, Any]]],
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+        doc_store.pop(material_id, None)
+        chunk_store.pop(material_id, None)
+        return doc_store, chunk_store
+
+    _rr._update_project_stores_atomic(project_id, _remove)
 
 
 def _build_export_writing_audit(
@@ -544,7 +586,7 @@ async def cleanup_historical_dirty_data(request: CleanupRequest) -> dict[str, An
         project_id = str(item.get("project_id") or "")
         if not project_id or project_id in keep_project_ids:
             continue
-        if store.delete_project(project_id):
+        if store.purge_project(project_id):
             deleted_duplicate_projects.append(project_id)
             try:
                 _rr._remove_project_workspace_dir(project_id)
@@ -555,7 +597,7 @@ async def cleanup_historical_dirty_data(request: CleanupRequest) -> dict[str, An
         project_id = str(item.get("project_id") or "")
         if not project_id or project_id in keep_project_ids:
             continue
-        if store.delete_project(project_id):
+        if store.purge_project(project_id):
             deleted_test_fixture_projects.append(project_id)
             try:
                 _rr._remove_project_workspace_dir(project_id)
@@ -578,16 +620,10 @@ async def cleanup_historical_dirty_data(request: CleanupRequest) -> dict[str, An
         material_id = str(item.get("material_id") or "")
         if not material_id or not project_id or project_id in keep_project_ids:
             continue
+        _invalidate_material_before_delete(project_id, material_id)
         if store.delete_material(material_id):
             deleted_empty_materials.append(material_id)
-            doc_store = _rr._load_doc_store(project_id)
-            if material_id in doc_store:
-                del doc_store[material_id]
-                _rr._save_doc_store(project_id, doc_store)
-            chunk_store = _rr._load_chunk_store(project_id)
-            if material_id in chunk_store:
-                del chunk_store[material_id]
-                _rr._save_chunk_store(project_id, chunk_store)
+            _remove_material_from_persisted_stores(project_id, material_id)
 
     return {
         "dry_run": False,
@@ -609,27 +645,24 @@ async def cleanup_historical_dirty_data(request: CleanupRequest) -> dict[str, An
 async def batch_delete_materials(request: BatchDeleteRequest) -> dict[str, Any]:
     """Batch delete materials from a project."""
     store = _rr.get_writing_resource_store()
-    deleted = []
-    not_found = []
+    pending: list[tuple[str, str]] = []
+    deleted: list[str] = []
+    not_found: list[str] = []
     for mid in request.material_ids:
         material = store.get_material(mid)
         if material:
-            project_id = material.project_id
-            store.delete_material(mid)
-
-            doc_store = _rr._load_doc_store(project_id)
-            if mid in doc_store:
-                del doc_store[mid]
-                _rr._save_doc_store(project_id, doc_store)
-
-            chunk_store = _rr._load_chunk_store(project_id)
-            if mid in chunk_store:
-                del chunk_store[mid]
-                _rr._save_chunk_store(project_id, chunk_store)
-
-            deleted.append(mid)
+            pending.append((mid, material.project_id))
         else:
             not_found.append(mid)
+
+    for mid, project_id in pending:
+        _invalidate_material_before_delete(project_id, mid)
+
+    for mid, project_id in pending:
+        store.delete_material(mid)
+        _remove_material_from_persisted_stores(project_id, mid)
+
+        deleted.append(mid)
     return {
         "deleted": deleted,
         "not_found": not_found,

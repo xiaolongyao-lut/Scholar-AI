@@ -54,7 +54,16 @@ def _get_env_bool(name: str, default: bool = False) -> bool:
 
 
 def _runtime_rerank_enabled() -> bool:
-    return _get_env_bool(RUNTIME_RERANK_ENABLED_ENV, default=False)
+    raw = os.getenv(RUNTIME_RERANK_ENABLED_ENV)
+    if raw is not None and raw.strip():
+        return _get_env_bool(RUNTIME_RERANK_ENABLED_ENV, default=False)
+    try:
+        from feature_flags import is_enabled
+
+        return bool(is_enabled("local_rerank"))
+    except Exception as exc:
+        logger.debug("Feature flag local_rerank unavailable; keeping runtime rerank disabled: %s", exc)
+        return False
 
 
 def _rerank_pre_topn_hard_cap() -> int:

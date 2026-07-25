@@ -1,13 +1,15 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AlertTriangle, ChevronDown, ChevronRight, FileImage, GitFork, Network, Pencil, Table2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EvidencePill, type EvidenceRefLike } from '@/components/evidence/EvidencePill';
-import { AnalysisChainPanel } from '@/components/analysis_chain/AnalysisChainPanel';
 import { CaptureToInboxButton } from '@/components/knowledge/CaptureToInboxButton';
 import type { AnalysisChainPayload } from '@/services/discussionApi';
 import { buildFigureAssetFileUrl } from '@/services/writingBackend';
+import type { ResearchSelection } from '@/types/researchSelection';
+import type { VisualObservationReference } from '@/types/visualObservation';
+import { sanitizeAssistantVisibleContent } from './chatDisplay';
 import { markdownTableComponents } from './markdownTableComponents';
 
 export type ChatRole = 'user' | 'assistant' | 'system' | 'agent';
@@ -34,6 +36,12 @@ const DIAGNOSTIC_IDENTIFIER_PATTERN =
 export interface ChatMessageDiagnostics {
   /** Retrieval tier the backend served. */
   tier?: 'fast' | 'balanced' | 'thorough';
+  /** Where final answer generation happened for this turn. */
+  answerOrigin?: 'internal_smartread' | 'external_agent';
+  /** Which model surface generated, or is expected to generate, the final answer. */
+  answerModelOrigin?: 'scholar_ai_configured_chat' | 'external_agent';
+  /** Retrieval system that prepared the local evidence. */
+  retrievalProvider?: 'scholar_ai';
   /** Actual sampling params returned by the backend. */
   sampling?: {
     temperature?: number;
@@ -145,9 +153,15 @@ export interface ChatMessageMetadata {
 export interface ChatMessageData {
   id: string;
   role: ChatRole;
+  /** Stable id shared by the user input and its persisted answer turn. */
+  turnId?: string;
   /** Plain text or pre-rendered markdown body. Assistant/agent renders
    *  through ReactMarkdown + remark-gfm; user keeps `whitespace-pre-wrap`. */
   content: string;
+  /** Durable PDF input locators. Pixels and request image indexes are excluded. */
+  researchSelections?: ResearchSelection[];
+  /** Output-free links to derived visual candidates. Never render as answer evidence. */
+  visualObservationRefs?: VisualObservationReference[];
   /** Optional friendly agent label rendered as a header chip. */
   agent?: { name: string; color?: string };
   /** Evidence pills shown beneath the message body. Use canonical
@@ -157,8 +171,8 @@ export interface ChatMessageData {
   timestamp?: string;
   /** Status hint; renders a small inline label. */
   status?: 'pending' | 'streaming' | 'done' | 'error';
-  /** Optional structured reasoning chain returned by the chat backend.
-   *  Renders below the message body via the shared AnalysisChainPanel. */
+  /** Optional structured analysis retained for API/history compatibility.
+   *  Chat answers intentionally do not render this internal summary. */
   analysis_chain?: AnalysisChainPayload | null;
   /** Related figure/table candidates surfaced for visual evidence questions. */
   relatedFigures?: ChatRelatedFigure[];
@@ -170,13 +184,18 @@ export interface ChatMessageData {
 
 export interface ChatRelatedFigure {
   id: string;
-  kind: 'figure' | 'table';
+  kind: 'figure' | 'table' | 'formula';
   label: string;
   caption: string;
   material_id: string;
   material_title?: string | null;
   page?: number | null;
+  bbox?: EvidenceRefLike['bbox'];
+  bbox_unit?: EvidenceRefLike['bbox_unit'];
+  quote?: string | null;
   chunk_id?: string | null;
+  anchor_chunk_id?: string | null;
+  relevance_score?: number | null;
   asset_path?: string | null;
   source?: string | null;
 }
@@ -188,9 +207,12 @@ export interface ChatMessageContextChunk {
   relevance_score?: number;
   chunk_id?: string | null;
   material_id?: string | null;
+  evidence_role?: EvidenceRefLike['evidence_role'];
   title?: string | null;
   section_title?: string | null;
   page?: number | string | null;
+  bbox?: EvidenceRefLike['bbox'];
+  bbox_unit?: EvidenceRefLike['bbox_unit'];
   source_labels?: string[];
   source_hint?: string | null;
 }
@@ -214,6 +236,8 @@ interface MessageRendererProps {
   onForkMessage?: (message: ChatMessageData) => void;
   /** Hide the per-message 「记一下」 button. */
   hideCaptureToInbox?: boolean;
+  /** Developer-only retrieval diagnostics. Product chat surfaces leave this disabled. */
+  showDiagnostics?: boolean;
   className?: string;
 }
 
@@ -247,11 +271,23 @@ export function MessageRenderer({
   onEditMessage,
   onForkMessage,
   hideCaptureToInbox = false,
+  showDiagnostics = false,
   className,
 }: MessageRendererProps) {
   const isUser = message.role === 'user';
   const isAgent = message.role === 'agent' || message.role === 'assistant';
-  const assistantContent = isUser ? message.content : formatAssistantVisibleContent(message.content, message.evidence);
+  const citationTargets = isUser ? [] : buildInlineCitationTargets(message);
+  const visibleContent = isUser
+    ? message.content
+    : sanitizeAssistantVisibleContent(message.content);
+  const hasRelatedFigures = isAgent
+    && dedupeRelatedFigures(message.relatedFigures ?? []).length > 0;
+  const assistantContent = isUser
+    ? visibleContent
+    : formatAssistantVisibleContent(visibleContent, citationTargets);
+  if (isAgent && !visibleContent && !hasRelatedFigures) {
+    return null;
+  }
 
   return (
     <div className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start', className)}>
@@ -278,76 +314,27 @@ export function MessageRenderer({
           <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.content}</div>
         ) : (
           <div className="prose prose-sm max-w-full break-words text-foreground [overflow-wrap:anywhere] prose-headings:my-2 prose-headings:text-foreground prose-p:my-1.5 prose-p:text-foreground prose-a:break-all prose-a:text-primary prose-strong:font-semibold prose-strong:text-foreground prose-em:text-foreground/90 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-li:text-foreground prose-code:break-words prose-code:rounded prose-code:bg-foreground/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-[12px] prose-code:text-foreground prose-code:before:content-none prose-code:after:content-none prose-pre:max-w-full prose-pre:overflow-x-auto prose-pre:bg-foreground/10">
-            {message.status === 'streaming' && !message.content.trim() ? (
-              <span className="text-foreground/55">AI 思考中…</span>
-            ) : (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  ...markdownTableComponents,
-                  a: ({ href, children }) => {
-                    const citationIndex = parseInlineCitationHref(href);
-                    if (citationIndex !== null) {
-                      const evidence = message.evidence?.[citationIndex];
-                      if (evidence) {
-                        return (
-                          <EvidencePill
-                            evidence={evidence}
-                            projectId={projectId}
-                            selected={
-                              !!selectedEvidenceId &&
-                              (evidence.evidence_id === selectedEvidenceId || evidence.chunk_id === selectedEvidenceId)
-                            }
-                            onActivate={onSelectEvidence}
-                            navigateAfterActivate={navigateEvidenceAfterSelect}
-                            labelOverride={`[${citationIndex + 1}]`}
-                            title={inlineCitationTitle(citationIndex, evidence)}
-                            className="mx-0.5 align-baseline"
-                          />
-                        );
-                      }
-                    }
-                    return <a href={href}>{children}</a>;
-                  },
-                }}
-              >
-                {assistantContent}
-              </ReactMarkdown>
-            )}
+            <AssistantMarkdownContent
+              content={assistantContent}
+              figures={message.relatedFigures}
+              citationTargets={citationTargets}
+              projectId={projectId}
+              selectedEvidenceId={selectedEvidenceId}
+              onSelectEvidence={onSelectEvidence}
+              navigateEvidenceAfterSelect={navigateEvidenceAfterSelect}
+            />
           </div>
         )}
 
-        {isAgent && message.evidence && message.evidence.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {message.evidence.map((ev, i) => (
-              <EvidencePill
-                key={`${ev.evidence_id ?? ev.chunk_id ?? '_'}:${i}`}
-                evidence={ev}
-                projectId={projectId}
-                selected={
-                  !!selectedEvidenceId &&
-                  (ev.evidence_id === selectedEvidenceId || ev.chunk_id === selectedEvidenceId)
-                }
-                onActivate={onSelectEvidence}
-                navigateAfterActivate={navigateEvidenceAfterSelect}
-                showSourceLabels
-              />
-            ))}
-          </div>
-        )}
-
-        {isAgent && message.relatedFigures && message.relatedFigures.length > 0 && (
-          <RelatedFigureStrip figures={message.relatedFigures} projectId={projectId} />
-        )}
-
-        {isAgent && message.analysis_chain && (
-          <div className="mt-2">
-            <AnalysisChainPanel chain={message.analysis_chain} />
-          </div>
-        )}
-
-        {isAgent && message.metadata?.diagnostics && (
-          <MessageDiagnostics diagnostics={message.metadata.diagnostics} />
+        {showDiagnostics && isAgent && message.metadata?.diagnostics && (
+          <MessageDiagnostics
+            diagnostics={message.metadata.diagnostics}
+            citationTargets={citationTargets}
+            projectId={projectId}
+            selectedEvidenceId={selectedEvidenceId}
+            onSelectEvidence={onSelectEvidence}
+            navigateEvidenceAfterSelect={navigateEvidenceAfterSelect}
+          />
         )}
 
         {footer && <div className="mt-2">{footer}</div>}
@@ -399,7 +386,7 @@ export function MessageRenderer({
                   context={{
                     kind: 'dialog',
                     sourceLabel: message.agent?.name ? `对话 · ${message.agent.name}` : '对话回复',
-                    quote: message.content,
+                    quote: visibleContent,
                     locator: message.timestamp ? `时间 ${message.timestamp}` : undefined,
                     rawIds: {
                       message_id: message.id,
@@ -419,7 +406,6 @@ export function MessageRenderer({
             isUser ? 'text-primary-foreground/70' : 'text-foreground/45',
           )}
         >
-          {message.status === 'streaming' && <span aria-live="polite">生成中…</span>}
           {message.status === 'error' && <span className="text-destructive">生成失败</span>}
           {message.timestamp && (
             <time className="ml-auto" dateTime={message.timestamp}>
@@ -442,7 +428,27 @@ function formatTimestamp(iso: string): string {
   }
 }
 
-function formatAssistantVisibleContent(content: string, evidence?: EvidenceRefLike[]): string {
+function buildInlineCitationTargets(message: ChatMessageData): Array<EvidenceRefLike | null> {
+  const targets: Array<EvidenceRefLike | null> = [...(message.evidence ?? [])];
+  const chunks = message.metadata?.diagnostics?.context?.chunks ?? [];
+  for (const chunk of chunks) {
+    const ordinal = citationOrdinal(chunk.index);
+    if (!ordinal) continue;
+    const ref = diagnosticChunkEvidenceRef(chunk);
+    if (ref && !targets[ordinal - 1]) {
+      targets[ordinal - 1] = ref;
+    }
+  }
+  return targets;
+}
+
+function citationOrdinal(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const ordinal = Math.trunc(value);
+  return ordinal > 0 ? ordinal : null;
+}
+
+function formatAssistantVisibleContent(content: string, citationTargets: Array<EvidenceRefLike | null>): string {
   const seen = new Map<string, number>();
   let nextContent = content.replace(/\[(chunk[-_][a-zA-Z0-9_-]+)\]/g, (_match, rawRef: string) => {
     const existing = seen.get(rawRef);
@@ -451,14 +457,36 @@ function formatAssistantVisibleContent(content: string, evidence?: EvidenceRefLi
     seen.set(rawRef, next);
     return `［引用 ${next}］`;
   });
-  if (evidence && evidence.length > 0) {
-    nextContent = nextContent.replace(/\[(\d{1,3})\]/g, (match, rawIndex: string) => {
-      const index = Number.parseInt(rawIndex, 10);
-      if (!Number.isFinite(index) || index < 1 || index > evidence.length) return match;
-      return `[[${index}]](#smartread-citation-${index})`;
-    });
+  if (citationTargets.length > 0) {
+    nextContent = linkNumericCitations(nextContent, citationTargets);
   }
   return nextContent;
+}
+
+function linkNumericCitations(content: string, citationTargets: Array<EvidenceRefLike | null>): string {
+  return transformMarkdownOutsideCode(content, (text) => text.replace(/\[((?:\s*\d{1,3}\s*)(?:[,，]\s*\d{1,3}\s*)*)\]/g, (match, rawGroup: string, offset: number, fullText: string) => {
+    const nextChar = fullText[offset + match.length] ?? '';
+    const previousChar = fullText[offset - 1] ?? '';
+    if (previousChar === '!' || previousChar === '^' || nextChar === '(' || nextChar === '[' || nextChar === ':') return match;
+    const indexes = rawGroup
+      .split(/[,，]/)
+      .map((rawIndex) => Number.parseInt(rawIndex.trim(), 10));
+    if (
+      indexes.length === 0 ||
+      indexes.some((index) => !Number.isFinite(index) || index < 1)
+    ) {
+      return match;
+    }
+    if (!indexes.some((index) => citationTargets[index - 1])) return match;
+    return indexes
+      .map((index) => (citationTargets[index - 1] ? `[${index}](#smartread-citation-${index})` : `[${index}]`))
+      .join(', ');
+  }));
+}
+
+function transformMarkdownOutsideCode(content: string, transform: (text: string) => string): string {
+  const parts = content.split(/(```[\s\S]*?```|`[^`\n]*`)/g);
+  return parts.map((part) => (part.startsWith('`') ? part : transform(part))).join('');
 }
 
 function parseInlineCitationHref(href: string | undefined): number | null {
@@ -474,25 +502,494 @@ function inlineCitationTitle(index: number, evidence: EvidenceRefLike): string {
   return `${source}${page}`;
 }
 
-function RelatedFigureStrip({
+interface MarkdownFigureBlock {
+  markdown: string;
+  figures: ChatRelatedFigure[];
+}
+
+function AssistantMarkdownContent({
+  content,
+  figures,
+  citationTargets,
+  projectId,
+  selectedEvidenceId,
+  onSelectEvidence,
+  navigateEvidenceAfterSelect,
+}: {
+  content: string;
+  figures?: ChatRelatedFigure[];
+  citationTargets: Array<EvidenceRefLike | null>;
+  projectId?: string | null;
+  selectedEvidenceId?: string | null;
+  onSelectEvidence?: (evidence: EvidenceRefLike) => void;
+  navigateEvidenceAfterSelect: boolean;
+}) {
+  const renderMarkdown = (markdown: string) => (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        ...markdownTableComponents,
+        a: ({ href, children }) => {
+          const citationIndex = parseInlineCitationHref(href);
+          if (citationIndex !== null) {
+            const evidence = citationTargets[citationIndex];
+            if (evidence) {
+              return (
+                <EvidencePill
+                  evidence={evidence}
+                  projectId={projectId}
+                  selected={
+                    !!selectedEvidenceId &&
+                    (evidence.evidence_id === selectedEvidenceId || evidence.chunk_id === selectedEvidenceId)
+                  }
+                  onActivate={onSelectEvidence}
+                  navigateAfterActivate={navigateEvidenceAfterSelect}
+                  labelOverride={`[${citationIndex + 1}]`}
+                  title={inlineCitationTitle(citationIndex, evidence)}
+                  className="mx-0.5 align-baseline"
+                />
+              );
+            }
+          }
+          return <a href={href}>{children}</a>;
+        },
+      }}
+    >
+      {markdown}
+    </ReactMarkdown>
+  );
+
+  const uniqueFigures = dedupeRelatedFigures(figures ?? []);
+  if (uniqueFigures.length === 0) {
+    return renderMarkdown(content);
+  }
+  if (!content.trim()) {
+    return (
+      <RelatedFigureDisclosure
+        figures={uniqueFigures}
+        projectId={projectId}
+        selectedEvidenceId={selectedEvidenceId}
+        onSelectEvidence={onSelectEvidence}
+        navigateEvidenceAfterSelect={navigateEvidenceAfterSelect}
+      />
+    );
+  }
+  const blocks = assignRelatedFiguresToMarkdownBlocks(content, uniqueFigures, citationTargets);
+  return (
+    <>
+      {blocks.map((block, index) => (
+        <div key={`${index}:${block.markdown.slice(0, 48)}`} data-answer-block-index={index}>
+          {renderMarkdown(block.markdown)}
+          {block.figures.length > 0 ? (
+            <RelatedFigureDisclosure
+              figures={block.figures}
+              projectId={projectId}
+              selectedEvidenceId={selectedEvidenceId}
+              onSelectEvidence={onSelectEvidence}
+              navigateEvidenceAfterSelect={navigateEvidenceAfterSelect}
+            />
+          ) : null}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function splitMarkdownIntoBlocks(content: string): string[] {
+  const lines = content.split(/\r?\n/);
+  const blocks: string[] = [];
+  let current: string[] = [];
+  let fenceMarker: '`' | '~' | null = null;
+  const flush = () => {
+    const block = current.join('\n').trim();
+    if (block) blocks.push(block);
+    current = [];
+  };
+  for (const line of lines) {
+    const fence = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      const marker = fence[1][0] as '`' | '~';
+      if (fenceMarker === null) fenceMarker = marker;
+      else if (fenceMarker === marker) fenceMarker = null;
+    }
+    if (fenceMarker === null && !line.trim()) {
+      flush();
+      continue;
+    }
+    current.push(line);
+  }
+  flush();
+  return blocks.length > 0 ? blocks : [content];
+}
+
+function dedupeRelatedFigures(figures: ChatRelatedFigure[]): ChatRelatedFigure[] {
+  const seen = new Set<string>();
+  return figures.filter((figure) => {
+    const key = String(figure.asset_path ?? '').trim() || figure.id;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function relatedFigureAssetIdentity(value: string | null | undefined): string {
+  let candidate = String(value ?? '').trim();
+  if (!candidate) return '';
+  if (candidate.startsWith('<') && candidate.endsWith('>')) {
+    candidate = candidate.slice(1, -1).trim();
+  }
+  if (candidate.startsWith('/api/writing/figures/file') || /^https?:\/\//i.test(candidate)) {
+    try {
+      const parsed = new URL(candidate, 'http://127.0.0.1:8000/');
+      if (parsed.pathname === '/api/writing/figures/file') {
+        candidate = parsed.searchParams.get('path') ?? candidate;
+      }
+    } catch {
+      return '';
+    }
+  }
+  try {
+    candidate = decodeURIComponent(candidate);
+  } catch {
+    // Keep the original value when a provider emits a non-URI percent sign.
+  }
+  return candidate.replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/^\/+/, '');
+}
+
+function stripMatchedMarkdownImages(
+  markdown: string,
+  figuresByAsset: ReadonlyMap<string, ChatRelatedFigure>,
+): { markdown: string; matchedFigures: ChatRelatedFigure[] } {
+  const matchedFigures: ChatRelatedFigure[] = [];
+  const nextMarkdown = markdown.replace(
+    /!\[[^\]\n]*\]\(\s*(?:<([^>\n]+)>|([^\s)]+))(?:\s+["'][^"'\n]*["'])?\s*\)/g,
+    (match, angleDestination: string | undefined, bareDestination: string | undefined) => {
+      const assetIdentity = relatedFigureAssetIdentity(angleDestination ?? bareDestination);
+      const figure = assetIdentity ? figuresByAsset.get(assetIdentity) : undefined;
+      if (!figure) return match;
+      matchedFigures.push(figure);
+      return '';
+    },
+  );
+  return {
+    markdown: nextMarkdown.replace(/\n{3,}/g, '\n\n').trim(),
+    matchedFigures,
+  };
+}
+
+function relatedFigureCitationIndex(
+  figure: ChatRelatedFigure,
+  citationTargets: Array<EvidenceRefLike | null>,
+): number | null {
+  const ids = new Set(
+    [figure.anchor_chunk_id, figure.chunk_id]
+      .map((value) => String(value ?? '').trim())
+      .filter(Boolean),
+  );
+  if (ids.size === 0) return null;
+  const index = citationTargets.findIndex((target) => {
+    if (!target) return false;
+    const figureMaterialId = String(figure.material_id ?? '').trim();
+    const targetMaterialId = String(target.material_id ?? '').trim();
+    if (figureMaterialId && targetMaterialId && figureMaterialId !== targetMaterialId) {
+      return false;
+    }
+    return [target.chunk_id, target.evidence_id]
+      .map((value) => String(value ?? '').trim())
+      .some((value) => value && ids.has(value));
+  });
+  return index >= 0 ? index : null;
+}
+
+const LOCAL_LEXICAL_STOP_TOKENS = new Set([
+  'al',
+  'alloy',
+  'alloys',
+  'alsi10mg',
+  'and',
+  'different',
+  'et',
+  'fig',
+  'figure',
+  'for',
+  'from',
+  'joint',
+  'joints',
+  'laser',
+  'of',
+  'related',
+  'results',
+  'show',
+  'showing',
+  'shows',
+  'table',
+  'the',
+  'under',
+  'weld',
+  'welded',
+  'welding',
+  'with',
+  '合金',
+  '图表',
+  '接头',
+  '文献',
+  '显示',
+  '激光',
+  '焊接',
+  '相关',
+  '结果',
+]);
+
+function localLexicalTokens(value: string): Set<string> {
+  const normalized = value.toLowerCase();
+  const tokens = new Set<string>();
+  for (const match of normalized.matchAll(/[a-z0-9][a-z0-9_-]{1,}/g)) {
+    const token = match[0];
+    if (/^(?:19|20)\d{2}$/.test(token)) continue;
+    if (!LOCAL_LEXICAL_STOP_TOKENS.has(token)) tokens.add(token);
+  }
+  for (const match of normalized.matchAll(/[\u3400-\u9fff]+/g)) {
+    const sequence = match[0];
+    if (sequence.length <= 8 && sequence.length >= 2 && !LOCAL_LEXICAL_STOP_TOKENS.has(sequence)) {
+      tokens.add(sequence);
+    }
+    for (let index = 0; index < sequence.length - 1; index += 1) {
+      const token = sequence.slice(index, index + 2);
+      if (!LOCAL_LEXICAL_STOP_TOKENS.has(token)) tokens.add(token);
+    }
+  }
+  return tokens;
+}
+
+function figureBlockLexicalScore(figure: ChatRelatedFigure, block: string): number {
+  const figureText = [figure.caption, figure.material_title]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(' ');
+  const figureTokens = localLexicalTokens(figureText);
+  const blockTokens = localLexicalTokens(block);
+  let score = 0;
+  for (const token of figureTokens) {
+    if (!blockTokens.has(token)) continue;
+    if (token.length >= 6) score += 3;
+    else if (token.length >= 4) score += 2;
+    else score += 1;
+  }
+  return score;
+}
+
+function figureLocatorKeys(value: string): Set<string> {
+  const keys = new Set<string>();
+  const patterns: Array<{ kind: ChatRelatedFigure['kind']; pattern: RegExp }> = [
+    { kind: 'figure', pattern: /\bfig(?:ure)?\s*\.?\s*(\d+[a-z]?)/gi },
+    { kind: 'table', pattern: /\btable\s*\.?\s*(\d+[a-z]?)/gi },
+    { kind: 'formula', pattern: /\b(?:equations?|eqs?)\s*\.?\s*(\d+[a-z]?)/gi },
+    { kind: 'figure', pattern: /图\s*(\d+[a-z]?)/gi },
+    { kind: 'table', pattern: /表\s*(\d+[a-z]?)/gi },
+    { kind: 'formula', pattern: /(?:公式|方程)\s*(\d+[a-z]?)/gi },
+  ];
+  for (const { kind, pattern } of patterns) {
+    for (const match of value.matchAll(pattern)) {
+      keys.add(`${kind}:${match[1].toLowerCase()}`);
+    }
+  }
+  return keys;
+}
+
+function relatedFigureLocatorKeys(figure: ChatRelatedFigure): Set<string> {
+  const labelKeys = figureLocatorKeys(figure.label);
+  return labelKeys.size > 0 ? labelKeys : figureLocatorKeys(figure.caption);
+}
+
+function relatedFigureCandidateIdentity(figure: ChatRelatedFigure): string {
+  return [figure.material_id, figure.chunk_id, figure.label]
+    .map((value) => String(value ?? '').trim())
+    .join(':');
+}
+
+function relatedFigureMatchesEvidenceMaterials(
+  figure: ChatRelatedFigure,
+  evidenceMaterialIds: ReadonlySet<string>,
+): boolean {
+  if (evidenceMaterialIds.size === 0) return true;
+  const materialId = String(figure.material_id ?? '').trim();
+  return !materialId || evidenceMaterialIds.has(materialId);
+}
+
+function assignExplicitlyMentionedFigures(
+  blocks: string[],
+  figures: ChatRelatedFigure[],
+  assignments: ChatRelatedFigure[][],
+  assignedFigureIds: Set<string>,
+  evidenceMaterialIds: ReadonlySet<string>,
+): void {
+  const figureLocatorMap = new Map<string, ChatRelatedFigure[]>();
+  for (const figure of figures) {
+    for (const key of relatedFigureLocatorKeys(figure)) {
+      const candidates = figureLocatorMap.get(key) ?? [];
+      candidates.push(figure);
+      figureLocatorMap.set(key, candidates);
+    }
+  }
+
+  blocks.forEach((block, blockIndex) => {
+    for (const key of figureLocatorKeys(block)) {
+      const locatorCandidates = (figureLocatorMap.get(key) ?? []).filter(
+        (figure) => relatedFigureMatchesEvidenceMaterials(figure, evidenceMaterialIds),
+      );
+      const originalGroupCount = new Set(
+        locatorCandidates.map((figure) => relatedFigureCandidateIdentity(figure)),
+      ).size;
+      const candidates = locatorCandidates.filter(
+        (figure) => !assignedFigureIds.has(figure.id),
+      );
+      if (candidates.length === 0) continue;
+      const groups = new Map<string, ChatRelatedFigure[]>();
+      for (const figure of candidates) {
+        const identity = relatedFigureCandidateIdentity(figure);
+        const group = groups.get(identity) ?? [];
+        group.push(figure);
+        groups.set(identity, group);
+      }
+
+      let selected: ChatRelatedFigure[] | null = null;
+      if (originalGroupCount === 1 && groups.size === 1) {
+        selected = [...groups.values()][0];
+      } else {
+        const ranked = [...groups.values()]
+          .map((group) => ({
+            group,
+            score: Math.max(...group.map((figure) => figureBlockLexicalScore(figure, block))),
+          }))
+          .sort((left, right) => right.score - left.score);
+        if (ranked[0].score >= 4 && ranked[0].score > (ranked[1]?.score ?? -1)) {
+          selected = ranked[0].group;
+        }
+      }
+
+      for (const figure of selected ?? []) {
+        assignments[blockIndex].push(figure);
+        assignedFigureIds.add(figure.id);
+      }
+    }
+  });
+}
+
+function assignRelatedFiguresToMarkdownBlocks(
+  content: string,
+  figures: ChatRelatedFigure[],
+  citationTargets: Array<EvidenceRefLike | null>,
+): MarkdownFigureBlock[] {
+  const figuresByAsset = new Map<string, ChatRelatedFigure>();
+  for (const figure of figures) {
+    const assetIdentity = relatedFigureAssetIdentity(figure.asset_path);
+    if (assetIdentity && !figuresByAsset.has(assetIdentity)) {
+      figuresByAsset.set(assetIdentity, figure);
+    }
+  }
+  const matchedFigureIds = new Set<string>();
+  const strippedBlocks = splitMarkdownIntoBlocks(content).map((markdown) => {
+    const stripped = stripMatchedMarkdownImages(markdown, figuresByAsset);
+    for (const figure of stripped.matchedFigures) {
+      matchedFigureIds.add(figure.id);
+    }
+    return stripped;
+  });
+  const blocks = strippedBlocks.map((block) => block.markdown);
+  const assignments = blocks.map(() => [] as ChatRelatedFigure[]);
+  strippedBlocks.forEach((block, index) => {
+    assignments[index].push(...block.matchedFigures);
+  });
+  const assignedFigureIds = new Set(matchedFigureIds);
+  const evidenceMaterialIds = new Set(
+    citationTargets
+      .map((target) => String(target?.material_id ?? '').trim())
+      .filter(Boolean),
+  );
+  assignExplicitlyMentionedFigures(
+    blocks,
+    figures,
+    assignments,
+    assignedFigureIds,
+    evidenceMaterialIds,
+  );
+  for (const figure of figures) {
+    if (assignedFigureIds.has(figure.id)) continue;
+    const citationIndex = relatedFigureCitationIndex(figure, citationTargets);
+    if (citationIndex !== null) {
+      const citationMarker = `#smartread-citation-${citationIndex + 1}`;
+      const citedBlockIndex = blocks.findIndex((block) => block.includes(citationMarker));
+      if (citedBlockIndex >= 0) {
+        assignments[citedBlockIndex].push(figure);
+        assignedFigureIds.add(figure.id);
+        continue;
+      }
+    }
+    if (!relatedFigureMatchesEvidenceMaterials(figure, evidenceMaterialIds)) {
+      continue;
+    }
+    let bestIndex = -1;
+    let bestScore = 0;
+    blocks.forEach((block, index) => {
+      if (figureLocatorKeys(block).size > 0) return;
+      const score = figureBlockLexicalScore(figure, block);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    });
+    if (bestIndex >= 0 && bestScore >= 6) {
+      assignments[bestIndex].push(figure);
+      assignedFigureIds.add(figure.id);
+    }
+  }
+  return blocks.map((markdown, index) => ({ markdown, figures: assignments[index] }));
+}
+
+function RelatedFigureDisclosure({
   figures,
   projectId,
+  selectedEvidenceId,
+  onSelectEvidence,
+  navigateEvidenceAfterSelect,
 }: {
   figures: ChatRelatedFigure[];
   projectId?: string | null;
+  selectedEvidenceId?: string | null;
+  onSelectEvidence?: (evidence: EvidenceRefLike) => void;
+  navigateEvidenceAfterSelect: boolean;
 }) {
-  const visible = figures.slice(0, 6);
+  const [expanded, setExpanded] = useState(false);
+  const panelId = `related-figures-${useId().replace(/:/g, '')}`;
   return (
-    <div className="mt-3 border-t border-outline-variant/40 pt-2">
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground/65">
+    <div className="not-prose my-2 rounded-md border border-outline-variant/45 bg-surface-lowest/55" data-related-figure-disclosure>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        onClick={() => setExpanded((value) => !value)}
+        className="flex min-h-9 w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-xs font-medium text-foreground/70 transition-colors hover:bg-surface-high focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
+      >
+        {expanded ? <ChevronDown className="h-3.5 w-3.5" aria-hidden /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden />}
         <FileImage className="h-3.5 w-3.5" aria-hidden />
-        <span>相关图像/图表候选</span>
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {visible.map((figure) => (
-          <RelatedFigureCard key={figure.id} figure={figure} projectId={projectId} />
-        ))}
-      </div>
+        <span>{`相关图表 ${figures.length} 项`}</span>
+      </button>
+      {expanded ? (
+        <div
+          id={panelId}
+          className="grid gap-2 border-t border-outline-variant/40 p-2 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]"
+        >
+          {figures.map((figure) => (
+            <RelatedFigureCard
+              key={figure.id}
+              figure={figure}
+              projectId={projectId}
+              selectedEvidenceId={selectedEvidenceId}
+              onSelectEvidence={onSelectEvidence}
+              navigateEvidenceAfterSelect={navigateEvidenceAfterSelect}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -500,16 +997,38 @@ function RelatedFigureStrip({
 function RelatedFigureCard({
   figure,
   projectId,
+  selectedEvidenceId,
+  onSelectEvidence,
+  navigateEvidenceAfterSelect,
 }: {
   figure: ChatRelatedFigure;
   projectId?: string | null;
+  selectedEvidenceId?: string | null;
+  onSelectEvidence?: (evidence: EvidenceRefLike) => void;
+  navigateEvidenceAfterSelect: boolean;
 }) {
   const imageUrl = displayableFigureAssetUrl(projectId, figure.asset_path);
   const caption = figure.caption.trim() || figure.label;
   const sourceLabel = relatedFigureSourceLabel(figure.source);
+  const evidence: EvidenceRefLike = {
+    evidence_id: figure.id,
+    material_id: figure.material_id,
+    chunk_id: figure.chunk_id ?? null,
+    page: figure.page ?? null,
+    bbox: figure.bbox ?? null,
+    bbox_unit: figure.bbox_unit ?? null,
+    quote: figure.quote ?? null,
+    source: figure.material_title ?? figure.label,
+    source_title: figure.material_title ?? null,
+    anchor_kind: 'visual',
+  };
+  const selected = Boolean(
+    selectedEvidenceId
+    && (selectedEvidenceId === evidence.evidence_id || selectedEvidenceId === evidence.chunk_id),
+  );
   return (
     <div className="overflow-hidden rounded-md border border-outline-variant/50 bg-surface-lowest">
-      <div className="flex h-28 items-center justify-center bg-surface-high">
+      <div className="flex h-44 items-center justify-center bg-surface-high">
         {imageUrl ? (
           <ProtectedFigureImage src={imageUrl} alt={`${figure.label} ${caption}`} />
         ) : (
@@ -531,10 +1050,20 @@ function RelatedFigureCard({
             </span>
           ) : null}
         </div>
-        <p className="line-clamp-2 text-[11px] leading-4 text-foreground/55">{caption}</p>
+        <p className="line-clamp-4 text-[11px] leading-4 text-foreground/60" title={caption}>{caption}</p>
         <p className="truncate text-[10px] text-foreground/35">
           {figure.material_title || figure.material_id}
         </p>
+        <EvidencePill
+          evidence={evidence}
+          projectId={projectId}
+          selected={selected}
+          onActivate={onSelectEvidence}
+          navigateAfterActivate={navigateEvidenceAfterSelect}
+          labelOverride={`定位${figure.label}`}
+          title={`在文献中定位${figure.label}`}
+          className="mt-1"
+        />
       </div>
     </div>
   );
@@ -659,7 +1188,21 @@ function displayableFigureAssetUrl(projectId: string | null | undefined, assetPa
  * unless the caller provides its data, preserving legacy surfaces that do not
  * opt in.
  */
-function MessageDiagnostics({ diagnostics }: { diagnostics: ChatMessageDiagnostics }) {
+function MessageDiagnostics({
+  diagnostics,
+  citationTargets,
+  projectId,
+  selectedEvidenceId,
+  onSelectEvidence,
+  navigateEvidenceAfterSelect,
+}: {
+  diagnostics: ChatMessageDiagnostics;
+  citationTargets?: Array<EvidenceRefLike | null>;
+  projectId?: string | null;
+  selectedEvidenceId?: string | null;
+  onSelectEvidence?: (evidence: EvidenceRefLike) => void;
+  navigateEvidenceAfterSelect?: boolean;
+}) {
   return (
     <>
       {diagnostics.insufficient && (
@@ -668,7 +1211,14 @@ function MessageDiagnostics({ diagnostics }: { diagnostics: ChatMessageDiagnosti
           <span className="font-medium">上下文不足：未检索到足够相关的项目材料。</span>
         </div>
       )}
-      <MessageContextDetails diagnostics={diagnostics} />
+      <MessageContextDetails
+        diagnostics={diagnostics}
+        citationTargets={citationTargets}
+        projectId={projectId}
+        selectedEvidenceId={selectedEvidenceId}
+        onSelectEvidence={onSelectEvidence}
+        navigateEvidenceAfterSelect={navigateEvidenceAfterSelect}
+      />
       <MessageJointRecallDetails diagnostics={diagnostics} />
       <MessageRetrievalHealthDetails diagnostics={diagnostics} />
       <MessageSourceRefs chunkRefs={diagnostics.chunkRefs} />
@@ -677,7 +1227,21 @@ function MessageDiagnostics({ diagnostics }: { diagnostics: ChatMessageDiagnosti
   );
 }
 
-function MessageContextDetails({ diagnostics }: { diagnostics: ChatMessageDiagnostics }) {
+function MessageContextDetails({
+  diagnostics,
+  citationTargets,
+  projectId,
+  selectedEvidenceId,
+  onSelectEvidence,
+  navigateEvidenceAfterSelect,
+}: {
+  diagnostics: ChatMessageDiagnostics;
+  citationTargets?: Array<EvidenceRefLike | null>;
+  projectId?: string | null;
+  selectedEvidenceId?: string | null;
+  onSelectEvidence?: (evidence: EvidenceRefLike) => void;
+  navigateEvidenceAfterSelect?: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const chunks = diagnostics.context?.chunks ?? [];
   if (chunks.length === 0) return null;
@@ -697,13 +1261,35 @@ function MessageContextDetails({ diagnostics }: { diagnostics: ChatMessageDiagno
           {chunks.map((chunk) => {
             const safeContent = sanitizeDiagnosticOptionalText(chunk.content);
             const metaItems = diagnosticChunkMetaItems(chunk);
+            const evidenceRef = diagnosticChunkEvidenceRef(
+              chunk,
+              citationTargetForOrdinal(citationTargets, chunk.index),
+            );
+            const ordinal = formatDiagnosticOrdinal(chunk.index);
             return (
               <div
                 key={`${chunk.index}:${chunk.source}`}
                 className="rounded border border-outline-variant/50 bg-surface-lowest p-2 text-xs"
               >
-                <div className="mb-1 font-semibold text-foreground/80">
-                  参考片段 {formatDiagnosticOrdinal(chunk.index)} · {sanitizeDiagnosticText(chunk.source, '来源材料')}
+                <div className="mb-1 flex items-start justify-between gap-2">
+                  <div className="min-w-0 font-semibold text-foreground/80">
+                    参考片段 {ordinal} · {sanitizeDiagnosticText(chunk.source, '来源材料')}
+                  </div>
+                  {evidenceRef ? (
+                    <EvidencePill
+                      evidence={evidenceRef}
+                      projectId={projectId}
+                      selected={
+                        !!selectedEvidenceId &&
+                        (evidenceRef.evidence_id === selectedEvidenceId || evidenceRef.chunk_id === selectedEvidenceId)
+                      }
+                      onActivate={onSelectEvidence}
+                      navigateAfterActivate={navigateEvidenceAfterSelect}
+                      labelOverride={`打开片段 ${ordinal}`}
+                      title={`打开参考片段 ${ordinal}`}
+                      className="shrink-0"
+                    />
+                  ) : null}
                 </div>
                 <div className="mb-1.5 flex flex-wrap gap-1.5 text-[10px] text-foreground/50">
                   <span className="rounded border border-outline-variant/45 bg-surface-low px-1.5 py-0.5">
@@ -728,6 +1314,47 @@ function MessageContextDetails({ diagnostics }: { diagnostics: ChatMessageDiagno
       )}
     </div>
   );
+}
+
+function citationTargetForOrdinal(
+  citationTargets: Array<EvidenceRefLike | null> | undefined,
+  value: unknown,
+): EvidenceRefLike | null {
+  const ordinal = citationOrdinal(value);
+  if (!ordinal) return null;
+  return citationTargets?.[ordinal - 1] ?? null;
+}
+
+function diagnosticChunkEvidenceRef(
+  chunk: ChatMessageContextChunk,
+  fallback?: EvidenceRefLike | null,
+): EvidenceRefLike | null {
+  const chunkId = normalizeDiagnosticId(chunk.chunk_id);
+  const materialId = normalizeDiagnosticId(chunk.material_id);
+  if (!chunkId && !materialId && !fallback) return null;
+  const page = parseDiagnosticPageNumber(chunk.page) ?? fallback?.page ?? null;
+  const source = sanitizeDiagnosticText(chunk.source, fallback?.source ?? fallback?.source_title ?? '来源材料');
+  const text = sanitizeDiagnosticOptionalText(chunk.content) ?? fallback?.text ?? fallback?.quote ?? null;
+  return {
+    ...fallback,
+    evidence_id: chunkId ?? fallback?.evidence_id ?? fallback?.chunk_id ?? materialId ?? fallback?.material_id ?? null,
+    chunk_id: chunkId ?? fallback?.chunk_id ?? null,
+    material_id: materialId ?? fallback?.material_id ?? null,
+    page,
+    bbox: chunk.bbox ?? fallback?.bbox ?? null,
+    bbox_unit: chunk.bbox_unit ?? fallback?.bbox_unit ?? null,
+    source,
+    text,
+    source_title: sanitizeDiagnosticOptionalText(chunk.title) ?? fallback?.source_title ?? null,
+    source_type: fallback?.source_type ?? 'project',
+    source_kind: fallback?.source_kind ?? 'local',
+    source_labels: chunk.source_labels ?? fallback?.source_labels ?? null,
+  };
+}
+
+function normalizeDiagnosticId(value: string | null | undefined): string | null {
+  const raw = String(value ?? '').trim();
+  return raw ? raw : null;
 }
 
 function MessageJointRecallDetails({ diagnostics }: { diagnostics: ChatMessageDiagnostics }) {
@@ -1135,6 +1762,17 @@ function formatDiagnosticPage(value: unknown): string | null {
   if (!/^\d{1,5}$/.test(trimmed)) return null;
   const numeric = Number.parseInt(trimmed, 10);
   return numeric > 0 ? `p.${numeric}` : null;
+}
+
+function parseDiagnosticPageNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.trunc(value);
+  }
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!/^\d{1,5}$/.test(trimmed)) return null;
+  const numeric = Number.parseInt(trimmed, 10);
+  return numeric > 0 ? numeric : null;
 }
 
 function formatDiagnosticOrdinal(index: number): string {

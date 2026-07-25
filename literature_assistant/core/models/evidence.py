@@ -84,12 +84,31 @@ class PdfAnchorFields(BaseModel):
 
     bbox: Optional[List[float]] = Field(
         None,
-        description="[x, y, width, height] when bbox_unit is normalized_ratio",
+        description="Four-number PDF region interpreted only by its explicit bbox_unit.",
     )
     bbox_unit: Optional[PdfBboxUnit] = Field(
         None,
-        description="Coordinate unit for bbox. Missing legacy values default to normalized_ratio.",
+        description="Explicit coordinate unit for bbox; missing or unknown units remove the bbox.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_bbox_without_explicit_unit(cls, value: Any) -> Any:
+        """Degrade unsafe legacy coordinate metadata to a page-only anchor."""
+
+        if not isinstance(value, dict) or value.get("bbox") is None:
+            return value
+        raw_unit = value.get("bbox_unit")
+        try:
+            unit = PdfBboxUnit(raw_unit) if raw_unit is not None else None
+        except (TypeError, ValueError):
+            unit = None
+        if unit is not None:
+            return value
+        sanitized = dict(value)
+        sanitized["bbox"] = None
+        sanitized["bbox_unit"] = None
+        return sanitized
 
     @field_validator("bbox", mode="before")
     @classmethod
@@ -105,7 +124,10 @@ class PdfAnchorFields(BaseModel):
         if self.bbox is None:
             self.bbox_unit = None
             return self
-        unit = self.bbox_unit or PDF_URL_BBOX_UNIT
+        unit = self.bbox_unit
+        if unit is None:
+            self.bbox = None
+            return self
         if not pdf_bbox_matches_unit(self.bbox, unit):
             raise ValueError(f"bbox is outside the declared {unit.value} coordinate range")
         self.bbox_unit = unit
@@ -247,6 +269,8 @@ class EvidencePackReferencePayload(BaseModel):
         source_title: Optional display title for non-project resources.
         source_path: Optional bounded source path for non-project resources.
         joint_score: Optional fused project/wiki score from weighted RRF.
+        quote: Optional bounded exact selector for a project text anchor. It is
+            independent from summary and never contains a visual caption.
     """
 
     _locator_quality: dict[str, Any] = PrivateAttr(default_factory=dict)
@@ -279,6 +303,13 @@ class EvidencePackReferencePayload(BaseModel):
     source_title: Optional[str] = Field(default=None, max_length=160)
     source_path: Optional[str] = Field(default=None, max_length=240)
     joint_score: Optional[float] = Field(default=None, ge=0.0)
+    quote: Optional[str] = Field(default=None, max_length=320)
+    anchor_kind: Optional[Literal["text", "visual"]] = None
+    content_hash: Optional[str] = Field(default=None, min_length=64, max_length=71)
+    locator_hash: Optional[str] = Field(default=None, min_length=64, max_length=71)
+    chunk_hash: Optional[str] = Field(default=None, min_length=64, max_length=71)
+    embedding_input_hash: Optional[str] = Field(default=None, min_length=64, max_length=71)
+    hash_version: Optional[str] = Field(default=None, max_length=128)
 
 
 class EvidenceLocatorCoveragePayload(BaseModel):
@@ -389,6 +420,7 @@ class RetrievalQrelsStatusPayload(BaseModel):
     candidate_qrels_count: int = Field(default=0, ge=0)
     reviewed_qrels_count: int = Field(default=0, ge=0)
     canonical_qrels_count: int = Field(default=0, ge=0)
+    qrels_content_hash: str = Field(default="", max_length=80)
     semantic_quality_claim_allowed: bool = False
     quality_claim: Literal[
         "no_qrels_available",
@@ -541,6 +573,7 @@ class EvidencePackIntegrityGateResponse(BaseModel):
         "scholar_ai_evidence_pack_integrity_gate_v1"
     )
     generated_at: str
+    gate_config_hash: str = Field(min_length=1, max_length=80)
     project_id: str = Field(min_length=1, max_length=128)
     evidence_pack_ref: Optional[str] = Field(default=None, max_length=200)
     query: str = Field(default="", max_length=4096)
@@ -550,6 +583,79 @@ class EvidencePackIntegrityGateResponse(BaseModel):
     checks: List[EvidencePackIntegrityCheckPayload] = Field(default_factory=list, max_length=16)
     sample_refs: List[dict[str, Any]] = Field(default_factory=list, max_length=12)
     next_actions: List[str] = Field(default_factory=list, max_length=12)
+    provenance: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvidenceQrelsReviewBundleRequest(BaseModel):
+    """Request to generate a candidate-only qrels review bundle from an evidence pack.
+
+    Args:
+        project_id: Project that owns the selected evidence pack.
+        evidence_pack_ref: Stable pack id returned by the evidence-pack builder.
+        query: Optional query guard. When supplied, the restored pack must match.
+        max_chunks_per_section: Candidate qrels cap per generated review query.
+    """
+
+    project_id: str = Field(min_length=1, max_length=128)
+    evidence_pack_ref: str = Field(min_length=1, max_length=200)
+    query: str = Field(default="", max_length=4096)
+    max_chunks_per_section: int = Field(default=5, ge=1, le=50)
+
+    @field_validator("project_id", "evidence_pack_ref", "query", mode="before")
+    @classmethod
+    def _strip_text_fields(cls, value: Any) -> Any:
+        if value is None:
+            return ""
+        if not isinstance(value, str):
+            raise ValueError("qrels review bundle text fields must be strings")
+        return value.strip()
+
+
+class EvidenceQrelsReviewBundleResponse(BaseModel):
+    """Candidate-only qrels review bundle generated from a restored evidence pack.
+
+    Args:
+        schema_version: Stable response contract identifier.
+        generated_at: UTC timestamp for the bundle generation.
+        project_id: Project that owns the bundle.
+        evidence_pack_ref: Restored source evidence-pack id.
+        query: Query from the restored evidence pack.
+        bundle_id: Stable local bundle id derived from the pack ref.
+        candidate_only: True because this endpoint never promotes qrels.
+        output_dir: Local directory containing generated review files.
+        package_path: Local source chunk package used by the review toolchain.
+        quality_report_path: Chunk package quality report path.
+        goldset_proposal_path: Candidate goldset proposal path.
+        qrels_candidate_path: Candidate TREC qrels path.
+        judgment_template_path: Manual review JSONL path.
+        standards_markdown_path: Review standard Markdown path.
+        query_count: Number of generated candidate review queries.
+        candidate_qrels_count: Number of candidate qrels rows.
+        qrels_status: Project qrels read projection after writing the bundle.
+        review_queue_item: Review queue item created or updated for humans.
+        outcome: ToolOutcome with next_action.kind=review_qrels.
+        provenance: Bounded generation/audit metadata.
+    """
+
+    schema_version: Literal["scholar-ai-qrels-review-bundle/v1"] = "scholar-ai-qrels-review-bundle/v1"
+    generated_at: str
+    project_id: str = Field(min_length=1, max_length=128)
+    evidence_pack_ref: str = Field(min_length=1, max_length=200)
+    query: str = Field(default="", max_length=4096)
+    bundle_id: str = Field(min_length=1, max_length=120)
+    candidate_only: bool = True
+    output_dir: str = Field(min_length=1)
+    package_path: str = Field(min_length=1)
+    quality_report_path: str = Field(min_length=1)
+    goldset_proposal_path: str = Field(min_length=1)
+    qrels_candidate_path: str = Field(min_length=1)
+    judgment_template_path: str = Field(min_length=1)
+    standards_markdown_path: str = Field(min_length=1)
+    query_count: int = Field(ge=0)
+    candidate_qrels_count: int = Field(ge=0)
+    qrels_status: RetrievalQrelsStatusPayload = Field(default_factory=RetrievalQrelsStatusPayload)
+    review_queue_item: dict[str, Any] = Field(default_factory=dict)
+    outcome: ToolOutcome
     provenance: dict[str, Any] = Field(default_factory=dict)
 
 

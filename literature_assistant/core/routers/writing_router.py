@@ -555,6 +555,7 @@ class _OutlineMaterialContext(TypedDict):
     title: str
     summary: str
     focus_points: list[str]
+    annotation_notes: list[str]
 
 
 def _coerce_outline_level(value: Any, default: int = 1) -> int:
@@ -635,6 +636,65 @@ def _chunk_outline_summary(project_id: str, material_id: str, *, max_chars: int 
     return _bounded_outline_text(" ".join(excerpts), max_chars=max_chars)
 
 
+def _writing_annotation_notes_by_material(
+    material_ids: Sequence[str],
+    *,
+    limit: int = 36,
+) -> dict[str, list[str]]:
+    """Project explicitly authorized annotation notes into writing context.
+
+    Args:
+        material_ids: Project-owned material ids already validated by the caller.
+        limit: Global maximum note records read for one outline request.
+
+    Returns:
+        Bounded note text grouped by material. Notes enabled only for project
+        retrieval or Wiki review are deliberately excluded.
+    """
+
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
+        raise ValueError("writing annotation limit must be between 1 and 100")
+    normalized_ids = [str(item).strip() for item in material_ids if str(item).strip()]
+    if not normalized_ids:
+        return {}
+    try:
+        from routers.annotation_router import (
+            AnnotationUseScope,
+            get_enabled_annotation_notes,
+        )
+
+        eligible = get_enabled_annotation_notes(
+            normalized_ids,
+            AnnotationUseScope.writing_source,
+            limit=limit,
+        )
+    except (ImportError, OSError, RuntimeError, TypeError, ValueError):
+        return {}
+
+    grouped: dict[str, list[str]] = {}
+    for entry in eligible:
+        if not isinstance(entry, Mapping):
+            continue
+        material_id = str(entry.get("material_id") or "").strip()
+        raw_note = entry.get("note")
+        if material_id not in normalized_ids or not isinstance(raw_note, Mapping):
+            continue
+        body = _bounded_outline_text(raw_note.get("body"), max_chars=500)
+        anchor_text = _bounded_outline_text(raw_note.get("anchor_text"), max_chars=240)
+        if not body and not anchor_text:
+            continue
+        notes = grouped.setdefault(material_id, [])
+        if len(notes) >= 4:
+            continue
+        parts = []
+        if body:
+            parts.append(body)
+        if anchor_text:
+            parts.append(f"定位：{anchor_text}")
+        notes.append(_bounded_outline_text("；".join(parts), max_chars=620))
+    return grouped
+
+
 def _collect_outline_material_context(
     store: Any,
     request: GenerateOutlineRequest,
@@ -672,13 +732,17 @@ def _collect_outline_material_context(
     else:
         materials = list(store.list_materials(request.project_id))[:max_materials]
 
+    annotation_notes = _writing_annotation_notes_by_material(
+        [material.material_id for material in materials],
+    )
     context: list[_OutlineMaterialContext] = []
     for material in materials:
         summary = _material_outline_summary(material)
         if not summary:
             summary = _chunk_outline_summary(request.project_id, material.material_id)
+        material_annotations = annotation_notes.get(material.material_id, [])
         title = _bounded_outline_text(material.title or material.title_en, max_chars=180)
-        if not title or not summary:
+        if not title or (not summary and not material_annotations):
             continue
         context.append(
             {
@@ -690,6 +754,7 @@ def _collect_outline_material_context(
                     for item in (material.focus_points or material.focus_points_en or [])
                     if str(item).strip()
                 ][:6],
+                "annotation_notes": material_annotations,
             }
         )
     return context
@@ -703,9 +768,13 @@ def _format_outline_material_context(context: Sequence[_OutlineMaterialContext])
     lines: list[str] = []
     for index, item in enumerate(context, start=1):
         focus = f" Focus: {'; '.join(item['focus_points'])}." if item["focus_points"] else ""
-        lines.append(
-            f"{index}. [{item['material_id']}] {item['title']}: {item['summary']}{focus}"
-        )
+        source_summary = item["summary"] or "No material summary was available."
+        lines.append(f"{index}. [{item['material_id']}] {item['title']}: {source_summary}{focus}")
+        if item["annotation_notes"]:
+            lines.append(
+                "   User-authorized annotations (user notes, not paper findings): "
+                + " | ".join(item["annotation_notes"])
+            )
     return "\n".join(lines)
 
 
@@ -1123,12 +1192,18 @@ def _material_metadata_citation_suggestions(
 @router.get("/projects", response_model=list[ProjectPayload])
 async def list_projects_alias(
     user_id: str | None = Query(None),
+    include_archived: bool = Query(False),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页条数"),
 ) -> list[ProjectPayload]:
     """List all writing projects (alias to /resources/projects)."""
     from routers.resources_router.endpoints_projects import list_projects
-    return await list_projects(user_id=user_id, page=page, page_size=page_size)
+    return await list_projects(
+        user_id=user_id,
+        include_archived=include_archived,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/projects/{project_id}", response_model=ProjectPayload)
@@ -1136,6 +1211,32 @@ async def get_project_alias(project_id: str) -> ProjectPayload:
     """Get a writing project by ID (alias to /resources/project/{id})."""
     from routers.resources_router.endpoints_projects import get_project
     return await get_project(project_id)
+
+
+@router.get("/projects/{project_id}/retention")
+async def get_project_retention_alias(project_id: str) -> dict[str, Any]:
+    """Read persisted archive/restore receipts through the writing API."""
+    from routers.resources_router.endpoints_projects import get_project_retention
+
+    return await get_project_retention(project_id)
+
+
+@router.post("/projects/{project_id}/restore", response_model=ProjectPayload)
+async def restore_project_alias(
+    project_id: str,
+    archive_receipt_id: str = Query(..., min_length=1),
+    expected_updated_at: str | None = Query(None),
+    user_id: str | None = Query(None),
+) -> ProjectPayload:
+    """Restore an archived project through the writing API alias."""
+    from routers.resources_router.endpoints_projects import restore_project
+
+    return await restore_project(
+        project_id,
+        archive_receipt_id=archive_receipt_id,
+        expected_updated_at=expected_updated_at,
+        user_id=user_id,
+    )
 
 
 @router.post("/projects", response_model=ProjectPayload)
@@ -1156,10 +1257,19 @@ async def update_project_status_alias(
 
 
 @router.delete("/projects/{project_id}")
-async def delete_project_alias(project_id: str) -> dict[str, str]:
-    """Delete a writing project (alias to /resources/project/{id})."""
+async def delete_project_alias(
+    project_id: str,
+    expected_updated_at: str | None = Query(None),
+    user_id: str | None = Query(None),
+) -> dict[str, str]:
+    """Archive a writing project through the resources API alias."""
     from routers.resources_router.endpoints_projects import delete_project
-    return await delete_project(project_id)
+
+    return await delete_project(
+        project_id,
+        expected_updated_at=expected_updated_at,
+        user_id=user_id,
+    )
 
 
 # =========================================================================

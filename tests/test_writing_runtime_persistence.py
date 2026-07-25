@@ -752,6 +752,9 @@ async def test_evidence_integrity_gate_blocks_unsupported_and_keeps_unresolved_v
         if signal["category"] == "retrieval_quality" and signal["status"] == "unresolved"
     )
     assert retrieval_signal["drilldown"]["checked_facts"]["semantic_quality_claim_allowed"] is False
+    assert retrieval_signal["next_actions"] == [
+        "Review candidate qrels, then promote reviewed qrels before claiming semantic retrieval quality."
+    ]
     assert any(
         signal["category"] == "writing_lint" and signal["status"] == "block"
         for signal in signals.values()

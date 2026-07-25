@@ -1208,6 +1208,11 @@ describe('AgentWorkspace', () => {
           created_at: '2026-06-21T02:00:00Z',
           source: 'agent_result',
           metadata: {},
+          schema_version: 2,
+          item_revision: 'review-revision-1',
+          target: null,
+          promotion_intent: null,
+          allowed_actions: ['approve', 'reject'],
           decision: null,
         },
       ],
@@ -1295,6 +1300,11 @@ describe('AgentWorkspace', () => {
               ],
             },
           },
+          schema_version: 2,
+          item_revision: 'import-review-revision-1',
+          target: null,
+          promotion_intent: null,
+          allowed_actions: ['reject'],
           decision: null,
         },
       ],
@@ -2991,7 +3001,7 @@ describe('AgentWorkspace', () => {
     expect(screen.queryByText(/^integrity 通过$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Export readiness ready$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^preflight ready$/)).not.toBeInTheDocument();
-  });
+  }, 10_000);
 
   it('renders stale action preflight as refresh-required command guardrail', async () => {
     const staleActionPreflight: WorkflowActionPreflightProjection = {

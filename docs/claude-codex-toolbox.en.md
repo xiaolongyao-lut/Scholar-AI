@@ -63,6 +63,18 @@ Config preview:
 
 The live registry returned by MCP `list_tools` is authoritative. See [agent_mcp_server/CAPABILITY_MAP.md](../agent_mcp_server/CAPABILITY_MAP.md) for the scenario map and tool-to-code locator.
 
+## Tool Loading Profiles
+
+By default, `LITASSIST_MCP_TOOL_PROFILE=full` or an unset value exposes the
+normal toolbox. For Claude, use `LITASSIST_MCP_TOOL_PROFILE=minimal` to load
+only 22 core tools: self-check/navigation, evidence retrieval, the
+`agent_request_create` / `agent_result` answer write-back chain, answer receipt
+read-back, export, and safe source inspection.
+
+Experimental OCR, visual review, translation pack, project pack, and Python
+sandbox tools are not returned by `list_tools` unless
+`LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1` is explicitly set.
+
 ## Proven Chains
 
 | Chain | Tool Order | Output |
@@ -84,7 +96,7 @@ The live registry returned by MCP `list_tools` is authoritative. See [agent_mcp_
 | MCP client | Claude, Codex, or another stdio MCP client. |
 | Local literature workspace | Scholar AI projects and materials must be imported or scannable. |
 | Models and credentials | Managed by the Scholar AI desktop app or backend settings; raw provider keys are not passed as MCP tool arguments. |
-| Experimental tools | OCR/page-image generation, visual review, translation packs, project packs, and bounded Python sandbox require `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1`. |
+| Experimental tools | OCR/page-image generation, visual review, translation packs, project packs, and bounded Python sandbox are registered only when `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1` is set. |
 
 ## Verification
 

@@ -71,6 +71,21 @@ class TestWikiQueryIndex:
         results = index.search("", limit=10)
         assert len(results) == 0
 
+    def test_search_accepts_natural_language_punctuation(self, index: WikiQueryIndex) -> None:
+        index.index_page(
+            Path("alsi10mg.md"),
+            "AlSi10Mg Porosity",
+            "What evidence shows oscillating laser filler welding reduces porosity in SLM AlSi10Mg sheets.",
+        )
+
+        results = index.search(
+            "What evidence shows oscillating laser filler welding reduces porosity in SLM AlSi10Mg sheets?",
+            limit=10,
+        )
+
+        assert len(results) == 1
+        assert results[0].title == "AlSi10Mg Porosity"
+
 
 class TestBuildWikiIndex:
     @pytest.fixture

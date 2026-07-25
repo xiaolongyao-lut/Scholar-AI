@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence, cast
@@ -20,8 +22,10 @@ except ImportError:  # pragma: no cover - package import fallback
     )
 
 try:
+    from pdf_backends import PDFParseResult
     from pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed
 except ImportError:  # pragma: no cover - package import fallback
+    from literature_assistant.core.pdf_backends import PDFParseResult
     from literature_assistant.core.pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed
 
 try:
@@ -42,11 +46,18 @@ class UploadedSourceFile(Protocol):
     path: Path
     fingerprint: str
     size: int
+    created: bool
 
 
 PersistUploadFn = Callable[[str, str, UploadFile], Any]
-LoadDocStoreFn = Callable[[str], dict[str, dict[str, Any]]]
-SaveDocStoreFn = Callable[[str, dict[str, dict[str, Any]]], None]
+DocStore = dict[str, dict[str, Any]]
+DocStoreUpdater = Callable[[DocStore], DocStore]
+LoadDocStoreFn = Callable[[str], DocStore]
+UpdateDocStoreFn = Callable[[str, DocStoreUpdater], DocStore | None]
+SaveDocStoreFn = Callable[[str, DocStore], None]
+CleanupUploadedSourceFn = Callable[[str, UploadedSourceFile], bool]
+
+
 class ExtractPayloadFn(Protocol):
     """Callable shape for document extraction with optional project context."""
 
@@ -104,6 +115,8 @@ class BatchUploadResult:
     skipped_files: int = 0
     filter_report: SmartFilterReport | None = None
     processing_mode: str = "unified_batch"
+    accepted_files: int | None = None
+    completed_files: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the result to the route's JSON response shape."""
@@ -111,6 +124,16 @@ class BatchUploadResult:
         payload: dict[str, Any] = {
             "project_id": self.project_id,
             "total_files": self.total_files,
+            "accepted_files": (
+                self.accepted_files
+                if self.accepted_files is not None
+                else self.successful_files + self.queued_files
+            ),
+            "completed_files": (
+                self.completed_files
+                if self.completed_files is not None
+                else self.successful_files
+            ),
             "successful_files": self.successful_files,
             "duplicate_files": self.duplicate_files,
             "queued_files": self.queued_files,
@@ -134,12 +157,14 @@ class UnifiedBatchUploadService:
         *,
         persist_upload: PersistUploadFn,
         load_doc_store: LoadDocStoreFn,
-        save_doc_store: SaveDocStoreFn,
         extract_payload: ExtractPayloadFn,
         truncate_content: TruncateContentFn,
         ensure_extracted_text: EnsureExtractedTextFn,
         write_material_document_content: WriteMaterialFn,
         safe_upload_filename: SafeFilenameFn,
+        update_doc_store: UpdateDocStoreFn | None = None,
+        save_doc_store: SaveDocStoreFn | None = None,
+        cleanup_uploaded_source: CleanupUploadedSourceFn | None = None,
         filter_engine: SmartFilterEngine | None = None,
     ) -> None:
         """Wire the service to existing router persistence helpers.
@@ -147,7 +172,11 @@ class UnifiedBatchUploadService:
         Args:
             persist_upload: Existing streaming upload-to-source-file helper.
             load_doc_store: Existing project doc-store reader.
-            save_doc_store: Existing project doc-store writer.
+            update_doc_store: Project-locked document-store mutation helper.
+            save_doc_store: Legacy document-store writer. Used only when
+                ``update_doc_store`` is omitted and adapted to read-update-save.
+            cleanup_uploaded_source: Optional ownership-aware callback that
+                removes a newly-created source only when no store row refers to it.
             extract_payload: Existing extraction helper for non-batch fallback.
             truncate_content: Existing content cap helper.
             ensure_extracted_text: Existing extraction failure guard.
@@ -160,7 +189,6 @@ class UnifiedBatchUploadService:
         for name, value in {
             "persist_upload": persist_upload,
             "load_doc_store": load_doc_store,
-            "save_doc_store": save_doc_store,
             "extract_payload": extract_payload,
             "truncate_content": truncate_content,
             "ensure_extracted_text": ensure_extracted_text,
@@ -169,10 +197,33 @@ class UnifiedBatchUploadService:
         }.items():
             if not callable(value):
                 raise TypeError(f"{name} must be callable")
+        if update_doc_store is not None and not callable(update_doc_store):
+            raise TypeError("update_doc_store must be callable when provided")
+        if save_doc_store is not None and not callable(save_doc_store):
+            raise TypeError("save_doc_store must be callable when provided")
+        if cleanup_uploaded_source is not None and not callable(cleanup_uploaded_source):
+            raise TypeError("cleanup_uploaded_source must be callable when provided")
+        if (update_doc_store is None) == (save_doc_store is None):
+            raise ValueError("exactly one of update_doc_store or save_doc_store is required")
+
+        if update_doc_store is None:
+            assert save_doc_store is not None
+
+            def _legacy_update_doc_store(
+                project_id: str,
+                updater: DocStoreUpdater,
+            ) -> DocStore:
+                doc_store = load_doc_store(project_id)
+                updated = updater(doc_store)
+                save_doc_store(project_id, updated)
+                return updated
+
+            update_doc_store = _legacy_update_doc_store
 
         self.persist_upload = persist_upload
         self.load_doc_store = load_doc_store
-        self.save_doc_store = save_doc_store
+        self.update_doc_store = update_doc_store
+        self.cleanup_uploaded_source = cleanup_uploaded_source
         self.extract_payload = extract_payload
         self.truncate_content = truncate_content
         self.ensure_extracted_text = ensure_extracted_text
@@ -216,31 +267,63 @@ class UnifiedBatchUploadService:
         immediate_results: list[dict[str, Any]] = []
         duplicate_files = 0
         failed_files = 0
+        request_fingerprints: set[str] = set()
 
         for upload in uploads:
             filename = self.safe_upload_filename(getattr(upload, "filename", "") or "unnamed")
+            uploaded_source: UploadedSourceFile | None = None
             try:
                 uploaded = await self.persist_upload(normalized_project_id, filename, upload)
-                source = self._coerce_uploaded_source(uploaded)
+                uploaded_source = self._coerce_uploaded_source(uploaded)
+                source = uploaded_source
+                fingerprint = source.fingerprint.strip().lower()
+                if fingerprint in request_fingerprints:
+                    if self.cleanup_uploaded_source is not None:
+                        self.cleanup_uploaded_source(normalized_project_id, source)
+                    duplicate_files += 1
+                    immediate_results.append(
+                        {
+                            "title": filename,
+                            "chunks": 0,
+                            "content_length": 0,
+                            "status": "duplicate",
+                            "reason": "duplicate_in_batch",
+                        }
+                    )
+                    continue
                 duplicate_result = self._deduplicate_uploaded_source(
                     normalized_project_id,
                     filename,
                     source,
                 )
                 if duplicate_result is not None:
+                    if self.cleanup_uploaded_source is not None:
+                        self.cleanup_uploaded_source(normalized_project_id, source)
                     duplicate_files += 1
                     immediate_results.append(duplicate_result)
                     continue
+                # Only reserve after the authoritative store check succeeds;
+                # a failed check must not poison a later same-content retry.
+                request_fingerprints.add(fingerprint)
                 prepared_sources.append(
                     BatchSource(
                         source_path=source.path,
                         display_name=filename,
-                        source_relative_path=filename,
+                        source_relative_path=source.path.name,
                         source_fingerprint=source.fingerprint,
                         source_size=source.size,
                     )
                 )
             except Exception as exc:  # noqa: BLE001 - per-file failure envelope
+                if uploaded_source is not None and self.cleanup_uploaded_source is not None:
+                    try:
+                        self.cleanup_uploaded_source(normalized_project_id, uploaded_source)
+                    except Exception as cleanup_exc:  # noqa: BLE001 - preserve original failure
+                        logger.warning(
+                            "upload_source_cleanup_failed filename=%s err=%s",
+                            filename,
+                            cleanup_exc,
+                        )
                 failed_files += 1
                 immediate_results.append(
                     {
@@ -395,6 +478,8 @@ class UnifiedBatchUploadService:
             skipped_files=len(filtered_out),
             filter_report=filter_report,
             processing_mode=self._processing_mode(selected_sources),
+            accepted_files=successful_files,
+            completed_files=successful_files,
         )
 
     def _persist_payload(
@@ -430,6 +515,9 @@ class UnifiedBatchUploadService:
             source_mtime=source.source_mtime,
             blocks=payload.blocks,
             markdown_full=payload.markdown_full,
+            parser_provenance=payload.parser_provenance,
+            parser_output_sha256=payload.parser_output_sha256,
+            ocr_report=payload.ocr_report,
         )
 
     def _extract_payload_with_project_context(
@@ -473,7 +561,12 @@ class UnifiedBatchUploadService:
                     if isinstance(parsed, Exception):
                         results[source.source_path] = parsed
                     else:
-                        text, blocks, markdown_full = parsed
+                        if isinstance(parsed, PDFParseResult):
+                            text, blocks, markdown_full = parsed.legacy_tuple()
+                            parser_provenance = parsed.provenance
+                        else:
+                            text, blocks, markdown_full = parsed
+                            parser_provenance = None
                         if blocks is None and str(project_id or "").strip():
                             try:
                                 visual_payload = self._extract_payload_with_project_context(
@@ -493,6 +586,10 @@ class UnifiedBatchUploadService:
                             content=text,
                             blocks=blocks,
                             markdown_full=markdown_full,
+                            parser_provenance=parser_provenance,
+                            parser_output_sha256=(
+                                f"sha256:{hashlib.sha256(text.encode('utf-8')).hexdigest()}"
+                            ),
                         )
                         results[source.source_path] = cast(
                             ExtractedDocumentPayload,
@@ -520,14 +617,18 @@ class UnifiedBatchUploadService:
         self,
         pdf_paths: list[Path],
         max_workers: int | None,
-    ) -> list[tuple[str, list[Any] | None, str | None] | Exception] | None:
+    ) -> list[
+        PDFParseResult | tuple[str, list[Any] | None, str | None] | Exception
+    ] | None:
         if not pdf_paths:
             return []
         try:
             from pdf_backends import get_pdf_backend
 
             backend = get_pdf_backend()
-            parse_batch = getattr(backend, "parse_batch", None)
+            parse_batch = getattr(backend, "parse_batch_with_provenance", None)
+            if not callable(parse_batch):
+                parse_batch = getattr(backend, "parse_batch", None)
             if not callable(parse_batch):
                 return None
             workers = self._resolve_marker_workers(max_workers)
@@ -542,19 +643,35 @@ class UnifiedBatchUploadService:
         filename: str,
         uploaded: UploadedSourceFile,
     ) -> dict[str, Any] | None:
+        uploaded_path = getattr(uploaded, "path", None)
+        source_relative_path = uploaded_path.name if isinstance(uploaded_path, Path) else filename
         doc_store = self.load_doc_store(project_id)
         for existing_mid, existing_doc in doc_store.items():
             if str(existing_doc.get("source_fingerprint") or "") != uploaded.fingerprint:
                 continue
-            if not str(existing_doc.get("source_relative_path") or "").strip():
-                existing_doc["source_relative_path"] = filename
-                existing_doc["source_size"] = int(existing_doc.get("source_size") or uploaded.size)
-                doc_store[existing_mid] = existing_doc
-                self.save_doc_store(project_id, doc_store)
+            matched_record: dict[str, Any] | None = None
+
+            def _repair_source(current_store: DocStore) -> DocStore:
+                nonlocal matched_record
+                current = current_store.get(existing_mid)
+                if not isinstance(current, dict):
+                    return current_store
+                if str(current.get("source_fingerprint") or "") != uploaded.fingerprint:
+                    return current_store
+                if not str(current.get("source_relative_path") or "").strip():
+                    current["source_relative_path"] = source_relative_path
+                    current["source_size"] = int(current.get("source_size") or uploaded.size)
+                    current_store[existing_mid] = current
+                matched_record = dict(current)
+                return current_store
+
+            self.update_doc_store(project_id, _repair_source)
+            if matched_record is None:
+                continue
             return {
                 "material_id": existing_mid,
-                "title": str(existing_doc.get("title") or filename),
-                "content_length": len(str(existing_doc.get("content") or "")),
+                "title": str(matched_record.get("title") or filename),
+                "content_length": len(str(matched_record.get("content") or "")),
                 "chunks": 0,
                 "status": "duplicate",
             }
@@ -619,8 +736,11 @@ class UnifiedBatchUploadService:
                 raise ValueError("display_name must be non-empty")
             if not source.source_relative_path.strip():
                 raise ValueError("source_relative_path must be non-empty")
-            if not source.source_fingerprint.strip():
-                raise ValueError("source_fingerprint must be non-empty")
+            if not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                source.source_fingerprint.strip().lower(),
+            ):
+                raise ValueError("source_fingerprint must use sha256:<64 lowercase hex>")
             if source.source_size < 0:
                 raise ValueError("source_size must be non-negative")
         return normalized

@@ -19,6 +19,7 @@ import {
   ProjectDocumentResource,
   ProjectChunksResponse,
   MaterialChunksResponse,
+  FormulaCandidatesResponse,
   FigureTableCandidateResource,
   FigureAssetResource,
   CreateFigureAssetRequest,
@@ -700,6 +701,18 @@ export class WritingBackendService {
     const response = await this.client.get<MaterialChunksResponse>(
       `/resources/material/${materialId}/chunks`,
       { params: { project_id: projectId } }
+    );
+    return response.data;
+  }
+
+  async listFormulaCandidates(
+    projectId: string,
+    materialId: string,
+    limit: number = 200,
+  ): Promise<FormulaCandidatesResponse> {
+    const response = await this.client.get<FormulaCandidatesResponse>(
+      `/resources/material/${encodeURIComponent(materialId)}/formula-candidates`,
+      { params: { project_id: projectId, limit } },
     );
     return response.data;
   }

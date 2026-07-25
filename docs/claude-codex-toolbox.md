@@ -54,6 +54,7 @@ Scholar AI backend
 |---|---|---|
 | 源码查看 | `source.list_tree`, `source.search`, `source.read_file`, `source.read_symbols`, `source.inspect_routes` | 在白名单内查看 Scholar AI 源码、符号、路由和入口。 |
 | 文献项目 | `literature.list_projects`, `literature.list_materials`, `literature.read_material`, `literature.get_material_chunks` | 找到项目、材料、元数据和页码级 chunk。 |
+| 合规文献获取 | `literature.acquisition_status`, `literature.acquisition_search`, `literature.acquisition_download_queue`, `literature.acquisition_download_run`, `literature.acquisition_artifact_import` | 通过 allowlist、OA 访问证据、人工 gate 和 PDF 校验显式获取并导入文献。 |
 | 检索证据 | `literature.search_refs`, `literature.evidence_pack_build`, `literature.evidence_integrity_gate`, `literature.knowledge_context_receipt` | 检索 refs，构建证据包，检查完整性，并生成上下文 receipt。 |
 | OCR 与材料处理 | `literature.ocr_status`, `literature.ocr_engines`, `literature.ocr_health`, `literature.ocr_material` | 检查 OCR 策略、引擎状态和授权后的材料处理路径。 |
 | 图表与引用 | `literature.figures_candidates`, `literature.figures_generate`, `literature.citations_sources`, `literature.citations_detect_overlap` | 抽取图表候选、生成图表材料、检查引用来源和重叠。 |
@@ -63,11 +64,23 @@ Scholar AI backend
 
 完整实时工具注册表以 MCP `list_tools` 返回结果为准。工具到代码的映射见 [agent_mcp_server/CAPABILITY_MAP.md](../agent_mcp_server/CAPABILITY_MAP.md)。
 
+## 工具加载档位
+
+默认 `LITASSIST_MCP_TOOL_PROFILE=full` 或不设置时暴露常规工具箱。
+Claude 侧建议设置 `LITASSIST_MCP_TOOL_PROFILE=minimal`，只加载 22 个核心工具：
+自检导航、检索取证、`agent_request_create` / `agent_result` 回写链、
+answer receipt 读取、导出和安全源码查看。
+
+实验 OCR、视觉审阅、翻译包、项目包和 Python sandbox 默认不出现在
+`list_tools`；需要时显式设置 `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1`。
+8 个 `literature.acquisition_*` 合规获取工具只在 full profile 暴露，不进入 minimal profile。
+
 ## 已打通的工具链路
 
 | 链路 | 工具调用顺序 | 产出 |
 |---|---|---|
 | 检索取证 | `literature.list_projects` -> `literature.search_refs` -> `literature.evidence_pack_build` -> `literature.evidence_integrity_gate` | 带 ref、页码、材料来源和完整性检查的证据包。 |
+| 合规文献获取 | `literature.acquisition_status` -> `literature.acquisition_search` -> `literature.acquisition_search_run` -> `literature.acquisition_download_queue` -> `literature.acquisition_download_run` -> `literature.acquisition_artifact_import` | 有界 SearchRun、可恢复 DownloadJob、校验后 artifact 和 ImportReceipt。 |
 | 上下文装载证明 | `literature.agent_resource_read` -> `literature.knowledge_context_receipt` -> provider tool-call transcript | 证明模型实际收到 bounded context 和 receipt hash。 |
 | 单篇研读 | `literature.read_material` -> `literature.get_material_chunks` -> `literature.figures_candidates` -> `literature.agent_handoff_card` | 可交接的单篇阅读摘要、图表候选和后续任务卡。 |
 | 写作导出 | `literature.evidence_pack_build` -> `literature.outline_generate` -> `literature.academic_writing_lint` -> `literature.export_docx` | 带证据引用和格式检查的 Word 写作输出。 |
@@ -84,7 +97,7 @@ Scholar AI backend
 | MCP 客户端 | Claude、Codex 或任何支持 stdio MCP 的客户端。 |
 | 本地文献库 | 已导入或可扫描的 Scholar AI 项目和材料。 |
 | 模型与凭证 | 由 Scholar AI 桌面端或后端配置管理；MCP 工具不接收原始 provider key。 |
-| 实验工具 | OCR/page-image、视觉审阅、翻译包、项目包和受限 Python sandbox 需要显式设置 `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1`。 |
+| 实验工具 | OCR/page-image、视觉审阅、翻译包、项目包和受限 Python sandbox 需要显式设置 `LITASSIST_MCP_ENABLE_EXPERIMENTAL_TOOLS=1` 才会注册到 MCP 工具清单。 |
 
 ## 验证方式
 
@@ -109,4 +122,7 @@ MCP server 测试：
 - 原始 API key、`.env`、运行时 token、数据库、日志、本机 MCP 客户端配置不属于公开读取面。
 - 后端不可用时返回结构化错误，连续失败会触发熔断。
 - 工具调用审计写入 `workspace_artifacts/agent_mcp_workflows/.audit/`。
-- 外部全文获取工具应与 Scholar AI 分离；论文全文来源、机构访问、开放获取和合规责任由用户自行确认。
+- 合规获取仅调用来源 allowlist；普通网页链接不自动视为 OA，必须匹配精确 `AccessEvidence` 才能排队。
+- 搜索、排队、联网下载和导入彼此分离，不因上一步成功而隐式执行下一步。
+- 遇到登录、验证码、付费墙、机构授权、robots 或其他访问门时停止。用户完成可见步骤后，只有
+  `literature.acquisition_gate_resolve(confirm_user_completed=true)` 可以重新排队，工具不得绕过访问控制。

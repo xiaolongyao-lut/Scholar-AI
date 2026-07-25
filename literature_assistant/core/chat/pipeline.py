@@ -16,6 +16,13 @@ from typing import Final, Literal, NotRequired, Protocol, TypedDict, cast
 LegacyChatMode = Literal["direct", "literature_qa", "inspiration"]
 ProductSurface = Literal["smart_read"]
 EvidenceSourceKind = Literal["local", "web", "mcp"]
+EvidenceAnchorKind = Literal["text", "visual"]
+EvidenceRole = Literal[
+    "selected_content",
+    "current_material",
+    "cited_project_material",
+    "project_context",
+]
 
 UNIFIED_SMART_READ_MODE: Final[LegacyChatMode] = "literature_qa"
 DISCUSSION_SESSION_SOURCE: Final[str] = "multi_agent_discussion"
@@ -85,13 +92,22 @@ class ContextChunkLike(Protocol):
     relevance_score: float | None
     chunk_id: str | None
     material_id: str | None
+    evidence_role: EvidenceRole
     section_title: str | None
     source_labels: list[str]
     page: int | str | None
     source_hint: str | None
+    rerank_score: float | None
     figure_candidate: str | None
     figure_candidate_detail: Mapping[str, object] | None
     image_paths: list[str]
+    quote: str | None
+    anchor_kind: EvidenceAnchorKind | None
+    content_hash: str | None
+    locator_hash: str | None
+    chunk_hash: str | None
+    embedding_input_hash: str | None
+    hash_version: str | None
 
 
 class EvidenceReferenceRecord(TypedDict):
@@ -99,11 +115,13 @@ class EvidenceReferenceRecord(TypedDict):
 
     chunk_id: str
     material_id: str | None
+    evidence_role: EvidenceRole
     source: str
     text: str
     quote: str
     label: str
     score: float | None
+    rerank_score: float | None
     source_labels: list[str]
     page: int | str | None
     source_hint: str | None
@@ -115,6 +133,12 @@ class EvidenceReferenceRecord(TypedDict):
     figure_candidate: NotRequired[str | None]
     figure_candidate_detail: NotRequired[Mapping[str, object] | None]
     image_paths: NotRequired[list[str]]
+    anchor_kind: NotRequired[EvidenceAnchorKind | None]
+    content_hash: NotRequired[str | None]
+    locator_hash: NotRequired[str | None]
+    chunk_hash: NotRequired[str | None]
+    embedding_input_hash: NotRequired[str | None]
+    hash_version: NotRequired[str | None]
 
 
 class SessionSummaryRecord(TypedDict):
@@ -146,6 +170,21 @@ class AssistantTurnRecord(TypedDict, total=False):
     context_metadata: Mapping[str, object] | None
     tokens_used: Mapping[str, object]
     evidence_refs: list[Mapping[str, object]]
+    visual_evidence_refs: list[Mapping[str, object]]
+    visual_observations: list[Mapping[str, object]]
+    visual_observation_refs: list[Mapping[str, object]]
+    top_evidence_refs: list[Mapping[str, object]]
+    answer_origin: str
+    answer_model_origin: str
+    answer_model: str
+    retrieval_provider: str
+    generated_in: str
+    evidence_pack_ref: str | None
+    retrieval_diagnostics: Mapping[str, object]
+    qrels_status: Mapping[str, object]
+    evidence_gate_status: Mapping[str, object]
+    output_language: str
+    lifecycle_state: str
     analysis_chain: Mapping[str, object]
     inspiration_context: Mapping[str, object]
 
@@ -479,6 +518,19 @@ def extract_source_labels(payload: Mapping[str, object], fallback: str) -> list[
     return labels or [normalized_fallback]
 
 
+def _coerce_evidence_role(value: object) -> EvidenceRole:
+    """Return a stable semantic source role for current and persisted evidence."""
+
+    if value in {
+        "selected_content",
+        "current_material",
+        "cited_project_material",
+        "project_context",
+    }:
+        return cast(EvidenceRole, value)
+    return "project_context"
+
+
 def render_context_strings(chunks: Sequence[ContextChunkLike]) -> list[str]:
     """Render retrieved chunks into provider-facing context strings.
 
@@ -499,6 +551,9 @@ def render_context_strings(chunks: Sequence[ContextChunkLike]) -> list[str]:
     context_strings: list[str] = []
     for chunk in chunks:
         meta_parts = [f"source={chunk.source}"]
+        meta_parts.append(
+            f"evidence_role={_coerce_evidence_role(getattr(chunk, 'evidence_role', None))}"
+        )
         if chunk.chunk_id:
             meta_parts.append(f"chunk_id={chunk.chunk_id}")
         if chunk.material_id:
@@ -588,6 +643,43 @@ def _coerce_optional_bbox_unit(value: object) -> str | None:
     return None
 
 
+def _bbox_matches_unit(bbox: list[float], unit: str) -> bool:
+    """Return whether a finite bbox fits its declared coordinate unit."""
+
+    if unit == "normalized_ratio":
+        x, y, width, height = bbox
+        return (
+            x >= 0.0
+            and y >= 0.0
+            and width > 0.0
+            and height > 0.0
+            and x <= 1.0
+            and y <= 1.0
+            and x + width <= 1.0001
+            and y + height <= 1.0001
+        )
+    if unit == "normalized_1000":
+        return all(0.0 <= item <= 1000.0 for item in bbox)
+    return all(item >= 0.0 for item in bbox)
+
+
+def _coerce_optional_bbox_anchor(
+    bbox_value: object,
+    unit_value: object,
+) -> tuple[list[float], str] | None:
+    """Return a validated bbox/unit pair without inferring half an anchor."""
+
+    bbox = _coerce_optional_bbox(bbox_value)
+    if bbox is None:
+        return None
+    unit = _coerce_optional_bbox_unit(unit_value)
+    if unit is None:
+        return None
+    if not _bbox_matches_unit(bbox, unit):
+        return None
+    return bbox, unit
+
+
 def _coerce_overlap_tokens(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -621,12 +713,13 @@ def _coerce_figure_detail(value: object) -> Mapping[str, object] | None:
     if not isinstance(value, Mapping):
         return None
     allowed_keys = {
+        "id",
         "figure_id",
+        "kind",
         "label",
         "caption",
+        "chunk_id",
         "page",
-        "bbox",
-        "bbox_unit",
         "image_paths",
         "asset_path",
         "source",
@@ -641,11 +734,6 @@ def _coerce_figure_detail(value: object) -> Mapping[str, object] | None:
             if coerced_paths:
                 detail[key] = coerced_paths
             continue
-        if key == "bbox":
-            bbox = _coerce_optional_bbox(raw)
-            if bbox is not None:
-                detail[key] = bbox
-            continue
         if isinstance(raw, str):
             cleaned = raw.strip()
             if cleaned:
@@ -653,6 +741,9 @@ def _coerce_figure_detail(value: object) -> Mapping[str, object] | None:
             continue
         if isinstance(raw, int | float) and not isinstance(raw, bool):
             detail[key] = raw
+    anchor = _coerce_optional_bbox_anchor(value.get("bbox"), value.get("bbox_unit"))
+    if anchor is not None:
+        detail["bbox"], detail["bbox_unit"] = anchor
     return detail or None
 
 
@@ -663,17 +754,28 @@ def _source_mapping(source: object) -> Mapping[str, object]:
         "index": getattr(source, "index", None),
         "source": getattr(source, "source", None),
         "content": getattr(source, "content", None),
+        "raw_content": getattr(source, "raw_content", None),
+        "compressed_text": getattr(source, "compressed_text", None),
+        "quote": getattr(source, "quote", None),
         "score": getattr(source, "relevance_score", None),
         "chunk_id": getattr(source, "chunk_id", None),
         "material_id": getattr(source, "material_id", None),
+        "evidence_role": getattr(source, "evidence_role", None),
         "source_labels": getattr(source, "source_labels", None),
         "page": getattr(source, "page", None),
         "source_hint": getattr(source, "source_hint", None),
+        "rerank_score": getattr(source, "rerank_score", None),
         "bbox": getattr(source, "bbox", None),
         "bbox_unit": getattr(source, "bbox_unit", None),
         "figure_candidate": getattr(source, "figure_candidate", None),
         "figure_candidate_detail": getattr(source, "figure_candidate_detail", None),
         "image_paths": getattr(source, "image_paths", None),
+        "anchor_kind": getattr(source, "anchor_kind", None),
+        "content_hash": getattr(source, "content_hash", None),
+        "locator_hash": getattr(source, "locator_hash", None),
+        "chunk_hash": getattr(source, "chunk_hash", None),
+        "embedding_input_hash": getattr(source, "embedding_input_hash", None),
+        "hash_version": getattr(source, "hash_version", None),
     }
 
 
@@ -710,11 +812,12 @@ def build_evidence_reference_record(
     chunk_id = clean_optional_text(raw.get("chunk_id"))
     material_id = clean_optional_text(raw.get("material_id"))
     text = str(
-        raw.get("text")
-        or raw.get("compressed_text")
-        or raw.get("quote")
+        raw.get("raw_content")
+        or raw.get("text")
         or raw.get("content")
         or raw.get("source_text")
+        or raw.get("compressed_text")
+        or raw.get("quote")
         or ""
     ).strip()
     source_label = str(
@@ -748,11 +851,13 @@ def build_evidence_reference_record(
     record: EvidenceReferenceRecord = {
         "chunk_id": chunk_id,
         "material_id": material_id,
+        "evidence_role": _coerce_evidence_role(raw.get("evidence_role")),
         "source": source_label,
         "text": text,
-        "quote": str(raw.get("quote") or text[:300]).strip(),
+        "quote": str(raw.get("quote") or "").strip(),
         "label": label,
         "score": _coerce_optional_float(raw.get("score")),
+        "rerank_score": _coerce_optional_float(raw.get("rerank_score")),
         "source_labels": extract_source_labels(raw, normalized_label),
         "page": _coerce_optional_page(raw.get("page")),
         "source_hint": clean_optional_text(raw.get("source_hint")),
@@ -760,10 +865,9 @@ def build_evidence_reference_record(
         "query_overlap_tokens": _coerce_overlap_tokens(raw.get("query_overlap_tokens")),
         "source_kind": kind,
     }
-    bbox = _coerce_optional_bbox(raw.get("bbox"))
-    if bbox is not None:
-        record["bbox"] = bbox
-        record["bbox_unit"] = _coerce_optional_bbox_unit(raw.get("bbox_unit")) or "normalized_ratio"
+    anchor = _coerce_optional_bbox_anchor(raw.get("bbox"), raw.get("bbox_unit"))
+    if anchor is not None:
+        record["bbox"], record["bbox_unit"] = anchor
     figure_candidate = clean_optional_text(raw.get("figure_candidate"))
     if figure_candidate is not None:
         record["figure_candidate"] = figure_candidate[:260]
@@ -773,6 +877,24 @@ def build_evidence_reference_record(
     image_paths = _coerce_image_paths(raw.get("image_paths"))
     if image_paths:
         record["image_paths"] = image_paths
+    anchor_kind = clean_optional_text(raw.get("anchor_kind"))
+    if anchor_kind in {"text", "visual"}:
+        record["anchor_kind"] = cast(EvidenceAnchorKind, anchor_kind)
+    content_hash = clean_optional_text(raw.get("content_hash"))
+    if content_hash is not None:
+        record["content_hash"] = content_hash
+    locator_hash = clean_optional_text(raw.get("locator_hash"))
+    if locator_hash is not None:
+        record["locator_hash"] = locator_hash
+    chunk_hash = clean_optional_text(raw.get("chunk_hash"))
+    if chunk_hash is not None:
+        record["chunk_hash"] = chunk_hash
+    embedding_input_hash = clean_optional_text(raw.get("embedding_input_hash"))
+    if embedding_input_hash is not None:
+        record["embedding_input_hash"] = embedding_input_hash
+    hash_version = clean_optional_text(raw.get("hash_version"))
+    if hash_version is not None:
+        record["hash_version"] = hash_version
     return record
 
 
@@ -1346,6 +1468,61 @@ def append_session_turns(
         "tokens_used": assistant_turn.get("tokens_used") or {},
         "evidence_refs": assistant_turn.get("evidence_refs") or [],
     }
+    visual_evidence_refs = assistant_turn.get("visual_evidence_refs")
+    if isinstance(visual_evidence_refs, list):
+        assistant_message["visual_evidence_refs"] = [
+            dict(ref)
+            for ref in visual_evidence_refs
+            if isinstance(ref, Mapping)
+        ]
+    visual_observations = assistant_turn.get("visual_observations")
+    if isinstance(visual_observations, list):
+        assistant_message["visual_observations"] = [
+            dict(observation)
+            for observation in visual_observations
+            if isinstance(observation, Mapping)
+        ]
+    visual_observation_refs = assistant_turn.get("visual_observation_refs")
+    if isinstance(visual_observation_refs, list):
+        assistant_message["visual_observation_refs"] = [
+            dict(ref)
+            for ref in visual_observation_refs
+            if isinstance(ref, Mapping)
+        ]
+    answer_origin = assistant_turn.get("answer_origin")
+    if isinstance(answer_origin, str) and answer_origin.strip():
+        assistant_message["answer_origin"] = answer_origin.strip()
+    answer_model_origin = assistant_turn.get("answer_model_origin")
+    if isinstance(answer_model_origin, str) and answer_model_origin.strip():
+        assistant_message["answer_model_origin"] = answer_model_origin.strip()
+    retrieval_provider = assistant_turn.get("retrieval_provider")
+    if isinstance(retrieval_provider, str) and retrieval_provider.strip():
+        assistant_message["retrieval_provider"] = retrieval_provider.strip()
+    for key in (
+        "answer_model",
+        "generated_in",
+        "evidence_pack_ref",
+        "output_language",
+        "lifecycle_state",
+    ):
+        value = assistant_turn.get(key)
+        if isinstance(value, str) and value.strip():
+            assistant_message[key] = value.strip()
+    for key in (
+        "retrieval_diagnostics",
+        "qrels_status",
+        "evidence_gate_status",
+    ):
+        value = assistant_turn.get(key)
+        if isinstance(value, Mapping):
+            assistant_message[key] = dict(value)
+    top_evidence_refs = assistant_turn.get("top_evidence_refs")
+    if isinstance(top_evidence_refs, list):
+        assistant_message["top_evidence_refs"] = [
+            dict(ref)
+            for ref in top_evidence_refs
+            if isinstance(ref, Mapping)
+        ]
     analysis_chain = assistant_turn.get("analysis_chain")
     if isinstance(analysis_chain, Mapping):
         assistant_message["analysis_chain"] = dict(analysis_chain)

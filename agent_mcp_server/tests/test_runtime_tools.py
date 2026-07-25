@@ -14,9 +14,13 @@ from lit_assistant_mcp.tools.runtime import RuntimeTools
 class FakeBackend:
     """Small fake backend client for URL and params assertions."""
 
-    def __init__(self) -> None:
+    def __init__(self, base_url: str | None = "http://127.0.0.1:8000") -> None:
+        self.base_url = base_url
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
         self.responses: dict[tuple[str, str], dict[str, Any]] = {}
+
+    def current_base_url(self) -> str | None:
+        return self.base_url
 
     def set_json(self, path: str, data: Any) -> None:
         self.responses[("json", path)] = {
@@ -134,6 +138,71 @@ def test_config_status_calls_health(tools: RuntimeTools, backend: FakeBackend) -
     assert backend.calls[-1] == ("json", "/health", None)
 
 
+def test_agent_sidebar_url_uses_current_runtime_port(backend: FakeBackend) -> None:
+    """Codex side-browser URL follows the live Scholar AI runtime base URL."""
+
+    backend.base_url = "http://127.0.0.1:4861"
+    backend.set_json("/health", {"status": "ok", "version": "1.3.0"})
+    tools = RuntimeTools(backend=backend)
+
+    result = tools.agent_sidebar_url(
+        project_id="proj_93fda911ed2b",
+        conversation_id="sidebar receipt/1",
+    )
+
+    assert result["is_error"] is False
+    data = result["data"]
+    assert data["schema_version"] == "scholar-ai-agent-sidebar-url/v1"
+    assert data["status"] == "ready"
+    assert data["url"] == (
+        "http://127.0.0.1:4861/agent-sidebar?"
+        "project_id=proj_93fda911ed2b&conversation_id=sidebar+receipt%2F1"
+    )
+    assert data["base_url"] == "http://127.0.0.1:4861"
+    assert data["uses_existing_backend"] is True
+    assert data["launches_backend"] is False
+    assert backend.calls[-1] == ("json", "/health", None)
+
+
+def test_agent_sidebar_url_reports_unavailable_without_runtime() -> None:
+    """Missing runtime should return a guided error instead of assuming port 8000."""
+
+    backend = FakeBackend(base_url=None)
+    tools = RuntimeTools(backend=backend)
+
+    result = tools.agent_sidebar_url(project_id="project-1")
+
+    assert result["is_error"] is True
+    assert result["error_code"] == "backend_unavailable"
+    assert result["data"]["status"] == "unavailable"
+    assert result["data"]["url"] is None
+    assert result["data"]["project_id"] == "project-1"
+    assert backend.calls == []
+
+
+def test_agent_sidebar_url_rejects_non_loopback_backend() -> None:
+    """The side-browser route should only be advertised for local Scholar AI."""
+
+    backend = FakeBackend(base_url="https://example.invalid")
+    tools = RuntimeTools(backend=backend)
+
+    result = tools.agent_sidebar_url()
+
+    assert result["is_error"] is True
+    assert result["error_code"] == "backend_not_loopback"
+    assert result["data"]["url"] is None
+    assert backend.calls == []
+
+
+def test_agent_sidebar_url_rejects_fragment_characters(backend: FakeBackend) -> None:
+    """Query ids are bounded and cannot smuggle fragments or control chars."""
+
+    tools = RuntimeTools(backend=backend)
+
+    with pytest.raises(ValueError, match="project_id contains unsupported characters"):
+        tools.agent_sidebar_url(project_id="project#bad")
+
+
 def test_launch_desktop_uses_existing_runtime_attach_without_close_tool(tmp_path: Path, backend: FakeBackend) -> None:
     """Explicit launch requests should open/reopen the existing source desktop surface."""
 
@@ -184,6 +253,21 @@ def test_launch_desktop_rejects_unsafe_initial_path_before_launch(tmp_path: Path
     with patch("lit_assistant_mcp.tools.runtime.ensure_desktop_runtime_attached") as attach:
         with pytest.raises(ValueError, match="initial_path"):
             tools.launch_desktop(initial_path="https://example.invalid")
+
+    attach.assert_not_called()
+
+
+def test_launch_desktop_rejects_agent_sidebar_initial_path_before_launch(
+    tmp_path: Path,
+    backend: FakeBackend,
+) -> None:
+    """The native desktop must not open the narrow Codex side-browser route."""
+
+    tools = RuntimeTools(backend=backend, repo_root=tmp_path)
+
+    with patch("lit_assistant_mcp.tools.runtime.ensure_desktop_runtime_attached") as attach:
+        with pytest.raises(ValueError, match="agent-sidebar"):
+            tools.launch_desktop(initial_path="/agent-sidebar?project_id=proj_93fda911ed2b")
 
     attach.assert_not_called()
 
@@ -404,6 +488,287 @@ def test_search_refs_adds_conventional_total_field(tools: RuntimeTools, backend:
 
     assert result["data"]["total_refs"] == 2
     assert result["data"]["total"] == 2
+
+
+def _acquisition_search_run_payload(candidate_count: int = 12) -> dict[str, Any]:
+    """Return a complete backend SearchRun fixture with actionable OA ids."""
+
+    candidates: list[dict[str, Any]] = []
+    for index in range(candidate_count):
+        evidence_id = f"evidence-{index}"
+        candidates.append(
+            {
+                "candidate_id": f"candidate-{index}",
+                "run_id": "run-1",
+                "project_id": "project-1",
+                "title": f"Candidate {index}",
+                "authors": [f"Author {author}" for author in range(10)],
+                "year": 2020 + index % 5,
+                "published_date": "2024-01-01",
+                "abstract": "A" * 900,
+                "doi": f"10.1000/{index}",
+                "arxiv_id": f"2401.{index:05d}",
+                "source_platforms": ["arxiv"],
+                "landing_urls": [f"https://arxiv.org/abs/2401.{index:05d}"],
+                "pdf_candidates": [
+                    {
+                        "pdf_url": f"https://arxiv.org/pdf/2401.{index:05d}",
+                        "source_platform": "arxiv",
+                        "access_evidence": {
+                            "evidence_id": evidence_id,
+                            "candidate_id": f"candidate-{index}",
+                            "source_platform": "arxiv",
+                            "kind": "official_repository",
+                            "access_route": "open_access",
+                            "pdf_url": f"https://arxiv.org/pdf/2401.{index:05d}",
+                            "statement": "Official repository PDF",
+                            "license": None,
+                            "observed_at": "2026-07-16T00:00:00Z",
+                        },
+                    }
+                ],
+            }
+        )
+    return {
+        "run_id": "run-1",
+        "query": {
+            "project_id": "project-1",
+            "query": "retrieval augmented generation",
+            "sources": ["arxiv"],
+            "max_results": candidate_count,
+            "year_from": 2020,
+            "year_to": 2025,
+        },
+        "status": "completed",
+        "requested_sources": ["arxiv"],
+        "attempted_sources": ["arxiv"],
+        "candidates": candidates,
+        "source_errors": [],
+        "version": 1,
+        "created_at": "2026-07-16T00:00:00Z",
+        "updated_at": "2026-07-16T00:00:01Z",
+        "completed_at": "2026-07-16T00:00:01Z",
+    }
+
+
+def _verified_import_receipt_payload() -> dict[str, Any]:
+    """Return a complete ImportReceipt v2 payload for MCP pass-through tests."""
+
+    source_fingerprint = f"sha256:{'a' * 64}"
+    return {
+        "receipt_id": "import-1",
+        "artifact_id": "artifact-1",
+        "project_id": "project-1",
+        "candidate_id": "candidate-1",
+        "material_id": "material-1",
+        "status": "completed",
+        "source_fingerprint": source_fingerprint,
+        "receipt_schema_version": "scholar-ai-import-receipt/v2",
+        "publication_state": "verified",
+        "publication_evidence": {
+            "schema_version": "scholar-ai-import-publication-evidence/v1",
+            "verifier_version": "scholar-ai-material-publication-verifier/v1",
+            "project_id": "project-1",
+            "material_id": "material-1",
+            "source_fingerprint": source_fingerprint,
+            "source_size_bytes": 4096,
+            "document_content_sha256": f"sha256:{'b' * 64}",
+            "chunk_manifest_version": 2,
+            "chunk_manifest_sha256": f"sha256:{'c' * 64}",
+            "chunk_hash_version": "scholar-ai-chunk-hash/v1",
+            "material_chunk_file_sha256": f"sha256:{'d' * 64}",
+            "material_chunk_count": 1,
+            "material_chunk_root_sha256": f"sha256:{'e' * 64}",
+            "chunk_store_version": "f" * 64,
+            "fts_schema_version": "scholar-ai-chunk-fts5-index/v1",
+            "fts_chunk_store_version": "f" * 64,
+            "fts_indexed_count": 1,
+            "fts_skipped_count": 0,
+            "fts_material_indexed_count": 1,
+            "revision_fingerprint": f"sha256:{'1' * 64}",
+            "revision_receipt_id": "mrev-1",
+            "revision_applied_at": "2026-07-16T00:00:01Z",
+            "verified_at": "2026-07-16T00:00:02Z",
+            "evidence_fingerprint": f"sha256:{'2' * 64}",
+        },
+        "runtime_session_id": "session-1",
+        "runtime_job_id": "runtime-job-1",
+        "open_url": "/workbench/paper/material-1",
+        "error_message": None,
+        "version": 2,
+        "created_at": "2026-07-16T00:00:00Z",
+        "updated_at": "2026-07-16T00:00:02Z",
+    }
+
+
+def test_acquisition_status_and_search_use_shared_http_service(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Acquisition MCP methods must stay on the bounded backend HTTP contract."""
+
+    tools.acquisition_status(project_id="project-1", limit=25)
+    assert backend.calls[-1] == (
+        "json",
+        "/api/acquisition/status",
+        {"limit": 25, "project_id": "project-1"},
+    )
+
+    backend.set_json("/api/acquisition/search", _acquisition_search_run_payload())
+    result = tools.acquisition_search(
+        project_id="project-1",
+        query="retrieval augmented generation",
+        sources=["arxiv", "arxiv"],
+        max_results=12,
+        year_from=2020,
+        year_to=2025,
+    )
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/acquisition/search",
+        {
+            "params": None,
+            "payload": {
+                "project_id": "project-1",
+                "query": "retrieval augmented generation",
+                "sources": ["arxiv"],
+                "max_results": 12,
+                "year_from": 2020,
+                "year_to": 2025,
+            },
+        },
+    )
+    assert result["data"]["schema_version"] == "scholar-ai-mcp-acquisition-search-run/v1"
+    assert result["data"]["candidate_count"] == 12
+    assert result["data"]["returned_count"] == 10
+    assert result["data"]["next_candidate_offset"] == 10
+    assert result["data"]["candidates"][0]["candidate_id"] == "candidate-0"
+    assert result["data"]["candidates"][0]["access_evidence_refs"][0]["evidence_id"] == "evidence-0"
+    assert "abstract" not in result["data"]["candidates"][0]
+
+
+def test_acquisition_search_run_reads_compact_candidate_page(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Durable search-run reads page compact candidates without external work."""
+
+    backend.set_json("/api/acquisition/search-runs/run-1", _acquisition_search_run_payload())
+
+    result = tools.acquisition_search_run("run-1", candidate_offset=10, candidate_limit=2)
+
+    assert backend.calls[-1] == ("json", "/api/acquisition/search-runs/run-1", None)
+    assert result["data"]["candidate_offset"] == 10
+    assert result["data"]["returned_count"] == 2
+    assert result["data"]["has_more"] is False
+    assert [item["candidate_id"] for item in result["data"]["candidates"]] == [
+        "candidate-10",
+        "candidate-11",
+    ]
+
+
+def test_acquisition_search_rejects_invalid_source_and_year_range(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Invalid external search bounds must fail before any backend request."""
+
+    with pytest.raises(ValueError, match="source id"):
+        tools.acquisition_search("project-1", "query", sources=["https://example.invalid"])
+    with pytest.raises(ValueError, match="year_to"):
+        tools.acquisition_search("project-1", "query", year_from=2025, year_to=2020)
+    assert backend.calls == []
+
+
+def test_acquisition_download_actions_and_import_are_explicit(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Queue, network execution, controls, gates, and import remain separate actions."""
+
+    tools.acquisition_download_queue(
+        project_id="project-1",
+        candidate_id="candidate-1",
+        access_evidence_id="evidence-1",
+        max_bytes=4096,
+    )
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/acquisition/downloads",
+        {
+            "params": None,
+            "payload": {
+                "project_id": "project-1",
+                "candidate_id": "candidate-1",
+                "access_evidence_id": "evidence-1",
+                "max_bytes": 4096,
+            },
+        },
+    )
+
+    tools.acquisition_download_run("download:1")
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/acquisition/downloads/download%3A1/run",
+        {"params": None, "payload": {}},
+    )
+    tools.acquisition_download_control("download-1", "pause")
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/acquisition/downloads/download-1/control",
+        {"params": None, "payload": {"action": "pause"}},
+    )
+    calls_before_gate = len(backend.calls)
+    with pytest.raises(ValueError, match="confirm_user_completed"):
+        tools.acquisition_gate_resolve("gate-1")
+    assert len(backend.calls) == calls_before_gate
+
+    tools.acquisition_gate_resolve("gate-1", confirm_user_completed=True)
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/acquisition/gates/gate-1/resolve",
+        {"params": None, "payload": {}},
+    )
+    receipt_payload = _verified_import_receipt_payload()
+    backend.set_json("/api/acquisition/artifacts/artifact-1/import", receipt_payload)
+    imported = tools.acquisition_artifact_import("artifact-1")
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/acquisition/artifacts/artifact-1/import",
+        {"params": None, "payload": {}},
+    )
+    assert imported["data"] == receipt_payload
+
+    backend.set_json("/api/acquisition/receipts/import%3A1", receipt_payload)
+    read_back = tools.acquisition_import_receipt("import:1")
+    assert backend.calls[-1] == (
+        "json",
+        "/api/acquisition/receipts/import%3A1",
+        None,
+    )
+    assert read_back["data"] == receipt_payload
+    assert read_back["data"]["publication_state"] == "verified"
+    assert read_back["data"]["publication_evidence"]["evidence_fingerprint"] == (
+        receipt_payload["publication_evidence"]["evidence_fingerprint"]
+    )
+
+
+def test_acquisition_runtime_preserves_backend_domain_error(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Stable acquisition denial codes should survive the MCP runtime wrapper."""
+
+    backend.set_error("/api/acquisition/downloads", "access_evidence_not_found")
+
+    result = tools.acquisition_download_queue(
+        "project-1",
+        "candidate-1",
+        "evidence-missing",
+    )
+
+    assert result["is_error"] is True
+    assert result["error_code"] == "access_evidence_not_found"
 
 
 def test_academic_english_status_uses_knowledge_endpoint(tools: RuntimeTools, backend: FakeBackend) -> None:
@@ -1473,6 +1838,48 @@ def test_evidence_pack_build_posts_bounded_query_payload(tools: RuntimeTools, ba
     )
 
 
+def test_qrels_review_bundle_posts_candidate_only_request(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """qrels_review_bundle should expose the candidate-only backend action."""
+
+    backend.set_json(
+        "/api/evidence-pack/qrels-review-bundle",
+        {
+            "schema_version": "scholar-ai-qrels-review-bundle/v1",
+            "project_id": "project-1",
+            "evidence_pack_ref": "evidence_pack:abc",
+            "bundle_id": "qrels_review_123",
+            "candidate_only": True,
+            "candidate_qrels_count": 2,
+            "outcome": {"next_action": {"kind": "review_qrels"}},
+        },
+    )
+
+    result = tools.qrels_review_bundle(
+        " project-1 ",
+        " evidence_pack:abc ",
+        query=" query ",
+        max_chunks_per_section=3,
+    )
+
+    assert result["is_error"] is False
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/evidence-pack/qrels-review-bundle",
+        {
+            "params": None,
+            "payload": {
+                "project_id": "project-1",
+                "evidence_pack_ref": "evidence_pack:abc",
+                "max_chunks_per_section": 3,
+                "query": "query",
+            },
+        },
+    )
+
+
 def test_project_scan_folder_submits_runtime_job(tools: RuntimeTools, backend: FakeBackend) -> None:
     """project_scan_folder should submit scan-folder as an async runtime job."""
     backend.set_json(
@@ -2075,6 +2482,208 @@ def test_chat_ask_posts_to_backend_without_credentials(
     assert "api_key" not in str(payload)
 
 
+def test_chat_ask_persisting_posts_to_smart_read_path(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Persisting chat should use /api/chat and carry sidebar receipt fields."""
+
+    backend.set_json("/api/chat", {"response": "ok", "session_id": "session-1"})
+
+    result = tools.chat_ask_persisting(
+        "summarize evidence",
+        "project-1",
+        session_id="session-1",
+        evidence_pack_ref="evidence_pack:abc",
+    )
+
+    assert result["is_error"] is False
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/chat",
+        {
+            "params": None,
+            "payload": {
+                "query": "summarize evidence",
+                "project_id": "project-1",
+                "tier": "balanced",
+                "answer_origin": "internal_smartread",
+                "generated_in": "mcp_sidebar",
+                "session_id": "session-1",
+                "evidence_pack_ref": "evidence_pack:abc",
+            },
+        },
+    )
+
+
+def test_chat_ask_persisting_accepts_smart_read_cost_tier_aliases(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """MCP prompt bridge should accept the same UX cost tiers as /agent-sidebar."""
+
+    backend.set_json("/api/chat", {"response": "ok", "session_id": "session-1"})
+
+    expected = {
+        "low": "fast",
+        "medium": "balanced",
+        "high": "thorough",
+        "xhigh": "thorough",
+        "max": "thorough",
+    }
+    for alias, backend_tier in expected.items():
+        tools.chat_ask_persisting("summarize evidence", "project-1", tier=alias)
+        assert backend.calls[-1][2]["payload"]["tier"] == backend_tier
+
+
+def test_chat_ask_persisting_rejects_unknown_tier(
+    tools: RuntimeTools,
+) -> None:
+    """Unknown cost tiers should fail before the backend receives a request."""
+
+    with pytest.raises(ValueError, match="tier must be one of"):
+        tools.chat_ask_persisting("summarize evidence", "project-1", tier="mediumish")
+
+
+def test_answer_receipt_tools_read_backend_receipt_routes(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Receipt MCP helpers should stay read-only HTTP projections."""
+
+    backend.set_json("/api/chat/answer-receipts", {"project_id": "project-1", "receipts": []})
+    backend.set_json(
+        "/api/chat/answer-receipts/session%201",
+        {"conversation_id": "session 1", "receipt": {}, "staleness": {"status": "saved"}},
+    )
+
+    listed = tools.answer_receipt_list("project-1", limit=7)
+    read = tools.answer_receipt_read("session 1")
+
+    assert listed["is_error"] is False
+    assert read["is_error"] is False
+    assert backend.calls[-2] == (
+        "json",
+        "/api/chat/answer-receipts",
+        {"project_id": "project-1", "limit": 7},
+    )
+    assert backend.calls[-1] == (
+        "json",
+        "/api/chat/answer-receipts/session%201",
+        None,
+    )
+
+
+def test_answer_receipt_revalidate_posts_default_dry_run(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Receipt revalidate should post to the existing receipt route."""
+
+    backend.set_json(
+        "/api/chat/answer-receipts/session%201/revalidate",
+        {"conversation_id": "session 1", "applied": False, "status": "ready"},
+    )
+
+    result = tools.answer_receipt_revalidate("session 1", top_k=7)
+
+    assert result["is_error"] is False
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/chat/answer-receipts/session%201/revalidate",
+        {"params": None, "payload": {"apply": False, "top_k": 7}},
+    )
+
+
+def test_answer_receipt_markdown_projects_existing_receipt(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Receipt Markdown should be a read-only projection of the receipt route."""
+
+    backend.set_json(
+        "/api/chat/answer-receipts/session%201",
+        {
+            "conversation_id": "session 1",
+            "project_id": "project-1",
+            "answer": "The answer cites bounded evidence [E1].",
+            "receipt": {
+                "receipt_schema_version": "scholar-ai-answer-receipt/v1",
+                "evidence_pack_ref": "evidence_pack:abc",
+                "evidence_gate_status": {"status": "passed"},
+                "qrels_status": {
+                    "schema_version": "retrieval-qrels-status/v1",
+                    "status": "candidate",
+                    "semantic_quality_claim_allowed": False,
+                },
+                "retrieval_diagnostics": {
+                    "retrieval_method": "hybrid",
+                    "retrieval_provider": "local",
+                    "rerank_status": "active",
+                    "fallback_reason": "",
+                },
+                "workflow_refs": {
+                    "read_only": True,
+                    "agent_request_id": "agentreq_abc",
+                    "runtime_job_id": "job_abc",
+                    "project_id": "project-1",
+                    "workflow_passport_ref": {
+                        "ref_type": "workflow_passport_projection",
+                        "endpoint": "/runtime/workflow-passport",
+                        "read_only": True,
+                    },
+                    "research_action_lifecycle_ref": {
+                        "ref_type": "research_action_lifecycle_projection",
+                        "endpoint": "/runtime/research-action-lifecycle",
+                        "read_only": True,
+                    },
+                    "agent_handoff_card_ref": {
+                        "ref_type": "agent_handoff_card_projection",
+                        "endpoint": "/runtime/job/job_abc/agent-handoff-card",
+                        "read_only": True,
+                    },
+                },
+                "staleness_status": "saved",
+                "top_evidence_refs": [
+                    {
+                        "ref_id": "chunk:1",
+                        "source_title": "Source A",
+                        "page": 3,
+                    }
+                ],
+            },
+            "staleness": {"status": "saved", "warnings": [], "mismatches": []},
+        },
+    )
+
+    result = tools.answer_receipt_markdown("session 1")
+
+    assert result["is_error"] is False
+    assert backend.calls[-1] == (
+        "json",
+        "/api/chat/answer-receipts/session%201",
+        None,
+    )
+    data = result["data"]
+    assert data["projection_schema_version"] == "scholar-ai-answer-receipt-markdown/v1"
+    assert data["source_tool"] == "literature.answer_receipt_read"
+    assert data["source_receipt"]["receipt"]["receipt_schema_version"] == "scholar-ai-answer-receipt/v1"
+    markdown = data["markdown"]
+    assert "### Answer" in markdown
+    assert "### Evidence Status" in markdown
+    assert "- evidence_pack_ref: `evidence_pack:abc`" in markdown
+    assert "- qrels: `candidate`; quality claim allowed: no" in markdown
+    assert "- retrieval: method=hybrid; provider=local; rerank=active; fallback=none" in markdown
+    assert "### Runtime Refs" in markdown
+    assert "- scope: request=agentreq_abc; job=job_abc; project=project-1" in markdown
+    assert "- workflow passport: `/runtime/workflow-passport`; read_only=yes" in markdown
+    assert "- action lifecycle: `/runtime/research-action-lifecycle`; read_only=yes" in markdown
+    assert "- handoff card: `/runtime/job/job_abc/agent-handoff-card`; read_only=yes" in markdown
+    assert "- [E1] Source A, page 3, chunk:1" in markdown
+    assert "### Next Actions" in markdown
+    assert "Build a candidate qrels review bundle" in markdown
+
+
 def test_agent_request_create_posts_bounded_envelope(
     tools: RuntimeTools,
     backend: FakeBackend,
@@ -2105,6 +2714,28 @@ def test_agent_request_create_posts_bounded_envelope(
     assert payload["payload"]["output_targets"]["wiki_candidate"] is True
     assert payload["payload"]["output_targets"]["graph_candidate"] is True
     assert payload["payload"]["output_targets"]["evolution_capture"] is True
+
+
+def test_agent_request_create_sidebar_answer_disables_capture_defaults(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Sidebar-answer jobs are pure QA by default."""
+
+    backend.set_json("/api/agent-bridge/request", {"request_id": "agentreq_sidebar"})
+
+    tools.agent_request_create(
+        intent="sidebar_answer",
+        user_text="answer from evidence",
+        project_id="project-1",
+    )
+
+    targets = backend.calls[-1][2]["payload"]["output_targets"]
+    assert targets["runtime_job"] is True
+    assert targets["smart_read_conversation"] is True
+    assert targets["wiki_candidate"] is False
+    assert targets["graph_candidate"] is False
+    assert targets["evolution_capture"] is False
 
 
 def test_wiki_import_defaults_to_dry_run_and_calls_local_route(
@@ -2758,6 +3389,58 @@ def test_evidence_integrity_gate_can_validate_supplied_evidence_pack(
                     "retrieval_method": "lexical",
                     "rerank_status": "unavailable",
                 },
+            },
+        },
+    )
+
+
+def test_evidence_integrity_gate_can_validate_pack_ref_without_refs(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """A pack ref alone should still use the query-scoped evidence-pack gate."""
+
+    backend.set_json(
+        "/api/evidence-pack/integrity-gate",
+        {
+            "schema_version": "scholar_ai_evidence_pack_integrity_gate_v1",
+            "generated_at": "2026-07-02T00:00:00+00:00",
+            "project_id": "project-visual",
+            "evidence_pack_ref": "evidence_pack:visual",
+            "query": "AlSi10Mg 外观 图片",
+            "status": "passed",
+            "visual_intent": {"requires_image_evidence": True},
+            "summary": {
+                "evidence_ref_count": 1,
+                "evidence_pack_restore_status": "restored",
+            },
+            "checks": [],
+            "sample_refs": [{"ref_id": "chunk:visual", "has_image": True}],
+            "next_actions": ["Read the top evidence refs."],
+            "provenance": {
+                "derived_from": ["/api/evidence-pack/integrity-gate"],
+                "read_only": True,
+            },
+        },
+    )
+
+    result = tools.evidence_integrity_gate(
+        project_id=" project-visual ",
+        evidence_pack_ref=" evidence_pack:visual ",
+    )
+
+    assert result["is_error"] is False
+    assert result["data"]["summary"]["evidence_pack_restore_status"] == "restored"
+    assert backend.calls[-1] == (
+        "post_json",
+        "/api/evidence-pack/integrity-gate",
+        {
+            "params": None,
+            "payload": {
+                "project_id": "project-visual",
+                "query": "",
+                "evidence_refs": [],
+                "evidence_pack_ref": "evidence_pack:visual",
             },
         },
     )
@@ -3575,6 +4258,21 @@ def test_agent_request_list_uses_small_query_params(
         "json",
         "/api/agent-bridge/requests",
         {"limit": 12, "status": "started", "project_id": "project-1", "source": "mcp"},
+    )
+
+
+def test_codex_handoff_latest_uses_small_projection_endpoint(
+    tools: RuntimeTools,
+    backend: FakeBackend,
+) -> None:
+    """Latest Codex handoff reads the backend projection instead of local cache."""
+
+    tools.codex_handoff_latest(project_id="project-1")
+
+    assert backend.calls[-1] == (
+        "json",
+        "/api/agent-bridge/codex-handoff/latest",
+        {"project_id": "project-1"},
     )
 
 

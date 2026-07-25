@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, BookOpen, FileText, MessageSquare, Users2 } from 'lucide-react';
+import { ArrowRight, BookOpen, FileText, MessageSquare, Sparkles, Users2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type ChatMessageData } from '@/components/chat/Message';
 import { Conversation } from '@/components/chat/Conversation';
 import { EvidencePill, type EvidenceRefLike } from '@/components/evidence/EvidencePill';
 import { DiscussionPanel } from '@/components/DiscussionPanel';
 import { listFeatureFlags } from '@/services/featureFlagsApi';
+import type { AnswerOrigin } from '@/services/intelligentChatApi';
 
 export interface SmartReadStarter {
   id: string;
@@ -23,7 +24,7 @@ interface SmartReadInspectorProps {
   /** Starter suggestions shown in the idle state (§ 18 D2). */
   starters?: SmartReadStarter[];
   /** Called when user sends a message. */
-  onSend: (text: string) => void;
+  onSend: (text: string, options?: { answerOrigin?: AnswerOrigin }) => void;
   /** True while the active smart-read request is streaming. */
   responding?: boolean;
   /** Cancels the active smart-read request for the current scope. */
@@ -85,6 +86,7 @@ export function ResearchWorkbenchInspector({
   const [tab, setTab] = useState<InspectorTab>('smart-read');
   const [embedUnified, setEmbedUnified] = useState(true);
   const [draft, setDraft] = useState('');
+  const [answerOrigin, setAnswerOrigin] = useState<AnswerOrigin>('internal_smartread');
   useEffect(() => {
     let cancelled = false;
     listFeatureFlags()
@@ -129,7 +131,7 @@ export function ResearchWorkbenchInspector({
         <Conversation
           messages={messages}
           onSubmit={({ text }) => {
-            onSend(text);
+            onSend(text, { answerOrigin });
             setDraft('');
           }}
           projectId={projectId}
@@ -145,12 +147,19 @@ export function ResearchWorkbenchInspector({
           navigateEvidenceAfterSelect={navigateEvidenceAfterSelect}
           placeholder="提出关于本文的问题或高亮一段文字"
           composerHint="提示：按 Ctrl/Cmd + Enter 快速发送"
+          composerContext={(
+            <AnswerOriginSwitch
+              value={answerOrigin}
+              disabled={responding}
+              onChange={setAnswerOrigin}
+            />
+          )}
           projectReasoningBias={projectReasoningBias}
           contextChips={contextChips}
           emptyState={
             <SmartReadEmpty
               starters={starters ?? DEFAULT_STARTERS}
-              onPick={(s) => onSend(s.prompt ?? s.label)}
+              onPick={(s) => onSend(s.prompt ?? s.label, { answerOrigin })}
             />
           }
         />
@@ -171,6 +180,54 @@ export function ResearchWorkbenchInspector({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function AnswerOriginSwitch({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: AnswerOrigin;
+  disabled?: boolean;
+  onChange: (next: AnswerOrigin) => void;
+}) {
+  const options: Array<{ id: AnswerOrigin; label: string; icon: typeof Sparkles; title: string }> = [
+    { id: 'internal_smartread', label: '文献助手', icon: Sparkles, title: '由文献助手使用已配置模型生成回答' },
+    { id: 'external_agent', label: '智能体', icon: Users2, title: '只准备证据，由 Codex/Claude 等外部智能体回答' },
+  ];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="回答来源"
+      className="inline-grid grid-cols-2 rounded-md border border-outline-variant/60 bg-surface-lowest p-1"
+    >
+      {options.map((option) => {
+        const Icon = option.icon;
+        const selected = value === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(option.id)}
+            disabled={disabled}
+            title={option.title}
+            className={cn(
+              'inline-flex min-h-8 items-center justify-center gap-1.5 rounded px-2.5 text-[11px] font-medium transition-colors',
+              selected
+                ? 'bg-primary text-primary-foreground'
+                : 'text-foreground/60 hover:bg-surface-high hover:text-foreground disabled:hover:bg-transparent',
+              'disabled:cursor-not-allowed disabled:opacity-45',
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" aria-hidden />
+            {option.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

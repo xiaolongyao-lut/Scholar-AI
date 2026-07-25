@@ -4,12 +4,13 @@ import hashlib
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from literature_assistant.core.project_paths import (
     REPO_ROOT,
@@ -33,7 +34,15 @@ from literature_assistant.core.wiki.doctor import WikiDoctor
 from literature_assistant.core.wiki.graph import WikiGraphStore, build_wiki_graph
 from literature_assistant.core.wiki.models import WikiPageKind, WikiPageStatus, make_stable_slug
 from literature_assistant.core.wiki.observability import default_wiki_observability_sink
-from literature_assistant.core.wiki.page_store import AUTO_END, AUTO_START, WikiPageStore, stable_slug
+from literature_assistant.core.wiki.page_store import (
+    AUTO_END,
+    AUTO_START,
+    PageRevisionConflictError,
+    WikiPageStore,
+    atomic_write_text,
+    render_frontmatter,
+    stable_slug,
+)
 from literature_assistant.core.wiki.permissions import (
     DEFAULT_WIKI_OWNER,
     PERMISSIONS_KEY,
@@ -50,14 +59,22 @@ from literature_assistant.core.wiki.query import (
     WikiQueryIndex,
     WikiSearchResult,
     build_source_manifest,
+    build_wiki_index,
     build_knowledge_refs,
     wiki_query_with_fallback,
 )
 from literature_assistant.core.wiki.review_queue import (
+    AnnotationNoteReviewTarget,
     ReviewItemKind,
     ReviewItemStatus,
+    ReviewPromotionIntent,
+    ReviewPromotionReceipt,
+    ReviewPromotionWithdrawalReceipt,
     ReviewQueue,
+    WikiPageRevisionReviewTarget,
+    make_annotation_note_review_target,
     make_review_item,
+    make_wiki_page_revision_review_target,
 )
 from literature_assistant.core.wiki.source_registry import (
     ChunkInput,
@@ -121,6 +138,26 @@ class WikiStatusResponse(BaseModel):
     manifest_drilldown: WikiManifestDrilldownPayload = Field(default_factory=WikiManifestDrilldownPayload)
 
 
+class WikiRevalidationApplyRequest(BaseModel):
+    expected_source_manifest_hash: str = Field(min_length=1, max_length=128)
+    confirm: bool = False
+
+
+class WikiRevalidationResponse(BaseModel):
+    enabled: bool
+    stale: bool
+    can_apply: bool
+    applied: bool = False
+    integrity_status: str
+    source_manifest_hash: str
+    indexed_source_manifest_hash: str
+    source_page_count: int | None = None
+    indexed_page_count: int = 0
+    manifest_drilldown: WikiManifestDrilldownPayload = Field(default_factory=WikiManifestDrilldownPayload)
+    warnings: list[str] = Field(default_factory=list)
+    message: str = ""
+
+
 class WikiPageSummaryPayload(BaseModel):
     path: str
     title: str
@@ -175,6 +212,151 @@ class WikiGraphResponse(BaseModel):
     graph: dict[str, Any] = Field(default_factory=dict)
 
 
+class WikiGraphReviewNodeInput(BaseModel):
+    node_id: str
+    page_path: str
+    label: str | None = None
+    disambiguation: str | None = None
+
+
+class WikiGraphReviewEdgeInput(BaseModel):
+    edge_id: str = ""
+    source: str
+    target: str
+    relation: str
+    source_path: str
+    target_path: str | None = None
+    frontmatter_field: str | None = None
+
+
+class WikiGraphReviewApplyRequest(BaseModel):
+    operation_kind: str
+    review_item_key: str = ""
+    keep_node_id: str | None = None
+    merge_node_ids: list[str] = Field(default_factory=list)
+    nodes: list[WikiGraphReviewNodeInput] = Field(default_factory=list)
+    edges: list[WikiGraphReviewEdgeInput] = Field(default_factory=list)
+    evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
+    decided_by: str = "user"
+
+
+class WikiGraphReviewPageSnapshotPayload(BaseModel):
+    page_path: str
+    content: str
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_current_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class WikiGraphReviewApplyResponse(BaseModel):
+    enabled: bool
+    operation_id: str
+    operation_kind: str
+    updated_page_paths: list[str] = Field(default_factory=list)
+    snapshots: list[WikiGraphReviewPageSnapshotPayload] = Field(default_factory=list)
+    message: str = ""
+    warnings: list[str] = Field(default_factory=list)
+
+
+class WikiGraphReviewUndoRequest(BaseModel):
+    operation_id: str
+    operation_kind: str = "undo_graph_review"
+    snapshots: list[WikiGraphReviewPageSnapshotPayload] = Field(default_factory=list)
+    decided_by: str = "user"
+
+
+class WikiPageRevisionReviewTargetPayload(BaseModel):
+    schema_version: Literal[
+        "scholar-ai-wiki-page-revision-target/v1",
+        "scholar-ai-wiki-page-revision-target/v2",
+    ]
+    type: Literal["wiki_page_revision"]
+    page_id: str
+    page_path: str
+    expected_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_status: Literal["draft", "review"]
+
+
+class AnnotationNoteReviewTargetPayload(BaseModel):
+    schema_version: Literal["scholar-ai-annotation-note-review-target/v1"]
+    type: Literal["annotation_note"]
+    project_id: str
+    material_id: str
+    note_id: str
+    expected_updated_at: str
+    expected_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    required_scope: Literal["wiki_review"]
+
+
+class WikiReviewPromotionReceiptPayload(BaseModel):
+    schema_version: Literal[
+        "scholar-ai-wiki-promotion-receipt/v1",
+        "scholar-ai-wiki-promotion-receipt/v2",
+    ]
+    receipt_id: str
+    review_item_id: str
+    request_id: str
+    expected_item_revision: str
+    request_fingerprint: str
+    outcome: Literal["promoted"]
+    target: WikiPageRevisionReviewTargetPayload
+    before_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    after_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    previous_status: Literal["draft", "review"]
+    promoted_status: Literal["final"]
+    promoted_at: str
+    promoted_by: str
+
+
+class WikiReviewPromotionWithdrawalReceiptPayload(BaseModel):
+    schema_version: Literal["scholar-ai-wiki-promotion-withdrawal-receipt/v1"]
+    receipt_id: str
+    review_item_id: str
+    promotion_operation_id: str
+    promotion_request_id: str
+    promotion_request_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_item_revision: str
+    resulting_item_revision: str
+    withdrawal_request_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    outcome: Literal["withdrawn"]
+    target: WikiPageRevisionReviewTargetPayload
+    before_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    planned_after_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    reason: str
+    withdrawn_at: str
+    withdrawn_by: str
+
+
+class WikiReviewPromotionIntentPayload(BaseModel):
+    schema_version: Literal[
+        "scholar-ai-wiki-promotion-intent/v1",
+        "scholar-ai-wiki-promotion-intent/v2",
+    ]
+    operation_id: str
+    review_item_id: str
+    request_id: str
+    expected_item_revision: str
+    request_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    reason: str
+    target: WikiPageRevisionReviewTargetPayload
+    before_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    after_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    previous_status: Literal["draft", "review"]
+    promoted_status: Literal["final"]
+    promoted_at: str
+    promoted_by: str
+
+
+class WikiReviewDecisionPayload(BaseModel):
+    status: Literal["approved", "rejected"]
+    reason: str
+    decided_at: str
+    decided_by: str
+    request_id: str = ""
+    expected_item_revision: str = ""
+    request_fingerprint: str = ""
+    promotion_receipt: WikiReviewPromotionReceiptPayload | None = None
+
+
 class WikiReviewItemPayload(BaseModel):
     item_id: str
     kind: str
@@ -185,7 +367,15 @@ class WikiReviewItemPayload(BaseModel):
     created_at: str
     source: str
     metadata: dict[str, Any] = Field(default_factory=dict)
-    decision: dict[str, Any] | None = None
+    schema_version: int
+    item_revision: str
+    target: WikiPageRevisionReviewTargetPayload | AnnotationNoteReviewTargetPayload | None = None
+    promotion_intent: WikiReviewPromotionIntentPayload | None = None
+    promotion_withdrawal_receipts: list[WikiReviewPromotionWithdrawalReceiptPayload] = Field(
+        default_factory=list
+    )
+    allowed_actions: list[Literal["approve", "reject", "withdraw"]] = Field(default_factory=list)
+    decision: WikiReviewDecisionPayload | None = None
 
 
 class WikiReviewListResponse(BaseModel):
@@ -193,9 +383,98 @@ class WikiReviewListResponse(BaseModel):
     items: list[WikiReviewItemPayload] = Field(default_factory=list)
 
 
+class WikiAnnotationReviewEnqueueRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: str = Field(min_length=1, max_length=256)
+    material_id: str = Field(min_length=1, max_length=256)
+    note_id: str = Field(min_length=1, max_length=256)
+    expected_updated_at: str = Field(min_length=1, max_length=64)
+    expected_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    request_id: str = Field(min_length=1, max_length=128)
+
+    @field_validator("project_id", "material_id", "note_id")
+    @classmethod
+    def normalize_identifier(cls, value: str) -> str:
+        normalized = value.strip()
+        if not _SAFE_IDENTIFIER_RE.fullmatch(normalized):
+            raise ValueError("annotation review identifier contains unsupported characters")
+        return normalized
+
+    @field_validator("expected_updated_at")
+    @classmethod
+    def validate_expected_updated_at(cls, value: str) -> str:
+        normalized = value.strip()
+        try:
+            parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("expected_updated_at must be an ISO-8601 timestamp") from exc
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("expected_updated_at must include a timezone offset")
+        return normalized
+
+    @field_validator("request_id")
+    @classmethod
+    def normalize_request_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized or any(ord(char) < 32 for char in normalized):
+            raise ValueError("request_id contains unsupported characters")
+        return normalized
+
+
 class WikiReviewDecisionRequest(BaseModel):
-    reason: str = ""
+    reason: str = Field(min_length=1, max_length=500)
     decided_by: str = "user"
+    request_id: str = Field(default="", max_length=128)
+    expected_item_revision: str = Field(min_length=1, max_length=128)
+    expected_target_content_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("review reason cannot be empty")
+        return normalized
+
+    @field_validator("request_id")
+    @classmethod
+    def normalize_optional_cas_token(cls, value: str) -> str:
+        normalized = value.strip()
+        if any(ord(char) < 32 for char in normalized):
+            raise ValueError("review CAS token contains control characters")
+        return normalized
+
+    @field_validator("expected_item_revision")
+    @classmethod
+    def normalize_required_item_revision(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("expected_item_revision cannot be empty")
+        if any(ord(char) < 32 for char in normalized):
+            raise ValueError("expected_item_revision contains control characters")
+        return normalized
+
+
+class WikiReviewPromotionWithdrawRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    expected_item_revision: str = Field(min_length=1, max_length=128)
+    expected_promotion_operation_id: str = Field(min_length=1, max_length=128)
+
+    @field_validator("reason", "expected_item_revision", "expected_promotion_operation_id")
+    @classmethod
+    def normalize_required_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("withdrawal field cannot be empty")
+        if any(ord(char) < 32 for char in normalized):
+            raise ValueError("withdrawal field contains control characters")
+        return normalized
+
+
+class WikiReviewPromotionWithdrawResponse(BaseModel):
+    item: WikiReviewItemPayload
+    withdrawal_receipt: WikiReviewPromotionWithdrawalReceiptPayload
 
 
 class WikiCompileRequest(BaseModel):
@@ -260,6 +539,16 @@ class WikiPageMutationResponse(BaseModel):
     success: bool
     slug: str
     message: str = ""
+    status: str = ""
+    receipt_id: str | None = None
+    current_content_hash: str | None = None
+
+
+class WikiPageRestoreRequest(BaseModel):
+    """CAS and receipt preconditions for restoring an archived page."""
+
+    archive_receipt_id: str = Field(min_length=1, max_length=128)
+    expected_current_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class WikiPageVersionPayload(BaseModel):
@@ -439,9 +728,13 @@ def _status_integrity(
     page_count: int,
     *,
     enabled: bool,
+    integrity_store: WikiPageStore | None = None,
 ) -> tuple[bool, list[str], dict[str, Any]]:
     if not isinstance(page_store, WikiPageStore):
         raise TypeError("page_store must be a WikiPageStore")
+    source_store = integrity_store or page_store
+    if not isinstance(source_store, WikiPageStore):
+        raise TypeError("integrity_store must be a WikiPageStore")
     if not enabled:
         return False, [], {
             "integrity_status": "disabled",
@@ -455,9 +748,10 @@ def _status_integrity(
 
     index_path = wiki_query_index_path()
     if not index_path.exists():
-        manifest = build_source_manifest(page_store)
-        return page_count > 0, [], {
-            "integrity_status": "missing_index" if page_count > 0 else "empty_no_index",
+        manifest = build_source_manifest(source_store)
+        has_source_pages = manifest.page_count > 0
+        return has_source_pages, [], {
+            "integrity_status": "missing_index" if has_source_pages else "empty_no_index",
             "index_hash": "none",
             "source_manifest_hash": manifest.source_manifest_hash,
             "indexed_source_manifest_hash": "unknown",
@@ -470,7 +764,7 @@ def _status_integrity(
 
     index = WikiQueryIndex(index_path)
     try:
-        status = index.get_status(page_store)
+        status = index.get_status(source_store)
     except Exception:
         return True, ["Wiki query index status could not be read; marking wiki status as stale."], {
             "integrity_status": "unreadable_index",
@@ -484,10 +778,11 @@ def _status_integrity(
     finally:
         index.close()
 
-    stale = status.stale or status.page_count != page_count
+    source_page_count = status.source_page_count if isinstance(status.source_page_count, int) else len(source_store.list_pages())
+    stale = status.stale or status.page_count != source_page_count
     warnings = list(status.warnings)
-    if status.page_count != page_count:
-        warnings.append("Wiki query index page count differs from readable wiki page count.")
+    if status.page_count != source_page_count:
+        warnings.append("Wiki query index page count differs from generated wiki source page count.")
     return stale, list(dict.fromkeys(warnings)), {
         "integrity_status": status.integrity_status,
         "index_hash": status.index_hash,
@@ -1418,6 +1713,9 @@ def _append_wiki_draft_review_item(
         suffix += 1
         candidate_id = f"{item_prefix.strip()}-{page_slug.strip()}-{suffix}"
     page_relative_path = f"{page_kind.strip()}/{page_slug.strip()}.md"
+    page_content = _page_store(create=False).read_page(Path(page_relative_path))
+    if page_content is None:
+        raise ValueError(f"review target page not found: {page_relative_path}")
     queue.append(
         make_review_item(
             item_id=candidate_id,
@@ -1427,6 +1725,12 @@ def _append_wiki_draft_review_item(
             summary=body.strip().splitlines()[0][:200] if body.strip() else "",
             source=source,
             metadata=metadata,
+            target=make_wiki_page_revision_review_target(
+                page_id=page_slug,
+                page_path=page_relative_path,
+                expected_content_hash=_wiki_content_hash(str(page_content)),
+                expected_status=WikiPageStatus.draft.value,
+            ),
         )
     )
     return candidate_id
@@ -1449,7 +1753,7 @@ def _restore_wiki_import_page(
     """Restore wiki page state when import governance recording fails."""
 
     if action == "created":
-        service.delete_page(page.stable_slug)
+        service.purge_page(page.stable_slug)
         return
     if existing_page is None:
         return
@@ -1872,6 +2176,282 @@ def _frontmatter_extra(frontmatter: dict[str, Any]) -> dict[str, Any]:
     return dict(extra) if isinstance(extra, dict) else {}
 
 
+def _wiki_content_hash(content: str) -> str:
+    if not isinstance(content, str):
+        raise TypeError("content must be a string")
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _wiki_review_request_fingerprint(
+    *,
+    action: str,
+    item_id: str,
+    reason: str,
+    decided_by: str,
+    request_id: str,
+    expected_item_revision: str,
+    expected_target_content_hash: str | None,
+) -> str:
+    """Hash canonical review request details for idempotent replay checks."""
+
+    payload = {
+        "action": action.strip(),
+        "item_id": item_id.strip(),
+        "reason": reason.strip(),
+        "decided_by": decided_by.strip(),
+        "request_id": request_id.strip(),
+        "expected_item_revision": expected_item_revision.strip(),
+        "expected_target_content_hash": str(expected_target_content_hash or "").strip().lower(),
+    }
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _annotation_review_enqueue_fingerprint(
+    request: WikiAnnotationReviewEnqueueRequest,
+) -> str:
+    """Hash the complete annotation enqueue request for durable replay."""
+
+    canonical = json.dumps(
+        {
+            "schema_version": "scholar-ai-annotation-review-enqueue/v1",
+            "project_id": request.project_id,
+            "material_id": request.material_id,
+            "note_id": request.note_id,
+            "expected_updated_at": request.expected_updated_at,
+            "expected_content_hash": request.expected_content_hash.lower(),
+            "request_id": request.request_id,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _annotation_review_project_material(project_id: str, material_id: str) -> tuple[Any, Any]:
+    """Resolve an exact project/material pair from the canonical resource store."""
+
+    normalized_project_id = _normalize_identifier(project_id, "project_id")
+    normalized_material_id = _normalize_identifier(material_id, "material_id")
+    if normalized_project_id is None or normalized_material_id is None:
+        raise HTTPException(status_code=400, detail="project_id and material_id are required")
+
+    import routers.resources_router as resources_router
+
+    store = resources_router.get_writing_resource_store()
+    project = store.get_project(normalized_project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {normalized_project_id}")
+    material = store.get_material(normalized_material_id)
+    if material is None:
+        raise HTTPException(status_code=404, detail=f"Material not found: {normalized_material_id}")
+    if str(getattr(material, "project_id", "") or "") != normalized_project_id:
+        raise HTTPException(status_code=400, detail="material does not belong to project")
+    return project, material
+
+
+def _annotation_review_note_snapshot(material_id: str, note_id: str) -> dict[str, Any] | None:
+    """Read a strict annotation note through its owning router module."""
+
+    import routers.annotation_router as annotation_router
+
+    return annotation_router.get_annotation_note_snapshot(material_id, note_id)
+
+
+def _validate_live_annotation_review_target(
+    target: AnnotationNoteReviewTarget,
+    *,
+    decision: bool,
+) -> dict[str, Any]:
+    """Revalidate project ownership, opt-in, and exact note snapshot CAS."""
+
+    try:
+        _annotation_review_project_material(target.project_id, target.material_id)
+    except HTTPException as exc:
+        if decision:
+            raise ValueError(f"annotation review source is no longer eligible: {exc.detail}") from exc
+        raise
+
+    try:
+        snapshot = _annotation_review_note_snapshot(target.material_id, target.note_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("annotation note schema is not eligible for Wiki review") from exc
+    if snapshot is None:
+        if decision:
+            raise ValueError("annotation review note no longer exists")
+        raise HTTPException(status_code=404, detail=f"Annotation note not found: {target.note_id}")
+    note = snapshot.get("note")
+    if not isinstance(note, Mapping):
+        raise ValueError("annotation note snapshot is invalid")
+    enabled_scopes = note.get("enabled_scopes")
+    scopes = {
+        str(scope.value if hasattr(scope, "value") else scope)
+        for scope in enabled_scopes
+    } if isinstance(enabled_scopes, list) else set()
+    if target.required_scope not in scopes:
+        raise ValueError("annotation note is not enabled for wiki_review")
+    if str(note.get("updated_at") or "") != target.expected_updated_at:
+        raise ValueError("annotation note changed; refresh and enqueue a new review item")
+    content_hash = str(snapshot.get("content_hash") or "").lower()
+    if content_hash != target.expected_content_hash:
+        raise ValueError("annotation note content changed; refresh and enqueue a new review item")
+    return snapshot
+
+
+def _validate_review_node_id(node_id: str, field_name: str = "node_id") -> str:
+    value = str(node_id or "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail=f"{field_name} cannot be empty")
+    if len(value) > 512:
+        raise HTTPException(status_code=400, detail=f"{field_name} is too long")
+    if any(ord(char) < 32 for char in value):
+        raise HTTPException(status_code=400, detail=f"{field_name} contains control characters")
+    return value
+
+
+def _normalize_review_text(
+    value: str | None,
+    *,
+    field_name: str,
+    max_length: int,
+    required: bool = False,
+) -> str | None:
+    if value is None:
+        if required:
+            raise HTTPException(status_code=400, detail=f"{field_name} cannot be empty")
+        return None
+    normalized = value.strip()
+    if required and not normalized:
+        raise HTTPException(status_code=400, detail=f"{field_name} cannot be empty")
+    if len(normalized) > max_length:
+        raise HTTPException(status_code=400, detail=f"{field_name} is too long")
+    return normalized or None
+
+
+def _snapshot_page(
+    path: Path,
+    content: str,
+    *,
+    expected_current_content: str,
+) -> WikiGraphReviewPageSnapshotPayload:
+    return WikiGraphReviewPageSnapshotPayload(
+        page_path=path.as_posix(),
+        content=content,
+        content_hash=_wiki_content_hash(content),
+        expected_current_hash=_wiki_content_hash(expected_current_content),
+    )
+
+
+def _graph_review_undo_snapshots(
+    store: WikiPageStore,
+    pages: dict[str, tuple[Path, str, dict[str, Any], str]],
+) -> list[WikiGraphReviewPageSnapshotPayload]:
+    """Build undo snapshots after apply writes have reached durable storage."""
+
+    snapshots: list[WikiGraphReviewPageSnapshotPayload] = []
+    for page_key in sorted(pages):
+        relative_path, original_content, _frontmatter, _body = pages[page_key]
+        current_content = store.read_page(relative_path)
+        if current_content is None:
+            raise HTTPException(
+                status_code=500,
+                detail=f"graph review page disappeared after apply: {page_key}",
+            )
+        snapshots.append(
+            _snapshot_page(
+                relative_path,
+                original_content,
+                expected_current_content=str(current_content),
+            )
+        )
+    return snapshots
+
+
+def _stable_json_key(value: Any) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    except TypeError:
+        return repr(value)
+
+
+def _as_json_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return list(value)
+    return [value]
+
+
+def _dedupe_json_values(values: list[Any]) -> list[Any]:
+    seen: set[str] = set()
+    result: list[Any] = []
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        key = _stable_json_key(value)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(value)
+    return result
+
+
+def _merge_frontmatter_list(frontmatter: dict[str, Any], key: str, additions: list[Any]) -> None:
+    merged = _dedupe_json_values([*_as_json_list(frontmatter.get(key)), *additions])
+    if merged:
+        frontmatter[key] = merged
+
+
+def _graph_review_extra(frontmatter: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    extra = _frontmatter_extra(frontmatter)
+    raw_review = extra.get("graph_review")
+    review = dict(raw_review) if isinstance(raw_review, dict) else {}
+    return extra, review
+
+
+def _write_frontmatter_preserving_body(
+    store: WikiPageStore,
+    relative_path: Path,
+    frontmatter: dict[str, Any],
+    body: str,
+) -> None:
+    next_frontmatter = dict(frontmatter)
+    next_frontmatter.setdefault("id", relative_path.with_suffix("").as_posix())
+    next_frontmatter.setdefault("kind", relative_path.parts[0].rstrip("s") if relative_path.parts else "unknown")
+    next_frontmatter.setdefault("title", relative_path.stem)
+    atomic_write_text(store.resolve(relative_path), f"{render_frontmatter(next_frontmatter)}{body}")
+
+
+def _read_graph_review_pages(
+    store: WikiPageStore,
+    nodes: list[WikiGraphReviewNodeInput],
+    current_user: str,
+) -> dict[str, tuple[Path, str, dict[str, Any], str]]:
+    pages: dict[str, tuple[Path, str, dict[str, Any], str]] = {}
+    if not nodes:
+        raise HTTPException(status_code=400, detail="nodes cannot be empty")
+    for node in nodes:
+        _validate_review_node_id(node.node_id)
+        relative_path = _normalize_page_path(node.page_path)
+        key = relative_path.as_posix()
+        if key in pages:
+            continue
+        content = store.read_page(relative_path)
+        if content is None:
+            raise HTTPException(status_code=404, detail=f"Wiki page not found: {key}")
+        frontmatter, body = _split_frontmatter(str(content))
+        _ensure_can_write_extra(_frontmatter_extra(frontmatter), current_user)
+        pages[key] = (relative_path, str(content), dict(frontmatter), body)
+    return pages
+
+
+def _rebuild_review_graph(current_user: str) -> None:
+    WikiGraphStore.default().rebuild_from_page_store(_reviewed_page_store(current_user))
+
+
 def _ensure_can_read_extra(extra: dict[str, Any], user_id: str) -> None:
     if not can_read(extra, user_id, default_owner=DEFAULT_WIKI_OWNER):
         raise HTTPException(status_code=403, detail="Access denied")
@@ -1882,31 +2462,260 @@ def _ensure_can_write_extra(extra: dict[str, Any], user_id: str) -> None:
         raise HTTPException(status_code=403, detail="Only owner can update this wiki page")
 
 
-def _promote_review_target_to_final(item: Any) -> None:
-    """Promote the wiki page bound to a review item from draft/review to final.
+def _review_page_path(item: Any) -> Path:
+    target = getattr(item, "target", None)
+    target_path = target.page_path if isinstance(target, WikiPageRevisionReviewTarget) else ""
+    item_path = str(getattr(item, "page_path", "") or "")
+    if target_path and item_path.replace("\\", "/") != target_path:
+        raise ValueError("review item target path does not match its page path")
+    page_path = Path(target_path or item_path)
+    if not page_path.as_posix() or page_path.is_absolute() or ".." in page_path.parts:
+        raise ValueError("review item has no valid wiki page bound")
+    return page_path
 
-    Raises:
-        ValueError: If the review item points at a page that cannot be promoted.
-    """
-    page_path = getattr(item, "page_path", "") or ""
-    if not page_path:
-        raise ValueError("review item has no page bound")
-    slug = Path(page_path).stem
-    if not slug:
-        raise ValueError(f"could not derive slug from page_path={page_path}")
-    from wiki.service import get_wiki_service
+
+def _ensure_review_item_permission(item: Any, current_user: str) -> None:
+    target = getattr(item, "target", None)
+    if not isinstance(target, WikiPageRevisionReviewTarget):
+        if getattr(item, "kind", None) == ReviewItemKind.draft:
+            raise ValueError("legacy draft review item has no version-bound target; recreate the candidate")
+        if current_user != DEFAULT_WIKI_OWNER:
+            raise HTTPException(status_code=403, detail="Only the local owner can decide this review item")
+        return
+    if not target.page_id:
+        raise ValueError("legacy page review target has no stable page identity; recreate the candidate")
+
+    page_path = _review_page_path(item)
+    slug = page_path.stem
+    from literature_assistant.core.wiki.service import get_wiki_service
 
     service = get_wiki_service()
     page = service.get_page(slug)
     if page is None:
         raise ValueError(f"target page not found: {slug}")
-    # 已经是 final 就保持，避免重复写版本记录。
-    if page.status == WikiPageStatus.final:
-        return
+    expected_path = Path(page.kind.value) / f"{page.stable_slug}.md"
+    if expected_path.as_posix() != page_path.as_posix():
+        raise ValueError("review item page path does not match the target page")
+    if page.stable_slug != target.page_id:
+        raise ValueError("review item stable page identity does not match the target page")
+    _ensure_can_write_extra(page.extra, current_user)
+
+
+def _prepare_review_promotion_intent(
+    item: Any,
+    current_user: str,
+    *,
+    request_id: str,
+    expected_item_revision: str,
+    request_fingerprint: str,
+    reason: str,
+) -> ReviewPromotionIntent | None:
+    """Build a deterministic page-promotion intent without writing the page.
+
+    Raises:
+        ValueError: If the review item points at a page that cannot be promoted.
+    """
+    target = getattr(item, "target", None)
+    if not isinstance(target, WikiPageRevisionReviewTarget):
+        if getattr(item, "kind", None) == ReviewItemKind.draft:
+            raise ValueError("legacy draft review item has no version-bound target; recreate the candidate")
+        return None
+    if not target.page_id:
+        raise ValueError("legacy page review target has no stable page identity; recreate the candidate")
+    page_path = _review_page_path(item)
+    slug = page_path.stem
+    from literature_assistant.core.wiki.service import get_wiki_service
+
+    service = get_wiki_service()
+    page = service.get_page(slug)
+    if page is None:
+        raise ValueError(f"target page not found: {slug}")
+    expected_path = Path(page.kind.value) / f"{page.stable_slug}.md"
+    if expected_path.as_posix() != page_path.as_posix():
+        raise ValueError("review item page path does not match the target page")
+    if page.stable_slug != target.page_id:
+        raise ValueError("review target stable page identity changed; recreate the candidate")
+    _ensure_can_write_extra(page.extra, current_user)
+    original_content = service.page_store.read_page(page_path)
+    if original_content is None:
+        raise ValueError(f"target page not found: {page_path.as_posix()}")
+    before_content_hash = _wiki_content_hash(str(original_content))
+    if before_content_hash != target.expected_content_hash:
+        raise ValueError("review target page revision changed; refresh and recreate the candidate")
+    if page.status.value != target.expected_status:
+        raise ValueError("review target page status changed; refresh and recreate the candidate")
+    promoted_at = utc_now_iso()
     try:
-        service.update_page(slug=slug, status=WikiPageStatus.final.value)
+        _updated_page, replacement = service.preview_page_status_update_by_path(
+            page_path,
+            expected_page_id=target.page_id,
+            expected_status=target.expected_status,
+            status=WikiPageStatus.final.value,
+            expected_current_hash=target.expected_content_hash,
+            updated_at_iso=promoted_at,
+        )
     except ValueError as exc:
-        raise ValueError(f"promotion to final failed: {exc}") from exc
+        raise ValueError(f"promotion planning failed: {exc}") from exc
+    return ReviewPromotionIntent(
+        operation_id=uuid4().hex,
+        review_item_id=str(getattr(item, "item_id", "") or ""),
+        request_id=request_id,
+        expected_item_revision=expected_item_revision,
+        request_fingerprint=request_fingerprint,
+        reason=reason.strip(),
+        target=target,
+        before_content_hash=before_content_hash,
+        after_content_hash=_wiki_content_hash(replacement),
+        previous_status=page.status.value,
+        promoted_status=WikiPageStatus.final.value,
+        promoted_at=promoted_at,
+        promoted_by=current_user,
+    )
+
+
+def _promote_review_target_to_final(
+    item: Any,
+    current_user: str,
+    *,
+    intent: ReviewPromotionIntent,
+) -> ReviewPromotionReceipt:
+    """Apply or resume a durable promotion intent and repair its version audit."""
+
+    target = getattr(item, "target", None)
+    if not isinstance(target, WikiPageRevisionReviewTarget):
+        raise ValueError("review item has no page revision target to promote")
+    if getattr(item, "promotion_intent", None) != intent:
+        raise ValueError("review item promotion intent changed; refresh before deciding")
+    if intent.review_item_id != str(getattr(item, "item_id", "") or ""):
+        raise ValueError("promotion intent review item does not match")
+    if intent.target != target:
+        raise ValueError("promotion intent target does not match the queued candidate")
+    if intent.promoted_by != current_user:
+        raise ValueError("promotion intent belongs to a different reviewer")
+
+    page_path = _review_page_path(item)
+    from literature_assistant.core.wiki.service import get_wiki_service
+
+    service = get_wiki_service()
+    page = service.get_page(target.page_id)
+    if page is None:
+        raise ValueError(f"target page not found: {target.page_id}")
+    expected_path = Path(page.kind.value) / f"{page.stable_slug}.md"
+    if expected_path.as_posix() != page_path.as_posix():
+        raise ValueError("review item page path does not match the target page")
+    _ensure_can_write_extra(page.extra, current_user)
+    current_content = service.page_store.read_page(page_path)
+    if current_content is None:
+        raise ValueError(f"target page not found: {page_path.as_posix()}")
+    current_hash = _wiki_content_hash(str(current_content))
+
+    if current_hash == intent.before_content_hash:
+        try:
+            service.update_page_status_by_path(
+                page_path,
+                expected_page_id=target.page_id,
+                expected_status=intent.previous_status,
+                status=intent.promoted_status,
+                action="review_promote",
+                expected_current_hash=intent.before_content_hash,
+                updated_at_iso=intent.promoted_at,
+                operation_id=intent.operation_id,
+            )
+        except ValueError as exc:
+            raise ValueError(f"promotion to final failed: {exc}") from exc
+        current_content = service.page_store.read_page(page_path)
+        if current_content is None:
+            raise ValueError(f"promoted page could not be read: {page_path.as_posix()}")
+        current_hash = _wiki_content_hash(str(current_content))
+
+    if current_hash != intent.after_content_hash:
+        raise ValueError("review target page changed outside the pending promotion")
+    try:
+        service.ensure_page_version_by_path(
+            page_path,
+            expected_page_id=target.page_id,
+            expected_status=intent.promoted_status,
+            expected_current_hash=intent.after_content_hash,
+            action="review_promote",
+            operation_id=intent.operation_id,
+        )
+    except ValueError as exc:
+        raise ValueError(f"promotion version repair failed: {exc}") from exc
+    return intent.to_receipt()
+
+
+def _review_item_allowed_actions(
+    item: Any,
+) -> list[Literal["approve", "reject", "withdraw"]]:
+    if getattr(item, "status", None) != ReviewItemStatus.pending:
+        return []
+    if getattr(item, "promotion_intent", None) is not None:
+        return ["approve", "withdraw"]
+    target = getattr(item, "target", None)
+    if getattr(item, "kind", None) == ReviewItemKind.draft and not isinstance(
+        target,
+        WikiPageRevisionReviewTarget,
+    ):
+        return ["reject"]
+    if isinstance(target, WikiPageRevisionReviewTarget) and not target.page_id:
+        return ["reject"]
+    return ["approve", "reject"]
+
+
+def _wiki_review_item_payload(item: Any) -> WikiReviewItemPayload:
+    payload = dict(item.to_dict())
+    payload["allowed_actions"] = _review_item_allowed_actions(item)
+    return WikiReviewItemPayload(**payload)
+
+
+def _decide_annotation_review_item(
+    queue: ReviewQueue,
+    item: Any,
+    request: WikiReviewDecisionRequest,
+    current_user: str,
+    *,
+    status: ReviewItemStatus,
+) -> Any:
+    """CAS-revalidate and record an annotation-only review decision."""
+
+    target = getattr(item, "target", None)
+    if not isinstance(target, AnnotationNoteReviewTarget):
+        raise TypeError("item must have an annotation note review target")
+    if not request.request_id:
+        raise HTTPException(
+            status_code=422,
+            detail="review request_id is required for an annotation note",
+        )
+    if request.expected_target_content_hash is None:
+        raise HTTPException(
+            status_code=422,
+            detail="expected_target_content_hash is required for an annotation note",
+        )
+    if request.expected_target_content_hash != target.expected_content_hash:
+        raise ValueError("review target revision does not match the queued annotation note")
+    action = "approve" if status == ReviewItemStatus.approved else "reject"
+    request_fingerprint = _wiki_review_request_fingerprint(
+        action=action,
+        item_id=str(getattr(item, "item_id", "") or ""),
+        reason=request.reason,
+        decided_by=current_user,
+        request_id=request.request_id,
+        expected_item_revision=request.expected_item_revision,
+        expected_target_content_hash=request.expected_target_content_hash,
+    )
+    if getattr(item, "status", None) == ReviewItemStatus.pending:
+        if request.expected_item_revision != getattr(item, "item_revision", None):
+            raise ValueError("review item revision changed; refresh before deciding")
+        _validate_live_annotation_review_target(target, decision=True)
+    return queue.decide_once(
+        str(getattr(item, "item_id", "") or ""),
+        status=status,
+        reason=request.reason,
+        decided_by=current_user,
+        request_id=request.request_id,
+        expected_item_revision=request.expected_item_revision,
+        request_fingerprint=request_fingerprint,
+    )
 
 
 def _permissions_response(permissions: WikiPagePermissions) -> WikiPagePermissionsResponse:
@@ -1949,6 +2758,8 @@ class _ReviewedWikiPageStore(_AuthorizedWikiPageStore):
         if content is None:
             return None
         frontmatter, _body = _split_frontmatter(str(content))
+        if str(frontmatter.get("status") or "").strip().lower() == WikiPageStatus.archived.value:
+            return None
         if _is_unfinalized_review_draft(frontmatter):
             return None
         return content
@@ -2011,7 +2822,7 @@ def wiki_import(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid wiki page status: {request.status}") from exc
 
-    from wiki.service import get_wiki_service
+    from literature_assistant.core.wiki.service import get_wiki_service
 
     service = get_wiki_service()
     pages: list[WikiImportItemPayload] = []
@@ -2282,7 +3093,7 @@ def wiki_okf_import_inspect(request: WikiOkfInspectRequest) -> WikiOkfInspectRes
     if not wiki_enabled():
         return WikiOkfInspectResponse(enabled=False, warnings=_disabled_warning())
 
-    from wiki.export import inspect_okf_bundle_archive
+    from literature_assistant.core.wiki.export import inspect_okf_bundle_archive
 
     try:
         archive_path = _resolve_wiki_import_archive(request.archive_path)
@@ -2307,7 +3118,15 @@ def wiki_status(user_id: str | None = Query(default=None)) -> WikiStatusResponse
     store = _reviewed_page_store(current_user)
     pages = store.list_pages() if store.wiki_root.exists() else []
     page_count = len(pages) if enabled else 0
-    stale, stale_warnings, integrity = _status_integrity(store, page_count, enabled=enabled)
+    # The query index is rebuilt from the full generated wiki source set. The
+    # user-facing page_count remains permission/review-filtered, but integrity
+    # must use the same full source set as rebuilds and doctor diagnostics.
+    stale, stale_warnings, integrity = _status_integrity(
+        store,
+        page_count,
+        enabled=enabled,
+        integrity_store=_page_store(create=False),
+    )
     warnings = stale_warnings if enabled else _disabled_warning()
     return WikiStatusResponse(
         enabled=enabled,
@@ -2332,6 +3151,82 @@ def wiki_status(user_id: str | None = Query(default=None)) -> WikiStatusResponse
             "review_queue": _sanitize_status_path(wiki_review_queue_path()),
         },
         warnings=warnings,
+    )
+
+
+def _wiki_revalidation_response(
+    status: WikiStatusResponse,
+    *,
+    applied: bool = False,
+    message: str = "",
+) -> WikiRevalidationResponse:
+    can_apply = bool(
+        status.enabled
+        and status.stale
+        and status.source_manifest_hash not in {"", "none", "unknown"}
+    )
+    return WikiRevalidationResponse(
+        enabled=status.enabled,
+        stale=status.stale,
+        can_apply=can_apply,
+        applied=applied,
+        integrity_status=status.integrity_status,
+        source_manifest_hash=status.source_manifest_hash,
+        indexed_source_manifest_hash=status.indexed_source_manifest_hash,
+        source_page_count=status.source_page_count,
+        indexed_page_count=status.indexed_page_count,
+        manifest_drilldown=status.manifest_drilldown,
+        warnings=list(status.warnings),
+        message=message,
+    )
+
+
+@router.post("/revalidation/preflight", response_model=WikiRevalidationResponse)
+def wiki_revalidation_preflight(
+    user_id: str | None = Query(default=None),
+) -> WikiRevalidationResponse:
+    """Inspect Wiki source/index drift without writing pages or index state."""
+
+    return _wiki_revalidation_response(
+        wiki_status(user_id),
+        message="Revalidation preflight completed without writes.",
+    )
+
+
+@router.post("/revalidation/apply", response_model=WikiRevalidationResponse)
+def wiki_revalidation_apply(
+    request: WikiRevalidationApplyRequest,
+    user_id: str | None = Query(default=None),
+) -> WikiRevalidationResponse:
+    """Rebuild the query index after an explicit manifest-hash CAS check."""
+
+    status_before = wiki_status(user_id)
+    if not status_before.enabled:
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+    if not request.confirm:
+        raise HTTPException(status_code=400, detail="Revalidation apply requires explicit confirmation")
+    expected_hash = request.expected_source_manifest_hash.strip()
+    if expected_hash != status_before.source_manifest_hash:
+        raise HTTPException(status_code=409, detail="Wiki source manifest changed after preflight")
+    if not status_before.stale:
+        return _wiki_revalidation_response(
+            status_before,
+            message="Wiki query index is already aligned; no rebuild was needed.",
+        )
+
+    source_store = _page_store(create=False)
+    index = WikiQueryIndex(wiki_query_index_path())
+    try:
+        build_wiki_index(source_store, index)
+    finally:
+        index.close()
+    status_after = wiki_status(user_id)
+    if status_after.stale:
+        raise HTTPException(status_code=409, detail="Wiki query index remained stale after rebuild")
+    return _wiki_revalidation_response(
+        status_after,
+        applied=True,
+        message="Wiki query index revalidated against the current source manifest.",
     )
 
 
@@ -2550,7 +3445,7 @@ def get_wiki_page_permissions(slug: str, user_id: str | None = Query(default=Non
     if not wiki_enabled():
         raise HTTPException(status_code=404, detail="Wiki integration is disabled")
 
-    from wiki.service import get_wiki_service
+    from literature_assistant.core.wiki.service import get_wiki_service
 
     current_user = _current_wiki_user(user_id)
     service = get_wiki_service()
@@ -2572,7 +3467,7 @@ def update_wiki_page_permissions(
     if not wiki_enabled():
         raise HTTPException(status_code=404, detail="Wiki integration is disabled")
 
-    from wiki.service import get_wiki_service
+    from literature_assistant.core.wiki.service import get_wiki_service
 
     current_user = _current_wiki_user(user_id)
     service = get_wiki_service()
@@ -2609,7 +3504,7 @@ def wiki_page_versions(slug: str, user_id: str | None = Query(default=None)) -> 
     if not wiki_enabled():
         return WikiPageVersionsResponse(enabled=False, slug=slug, versions=[])
 
-    from wiki.service import get_wiki_service
+    from literature_assistant.core.wiki.service import get_wiki_service
 
     current_user = _current_wiki_user(user_id)
     service = get_wiki_service()
@@ -2624,6 +3519,73 @@ def wiki_page_versions(slug: str, user_id: str | None = Query(default=None)) -> 
     )
 
 
+@router.get("/pages/{slug}/retention")
+def wiki_page_retention(slug: str, user_id: str | None = Query(default=None)) -> dict[str, Any]:
+    """Read a page's persisted archive/restore receipt and current CAS hash."""
+    if not wiki_enabled():
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+
+    from literature_assistant.core.wiki.service import get_wiki_service
+
+    current_user = _current_wiki_user(user_id)
+    service = get_wiki_service()
+    page = service.get_page(slug, include_archived=True)
+    if page is None:
+        raise HTTPException(status_code=404, detail=f"Page not found: {slug}")
+    _ensure_can_read_extra(page.extra, current_user)
+    retention = service.get_page_retention(slug)
+    if not isinstance(retention, dict):
+        raise HTTPException(status_code=404, detail=f"Page has no retention receipt: {slug}")
+    return retention
+
+
+@router.post("/pages/{slug}/restore", response_model=WikiPageMutationResponse)
+def wiki_page_restore(
+    slug: str,
+    request: WikiPageRestoreRequest,
+    user_id: str | None = Query(default=None),
+) -> WikiPageMutationResponse:
+    """Restore an archived page with explicit receipt and content CAS."""
+    if not wiki_enabled():
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+
+    from literature_assistant.core.wiki.service import get_wiki_service
+
+    current_user = _current_wiki_user(user_id)
+    service = get_wiki_service()
+    try:
+        page = service.get_page(slug, include_archived=True)
+        if page is None:
+            raise ValueError(f"Page not found: {slug}")
+        _ensure_can_write_extra(page.extra, current_user)
+        restored = service.restore_page(
+            slug,
+            expected_archive_receipt_id=request.archive_receipt_id,
+            expected_current_hash=request.expected_current_hash,
+            restored_by=current_user,
+        )
+    except PageRevisionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        detail = str(exc)
+        if "not found" in detail.lower():
+            raise HTTPException(status_code=404, detail=detail) from exc
+        raise HTTPException(status_code=400, detail=detail) from exc
+
+    retention = service.get_page_retention(slug)
+    restore_receipt = retention.get("restore_receipt") if isinstance(retention, dict) else None
+    receipt_id = restore_receipt.get("receipt_id") if isinstance(restore_receipt, dict) else None
+    current_hash = retention.get("current_content_hash") if isinstance(retention, dict) else None
+    return WikiPageMutationResponse(
+        success=True,
+        slug=restored.stable_slug,
+        status=restored.status.value,
+        receipt_id=str(receipt_id) if receipt_id else None,
+        current_content_hash=str(current_hash) if current_hash else None,
+        message=f"Page restored: {restored.stable_slug}",
+    )
+
+
 @router.get("/pages/{page_path:path}", response_model=WikiPageReadResponse)
 def wiki_page_read(page_path: str, user_id: str | None = Query(default=None)) -> WikiPageReadResponse:
     if not wiki_enabled():
@@ -2634,6 +3596,8 @@ def wiki_page_read(page_path: str, user_id: str | None = Query(default=None)) ->
     if content is None:
         raise HTTPException(status_code=404, detail=f"Wiki page not found: {page_path}")
     frontmatter, body = _split_frontmatter(content)
+    if str(frontmatter.get("status") or "").strip().lower() == WikiPageStatus.archived.value:
+        raise HTTPException(status_code=404, detail=f"Wiki page not found: {page_path}")
     _ensure_can_read_extra(_frontmatter_extra(frontmatter), current_user)
     return WikiPageReadResponse(
         enabled=True,
@@ -2658,7 +3622,7 @@ def wiki_page_create(
     if not wiki_enabled():
         raise HTTPException(status_code=404, detail="Wiki integration is disabled")
 
-    from wiki.service import get_wiki_service
+    from literature_assistant.core.wiki.service import get_wiki_service
 
     current_user = _current_wiki_user(user_id)
     capture_extra = {key: value for key, value in request.extra.items() if key != PERMISSIONS_KEY}
@@ -2710,7 +3674,7 @@ def wiki_page_create(
         )
     except (ValueError, OSError) as exc:
         try:
-            service.delete_page(page.stable_slug)
+            service.purge_page(page.stable_slug)
         except (ValueError, OSError):
             pass
         raise HTTPException(
@@ -2735,7 +3699,7 @@ def wiki_page_update(
     if not wiki_enabled():
         raise HTTPException(status_code=404, detail="Wiki integration is disabled")
 
-    from wiki.service import get_wiki_service
+    from literature_assistant.core.wiki.service import get_wiki_service
 
     current_user = _current_wiki_user(user_id)
     service = get_wiki_service()
@@ -2744,6 +3708,11 @@ def wiki_page_update(
         if existing_page is None:
             raise ValueError(f"Page not found: {slug}")
         _ensure_can_write_extra(existing_page.extra, current_user)
+        if request.status == WikiPageStatus.final.value:
+            raise HTTPException(
+                status_code=409,
+                detail="Page status can become final only through an explicit review approval.",
+            )
         merged_extra = None
         if request.extra is not None:
             current_permissions = get_permissions(existing_page.extra, default_owner=DEFAULT_WIKI_OWNER)
@@ -2773,12 +3742,16 @@ def wiki_page_update(
 
 
 @router.delete("/pages/{slug}", response_model=WikiPageMutationResponse)
-def wiki_page_delete(slug: str, user_id: str | None = Query(default=None)) -> WikiPageMutationResponse:
-    """Delete a wiki page (G2 2026-05-26)."""
+def wiki_page_delete(
+    slug: str,
+    expected_current_hash: str | None = Query(default=None),
+    user_id: str | None = Query(default=None),
+) -> WikiPageMutationResponse:
+    """Archive a wiki page while retaining its file and receipt."""
     if not wiki_enabled():
         raise HTTPException(status_code=404, detail="Wiki integration is disabled")
 
-    from wiki.service import get_wiki_service
+    from literature_assistant.core.wiki.service import get_wiki_service
 
     current_user = _current_wiki_user(user_id)
     service = get_wiki_service()
@@ -2787,17 +3760,33 @@ def wiki_page_delete(slug: str, user_id: str | None = Query(default=None)) -> Wi
         if existing_page is None:
             raise ValueError(f"Page not found: {slug}")
         _ensure_can_write_extra(existing_page.extra, current_user)
-        service.delete_page(slug)
+        if expected_current_hash is None and user_id is None:
+            archived = service.delete_page(slug)
+        else:
+            archived = service.delete_page(
+                slug,
+                expected_current_hash=expected_current_hash,
+                archived_by=current_user,
+            )
+    except PageRevisionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         detail = str(exc)
         if "not found" in detail.lower():
             raise HTTPException(status_code=404, detail=detail) from exc
         raise HTTPException(status_code=400, detail=detail) from exc
 
+    retention = service.get_page_retention(slug)
+    archive_receipt = retention.get("archive_receipt") if isinstance(retention, dict) else None
+    receipt_id = archive_receipt.get("receipt_id") if isinstance(archive_receipt, dict) else None
+    current_hash = retention.get("current_content_hash") if isinstance(retention, dict) else None
     return WikiPageMutationResponse(
         success=True,
         slug=slug,
-        message=f"Page deleted: {slug}",
+        status=archived.status.value if hasattr(archived, "status") else WikiPageStatus.archived.value,
+        receipt_id=str(receipt_id) if receipt_id else None,
+        current_content_hash=str(current_hash) if current_hash else None,
+        message=f"Page archived: {slug}",
     )
 
 
@@ -2831,7 +3820,7 @@ def wiki_export(
     if not wiki_enabled():
         raise HTTPException(status_code=404, detail="Wiki integration is disabled")
 
-    from wiki.export import export_wiki_markdown, export_wiki_okf_bundle
+    from literature_assistant.core.wiki.export import export_wiki_markdown, export_wiki_okf_bundle
 
     current_user = _current_wiki_user(user_id)
     normalized_format = str(format or "markdown").strip().lower()
@@ -2862,7 +3851,7 @@ def wiki_project_okf_export(request: WikiProjectOkfExportRequest) -> WikiProject
     if not wiki_enabled():
         return WikiProjectOkfExportResponse(enabled=False, warnings=_disabled_warning())
 
-    from wiki.export import export_project_artifact_okf_bundle
+    from literature_assistant.core.wiki.export import export_project_artifact_okf_bundle
 
     resolved_output_path = _resolve_project_okf_export_path(request.output_path)
     records_by_group = request.records_by_group()
@@ -2907,6 +3896,609 @@ def wiki_graph(user_id: str | None = Query(default=None)) -> WikiGraphResponse:
     return WikiGraphResponse(enabled=True, graph=snapshot.to_dict())
 
 
+_GRAPH_REVIEW_RELATION_FIELDS = (
+    "related",
+    "related_to",
+    "related_pages",
+    "links",
+    "concepts",
+    "claims",
+    "sources",
+    "source_pages",
+    "source_ids",
+    "source_papers",
+    "key_papers",
+    "derived_from",
+    "depends_on",
+    "supports",
+    "contradicts",
+    "extends",
+    "cites",
+)
+_GRAPH_REVIEW_EVIDENCE_TEXT_KEYS = ("text", "quote", "compressed_text", "content", "source")
+
+
+def _normalize_graph_review_evidence_refs(raw_refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    refs: list[dict[str, Any]] = []
+    if not isinstance(raw_refs, list):
+        raise HTTPException(status_code=400, detail="evidence_refs must be a list")
+    for raw_ref in raw_refs:
+        if not isinstance(raw_ref, Mapping):
+            raise HTTPException(status_code=400, detail="evidence_refs must contain objects")
+        ref: dict[str, Any] = {}
+        material_id = _normalize_review_text(
+            str(raw_ref.get("material_id") or ""),
+            field_name="material_id",
+            max_length=240,
+        )
+        if material_id and material_id.startswith("<"):
+            material_id = None
+        if material_id:
+            ref["material_id"] = material_id
+        chunk_id = _normalize_review_text(
+            str(raw_ref.get("chunk_id") or ""),
+            field_name="chunk_id",
+            max_length=240,
+        )
+        if chunk_id and chunk_id.startswith("<"):
+            chunk_id = None
+        if chunk_id:
+            ref["chunk_id"] = chunk_id
+        page = raw_ref.get("page")
+        if isinstance(page, bool):
+            page = None
+        if isinstance(page, int) and page > 0:
+            ref["page"] = page
+        elif isinstance(page, str) and page.strip().isdigit() and int(page.strip()) > 0:
+            ref["page"] = int(page.strip())
+        elif isinstance(page, str) and page.strip():
+            ref["page"] = _normalize_review_text(page, field_name="page", max_length=80)
+        for key in _GRAPH_REVIEW_EVIDENCE_TEXT_KEYS:
+            value = _normalize_review_text(
+                str(raw_ref.get(key) or ""),
+                field_name=key,
+                max_length=2_000,
+            )
+            if value and not value.startswith("<"):
+                ref[key] = value
+        source_labels = raw_ref.get("source_labels")
+        if isinstance(source_labels, list):
+            labels: list[str] = []
+            for raw_label in source_labels:
+                label = _normalize_review_text(
+                    str(raw_label or ""),
+                    field_name="source_labels",
+                    max_length=80,
+                )
+                if label and label not in labels:
+                    labels.append(label)
+            if labels:
+                ref["source_labels"] = labels[:8]
+        bbox = raw_ref.get("bbox")
+        if isinstance(bbox, list) and len(bbox) >= 4:
+            numeric_bbox = [float(value) for value in bbox[:4] if isinstance(value, (int, float)) and not isinstance(value, bool)]
+            if len(numeric_bbox) == 4:
+                ref["bbox"] = numeric_bbox
+                bbox_unit = _normalize_review_text(
+                    str(raw_ref.get("bbox_unit") or ""),
+                    field_name="bbox_unit",
+                    max_length=40,
+                )
+                if bbox_unit:
+                    ref["bbox_unit"] = bbox_unit
+        if not any(ref.get(key) for key in ("material_id", "chunk_id", "text", "quote", "source")):
+            raise HTTPException(status_code=400, detail="evidence_refs must include material_id, chunk_id, text, quote, or source")
+        refs.append(ref)
+    if not refs:
+        raise HTTPException(status_code=400, detail="evidence_refs cannot be empty")
+    return [dict(item) for item in _dedupe_json_values(refs) if isinstance(item, Mapping)]
+
+
+def _source_ref_from_review_evidence(ref: Mapping[str, Any]) -> dict[str, Any] | None:
+    material_id = str(ref.get("material_id") or "").strip()
+    if not material_id:
+        return None
+    source_ref: dict[str, Any] = {"material_id": material_id}
+    if ref.get("page") is not None:
+        source_ref["page"] = ref.get("page")
+    if str(ref.get("chunk_id") or "").strip():
+        source_ref["chunk_id"] = str(ref.get("chunk_id") or "").strip()
+    if ref.get("bbox") is not None and ref.get("bbox_unit") is not None:
+        source_ref["bbox"] = ref.get("bbox")
+        source_ref["bbox_unit"] = ref.get("bbox_unit")
+    return source_ref
+
+
+def _first_review_source_ref(refs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for ref in refs:
+        source_ref = _source_ref_from_review_evidence(ref)
+        if source_ref is not None:
+            return source_ref
+    return None
+
+
+def _edge_review_field(edge: WikiGraphReviewEdgeInput) -> str:
+    raw_field = str(edge.frontmatter_field or "").strip()
+    if raw_field in _GRAPH_REVIEW_RELATION_FIELDS:
+        return raw_field
+    relation = str(edge.relation or "").strip()
+    if relation in _GRAPH_REVIEW_RELATION_FIELDS:
+        return relation
+    return "related"
+
+
+def _strip_wikilink_target(value: str) -> str:
+    text = value.strip()
+    if text.startswith("[[") and text.endswith("]]"):
+        text = text[2:-2].split("|", 1)[0].strip()
+    return text
+
+
+def _target_candidates(value: str, target_path: str | None = None) -> set[str]:
+    text = _strip_wikilink_target(value)
+    path_text = _strip_wikilink_target(target_path or "")
+    candidates = {item for item in {text, path_text} if item}
+    for item in list(candidates):
+        path = Path(item)
+        candidates.add(path.with_suffix("").as_posix())
+        candidates.add(path.name)
+        candidates.add(path.with_suffix("").name)
+        if not item.endswith(".md"):
+            candidates.add(f"{item}.md")
+    return {item.strip() for item in candidates if item.strip()}
+
+
+def _relation_item_target(raw_item: Any) -> str | None:
+    if isinstance(raw_item, Mapping):
+        raw_target = raw_item.get("target") or raw_item.get("to") or raw_item.get("id") or raw_item.get("page")
+        return str(raw_target).strip() if raw_target is not None else None
+    if isinstance(raw_item, str):
+        return _strip_wikilink_target(raw_item)
+    return None
+
+
+def _relation_item_matches_edge(raw_item: Any, edge: WikiGraphReviewEdgeInput) -> bool:
+    target = _relation_item_target(raw_item)
+    if not target:
+        return False
+    return bool(_target_candidates(target) & _target_candidates(edge.target, edge.target_path))
+
+
+def _relation_evidence_text(refs: list[dict[str, Any]]) -> str:
+    for ref in refs:
+        for key in ("text", "quote", "source"):
+            value = str(ref.get(key) or "").strip()
+            if value:
+                return value[:500]
+    return "graph_review_evidence"
+
+
+def _relation_item_with_evidence(
+    raw_item: Any,
+    edge: WikiGraphReviewEdgeInput,
+    evidence_refs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if isinstance(raw_item, Mapping):
+        item = dict(raw_item)
+    else:
+        item = {
+            "target": _relation_item_target(raw_item) or edge.target,
+            "type": str(edge.relation or "related_to").strip() or "related_to",
+        }
+    item.setdefault("target", edge.target)
+    item.setdefault("type", str(edge.relation or "related_to").strip() or "related_to")
+    _merge_frontmatter_list(item, "evidence_refs", evidence_refs)
+    source_ref = _first_review_source_ref(evidence_refs)
+    if source_ref is not None:
+        item["source_ref"] = source_ref
+        item.setdefault("material_id", source_ref["material_id"])
+        if source_ref.get("page") is not None:
+            item.setdefault("page", source_ref.get("page"))
+        if source_ref.get("chunk_id") is not None:
+            item.setdefault("chunk_id", source_ref.get("chunk_id"))
+    if not str(item.get("evidence") or "").strip():
+        item["evidence"] = _relation_evidence_text(evidence_refs)
+    return item
+
+
+def _apply_graph_review_disambiguation(
+    request: WikiGraphReviewApplyRequest,
+    *,
+    current_user: str,
+) -> WikiGraphReviewApplyResponse:
+    operation_id = uuid4().hex
+    updated_at = utc_now_iso()
+    store = _page_store(create=False)
+    pages = _read_graph_review_pages(store, request.nodes, current_user)
+    changed_paths: set[str] = set()
+
+    for node in request.nodes:
+        node_id = _validate_review_node_id(node.node_id)
+        relative_path = _normalize_page_path(node.page_path)
+        page_key = relative_path.as_posix()
+        page_path, _content, frontmatter, _body = pages[page_key]
+        label = _normalize_review_text(node.label, field_name="label", max_length=240)
+        disambiguation = _normalize_review_text(
+            node.disambiguation,
+            field_name="disambiguation",
+            max_length=2_000,
+        )
+        if label is None and disambiguation is None:
+            continue
+        if label is not None:
+            frontmatter["title"] = label
+        extra, review = _graph_review_extra(frontmatter)
+        if disambiguation is not None:
+            extra["disambiguation"] = disambiguation
+        review.update(
+            {
+                "last_operation_id": operation_id,
+                "last_operation_kind": "disambiguate_nodes",
+                "disambiguated_at": updated_at,
+                "disambiguated_node_id": node_id,
+                "disambiguated_page_path": page_path.as_posix(),
+                "decided_by": request.decided_by.strip() or "user",
+            }
+        )
+        extra["graph_review"] = review
+        frontmatter["extra"] = extra
+        frontmatter["updated_at_iso"] = updated_at
+        changed_paths.add(page_key)
+
+    if not changed_paths:
+        raise HTTPException(status_code=400, detail="no disambiguation changes were provided")
+
+    for page_key in sorted(changed_paths):
+        relative_path, _content, frontmatter, body = pages[page_key]
+        _write_frontmatter_preserving_body(store, relative_path, frontmatter, body)
+
+    snapshots = _graph_review_undo_snapshots(store, pages)
+    _rebuild_review_graph(current_user)
+    return WikiGraphReviewApplyResponse(
+        enabled=True,
+        operation_id=operation_id,
+        operation_kind="disambiguate_nodes",
+        updated_page_paths=sorted(changed_paths),
+        snapshots=snapshots,
+        message=f"已保存 {len(changed_paths)} 个节点的消歧信息。",
+    )
+
+
+def _apply_graph_review_merge(
+    request: WikiGraphReviewApplyRequest,
+    *,
+    current_user: str,
+) -> WikiGraphReviewApplyResponse:
+    operation_id = uuid4().hex
+    updated_at = utc_now_iso()
+    keep_node_id = _validate_review_node_id(request.keep_node_id or "", "keep_node_id")
+    merge_node_ids = [
+        _validate_review_node_id(node_id, "merge_node_ids")
+        for node_id in request.merge_node_ids
+    ]
+    merge_node_ids = [node_id for node_id in dict.fromkeys(merge_node_ids) if node_id != keep_node_id]
+    if not merge_node_ids:
+        raise HTTPException(status_code=400, detail="merge_node_ids must include at least one node different from keep_node_id")
+
+    node_by_id = {_validate_review_node_id(node.node_id): node for node in request.nodes}
+    missing = [node_id for node_id in [keep_node_id, *merge_node_ids] if node_id not in node_by_id]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"nodes are missing page_path for: {', '.join(missing)}")
+
+    store = _page_store(create=False)
+    pages = _read_graph_review_pages(
+        store,
+        [node_by_id[node_id] for node_id in [keep_node_id, *merge_node_ids]],
+        current_user,
+    )
+
+    keep_path = _normalize_page_path(node_by_id[keep_node_id].page_path)
+    keep_key = keep_path.as_posix()
+    _keep_relative_path, _keep_content, keep_frontmatter, _keep_body = pages[keep_key]
+    merged_page_paths: list[str] = []
+    merged_titles: list[str] = []
+    merged_ids: list[str] = []
+
+    for node_id in merge_node_ids:
+        node = node_by_id[node_id]
+        merge_path = _normalize_page_path(node.page_path)
+        merge_key = merge_path.as_posix()
+        if merge_key == keep_key:
+            continue
+        _merge_relative_path, _merge_content, merge_frontmatter, _merge_body = pages[merge_key]
+        merged_page_paths.append(merge_key)
+        merged_ids.append(node_id)
+        title = str(merge_frontmatter.get("title") or node.label or node_id).strip()
+        if title:
+            merged_titles.append(title)
+        _merge_frontmatter_list(keep_frontmatter, "evidence_refs", _as_json_list(merge_frontmatter.get("evidence_refs")))
+        _merge_frontmatter_list(keep_frontmatter, "source_hashes", _as_json_list(merge_frontmatter.get("source_hashes")))
+        for field_name in _GRAPH_REVIEW_RELATION_FIELDS:
+            _merge_frontmatter_list(keep_frontmatter, field_name, _as_json_list(merge_frontmatter.get(field_name)))
+
+        merge_extra, merge_review = _graph_review_extra(merge_frontmatter)
+        merge_review.update(
+            {
+                "last_operation_id": operation_id,
+                "last_operation_kind": "merge_duplicate_nodes",
+                "merged_at": updated_at,
+                "merged_into": keep_key,
+                "merged_into_node_id": keep_node_id,
+                "merged_node_id": node_id,
+                "decided_by": request.decided_by.strip() or "user",
+            }
+        )
+        merge_extra["graph_review"] = merge_review
+        merge_frontmatter["extra"] = merge_extra
+        merge_frontmatter["updated_at_iso"] = updated_at
+
+    if not merged_page_paths:
+        raise HTTPException(status_code=400, detail="merge_node_ids do not resolve to distinct wiki pages")
+
+    keep_extra, keep_review = _graph_review_extra(keep_frontmatter)
+    keep_review.update(
+        {
+            "last_operation_id": operation_id,
+            "last_operation_kind": "merge_duplicate_nodes",
+            "merged_at": updated_at,
+            "keep_node_id": keep_node_id,
+            "merged_node_ids": _dedupe_json_values([*_as_json_list(keep_review.get("merged_node_ids")), *merged_ids]),
+            "merged_page_paths": _dedupe_json_values([*_as_json_list(keep_review.get("merged_page_paths")), *merged_page_paths]),
+            "decided_by": request.decided_by.strip() or "user",
+        }
+    )
+    keep_extra["graph_review"] = keep_review
+    keep_extra["aliases"] = _dedupe_json_values([*_as_json_list(keep_extra.get("aliases")), *merged_titles, *merged_ids])
+    keep_frontmatter["extra"] = keep_extra
+    _merge_frontmatter_list(keep_frontmatter, "aliases", [*merged_titles, *merged_ids])
+    keep_frontmatter["updated_at_iso"] = updated_at
+
+    changed_paths = {keep_key, *merged_page_paths}
+    for page_key in sorted(changed_paths):
+        relative_path, _content, frontmatter, body = pages[page_key]
+        _write_frontmatter_preserving_body(store, relative_path, frontmatter, body)
+
+    snapshots = _graph_review_undo_snapshots(store, pages)
+    _rebuild_review_graph(current_user)
+    return WikiGraphReviewApplyResponse(
+        enabled=True,
+        operation_id=operation_id,
+        operation_kind="merge_duplicate_nodes",
+        updated_page_paths=sorted(changed_paths),
+        snapshots=snapshots,
+        message=f"已合并 {len(merged_page_paths)} 个重复节点。",
+    )
+
+
+def _apply_graph_review_node_evidence(
+    request: WikiGraphReviewApplyRequest,
+    *,
+    current_user: str,
+) -> WikiGraphReviewApplyResponse:
+    operation_id = uuid4().hex
+    updated_at = utc_now_iso()
+    evidence_refs = _normalize_graph_review_evidence_refs(request.evidence_refs)
+    store = _page_store(create=False)
+    pages = _read_graph_review_pages(store, request.nodes, current_user)
+    changed_paths: set[str] = set()
+    source_ref = _first_review_source_ref(evidence_refs)
+
+    for node in request.nodes:
+        node_id = _validate_review_node_id(node.node_id)
+        relative_path = _normalize_page_path(node.page_path)
+        page_key = relative_path.as_posix()
+        page_path, _content, frontmatter, _body = pages[page_key]
+        _merge_frontmatter_list(frontmatter, "evidence_refs", evidence_refs)
+        if source_ref is not None:
+            frontmatter["source_ref"] = source_ref
+        extra, review = _graph_review_extra(frontmatter)
+        review.update(
+            {
+                "last_operation_id": operation_id,
+                "last_operation_kind": "add_node_evidence",
+                "evidence_added_at": updated_at,
+                "node_id": node_id,
+                "page_path": page_path.as_posix(),
+                "evidence_ref_count": len(evidence_refs),
+                "decided_by": request.decided_by.strip() or "user",
+            }
+        )
+        extra["graph_review"] = review
+        frontmatter["extra"] = extra
+        frontmatter["updated_at_iso"] = updated_at
+        changed_paths.add(page_key)
+
+    if not changed_paths:
+        raise HTTPException(status_code=400, detail="nodes cannot be empty")
+
+    for page_key in sorted(changed_paths):
+        relative_path, _content, frontmatter, body = pages[page_key]
+        _write_frontmatter_preserving_body(store, relative_path, frontmatter, body)
+
+    snapshots = _graph_review_undo_snapshots(store, pages)
+    _rebuild_review_graph(current_user)
+    return WikiGraphReviewApplyResponse(
+        enabled=True,
+        operation_id=operation_id,
+        operation_kind="add_node_evidence",
+        updated_page_paths=sorted(changed_paths),
+        snapshots=snapshots,
+        message=f"已给 {len(changed_paths)} 个节点补充证据。",
+    )
+
+
+def _apply_graph_review_relation_evidence(
+    request: WikiGraphReviewApplyRequest,
+    *,
+    current_user: str,
+) -> WikiGraphReviewApplyResponse:
+    operation_id = uuid4().hex
+    updated_at = utc_now_iso()
+    evidence_refs = _normalize_graph_review_evidence_refs(request.evidence_refs)
+    if not request.edges:
+        raise HTTPException(status_code=400, detail="edges cannot be empty")
+    store = _page_store(create=False)
+    changed_paths: set[str] = set()
+    pages: dict[str, tuple[Path, str, dict[str, Any], str]] = {}
+
+    for edge in request.edges:
+        _validate_review_node_id(edge.source, "source")
+        _validate_review_node_id(edge.target, "target")
+        relative_path = _normalize_page_path(edge.source_path)
+        page_key = relative_path.as_posix()
+        if page_key not in pages:
+            content = store.read_page(relative_path)
+            if content is None:
+                raise HTTPException(status_code=404, detail=f"Wiki page not found: {page_key}")
+            frontmatter, body = _split_frontmatter(str(content))
+            _ensure_can_write_extra(_frontmatter_extra(frontmatter), current_user)
+            pages[page_key] = (relative_path, str(content), dict(frontmatter), body)
+
+        page_path, _content, frontmatter, _body = pages[page_key]
+        field_name = _edge_review_field(edge)
+        raw_value = frontmatter.get(field_name)
+        raw_items = _as_json_list(raw_value)
+        changed = False
+        next_items: list[Any] = []
+        for raw_item in raw_items:
+            if _relation_item_matches_edge(raw_item, edge):
+                next_items.append(_relation_item_with_evidence(raw_item, edge, evidence_refs))
+                changed = True
+            else:
+                next_items.append(raw_item)
+        if not changed:
+            next_items.append(_relation_item_with_evidence({}, edge, evidence_refs))
+        frontmatter[field_name] = next_items
+        extra, review = _graph_review_extra(frontmatter)
+        review.update(
+            {
+                "last_operation_id": operation_id,
+                "last_operation_kind": "add_relation_evidence",
+                "evidence_added_at": updated_at,
+                "edge_id": edge.edge_id,
+                "source": edge.source,
+                "target": edge.target,
+                "relation": edge.relation,
+                "source_path": page_path.as_posix(),
+                "frontmatter_field": field_name,
+                "evidence_ref_count": len(evidence_refs),
+                "decided_by": request.decided_by.strip() or "user",
+            }
+        )
+        extra["graph_review"] = review
+        frontmatter["extra"] = extra
+        frontmatter["updated_at_iso"] = updated_at
+        changed_paths.add(page_key)
+
+    for page_key in sorted(changed_paths):
+        relative_path, _content, frontmatter, body = pages[page_key]
+        _write_frontmatter_preserving_body(store, relative_path, frontmatter, body)
+
+    snapshots = _graph_review_undo_snapshots(store, pages)
+    _rebuild_review_graph(current_user)
+    return WikiGraphReviewApplyResponse(
+        enabled=True,
+        operation_id=operation_id,
+        operation_kind="add_relation_evidence",
+        updated_page_paths=sorted(changed_paths),
+        snapshots=snapshots,
+        message=f"已给 {len(request.edges)} 条关系补充证据。",
+    )
+
+
+@router.post("/graph/review/apply", response_model=WikiGraphReviewApplyResponse)
+def wiki_graph_review_apply(
+    request: WikiGraphReviewApplyRequest,
+    user_id: str | None = Query(default=None),
+) -> WikiGraphReviewApplyResponse:
+    """Apply a graph review operation to wiki page frontmatter with snapshots."""
+
+    if not wiki_enabled():
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+    operation_kind = request.operation_kind.strip()
+    current_user = _current_wiki_user(user_id)
+    if operation_kind == "disambiguate_nodes":
+        return _apply_graph_review_disambiguation(request, current_user=current_user)
+    if operation_kind == "merge_duplicate_nodes":
+        return _apply_graph_review_merge(request, current_user=current_user)
+    if operation_kind == "add_node_evidence":
+        return _apply_graph_review_node_evidence(request, current_user=current_user)
+    if operation_kind == "add_relation_evidence":
+        return _apply_graph_review_relation_evidence(request, current_user=current_user)
+    raise HTTPException(status_code=400, detail=f"unsupported graph review operation: {operation_kind}")
+
+
+@router.post("/graph/review/undo", response_model=WikiGraphReviewApplyResponse)
+def wiki_graph_review_undo(
+    request: WikiGraphReviewUndoRequest,
+    user_id: str | None = Query(default=None),
+) -> WikiGraphReviewApplyResponse:
+    """Restore exact page snapshots returned by graph review apply."""
+
+    if not wiki_enabled():
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+    operation_id = _normalize_review_text(
+        request.operation_id,
+        field_name="operation_id",
+        max_length=128,
+        required=True,
+    )
+    if not request.snapshots:
+        raise HTTPException(status_code=400, detail="snapshots cannot be empty")
+    current_user = _current_wiki_user(user_id)
+    store = _page_store(create=False)
+    restore_plan: list[tuple[Path, str, str]] = []
+    restored_paths: list[str] = []
+    seen_paths: set[str] = set()
+
+    # Validate the complete restore set before touching any page so a single
+    # stale page cannot leave a partially undone graph review operation.
+    for snapshot in request.snapshots:
+        relative_path = _normalize_page_path(snapshot.page_path)
+        page_key = relative_path.as_posix()
+        if page_key in seen_paths:
+            raise HTTPException(status_code=400, detail=f"duplicate snapshot page: {page_key}")
+        seen_paths.add(page_key)
+        if _wiki_content_hash(snapshot.content) != snapshot.content_hash:
+            raise HTTPException(status_code=400, detail=f"snapshot hash mismatch: {page_key}")
+        frontmatter, _body = _split_frontmatter(snapshot.content)
+        if not frontmatter:
+            raise HTTPException(status_code=400, detail=f"snapshot is missing JSON frontmatter: {page_key}")
+        _ensure_can_write_extra(_frontmatter_extra(frontmatter), current_user)
+        current_content = store.read_page(relative_path)
+        if current_content is None:
+            raise HTTPException(status_code=409, detail=f"graph review page drifted or was removed: {page_key}")
+        current_text = str(current_content)
+        current_frontmatter, _current_body = _split_frontmatter(current_text)
+        _ensure_can_write_extra(_frontmatter_extra(current_frontmatter), current_user)
+        if _wiki_content_hash(current_text) != snapshot.expected_current_hash:
+            raise HTTPException(status_code=409, detail=f"graph review page changed after apply: {page_key}")
+        restore_plan.append((relative_path, snapshot.content, current_text))
+
+    for relative_path, restore_content, _current_text in restore_plan:
+        page_key = relative_path.as_posix()
+        atomic_write_text(store.resolve(relative_path), restore_content)
+        restored_paths.append(page_key)
+
+    before_restore = [
+        _snapshot_page(
+            relative_path,
+            current_text,
+            expected_current_content=restore_content,
+        )
+        for relative_path, restore_content, current_text in restore_plan
+    ]
+    _rebuild_review_graph(current_user)
+    return WikiGraphReviewApplyResponse(
+        enabled=True,
+        operation_id=operation_id or "",
+        operation_kind=request.operation_kind.strip() or "undo_graph_review",
+        updated_page_paths=sorted(dict.fromkeys(restored_paths)),
+        snapshots=before_restore,
+        message=f"已撤回 {len(restored_paths)} 个页面的图谱复审修改。",
+    )
+
+
 @router.get("/review", response_model=WikiReviewListResponse)
 def wiki_review_list(
     status: str | None = Query(default=None),
@@ -2927,48 +4519,374 @@ def wiki_review_list(
     queue = ReviewQueue(wiki_review_queue_path())
     return WikiReviewListResponse(
         enabled=True,
-        items=[WikiReviewItemPayload(**item.to_dict()) for item in queue.list_items(status=parsed_status, kind=parsed_kind)],
+        items=[_wiki_review_item_payload(item) for item in queue.list_items(status=parsed_status, kind=parsed_kind)],
     )
 
 
+@router.post(
+    "/review/annotations/enqueue",
+    response_model=WikiReviewItemPayload,
+)
+def wiki_annotation_review_enqueue(
+    request: WikiAnnotationReviewEnqueueRequest,
+) -> WikiReviewItemPayload:
+    """Submit one exact, explicitly authorized annotation note for review."""
+
+    if not wiki_enabled():
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+    try:
+        target = make_annotation_note_review_target(
+            project_id=request.project_id,
+            material_id=request.material_id,
+            note_id=request.note_id,
+            expected_updated_at=request.expected_updated_at,
+            expected_content_hash=request.expected_content_hash,
+        )
+        enqueue_fingerprint = _annotation_review_enqueue_fingerprint(request)
+        queue = ReviewQueue(wiki_review_queue_path())
+        with queue.locked():
+            for queued_item in queue.list_items():
+                prior_request_id = str(
+                    queued_item.metadata.get("annotation_enqueue_request_id") or ""
+                )
+                if prior_request_id != request.request_id:
+                    continue
+                prior_fingerprint = str(
+                    queued_item.metadata.get("annotation_enqueue_request_fingerprint") or ""
+                )
+                if (
+                    prior_fingerprint == enqueue_fingerprint
+                    and queued_item.target == target
+                    and queued_item.kind == ReviewItemKind.annotation_note
+                ):
+                    return _wiki_review_item_payload(queued_item)
+                raise ValueError("annotation enqueue request_id was already used with different parameters")
+
+            snapshot = _validate_live_annotation_review_target(target, decision=False)
+            note = snapshot.get("note")
+            if not isinstance(note, Mapping):
+                raise ValueError("annotation note snapshot is invalid")
+            page = note.get("page")
+            summary_source = str(note.get("body") or note.get("anchor_text") or "").strip()
+            summary = summary_source[:500]
+            item = queue.append(
+                make_review_item(
+                    item_id=f"annotation-note-{uuid4().hex}",
+                    kind=ReviewItemKind.annotation_note,
+                    title=f"Annotation note · page {page}",
+                    page_path=f"annotations/{target.material_id}/{target.note_id}",
+                    summary=summary,
+                    source="annotation",
+                    metadata={
+                        "annotation_enqueue_request_id": request.request_id,
+                        "annotation_enqueue_request_fingerprint": enqueue_fingerprint,
+                        "source_ref": f"annotation:{target.material_id}:{target.note_id}",
+                    },
+                    target=target,
+                )
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _wiki_review_item_payload(item)
+
+
 @router.post("/review/{item_id}/approve", response_model=WikiReviewItemPayload)
-def wiki_review_approve(item_id: str, request: WikiReviewDecisionRequest) -> WikiReviewItemPayload:
+def wiki_review_approve(
+    item_id: str,
+    request: WikiReviewDecisionRequest,
+    user_id: str | None = Query(default=None),
+) -> WikiReviewItemPayload:
     """Approve a pending review item.
 
-    Capture flow (2026-06-14): when the item points at an existing wiki page,
-    approval first promotes the page to ``final`` and only then marks the
-    queue item ``approved``. A promotion failure leaves the queue pending.
+    Page approvals first persist a deterministic promotion intent. Replaying
+    the same request can then finish either the page write or the queue commit
+    after a process interruption without letting read-only routes mutate Wiki.
     """
     if not wiki_enabled():
         raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+    current_user = _current_wiki_user(user_id)
     queue = ReviewQueue(wiki_review_queue_path())
     try:
-        existing = queue.get(item_id)
-        if existing is None:
-            raise KeyError(item_id)
-        # 先把页面推到 final，再标 queue=approved。这样任何失败都不会留下
-        # 「已批准但未沉淀」的页面。
-        _promote_review_target_to_final(existing)
-        item = queue.approve(item_id, reason=request.reason, decided_by=request.decided_by)
+        with queue.locked():
+            existing = queue.get(item_id)
+            if existing is None:
+                raise KeyError(item_id)
+            _ensure_review_item_permission(existing, current_user)
+            target = existing.target
+            if isinstance(target, AnnotationNoteReviewTarget):
+                item = _decide_annotation_review_item(
+                    queue,
+                    existing,
+                    request,
+                    current_user,
+                    status=ReviewItemStatus.approved,
+                )
+                return _wiki_review_item_payload(item)
+            request_fingerprint = ""
+            if isinstance(target, WikiPageRevisionReviewTarget):
+                if not request.request_id:
+                    raise HTTPException(status_code=422, detail="review request_id is required for a page revision")
+                if request.expected_target_content_hash is None:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="expected_target_content_hash is required for a page revision",
+                    )
+                request_fingerprint = _wiki_review_request_fingerprint(
+                    action="approve",
+                    item_id=existing.item_id,
+                    reason=request.reason,
+                    decided_by=current_user,
+                    request_id=request.request_id,
+                    expected_item_revision=request.expected_item_revision,
+                    expected_target_content_hash=request.expected_target_content_hash,
+                )
+                for queued_item in queue.list_items():
+                    queued_receipt = (
+                        queued_item.decision.promotion_receipt
+                        if queued_item.decision is not None
+                        else None
+                    )
+                    queued_intent = queued_item.promotion_intent
+                    prior_request_id = (
+                        queued_receipt.request_id
+                        if queued_receipt is not None
+                        else queued_intent.request_id if queued_intent is not None else ""
+                    )
+                    if prior_request_id != request.request_id:
+                        continue
+                    prior_fingerprint = (
+                        queued_receipt.request_fingerprint
+                        if queued_receipt is not None
+                        else queued_intent.request_fingerprint if queued_intent is not None else ""
+                    )
+                    if (
+                        queued_item.item_id == existing.item_id
+                        and queued_item.status == ReviewItemStatus.approved
+                        and prior_fingerprint == request_fingerprint
+                    ):
+                        return _wiki_review_item_payload(queued_item)
+                    if (
+                        queued_item.item_id == existing.item_id
+                        and queued_item.status == ReviewItemStatus.pending
+                        and queued_intent is not None
+                        and prior_fingerprint == request_fingerprint
+                    ):
+                        continue
+                    raise ValueError("review request_id was already used with different parameters")
+
+            if request.expected_item_revision != existing.item_revision:
+                raise ValueError("review item revision changed; refresh before deciding")
+
+            if existing.status != ReviewItemStatus.pending:
+                raise ValueError(f"review item is already decided: {existing.status.value}")
+
+            if isinstance(target, WikiPageRevisionReviewTarget):
+                if request.expected_target_content_hash != target.expected_content_hash:
+                    raise ValueError("review target revision does not match the queued candidate")
+
+                promotion_intent = existing.promotion_intent
+                if promotion_intent is not None:
+                    if (
+                        promotion_intent.request_id != request.request_id
+                        or promotion_intent.request_fingerprint != request_fingerprint
+                        or promotion_intent.expected_item_revision != request.expected_item_revision
+                    ):
+                        raise ValueError("review item already has a different promotion request in progress")
+                else:
+                    promotion_intent = _prepare_review_promotion_intent(
+                        existing,
+                        current_user,
+                        request_id=request.request_id,
+                        expected_item_revision=request.expected_item_revision,
+                        request_fingerprint=request_fingerprint,
+                        reason=request.reason,
+                    )
+                    if promotion_intent is None:
+                        raise ValueError("page revision review item could not create a promotion intent")
+                    existing = queue.begin_or_resume_promotion(item_id, promotion_intent)
+                    promotion_intent = existing.promotion_intent
+                    if promotion_intent is None:
+                        raise ValueError("promotion intent was not persisted")
+
+                promotion_receipt = _promote_review_target_to_final(
+                    existing,
+                    current_user,
+                    intent=promotion_intent,
+                )
+                item = queue.finalize_promotion(
+                    item_id,
+                    reason=request.reason,
+                    decided_by=current_user,
+                    receipt=promotion_receipt,
+                )
+            else:
+                item = queue.approve(
+                    item_id,
+                    reason=request.reason,
+                    decided_by=current_user,
+                    promotion_receipt=None,
+                )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Review item not found: {item_id}") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return WikiReviewItemPayload(**item.to_dict())
+    return _wiki_review_item_payload(item)
 
 
-@router.post("/review/{item_id}/reject", response_model=WikiReviewItemPayload)
-def wiki_review_reject(item_id: str, request: WikiReviewDecisionRequest) -> WikiReviewItemPayload:
+@router.post(
+    "/review/{item_id}/withdraw",
+    response_model=WikiReviewPromotionWithdrawResponse,
+)
+def wiki_review_withdraw_promotion(
+    item_id: str,
+    request: WikiReviewPromotionWithdrawRequest,
+    user_id: str | None = Query(default=None),
+) -> WikiReviewPromotionWithdrawResponse:
+    """Withdraw an unapplied page promotion without rejecting its candidate."""
+
     if not wiki_enabled():
         raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+    current_user = _current_wiki_user(user_id)
+    queue = ReviewQueue(wiki_review_queue_path())
     try:
-        item = ReviewQueue(wiki_review_queue_path()).reject(
-            item_id,
-            reason=request.reason,
-            decided_by=request.decided_by,
-        )
+        with queue.locked():
+            existing = queue.get(item_id)
+            if existing is None:
+                raise KeyError(item_id)
+
+            prior_receipt = next(
+                (
+                    receipt
+                    for receipt in existing.promotion_withdrawal_receipts
+                    if receipt.expected_item_revision == request.expected_item_revision
+                    and receipt.promotion_operation_id
+                    == request.expected_promotion_operation_id
+                ),
+                None,
+            )
+            if prior_receipt is not None:
+                replay_fingerprint = _wiki_review_request_fingerprint(
+                    action="withdraw",
+                    item_id=existing.item_id,
+                    reason=request.reason,
+                    decided_by=current_user,
+                    request_id=request.expected_promotion_operation_id,
+                    expected_item_revision=request.expected_item_revision,
+                    expected_target_content_hash=prior_receipt.before_content_hash,
+                )
+                if replay_fingerprint != prior_receipt.withdrawal_request_fingerprint:
+                    raise ValueError(
+                        "promotion withdrawal was already completed with different parameters"
+                    )
+                if (
+                    existing.status != ReviewItemStatus.pending
+                    or existing.item_revision != prior_receipt.resulting_item_revision
+                    or existing.promotion_intent is not None
+                ):
+                    raise ValueError(
+                        "review item changed after the promotion withdrawal; refresh before continuing"
+                    )
+                _ensure_review_item_permission(existing, current_user)
+                return WikiReviewPromotionWithdrawResponse(
+                    item=_wiki_review_item_payload(existing),
+                    withdrawal_receipt=WikiReviewPromotionWithdrawalReceiptPayload(
+                        **prior_receipt.to_dict()
+                    ),
+                )
+
+            _ensure_review_item_permission(existing, current_user)
+            if existing.status != ReviewItemStatus.pending:
+                raise ValueError(f"review item is already decided: {existing.status.value}")
+            intent = existing.promotion_intent
+            if intent is None:
+                raise ValueError("review item has no promotion request to withdraw")
+            if existing.item_revision != request.expected_item_revision:
+                raise ValueError("review item revision changed; refresh before withdrawing")
+            if intent.operation_id != request.expected_promotion_operation_id:
+                raise ValueError("promotion operation changed; refresh before withdrawing")
+
+            page_path = _review_page_path(existing)
+            from literature_assistant.core.wiki.service import get_wiki_service
+
+            service = get_wiki_service()
+            current_content = service.page_store.read_page(page_path)
+            if current_content is None:
+                raise ValueError(f"target page not found: {page_path.as_posix()}")
+            current_hash = _wiki_content_hash(str(current_content))
+            if current_hash == intent.after_content_hash:
+                raise ValueError(
+                    "promotion was already applied to the page; retry the original approval"
+                )
+            if current_hash != intent.before_content_hash:
+                raise ValueError(
+                    "review target page changed outside the pending promotion withdrawal"
+                )
+            withdrawal_fingerprint = _wiki_review_request_fingerprint(
+                action="withdraw",
+                item_id=existing.item_id,
+                reason=request.reason,
+                decided_by=current_user,
+                request_id=request.expected_promotion_operation_id,
+                expected_item_revision=request.expected_item_revision,
+                expected_target_content_hash=intent.before_content_hash,
+            )
+            item, receipt = queue.withdraw_promotion(
+                item_id,
+                expected_item_revision=request.expected_item_revision,
+                expected_promotion_operation_id=request.expected_promotion_operation_id,
+                observed_page_content_hash=current_hash,
+                withdrawal_request_fingerprint=withdrawal_fingerprint,
+                reason=request.reason,
+                withdrawn_by=current_user,
+            )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Review item not found: {item_id}") from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return WikiReviewItemPayload(**item.to_dict())
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return WikiReviewPromotionWithdrawResponse(
+        item=_wiki_review_item_payload(item),
+        withdrawal_receipt=WikiReviewPromotionWithdrawalReceiptPayload(**receipt.to_dict()),
+    )
+
+
+@router.post("/review/{item_id}/reject", response_model=WikiReviewItemPayload)
+def wiki_review_reject(
+    item_id: str,
+    request: WikiReviewDecisionRequest,
+    user_id: str | None = Query(default=None),
+) -> WikiReviewItemPayload:
+    if not wiki_enabled():
+        raise HTTPException(status_code=404, detail="Wiki integration is disabled")
+    current_user = _current_wiki_user(user_id)
+    queue = ReviewQueue(wiki_review_queue_path())
+    try:
+        with queue.locked():
+            existing = queue.get(item_id)
+            if existing is None:
+                raise KeyError(item_id)
+            _ensure_review_item_permission(existing, current_user)
+            if isinstance(existing.target, AnnotationNoteReviewTarget):
+                item = _decide_annotation_review_item(
+                    queue,
+                    existing,
+                    request,
+                    current_user,
+                    status=ReviewItemStatus.rejected,
+                )
+                return _wiki_review_item_payload(item)
+            if request.expected_item_revision != existing.item_revision:
+                raise ValueError("review item revision changed; refresh before deciding")
+            if existing.promotion_intent is not None:
+                raise ValueError(
+                    "review item promotion request is in progress; retry the original approval"
+                )
+            item = queue.reject(
+                item_id,
+                reason=request.reason,
+                decided_by=current_user,
+            )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Review item not found: {item_id}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _wiki_review_item_payload(item)

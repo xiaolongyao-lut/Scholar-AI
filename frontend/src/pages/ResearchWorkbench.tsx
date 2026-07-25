@@ -285,6 +285,7 @@ function ResearchWorkbenchInner() {
                   key={`${materialId}:${deepLinkKey}`}
                   url={pdfUrl}
                   materialId={materialId}
+                  projectId={material?.project_id ?? null}
                   initialPage={initialPage ?? persistedView?.page}
                   bytes={cachedBytes}
                   onBytesLoaded={handleBytesLoaded}

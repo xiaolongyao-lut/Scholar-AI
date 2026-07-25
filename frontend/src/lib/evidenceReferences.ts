@@ -1,5 +1,5 @@
 import type { EvidenceReference } from '@/types/writing';
-import { PDF_URL_BBOX_UNIT, isPdfBboxUnit, readPdfBbox } from '@/lib/pdfAnchor';
+import { isPdfBboxUnit, readPdfBbox } from '@/lib/pdfAnchor';
 
 const KNOWN_EVIDENCE_KEYS = new Set([
   'chunk_id',
@@ -19,6 +19,12 @@ const KNOWN_EVIDENCE_KEYS = new Set([
   'source_label',
   'source_labels',
   'source_hint',
+  'anchor_kind',
+  'content_hash',
+  'locator_hash',
+  'chunk_hash',
+  'embedding_input_hash',
+  'hash_version',
 ]);
 
 const WIKI_PAGE_PATH_FIELDS = ['page_store_path', 'wiki_page_path', 'page_path'];
@@ -179,15 +185,21 @@ export function normalizeEvidenceReference(value: unknown): EvidenceReference | 
   }
 
   const bbox = readPdfBbox(value.bbox);
-  const rawBboxUnit = value.bbox_unit;
-  const bboxUnit = rawBboxUnit === undefined || rawBboxUnit === null
-    ? PDF_URL_BBOX_UNIT
-    : isPdfBboxUnit(rawBboxUnit)
-      ? rawBboxUnit
-      : null;
+  const bboxUnit = isPdfBboxUnit(value.bbox_unit) ? value.bbox_unit : null;
   if (bbox && bboxUnit) {
     normalized.bbox = [...bbox];
     normalized.bbox_unit = bboxUnit;
+  }
+
+  const anchorKind = value.anchor_kind === 'text' || value.anchor_kind === 'visual'
+    ? value.anchor_kind
+    : null;
+  if (anchorKind) {
+    normalized.anchor_kind = anchorKind;
+  }
+  for (const key of ['content_hash', 'locator_hash', 'chunk_hash', 'embedding_input_hash', 'hash_version'] as const) {
+    const hash = readNonEmptyString(value[key]);
+    if (hash) normalized[key] = hash;
   }
 
   const source = readNonEmptyString(value.source);

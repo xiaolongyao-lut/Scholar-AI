@@ -301,7 +301,7 @@ async def create_project(request: CreateProjectRequest) -> ProjectPayload:
         }
         updated_project = store.update_project(project.project_id, metadata=guarded_metadata)
         if not updated_project:
-            store.delete_project(project.project_id)
+            store.purge_project(project.project_id)
             raise HTTPException(status_code=500, detail="Failed to bind project source folder")
         project = updated_project
         _create_legacy_source_index_dir(str(project.metadata["source_folder"]))
@@ -310,23 +310,66 @@ async def create_project(request: CreateProjectRequest) -> ProjectPayload:
 
 @_rr.router.get("/project/{project_id}", response_model=ProjectPayload)
 async def get_project(project_id: str) -> ProjectPayload:
-    """Get a project by ID."""
+    """Get a project by ID, including an archived tombstone."""
     store = _rr.get_writing_resource_store()
-    project = store.get_project(project_id)
+    project = store.get_project(project_id, include_archived=True)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
     return _project_payload_from_resource(project)
 
 
+@_rr.router.get("/project/{project_id}/retention")
+async def get_project_retention(project_id: str) -> dict[str, Any]:
+    """Read the persisted project archive/restore receipt after a restart."""
+
+    store = _rr.get_writing_resource_store()
+    project = store.get_project(project_id, include_archived=True)
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    retention = store.get_project_retention(project_id)
+    if retention is None:
+        raise HTTPException(status_code=404, detail=f"Project has no retention receipt: {project_id}")
+    return retention
+
+
+@_rr.router.post("/project/{project_id}/restore", response_model=ProjectPayload)
+async def restore_project(
+    project_id: str,
+    archive_receipt_id: str = Query(..., min_length=1),
+    expected_updated_at: str | None = Query(None),
+    user_id: str | None = Query(None),
+) -> ProjectPayload:
+    """Restore an archived project using its exact persisted archive receipt."""
+
+    from writing_resources import ProjectRevisionConflictError
+
+    store = _rr.get_writing_resource_store()
+    try:
+        restored = store.restore_project(
+            project_id,
+            expected_archive_receipt_id=archive_receipt_id,
+            expected_updated_at=expected_updated_at,
+            restored_by=user_id,
+        )
+    except ProjectRevisionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if restored is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    return _project_payload_from_resource(restored)
+
+
 @_rr.router.get("/projects", response_model=list[ProjectPayload])
 async def list_projects(
     user_id: str | None = Query(None),
+    include_archived: bool = Query(False),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页条数"),
 ) -> list[ProjectPayload]:
-    """List all projects, optionally filtered by user. Supports pagination via query params."""
+    """List active projects by default, with opt-in archived tombstones."""
     store = _rr.get_writing_resource_store()
-    projects = store.list_projects(user_id=user_id)
+    projects = store.list_projects(user_id=user_id, include_archived=include_archived)
     all_payloads = []
     for p in projects:
         all_payloads.append(_project_payload_from_resource(p))
@@ -478,29 +521,40 @@ async def optimize_project_reasoning_bias(
 
 
 @_rr.router.delete("/project/{project_id}")
-async def delete_project(project_id: str) -> dict[str, str]:
-    """Delete a project and all its associated resources."""
+async def delete_project(
+    project_id: str,
+    expected_updated_at: str | None = Query(None),
+    user_id: str | None = Query(None),
+) -> dict[str, str]:
+    """Archive a project without deleting its resources or workspace files."""
+
+    from writing_resources import ProjectRevisionConflictError
+
     store = _rr.get_writing_resource_store()
-    deleted = store.delete_project(project_id)
-    if not deleted:
+    project = store.get_project(project_id, include_archived=True)
+    if project is None:
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
-    doc_store_path = _rr._get_doc_store_path(project_id)
-    if doc_store_path.exists():
-        try:
-            doc_store_path.unlink()
-        except OSError:
-            _rr.logger.warning("Failed to remove doc_store file: %s", doc_store_path)
-    chunk_store_path = _rr._get_chunk_store_path(project_id)
-    if chunk_store_path.exists():
-        try:
-            chunk_store_path.unlink()
-        except OSError:
-            _rr.logger.warning("Failed to remove chunk_store file: %s", chunk_store_path)
     try:
-        _rr._remove_project_workspace_dir(project_id)
-    except OSError as exc:
-        _rr.logger.warning("Failed to remove project workspace dir: project=%s err=%s", project_id, exc)
-    return {"status": "deleted", "project_id": project_id}
+        archived = store.archive_project(
+            project_id,
+            expected_updated_at=expected_updated_at or project.updated_at,
+            archived_by=user_id,
+        )
+    except ProjectRevisionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if archived is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    retention = store.get_project_retention(project_id) or {}
+    archive_receipt = retention.get("archive_receipt")
+    receipt = archive_receipt if isinstance(archive_receipt, dict) else {}
+    return {
+        "status": "archived",
+        "project_id": project_id,
+        "receipt_id": str(receipt.get("receipt_id") or ""),
+        "archived_at": str(receipt.get("archived_at") or archived.updated_at),
+    }
 
 
 def _run_scan_folder_payload(

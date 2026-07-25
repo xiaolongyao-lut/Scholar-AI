@@ -7,14 +7,16 @@ affecting the live endpoint behaviour.
 """
 
 import hashlib
+import math
 import re
 import struct
 from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import quote
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from fastapi import HTTPException, Query, Request, UploadFile, File, Form
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from models import (
     ChunkSearchRefMetadataPayload,
@@ -29,9 +31,15 @@ from models import (
 
 import routers.resources_router as _rr
 from routers.resources_router.path_guard import assert_bound_source_folder, assert_safe_source_folder
-from routers.resources_router._chunk_store_internals import _chunk_fts_index_path
+from routers.resources_router._chunk_store_internals import (
+    _chunk_fts_index_path,
+    _chunk_store_hash_version,
+)
+from chunk_fts_index import search_chunk_fts_index
 from chunk_hashing import compute_chunk_store_version
+from evidence_packer import _select_query_quote
 from retrieval_gateway import retrieve_candidates
+from text_utils import cjk_aware_tokenize
 
 
 _FIGURE_TABLE_PREFIX_RE = re.compile(
@@ -46,16 +54,20 @@ _LOCATOR_CACHE_MAX = 256
 _LOCATOR_MIN_TEXT_CHARS = 24
 _SEARCH_REF_FORBIDDEN_QUERY_PARAMS = frozenset({"ingest_mode", "include_content"})
 _SEARCH_REF_SUMMARY_CHARS = 300
+_MAX_UPLOAD_BATCH_FILES = 10000
 _VISUAL_SEARCH_INTENT_RE = re.compile(
-    r"外观|图片|图像|图表|照片|表面|焊缝|形貌|截面|宏观|显微|"
+    r"外观|图片|图像|图表|表格|照片|表面|焊缝|形貌|截面|宏观|显微|"
+    r"表\s*[A-Za-z]?\d+|"
     r"figure|fig\.?|image|picture|photo|appearance|surface|morpholog|"
-    r"weld\s*seam|cross[-\s]?section|macrograph|micrograph",
+    r"table\s*[A-Za-z]?\d+|tab\.|weld\s*seam|cross[-\s]?section|macrograph|micrograph",
     re.IGNORECASE,
 )
 _VISUAL_SEARCH_POSITIVE_TERMS = (
     "外观",
     "图片",
     "图像",
+    "图表",
+    "表格",
     "照片",
     "表面",
     "焊缝",
@@ -65,6 +77,8 @@ _VISUAL_SEARCH_POSITIVE_TERMS = (
     "显微",
     "figure",
     "fig.",
+    "table",
+    "tab.",
     "image",
     "picture",
     "photo",
@@ -178,6 +192,46 @@ _CHUNK_DEEP_IMAGE_KEY_SOURCES: dict[str, str] = {
 _pdf_locator_cache: dict[str, dict[str, Any] | None] = {}
 
 
+class FormulaCandidatePayload(BaseModel):
+    """One atomic whole-formula target for the PDF reader."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: str = Field(min_length=1, max_length=240)
+    page: int = Field(ge=1)
+    bbox: list[float] = Field(min_length=4, max_length=4)
+    bbox_unit: Literal["normalized_ratio"] = "normalized_ratio"
+    chunk_id: str | None = Field(default=None, min_length=1, max_length=240)
+    text: str | None = Field(default=None, max_length=512)
+
+    @field_validator("bbox")
+    @classmethod
+    def _validate_bbox(cls, value: list[float]) -> list[float]:
+        """Keep public geometry finite and inside normalized page bounds."""
+
+        if len(value) != 4:
+            raise ValueError("bbox must contain x, y, width, height")
+        coordinates = [float(item) for item in value]
+        if any(not math.isfinite(item) for item in coordinates):
+            raise ValueError("bbox values must be finite")
+        x, y, width, height = coordinates
+        if x < 0.0 or y < 0.0 or width <= 0.0 or height <= 0.0:
+            raise ValueError("bbox must have a non-negative origin and positive size")
+        if x + width > 1.000001 or y + height > 1.000001:
+            raise ValueError("bbox must stay inside normalized page bounds")
+        return coordinates
+
+
+class FormulaCandidatesResponse(BaseModel):
+    """Bounded material-scoped formula candidate collection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: str = Field(min_length=1, max_length=200)
+    material_id: str = Field(min_length=1, max_length=200)
+    candidates: list[FormulaCandidatePayload] = Field(default_factory=list, max_length=200)
+
+
 # =========================================================================
 # Upload Endpoints
 # =========================================================================
@@ -203,10 +257,18 @@ async def upload_documents_batch(
     """Upload multiple knowledge-base documents in one request and summarize outcomes."""
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
+    if len(files) > _MAX_UPLOAD_BATCH_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"每批最多导入 {_MAX_UPLOAD_BATCH_FILES} 个文件",
+        )
 
     store = _rr._ensure_upload_project(project_id)
+    batch_id, submitted_at = _rr._new_upload_batch_identity()
     results: list[dict[str, Any]] = []
     total_chunks = 0
+    accepted_files = 0
+    completed_files = 0
     successful_files = 0
     failed_files = 0
     duplicate_files = 0
@@ -223,20 +285,40 @@ async def upload_documents_batch(
     )
     skipped_files = 0
 
-    for upload in ordered_files:
+    batch_total = len(ordered_files)
+    for batch_index, upload in enumerate(ordered_files, start=1):
         filename = upload.filename or "unnamed"
+        batch_context = _rr._UploadBatchContext(
+            batch_id=batch_id,
+            submitted_at=submitted_at,
+            batch_index=batch_index,
+            batch_total=batch_total,
+        )
         try:
-            result = await _rr._ingest_uploaded_document(project_id, upload, store=store)
+            result = await _rr._ingest_uploaded_document(
+                project_id,
+                upload,
+                store=store,
+                batch_context=batch_context,
+            )
+            result = {
+                **result,
+                **batch_context.to_result_fields(),
+            }
             if result.get("status") == "duplicate":
                 duplicate_files += 1
             elif result.get("status") == "skipped":
                 skipped_files += 1
             elif result.get("status") == "queued":
+                accepted_files += 1
                 queued_files += 1
-                successful_files += 1
-            else:
+            elif result.get("status") in {"ok", "completed"}:
+                accepted_files += 1
+                completed_files += 1
                 total_chunks += int(result.get("chunks") or 0)
                 successful_files += 1
+            else:
+                failed_files += 1
             results.append(result)
         except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
             failed_files += 1
@@ -244,11 +326,16 @@ async def upload_documents_batch(
                 "title": filename,
                 "status": "error",
                 "error": str(exc),
+                **batch_context.to_result_fields(),
             })
 
     return {
         "project_id": project_id,
+        "batch_id": batch_id,
+        "submitted_at": submitted_at,
         "total_files": len(files),
+        "accepted_files": accepted_files,
+        "completed_files": completed_files,
         "successful_files": successful_files,
         "duplicate_files": duplicate_files,
         "skipped_files": skipped_files,
@@ -358,6 +445,15 @@ def _chunk_search_ref_summary(chunk: dict[str, Any]) -> str:
     return "Matched chunk"
 
 
+def _bounded_exact_quote(value: Any, *, max_chars: int = 320) -> str | None:
+    """Return bounded exact text without adding synthetic characters."""
+
+    text = str(value or "").strip()
+    if not text or max_chars <= 0:
+        return None
+    return text[:max_chars].rstrip() or None
+
+
 def _dedupe_bounded_strings(values: Any, *, max_items: int = 16, max_chars: int = 120) -> list[str]:
     """Return stable non-empty strings for low-risk provenance fields."""
 
@@ -406,12 +502,17 @@ def _chunk_figure_table_candidate(chunk: dict[str, Any]) -> str | None:
     return None
 
 
-def _chunk_image_paths(chunk: dict[str, Any], *, max_items: int = 8) -> list[str]:
-    """Return bounded project-relative image assets recorded on a chunk.
+def _chunk_image_paths(
+    chunk: dict[str, Any],
+    *,
+    max_items: int | None = 8,
+) -> list[str]:
+    """Return project-relative image assets recorded on a chunk.
 
     Args:
         chunk: Persisted chunk mapping from the project chunk store.
-        max_items: Upper bound for returned image references.
+        max_items: Optional upper bound for returned image references. ``None``
+            preserves every unique path carried by the finite chunk record.
 
     Returns:
         Deduplicated image path strings. Only existing metadata fields are read;
@@ -420,9 +521,19 @@ def _chunk_image_paths(chunk: dict[str, Any], *, max_items: int = 8) -> list[str
 
     if not isinstance(chunk, dict):
         raise TypeError("chunk must be a dictionary")
-    if not isinstance(max_items, int) or max_items < 1 or max_items > 32:
+    if max_items is not None and (
+        not isinstance(max_items, int) or max_items < 1 or max_items > 32
+    ):
         raise ValueError("max_items must be between 1 and 32")
-    if _bbox_is_probable_page_screenshot(_coerce_bbox(chunk.get("bbox"))):
+    bbox_anchor = _coerce_declared_bbox_anchor(
+        chunk.get("bbox"),
+        chunk.get("bbox_unit"),
+    )
+    if (
+        bbox_anchor is not None
+        and bbox_anchor[1] == PdfBboxUnit.NORMALIZED_RATIO
+        and _bbox_is_probable_page_screenshot(bbox_anchor[0])
+    ):
         return []
 
     values: list[Any] = []
@@ -435,7 +546,12 @@ def _chunk_image_paths(chunk: dict[str, Any], *, max_items: int = 8) -> list[str
     reference = _candidate_asset_reference(chunk)
     if reference is not None:
         values.append(reference[0])
-    return _dedupe_bounded_strings(values, max_items=max_items, max_chars=260)
+    effective_max_items = max_items if max_items is not None else max(len(values), 1)
+    return _dedupe_bounded_strings(
+        values,
+        max_items=effective_max_items,
+        max_chars=260,
+    )
 
 
 def _chunk_figure_candidate_detail(
@@ -493,7 +609,9 @@ def _chunk_figure_candidate_detail(
             label=label,
         )
 
-    bbox = _coerce_bbox(chunk.get("bbox"))
+    bbox_anchor = _coerce_declared_bbox_anchor(chunk.get("bbox"), chunk.get("bbox_unit"))
+    bbox = bbox_anchor[0] if bbox_anchor is not None else None
+    bbox_unit = bbox_anchor[1].value if bbox_anchor is not None else None
     source = _normalize_search_ref_text(chunk.get("figure_candidate_source"), max_chars=120)
     if not source:
         reference = _candidate_asset_reference(chunk)
@@ -513,6 +631,7 @@ def _chunk_figure_candidate_detail(
         "chunk_id": normalized_chunk_id,
         "chunk_index": _coerce_non_negative_int(chunk.get("chunk_index")),
         "bbox": bbox,
+        "bbox_unit": bbox_unit,
         "asset_path": asset_path,
         "source": source,
     }
@@ -580,13 +699,39 @@ def _invalid_bbox_reason(bbox: Any, bbox_unit: Any) -> str:
     if normalized_bbox is None:
         return "malformed_bbox"
     raw_unit = _normalize_search_ref_text(bbox_unit, max_chars=80)
+    if not raw_unit:
+        return "missing_bbox_unit"
     try:
-        normalized_unit = PdfBboxUnit(raw_unit) if raw_unit else PdfBboxUnit.NORMALIZED_RATIO
+        normalized_unit = PdfBboxUnit(raw_unit)
     except ValueError:
         return "unsupported_bbox_unit"
     if not pdf_bbox_matches_unit(normalized_bbox, normalized_unit):
         return "bbox_outside_declared_unit"
     return ""
+
+
+def _coerce_declared_bbox_anchor(
+    bbox: Any,
+    bbox_unit: Any,
+) -> tuple[list[float], PdfBboxUnit] | None:
+    """Return a bbox only when its coordinate unit is explicit and valid."""
+
+    normalized_bbox = coerce_pdf_bbox(bbox)
+    if normalized_bbox is None:
+        return None
+    if isinstance(bbox_unit, PdfBboxUnit):
+        normalized_unit = bbox_unit
+    else:
+        raw_unit = _normalize_search_ref_text(bbox_unit, max_chars=80)
+        if not raw_unit:
+            return None
+        try:
+            normalized_unit = PdfBboxUnit(raw_unit)
+        except ValueError:
+            return None
+    if not pdf_bbox_matches_unit(normalized_bbox, normalized_unit):
+        return None
+    return normalized_bbox, normalized_unit
 
 
 def _layout_locator_payload(
@@ -604,20 +749,9 @@ def _layout_locator_payload(
     normalized_chunk_id = _normalize_search_ref_text(chunk_id, max_chars=200)
     if not normalized_material_id or not normalized_chunk_id:
         return None
-    normalized_bbox = coerce_pdf_bbox(bbox)
-    normalized_unit: PdfBboxUnit | None = None
-    if normalized_bbox is not None:
-        raw_unit = _normalize_search_ref_text(bbox_unit, max_chars=80)
-        try:
-            normalized_unit = PdfBboxUnit(raw_unit) if raw_unit else PdfBboxUnit.NORMALIZED_RATIO
-        except ValueError:
-            normalized_unit = None
-        if normalized_unit is None or not pdf_bbox_matches_unit(normalized_bbox, normalized_unit):
-            normalized_bbox = None
-            normalized_unit = None
-        if page is None:
-            normalized_bbox = None
-            normalized_unit = None
+    anchor = _coerce_declared_bbox_anchor(bbox, bbox_unit)
+    normalized_bbox = anchor[0] if anchor is not None and page is not None else None
+    normalized_unit = anchor[1] if anchor is not None and page is not None else None
     if page is None and chunk_index is None and normalized_bbox is None:
         return None
     payload: dict[str, Any] = {
@@ -680,13 +814,12 @@ def build_locator_coverage(refs: list[Any]) -> EvidenceLocatorCoveragePayload:
         material_locator_count += 1
         if _coerce_optional_positive_page(locator.get("page")) is not None:
             page_locator_count += 1
-            bbox = coerce_pdf_bbox(locator.get("bbox"))
-            bbox_unit = locator.get("bbox_unit")
-            try:
-                unit = PdfBboxUnit(str(bbox_unit)) if bbox_unit else PdfBboxUnit.NORMALIZED_RATIO
-            except ValueError:
-                unit = PdfBboxUnit.NORMALIZED_RATIO
-            if bbox is not None and pdf_bbox_matches_unit(bbox, unit):
+            anchor = _coerce_declared_bbox_anchor(
+                locator.get("bbox"),
+                locator.get("bbox_unit"),
+            )
+            if anchor is not None:
+                _bbox, unit = anchor
                 bbox_locator_count += 1
                 bbox_unit_counts[unit.value] = bbox_unit_counts.get(unit.value, 0) + 1
 
@@ -911,6 +1044,7 @@ def _chunk_search_ref_metadata(
     chunk_id: str,
     project_id: str | None = None,
     chunk_store: dict[str, list[dict[str, Any]]] | None = None,
+    query: str | None = None,
 ) -> ChunkSearchRefMetadataPayload:
     """Build the plan-approved metadata whitelist for one chunk ref."""
 
@@ -927,10 +1061,15 @@ def _chunk_search_ref_metadata(
         and _normalize_search_ref_text(project_id, max_chars=200)
         and (
             _coerce_optional_positive_page(locator.get("page")) is None
-            or _coerce_pdf_anchor_bbox(locator.get("bbox")) is None
+            or _coerce_declared_bbox_anchor(
+                locator.get("bbox"),
+                locator.get("bbox_unit"),
+            )
+            is None
         )
     ):
         locator = enrich_chunk_locator_with_pdf(str(project_id), chunk_store, locator)
+    anchor_kind = _chunk_anchor_kind(chunk)
     return ChunkSearchRefMetadataPayload(
         material_id=material_id,
         title=title or None,
@@ -942,7 +1081,76 @@ def _chunk_search_ref_metadata(
         figure_candidate=_chunk_figure_table_candidate(chunk),
         figure_candidate_detail=_chunk_figure_candidate_detail(chunk, material_id=material_id, chunk_id=chunk_id),
         image_paths=_chunk_image_paths(chunk),
+        quote=_chunk_search_ref_quote(
+            chunk,
+            anchor_kind=anchor_kind,
+            query=query,
+        ),
+        anchor_kind=anchor_kind,
+        content_hash=_bounded_chunk_hash(chunk.get("content_hash")),
+        locator_hash=_bounded_chunk_hash(chunk.get("locator_hash")),
+        chunk_hash=_bounded_chunk_hash(chunk.get("chunk_hash")),
+        embedding_input_hash=_bounded_chunk_hash(chunk.get("embedding_input_hash")),
+        hash_version=_normalize_search_ref_text(chunk.get("hash_version"), max_chars=128) or None,
     )
+
+
+def _chunk_anchor_kind(chunk: Mapping[str, Any]) -> Literal["text", "visual"] | None:
+    """Return explicit or strongly implied anchor semantics for one chunk."""
+
+    explicit = _normalize_search_ref_text(chunk.get("anchor_kind"), max_chars=16).lower()
+    if explicit in {"text", "visual"}:
+        return cast(Literal["text", "visual"], explicit)
+    chunk_type = _normalize_search_ref_text(chunk.get("chunk_type"), max_chars=80).lower()
+    if chunk_type in {"figure", "figure_caption", "table", "table_caption", "formula", "equation", "image"}:
+        return "visual"
+    if chunk_type in {"body", "narrative", "text", "paragraph", "section"}:
+        return "text"
+    return None
+
+
+def _chunk_search_ref_quote(
+    chunk: Mapping[str, Any],
+    *,
+    anchor_kind: Literal["text", "visual"] | None,
+    query: str | None,
+) -> str | None:
+    """Return a bounded exact selector only when the chunk is text evidence."""
+
+    if anchor_kind != "text":
+        return None
+    explicit_quote = _bounded_exact_quote(chunk.get("quote"))
+    if explicit_quote is not None:
+        return explicit_quote
+    source_text = ""
+    for candidate in (
+        chunk.get("raw_content"),
+        _strip_chunk_locator_prefix(chunk.get("content")),
+        chunk.get("text"),
+    ):
+        source_text = str(candidate or "").strip()
+        if source_text:
+            break
+    if not source_text:
+        return None
+    query_tokens = {
+        token
+        for token in cjk_aware_tokenize(str(query or "").casefold())
+        if token
+    }
+    if query_tokens:
+        selected = _select_query_quote(source_text, query_tokens)
+        return _bounded_exact_quote(selected) if selected else None
+    return _bounded_exact_quote(source_text)
+
+
+def _bounded_chunk_hash(value: Any) -> str | None:
+    """Return a stored SHA-256 identity without recomputing response text."""
+
+    normalized = _normalize_search_ref_text(value, max_chars=71).lower()
+    if re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", normalized):
+        return normalized
+    return None
 
 
 def _chunk_search_read_endpoint(*, project_id: str, chunk_id: str) -> str:
@@ -960,6 +1168,7 @@ def _chunk_to_search_ref(
     chunk: dict[str, Any],
     *,
     chunk_store: dict[str, list[dict[str, Any]]] | None = None,
+    query: str | None = None,
 ) -> ChunkSearchRefPayload | None:
     """Project one scored chunk into the low-token MCP search-ref contract."""
 
@@ -989,6 +1198,7 @@ def _chunk_to_search_ref(
             chunk_id=chunk_id,
             project_id=project_id,
             chunk_store=chunk_store,
+            query=query,
         ),
         read_endpoint=_chunk_search_read_endpoint(project_id=project_id, chunk_id=chunk_id),
     )
@@ -1064,6 +1274,8 @@ def _visual_search_score(query: str, chunk: dict[str, Any]) -> float:
         return 0.0
 
     visual_hits = sum(1 for term in _VISUAL_SEARCH_POSITIVE_TERMS if term in haystack)
+    if _visual_link_ids(chunk) or _chunk_figure_table_candidate(chunk):
+        visual_hits += 1
     if visual_hits <= 0:
         return 0.0
 
@@ -1186,6 +1398,8 @@ def _select_search_ref_chunks_via_gateway(
     all_chunks: list[dict[str, Any]],
     query: str,
     top_k: int,
+    chunk_store_version: str | None = None,
+    hash_version: str | None = None,
 ) -> list[tuple[float, dict[str, Any]]] | None:
     """Return Gateway-ranked refs when the derived FTS index is current.
 
@@ -1205,13 +1419,26 @@ def _select_search_ref_chunks_via_gateway(
         raise ValueError("top_k must be a positive integer")
 
     try:
-        chunk_store_version = compute_chunk_store_version(chunk_store)
+        resolved_hash_version = (
+            _normalize_search_ref_text(hash_version, max_chars=128)
+            or _chunk_store_hash_version(normalized_project_id)
+        )
+        resolved_store_version = _normalize_search_ref_text(
+            chunk_store_version,
+            max_chars=64,
+        )
+        if not resolved_store_version:
+            resolved_store_version = compute_chunk_store_version(
+                chunk_store,
+                hash_version=resolved_hash_version,
+            )
         gateway_result = retrieve_candidates(
             normalized_project_id,
             normalized_query,
             "visual" if _search_refs_visual_query_enabled(normalized_query) else "general",
             store=chunk_store,
-            chunk_store_version=chunk_store_version,
+            chunk_store_version=resolved_store_version,
+            hash_version=resolved_hash_version,
             fts_db_path=_chunk_fts_index_path(normalized_project_id),
             limit=top_k,
             lexical_limit=top_k,
@@ -1238,7 +1465,67 @@ def _select_search_ref_chunks_via_gateway(
         if chunk is None:
             continue
         selected.append((candidate.score, chunk))
-    return selected[:top_k] if selected else None
+    if not selected:
+        return None
+    if _search_refs_visual_query_enabled(normalized_query):
+        scored = _rr._score_chunks_for_query(all_chunks, normalized_query)
+        return _merge_visual_search_ref_chunks(
+            normalized_query,
+            selected,
+            scored,
+            top_k=top_k,
+        )
+    return selected[:top_k]
+
+
+def _select_search_ref_chunks_fts_first(
+    *,
+    project_id: str,
+    query: str,
+    top_k: int,
+) -> tuple[
+    dict[str, list[dict[str, Any]]],
+    list[dict[str, Any]],
+    list[tuple[float, dict[str, Any]]],
+] | None:
+    """Select text refs by loading only materials named by the current FTS index."""
+
+    if _search_refs_visual_query_enabled(query):
+        return None
+    try:
+        chunk_store_version, hash_version = _rr._chunk_store_retrieval_contract(project_id)
+        probe = search_chunk_fts_index(
+            db_path=_chunk_fts_index_path(project_id),
+            project_id=project_id,
+            query=query,
+            expected_chunk_store_version=chunk_store_version,
+            limit=top_k,
+        )
+        if probe.status != "valid":
+            return None
+        if not probe.hits:
+            return {}, [], []
+        selected_material_ids = tuple(dict.fromkeys(hit.material_id for hit in probe.hits))
+        chunk_store = _rr._load_chunk_store_materials_for_retrieval(
+            project_id,
+            selected_material_ids,
+            expected_chunk_store_version=chunk_store_version,
+        )
+        all_chunks = _flatten_chunk_store_for_search_refs(chunk_store)
+        top = _select_search_ref_chunks_via_gateway(
+            project_id=project_id,
+            chunk_store=chunk_store,
+            all_chunks=all_chunks,
+            query=query,
+            top_k=top_k,
+            chunk_store_version=chunk_store_version,
+            hash_version=hash_version,
+        )
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+    if top is None:
+        return None
+    return chunk_store, all_chunks, top
 
 
 def _coerce_bbox(value: Any) -> list[float] | None:
@@ -1888,15 +2175,19 @@ def _repair_material_source_reference(
     if not normalized:
         return
     try:
-        doc_store = _rr._load_doc_store(project_id)
-        record = doc_store.get(material_id)
-        if not isinstance(record, dict):
-            record = {}
-        if str(record.get("source_relative_path") or "").strip():
-            return
-        record["source_relative_path"] = normalized
-        doc_store[material_id] = record
-        _rr._save_doc_store(project_id, doc_store)
+        def _repair_source_reference(
+            doc_store: dict[str, dict[str, Any]],
+        ) -> dict[str, dict[str, Any]]:
+            record = doc_store.get(material_id)
+            if not isinstance(record, dict):
+                return doc_store
+            if str(record.get("source_relative_path") or "").strip():
+                return doc_store
+            record["source_relative_path"] = normalized
+            doc_store[material_id] = record
+            return doc_store
+
+        _rr._update_doc_store_atomic(project_id, _repair_source_reference)
     except (OSError, TypeError, ValueError) as exc:
         _rr.logger.warning(
             "source_reference_repair_failed project_id=%s material_id=%s err=%s",
@@ -1906,8 +2197,23 @@ def _repair_material_source_reference(
         )
 
 
-def _resolve_material_source_path(project_id: str, material_id: str) -> Path | None:
-    """Resolve the original source file for a material from trusted project roots."""
+def _resolve_material_source_path(
+    project_id: str,
+    material_id: str,
+    *,
+    repair_missing_reference: bool = True,
+) -> Path | None:
+    """Resolve a material source from trusted roots.
+
+    Args:
+        project_id: Project that owns the trusted source roots.
+        material_id: Material whose original source is requested.
+        repair_missing_reference: Preserve the legacy best-effort metadata
+            repair for existing callers. Read-only endpoints pass ``False``.
+
+    Returns:
+        Existing project-owned source path, or ``None`` when unavailable.
+    """
 
     normalized_project_id = str(project_id or "").strip()
     normalized_material_id = str(material_id or "").strip()
@@ -1930,7 +2236,10 @@ def _resolve_material_source_path(project_id: str, material_id: str) -> Path | N
         for source_reference in source_references:
             candidate = _resolve_source_file_under(root, source_reference)
             if candidate is not None:
-                if not str(doc_entry.get("source_relative_path") or "").strip():
+                if (
+                    repair_missing_reference
+                    and not str(doc_entry.get("source_relative_path") or "").strip()
+                ):
                     _repair_material_source_reference(
                         normalized_project_id,
                         normalized_material_id,
@@ -2123,12 +2432,18 @@ def enrich_chunk_locator_with_pdf(
     if not normalized_project_id or not material_id or not chunk_id:
         return locator
     existing_page = _coerce_positive_int(locator.get("page"))
-    existing_bbox = _coerce_pdf_anchor_bbox(locator.get("bbox"))
-    normalized_locator = locator
-    if existing_bbox is not None and locator.get("bbox_unit") != PdfBboxUnit.NORMALIZED_RATIO.value:
-        normalized_locator = dict(locator)
-        normalized_locator["bbox"] = existing_bbox
-        normalized_locator["bbox_unit"] = PdfBboxUnit.NORMALIZED_RATIO.value
+    existing_anchor = _coerce_declared_bbox_anchor(
+        locator.get("bbox"),
+        locator.get("bbox_unit"),
+    )
+    existing_bbox = existing_anchor[0] if existing_anchor is not None else None
+    normalized_locator = dict(locator)
+    if existing_anchor is None:
+        normalized_locator.pop("bbox", None)
+        normalized_locator.pop("bbox_unit", None)
+    else:
+        normalized_locator["bbox"] = existing_anchor[0]
+        normalized_locator["bbox_unit"] = existing_anchor[1].value
     if existing_page is not None and existing_bbox is not None:
         return normalized_locator
 
@@ -2158,11 +2473,18 @@ def enrich_chunk_locator_with_pdf(
         return normalized_locator
 
     enriched = dict(normalized_locator)
-    if existing_page is None and _coerce_positive_int(cached.get("page")) is not None:
-        enriched["page"] = int(cached["page"])
-    if existing_bbox is None and (bbox := _coerce_pdf_anchor_bbox(cached.get("bbox"))) is not None:
-        enriched["bbox"] = bbox
-        enriched["bbox_unit"] = PdfBboxUnit.NORMALIZED_RATIO.value
+    cached_page = _coerce_positive_int(cached.get("page"))
+    cached_anchor = _coerce_declared_bbox_anchor(
+        cached.get("bbox"),
+        cached.get("bbox_unit"),
+    )
+    if existing_bbox is None and cached_anchor is not None and cached_page is not None:
+        # A rectangle is only meaningful on the page whose viewport produced it.
+        enriched["page"] = cached_page
+        enriched["bbox"] = cached_anchor[0]
+        enriched["bbox_unit"] = cached_anchor[1].value
+    elif existing_page is None and cached_page is not None:
+        enriched["page"] = cached_page
     if str(cached.get("text_preview") or "").strip():
         enriched["text_preview"] = str(cached["text_preview"])
     return enriched
@@ -2354,8 +2676,21 @@ def _derive_project_figure_asset_candidates(
             if isinstance(chunk, dict)
             else None
         )
-        bbox = _coerce_bbox(chunk.get("bbox")) if isinstance(chunk, dict) else None
-        if bbox is not None and not _bbox_is_plausible_figure_region(bbox):
+        bbox_anchor = (
+            _coerce_declared_bbox_anchor(
+                chunk.get("bbox"),
+                chunk.get("bbox_unit"),
+            )
+            if isinstance(chunk, dict)
+            else None
+        )
+        bbox = bbox_anchor[0] if bbox_anchor is not None else None
+        bbox_unit = bbox_anchor[1] if bbox_anchor is not None else None
+        if (
+            bbox is not None
+            and bbox_unit == PdfBboxUnit.NORMALIZED_RATIO
+            and not _bbox_is_plausible_figure_region(bbox)
+        ):
             continue
         if chunk_index_value is None:
             chunk_index_value = _chunk_index_from_id(chunk_id)
@@ -2376,6 +2711,7 @@ def _derive_project_figure_asset_candidates(
             chunk_id=chunk_id,
             chunk_index=chunk_index_value,
             bbox=bbox,
+            bbox_unit=bbox_unit,
             asset_path=parsed["relative_path"],
             source="project_figure_asset",
         )
@@ -2476,6 +2812,117 @@ def _augment_chunks_with_project_figure_assets(
     return augmented
 
 
+def _visual_link_ids(chunk: Mapping[str, Any]) -> list[str]:
+    """Return bounded figure/table ids that a narrative chunk references."""
+
+    if not isinstance(chunk, Mapping):
+        return []
+    values: list[str] = []
+    for key in ("linked_figure_ids", "linked_table_ids"):
+        values.extend(_dedupe_bounded_strings(chunk.get(key), max_items=8, max_chars=260))
+    return _dedupe_bounded_strings(values, max_items=8, max_chars=260)
+
+
+def _chunk_primary_visual_id(chunk: Mapping[str, Any]) -> str:
+    """Return this chunk's own caption/table id when it has primary pixels."""
+
+    if not isinstance(chunk, Mapping):
+        return ""
+    for key in ("figure_id", "table_id"):
+        value = _normalize_search_ref_text(chunk.get(key), max_chars=260)
+        if value:
+            return value
+    return ""
+
+
+def _visual_link_asset_index(chunk_store: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, Any]]:
+    """Index primary caption chunks by figure/table id for read-only joins."""
+
+    if not isinstance(chunk_store, dict):
+        raise TypeError("chunk_store must be a dictionary")
+    by_id: dict[str, dict[str, Any]] = {}
+    for material_id, chunks in chunk_store.items():
+        if not isinstance(chunks, list):
+            continue
+        normalized_material_id = _normalize_search_ref_text(material_id, max_chars=200)
+        for chunk in chunks:
+            if not isinstance(chunk, dict):
+                continue
+            visual_id = _chunk_primary_visual_id(chunk)
+            if not visual_id or visual_id in by_id or not _chunk_image_paths(chunk):
+                continue
+            clone = dict(chunk)
+            if normalized_material_id:
+                clone.setdefault("material_id", normalized_material_id)
+            by_id[visual_id] = clone
+    return by_id
+
+
+def _augment_chunks_with_linked_visual_assets(
+    chunk_store: dict[str, list[dict[str, Any]]],
+    all_chunks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Attach caption-bound pixels to narrative chunks that reference them.
+
+    The persisted chunk store remains unchanged. This only helps retrieval and
+    evidence payloads surface the existing caption asset when a body paragraph
+    is the lexical hit.
+    """
+
+    if not isinstance(chunk_store, dict):
+        raise TypeError("chunk_store must be a dictionary")
+    if not isinstance(all_chunks, list):
+        raise TypeError("all_chunks must be a list")
+    primary_by_id = _visual_link_asset_index(chunk_store)
+    if not primary_by_id:
+        return list(all_chunks)
+
+    augmented: list[dict[str, Any]] = []
+    for chunk in all_chunks:
+        if not isinstance(chunk, dict):
+            continue
+        linked_ids = _visual_link_ids(chunk)
+        if not linked_ids:
+            augmented.append(chunk)
+            continue
+
+        linked_chunks = [primary_by_id[visual_id] for visual_id in linked_ids if visual_id in primary_by_id]
+        if not linked_chunks:
+            augmented.append(chunk)
+            continue
+
+        clone = dict(chunk)
+        derived_assets: list[str] = []
+        for linked_chunk in linked_chunks:
+            derived_assets.extend(_chunk_image_paths(linked_chunk, max_items=4))
+        merged_assets = _dedupe_bounded_strings(
+            [*_chunk_image_paths(clone, max_items=8), *derived_assets],
+            max_items=8,
+            max_chars=260,
+        )
+        if merged_assets:
+            clone["image_paths"] = merged_assets
+
+        primary = linked_chunks[0]
+        clone.setdefault("figure_candidate", _chunk_figure_table_candidate(primary) or linked_ids[0])
+        if not _normalize_search_ref_text(clone.get("figure_asset_path"), max_chars=260):
+            linked_assets = _chunk_image_paths(primary, max_items=1)
+            if linked_assets:
+                clone["figure_asset_path"] = linked_assets[0]
+                clone.setdefault("asset_path", linked_assets[0])
+        clone.setdefault("figure_candidate_source", "linked_caption_chunk")
+
+        labels = _chunk_source_labels(clone)
+        if "visual_linked_caption_asset" not in labels:
+            clone["source_labels"] = [*labels, "visual_linked_caption_asset"]
+            labels = _chunk_source_labels(clone)
+        if "visual_image_asset" not in labels:
+            clone["source_labels"] = [*labels, "visual_image_asset"]
+        augmented.append(clone)
+
+    return augmented
+
+
 def _enrich_candidate_layout(
     *,
     project_id: str,
@@ -2486,16 +2933,22 @@ def _enrich_candidate_layout(
     label: str,
     existing_page: int | None,
     existing_bbox: list[float] | None,
+    existing_bbox_unit: PdfBboxUnit | None,
     existing_asset_path: str | None,
     existing_asset_source: str = "chunk_asset",
     render_pdf_fallback: bool = True,
-) -> tuple[int | None, list[float] | None, str | None, str]:
-    """Return page, bbox, asset path, and source label for a candidate row."""
+) -> tuple[int | None, list[float] | None, PdfBboxUnit | None, str | None, str]:
+    """Return page, atomic bbox/unit, asset path, and source label."""
 
     from project_paths import project_data_path
 
     page = existing_page
-    bbox = existing_bbox
+    existing_anchor = _coerce_declared_bbox_anchor(
+        existing_bbox,
+        existing_bbox_unit,
+    )
+    bbox = existing_anchor[0] if existing_anchor is not None else None
+    bbox_unit = existing_anchor[1] if existing_anchor is not None else None
     asset_path = existing_asset_path
     source = existing_asset_source if asset_path else "chunk_text"
 
@@ -2508,11 +2961,24 @@ def _enrich_candidate_layout(
                 "material_id": material_id,
                 "chunk_id": chunk_id,
                 **({"page": page} if page is not None else {}),
-                **({"bbox": bbox} if bbox is not None else {}),
+                **(
+                    {"bbox": bbox, "bbox_unit": bbox_unit.value}
+                    if bbox is not None and bbox_unit is not None
+                    else {}
+                ),
             },
         )
         page = _coerce_positive_int(locator.get("page")) or page
-        bbox = _coerce_bbox(locator.get("bbox")) or bbox
+        locator_anchor = _coerce_declared_bbox_anchor(
+            locator.get("bbox"),
+            locator.get("bbox_unit"),
+        )
+        if locator_anchor is not None:
+            bbox, bbox_unit = locator_anchor
+
+    preview_bbox = (
+        bbox if bbox_unit == PdfBboxUnit.NORMALIZED_RATIO else None
+    )
 
     if asset_path:
         keep_existing_asset = True
@@ -2521,7 +2987,7 @@ def _enrich_candidate_layout(
                 existing_path = project_data_path(project_id, asset_path)
             except (OSError, RuntimeError, ValueError):
                 existing_path = None
-            region_is_visual = bbox is None or _bbox_is_plausible_figure_region(bbox)
+            region_is_visual = preview_bbox is None or _bbox_is_plausible_figure_region(preview_bbox)
             keep_existing_asset = bool(
                 existing_path is not None
                 and existing_path.is_file()
@@ -2529,27 +2995,27 @@ def _enrich_candidate_layout(
                 and _is_plausible_figure_preview_asset(existing_path)
             )
         if keep_existing_asset:
-            return page, bbox, asset_path, source
+            return page, bbox, bbox_unit, asset_path, source
         asset_path = None
         source = "chunk_text"
 
     if not render_pdf_fallback:
-        return page, bbox, asset_path, source
+        return page, bbox, bbox_unit, asset_path, source
 
     source_path = _resolve_material_source_path(project_id, material_id)
     if source_path is None or source_path.suffix.lower() != ".pdf" or page is None:
-        return page, bbox, asset_path, source
+        return page, bbox, bbox_unit, asset_path, source
 
     relative_path = _candidate_crop_path(project_id, material_id, chunk_id, label)
     output_path = project_data_path(project_id, relative_path)
     if output_path.is_file() and _is_plausible_figure_preview_asset(output_path):
-        return page, bbox, relative_path, _pdf_preview_source_label(bbox)
+        return page, bbox, bbox_unit, relative_path, _pdf_preview_source_label(preview_bbox)
 
-    rendered_path = _render_pdf_crop(source_path, page, bbox, output_path)
+    rendered_path = _render_pdf_crop(source_path, page, preview_bbox, output_path)
     if rendered_path:
-        source = _pdf_preview_source_label(bbox)
+        source = _pdf_preview_source_label(preview_bbox)
         asset_path = relative_path
-    return page, bbox, asset_path, source
+    return page, bbox, bbox_unit, asset_path, source
 
 
 def derive_figure_table_candidates(
@@ -2638,11 +3104,19 @@ def derive_figure_table_candidates(
                 if dedupe_key in seen:
                     continue
                 page = _coerce_positive_int(chunk.get("page"))
-                bbox = _coerce_bbox(chunk.get("bbox"))
+                bbox_anchor = _coerce_declared_bbox_anchor(
+                    chunk.get("bbox"),
+                    chunk.get("bbox_unit"),
+                )
+                bbox = bbox_anchor[0] if bbox_anchor is not None else None
+                bbox_unit = bbox_anchor[1] if bbox_anchor is not None else None
+                preview_bbox = (
+                    bbox if bbox_unit == PdfBboxUnit.NORMALIZED_RATIO else None
+                )
                 asset_reference = _candidate_asset_reference(chunk)
                 asset_path = asset_reference[0] if asset_reference is not None else None
                 asset_source = asset_reference[1] if asset_reference is not None else "chunk_text"
-                if asset_path and _bbox_is_probable_page_screenshot(bbox):
+                if asset_path and _bbox_is_probable_page_screenshot(preview_bbox):
                     continue
                 if not asset_path and not pixel_only and render_pdf_fallback:
                     existing_asset_path = _existing_candidate_project_asset_path(
@@ -2657,7 +3131,7 @@ def derive_figure_table_candidates(
                         asset_source = "project_figure_asset"
                 if pixel_only and not asset_path:
                     continue
-                page, bbox, asset_path, source = _enrich_candidate_layout(
+                page, bbox, bbox_unit, asset_path, source = _enrich_candidate_layout(
                     project_id=normalized_project_id,
                     material_id=str(material_id),
                     chunk_id=chunk_id,
@@ -2666,6 +3140,7 @@ def derive_figure_table_candidates(
                     label=label,
                     existing_page=page,
                     existing_bbox=bbox,
+                    existing_bbox_unit=bbox_unit,
                     existing_asset_path=asset_path,
                     existing_asset_source=asset_source,
                     render_pdf_fallback=render_pdf_fallback and not pixel_only,
@@ -2691,6 +3166,7 @@ def derive_figure_table_candidates(
                         chunk_id=chunk_id,
                         chunk_index=_coerce_non_negative_int(chunk.get("chunk_index")),
                         bbox=bbox,
+                        bbox_unit=bbox_unit,
                         asset_path=asset_path,
                         source=source,
                     )
@@ -2700,6 +3176,104 @@ def derive_figure_table_candidates(
                     return ranked[:limit]
     ranked = _rank_figure_table_candidates_for_query(candidates, normalized_query)
     return ranked[:limit]
+
+
+@_rr.router.get(
+    "/material/{material_id}/formula-candidates",
+    response_model=FormulaCandidatesResponse,
+    tags=["Resources"],
+)
+def list_material_formula_candidates(
+    material_id: str,
+    project_id: str = Query(..., min_length=1, max_length=200),
+    limit: int = Query(200, ge=1, le=200),
+) -> FormulaCandidatesResponse:
+    """List atomic formula targets for one project-owned PDF material.
+
+    This route is intentionally synchronous so FastAPI runs the bounded
+    PyMuPDF text-layer scan in its worker threadpool instead of blocking the
+    async event loop. It never repairs source metadata or persists candidates.
+    Reliable structured formula chunks are merged with conservative line-level
+    detection, preserving existing parser output while filling local gaps.
+    """
+
+    normalized_project_id = str(project_id or "").strip()
+    normalized_material_id = str(material_id or "").strip()
+    if not normalized_project_id or not normalized_material_id:
+        raise HTTPException(status_code=422, detail="project_id and material_id must be non-empty")
+
+    store = _rr._ensure_upload_project(normalized_project_id)
+    material = store.get_material(normalized_material_id)
+    if material is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Material not found in project: {normalized_material_id}",
+        )
+    if isinstance(material, Mapping):
+        owner_project_id = str(material.get("project_id") or "").strip()
+    else:
+        owner_project_id = str(getattr(material, "project_id", "") or "").strip()
+    if owner_project_id != normalized_project_id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Material not found in project: {normalized_material_id}",
+        )
+
+    try:
+        chunk_store = _rr._load_chunk_store(normalized_project_id)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        _rr.logger.warning(
+            "formula_candidate_chunk_store_unavailable project_id=%s material_id=%s err=%s",
+            normalized_project_id,
+            normalized_material_id,
+            exc,
+        )
+        chunk_store = {}
+    raw_chunks = (
+        chunk_store.get(normalized_material_id, []) if isinstance(chunk_store, dict) else []
+    )
+    chunks = [chunk for chunk in raw_chunks if isinstance(chunk, Mapping)]
+    persisted = _rr.formula_candidates_from_chunks(
+        chunks,
+        material_id=normalized_material_id,
+        limit=200,
+    )
+
+    detected = []
+    try:
+        source_path = _resolve_material_source_path(
+            normalized_project_id,
+            normalized_material_id,
+            repair_missing_reference=False,
+        )
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        _rr.logger.warning(
+            "formula_candidate_source_unavailable project_id=%s material_id=%s err=%s",
+            normalized_project_id,
+            normalized_material_id,
+            exc,
+        )
+        source_path = None
+    if source_path is not None and source_path.suffix.casefold() == ".pdf":
+        detected = _rr.extract_pymupdf_formula_candidates(source_path, limit=200)
+        detected = _rr.bind_pdf_formula_candidates_to_chunks(detected, chunks)
+
+    candidates = _rr.merge_pdf_formula_candidates(persisted, detected, limit=limit)
+    return FormulaCandidatesResponse(
+        project_id=normalized_project_id,
+        material_id=normalized_material_id,
+        candidates=[
+            FormulaCandidatePayload(
+                candidate_id=candidate.candidate_id,
+                page=candidate.page,
+                bbox=list(candidate.bbox),
+                bbox_unit="normalized_ratio",
+                chunk_id=candidate.chunk_id,
+                text=candidate.text,
+            )
+            for candidate in candidates
+        ],
+    )
 
 
 @_rr.router.get("/figure-table-candidates", response_model=list[FigureTableCandidatePayload])
@@ -2759,14 +3333,18 @@ def find_chunk_locator(
                 if isinstance(chunk_index_value, int) and chunk_index_value >= 0
                 else None
             )
+            bbox_anchor = _coerce_declared_bbox_anchor(
+                chunk.get("bbox"),
+                chunk.get("bbox_unit"),
+            )
             return {
                 "material_id": material_id,
                 "chunk_id": chunk_id,
                 "page": page,
                 "chunk_index": chunk_index,
                 **(
-                    {"bbox": bbox, "bbox_unit": PdfBboxUnit.NORMALIZED_RATIO.value}
-                    if (bbox := _coerce_pdf_anchor_bbox(chunk.get("bbox"))) is not None
+                    {"bbox": bbox_anchor[0], "bbox_unit": bbox_anchor[1].value}
+                    if bbox_anchor is not None and page is not None
                     else {}
                 ),
             }
@@ -2823,10 +3401,28 @@ async def search_chunk_refs(
             detail=f"search-refs 不接受参数: {', '.join(forbidden)}",
         )
 
-    chunk_store = _rr._load_chunk_store(project_id)
-    all_chunks = _flatten_chunk_store_for_search_refs(chunk_store)
-    if _search_refs_visual_query_enabled(query):
-        all_chunks = _augment_chunks_with_project_figure_assets(project_id, chunk_store, all_chunks)
+    fast_selection = _select_search_ref_chunks_fts_first(
+        project_id=project_id,
+        query=query,
+        top_k=top_k,
+    )
+    if fast_selection is None:
+        chunk_store = _rr._load_chunk_store(project_id)
+        all_chunks = _flatten_chunk_store_for_search_refs(chunk_store)
+        if _search_refs_visual_query_enabled(query):
+            all_chunks = _augment_chunks_with_project_figure_assets(project_id, chunk_store, all_chunks)
+            all_chunks = _augment_chunks_with_linked_visual_assets(chunk_store, all_chunks)
+        top = _select_search_ref_chunks_via_gateway(
+            project_id=project_id,
+            chunk_store=chunk_store,
+            all_chunks=all_chunks,
+            query=query,
+            top_k=top_k,
+        )
+        if top is None:
+            top = _select_search_ref_chunks(all_chunks, query, top_k=top_k)
+    else:
+        chunk_store, all_chunks, top = fast_selection
     if not all_chunks:
         return ChunkSearchRefsResponse(
             project_id=project_id,
@@ -2836,19 +3432,20 @@ async def search_chunk_refs(
             refs=[],
         )
 
-    top = _select_search_ref_chunks_via_gateway(
-        project_id=project_id,
-        chunk_store=chunk_store,
-        all_chunks=all_chunks,
-        query=query,
-        top_k=top_k,
-    )
-    if top is None:
-        top = _select_search_ref_chunks(all_chunks, query, top_k=top_k)
     refs = [
         ref
         for score, chunk in top
-        if score > 0 and (ref := _chunk_to_search_ref(project_id, score, chunk, chunk_store=chunk_store)) is not None
+        if score > 0
+        and (
+            ref := _chunk_to_search_ref(
+                project_id,
+                score,
+                chunk,
+                chunk_store=chunk_store,
+                query=query,
+            )
+        )
+        is not None
     ]
     return ChunkSearchRefsResponse(
         project_id=project_id,

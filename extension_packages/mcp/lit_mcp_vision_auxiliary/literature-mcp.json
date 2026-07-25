@@ -55,6 +55,18 @@
       "max": 12000,
       "step": 100,
       "description": "限制每张图片生成说明的最多字符数。默认 3200 适合较详细说明；图片很多或回答变慢时调小，想保留更多细节时调大。"
+    },
+    {
+      "id": "vision_request_timeout_seconds",
+      "label": "单批图片分析超时",
+      "env": "VISION_REQUEST_TIMEOUT_SECONDS",
+      "type": "number",
+      "required": false,
+      "default": "15",
+      "min": 3,
+      "max": 18,
+      "step": 1,
+      "description": "视觉服务在指定秒数内未返回时停止本批分析并明确提示失败，避免对话长时间卡住。"
     }
   ],
   "required_credentials": [
@@ -73,7 +85,7 @@
     "vision.describe_image",
     "vision.extract_text"
   ],
-  "capabilities": ["read"],
+  "capabilities": ["read", "network"],
   "homepage": "https://github.com/anthropics/literature-assistant",
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

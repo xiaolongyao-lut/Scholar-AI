@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { DevRouteGate } from './components/common/DevRouteGate';
 import { MainLayout } from './layouts/MainLayout';
 import { WritingProvider } from './contexts/WritingContext';
@@ -15,11 +15,13 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 // Route-level lazy imports keep the initial shell small.
 const Projects = React.lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
 const KnowledgeBase = React.lazy(() => import('./pages/KnowledgeBase').then(m => ({ default: m.KnowledgeBase })));
+const LiteratureAcquisition = React.lazy(() => import('./pages/LiteratureAcquisition').then(m => ({ default: m.LiteratureAcquisition })));
 const KnowledgeDeposits = React.lazy(() => import('./pages/KnowledgeDeposits').then(m => ({ default: m.KnowledgeDeposits })));
 const SettingsPage = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.SettingsPage })));
 const VolumeAnalysis = React.lazy(() => import('./pages/VolumeAnalysis').then(m => ({ default: m.VolumeAnalysis })));
 const Jobs = React.lazy(() => import('./pages/Jobs').then(m => ({ default: m.Jobs })));
 const AgentWorkspace = React.lazy(() => import('./pages/AgentWorkspace').then(m => ({ default: m.AgentWorkspace })));
+const AgentSidebar = React.lazy(() => import('./pages/AgentSidebar').then(m => ({ default: m.AgentSidebar })));
 const DesktopAcceptanceAgentWorkspace = React.lazy(() => import('./pages/DesktopAcceptanceAgentWorkspace').then(m => ({ default: m.DesktopAcceptanceAgentWorkspace })));
 const DesktopAcceptanceSemanticReview = React.lazy(() => import('./pages/DesktopAcceptanceSemanticReview').then(m => ({ default: m.DesktopAcceptanceSemanticReview })));
 const DraftStudio = React.lazy(() => import('./components/DraftStudio').then(m => ({ default: m.DraftStudio })));
@@ -53,6 +55,82 @@ const PaperWorkbenchRedirect = () => {
     nextParams.set('tab', 'reader');
   }
   return <Navigate to={`/dialog?${nextParams.toString()}`} replace />;
+};
+
+const AppRoutes = () => {
+  const location = useLocation();
+  const isAgentSidebar = location.pathname.startsWith('/agent-sidebar');
+
+  if (isAgentSidebar) {
+    return (
+      <Suspense fallback={<LazyFallback />}>
+        <Routes>
+          <Route path="/agent-sidebar" element={<AgentSidebar />} />
+          <Route path="*" element={<Navigate to="/agent-sidebar" replace />} />
+        </Routes>
+      </Suspense>
+    );
+  }
+
+  return (
+    <>
+      {/* B5 (2026-06-13): frameless=False on Windows so we keep the
+          native Windows titlebar (drag/maximize/snap/close all free).
+          React-painted titlebar is removed because pywebview's frameless
+          mode is unreliable on EdgeChromium and rendering both produced
+          a visible duplicate titlebar (user screenshot 2026-06-13). */}
+      <MainLayout>
+        <Suspense fallback={<LazyFallback />}>
+          <Routes>
+            {/* Home */}
+            <Route path="/" element={<Navigate to="/dialog" replace />} />
+
+            {/* Writing group */}
+            <Route path="/writing" element={<WritingOverview />} />
+            <Route path="/writing/draft" element={<DraftStudio />} />
+            <Route path="/writing/outline" element={<OutlineManager />} />
+            <Route path="/writing/sources" element={<SourcesCitations />} />
+            <Route path="/writing/figures" element={<FiguresTables />} />
+            <Route path="/writing/reviewer" element={<ReviewerSubmission />} />
+
+            {/* Standalone pages */}
+            <Route path="/knowledge" element={<KnowledgeBase />} />
+            <Route path="/acquisition" element={<LiteratureAcquisition />} />
+            <Route path="/library" element={<Navigate to="/knowledge" replace />} />
+            <Route path="/wiki" element={<KnowledgeDeposits />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/volume" element={<VolumeAnalysis />} />
+            <Route path="/inspiration" element={<Navigate to="/dialog" replace />} />
+            <Route path="/chat" element={<Navigate to="/dialog" replace />} />
+            <Route path="/intelligent-chat" element={<Navigate to="/dialog" replace />} />
+            <Route path="/dialog" element={<Dialog />} />
+            <Route path="/discussion" element={<Navigate to="/dialog?mode=discussion" replace />} />
+            <Route path="/workbench/paper/:materialId" element={<PaperWorkbenchRedirect />} />
+            <Route path="/workbench/discussion" element={<Navigate to="/dialog?mode=discussion" replace />} />
+            <Route path="/workbench/wiki" element={<Navigate to="/wiki" replace />} />
+            <Route path="/workbench/inspiration" element={<Navigate to="/dialog" replace />} />
+            <Route path="/jobs" element={<Jobs />} />
+            <Route path="/agent-workspace" element={
+              <DevRouteGate fallback="/jobs"><AgentWorkspace /></DevRouteGate>
+            } />
+            <Route path="/__desktop_acceptance/agent-workspace" element={
+              <DevRouteGate fallback="/jobs"><DesktopAcceptanceAgentWorkspace /></DevRouteGate>
+            } />
+            <Route path="/__desktop_acceptance/semantic-review" element={
+              <DevRouteGate fallback="/jobs"><DesktopAcceptanceSemanticReview /></DevRouteGate>
+            } />
+            <Route path="/evolution" element={<Navigate to="/wiki" replace />} />
+            <Route path="/settings" element={<SettingsPage />} />
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/dialog" replace />} />
+          </Routes>
+        </Suspense>
+      </MainLayout>
+      <CommandPalette />
+      <McpPendingCallPoller />
+    </>
+  );
 };
 
 const App = () => {
@@ -93,60 +171,7 @@ const App = () => {
               <SmartReadProvider>
               <ToastProvider>
               <Router>
-                {/* B5 (2026-06-13): frameless=False on Windows so we keep the
-                    native Windows titlebar (drag/maximize/snap/close all free).
-                    React-painted titlebar is removed because pywebview's frameless
-                    mode is unreliable on EdgeChromium and rendering both produced
-                    a visible duplicate titlebar (user screenshot 2026-06-13). */}
-                <MainLayout>
-                  <Suspense fallback={<LazyFallback />}>
-                    <Routes>
-                      {/* Home */}
-                      <Route path="/" element={<Navigate to="/dialog" replace />} />
-
-                      {/* Writing group */}
-                      <Route path="/writing" element={<WritingOverview />} />
-                      <Route path="/writing/draft" element={<DraftStudio />} />
-                      <Route path="/writing/outline" element={<OutlineManager />} />
-                      <Route path="/writing/sources" element={<SourcesCitations />} />
-                      <Route path="/writing/figures" element={<FiguresTables />} />
-                      <Route path="/writing/reviewer" element={<ReviewerSubmission />} />
-
-                      {/* Standalone pages */}
-                      <Route path="/knowledge" element={<KnowledgeBase />} />
-                      <Route path="/library" element={<Navigate to="/knowledge" replace />} />
-                      <Route path="/wiki" element={<KnowledgeDeposits />} />
-                      <Route path="/projects" element={<Projects />} />
-                      <Route path="/volume" element={<VolumeAnalysis />} />
-                      <Route path="/inspiration" element={<Navigate to="/dialog" replace />} />
-                      <Route path="/chat" element={<Navigate to="/dialog" replace />} />
-                      <Route path="/intelligent-chat" element={<Navigate to="/dialog" replace />} />
-                      <Route path="/dialog" element={<Dialog />} />
-                      <Route path="/discussion" element={<Navigate to="/dialog?mode=discussion" replace />} />
-                      <Route path="/workbench/paper/:materialId" element={<PaperWorkbenchRedirect />} />
-                      <Route path="/workbench/discussion" element={<Navigate to="/dialog?mode=discussion" replace />} />
-                      <Route path="/workbench/wiki" element={<Navigate to="/wiki" replace />} />
-                      <Route path="/workbench/inspiration" element={<Navigate to="/dialog" replace />} />
-                      <Route path="/jobs" element={<Jobs />} />
-                      <Route path="/agent-workspace" element={
-                        <DevRouteGate fallback="/jobs"><AgentWorkspace /></DevRouteGate>
-                      } />
-                      <Route path="/__desktop_acceptance/agent-workspace" element={
-                        <DevRouteGate fallback="/jobs"><DesktopAcceptanceAgentWorkspace /></DevRouteGate>
-                      } />
-                      <Route path="/__desktop_acceptance/semantic-review" element={
-                        <DevRouteGate fallback="/jobs"><DesktopAcceptanceSemanticReview /></DevRouteGate>
-                      } />
-                      <Route path="/evolution" element={<Navigate to="/wiki" replace />} />
-                      <Route path="/settings" element={<SettingsPage />} />
-
-                      {/* Fallback */}
-                      <Route path="*" element={<Navigate to="/dialog" replace />} />
-                    </Routes>
-                  </Suspense>
-                </MainLayout>
-                <CommandPalette />
-                <McpPendingCallPoller />
+                <AppRoutes />
               </Router>
             </ToastProvider>
             </SmartReadProvider>

@@ -8,6 +8,7 @@ package. They depend only on the standard library plus two pure sibling modules.
 from __future__ import annotations
 
 import concurrent.futures as futures
+import hashlib
 import os
 import re
 import sqlite3
@@ -15,6 +16,9 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from pdf_backends import PDFParserProvenance
+from pdf_backends.ocr_ingestion import OcrIngestionReport
 
 from ._document_extraction import (
     ExtractedDocumentPayload,
@@ -52,6 +56,9 @@ class ScanCandidateExtraction:
     error_reason: str | None
     blocks: list[Any] | None = None
     markdown_full: str | None = None
+    parser_provenance: PDFParserProvenance | None = None
+    parser_output_sha256: str | None = None
+    ocr_report: OcrIngestionReport | None = None
 
 
 # Set of file extensions and skip directories used by scan helpers.
@@ -71,6 +78,7 @@ _TRANSLATION_MODE_RE = re.compile(r"(?i)(?:^|[\s._-])(?:mono|dual|single|bilingu
 _NON_LITERATURE_ARTIFACT_RE = re.compile(
     r"(?i)(?:^|[\s._-])(?:pnp|print[\s_-]?and[\s_-]?play|cutlines?|cut[\s_-]?lines?|rulebook|character[\s_-]?sheet)(?:$|[\s._-])"
 )
+_SOURCE_HASH_CHUNK_BYTES = 1024 * 1024
 
 
 def _iter_scan_files(root: Path) -> list[Path]:
@@ -87,10 +95,27 @@ def _iter_scan_files(root: Path) -> list[Path]:
 
 
 def _build_source_fingerprint(root: Path, path: Path) -> str:
-    """Build a stable-ish fingerprint for dedupe across nested folders."""
-    rel = path.resolve().relative_to(root.resolve()).as_posix()
-    stat = path.stat()
-    return f"{rel}|{stat.st_size}|{int(stat.st_mtime_ns)}"
+    """Stream an exact SHA-256 after proving the file stays below ``root``.
+
+    Size and mtime remain useful scan audit metadata, but they are not content
+    identities: either value can remain unchanged while bytes are replaced.
+    """
+
+    root_resolved = root.resolve()
+    source = path.resolve()
+    source.relative_to(root_resolved)
+    before = source.stat()
+    digest = hashlib.sha256()
+    with source.open("rb") as handle:
+        while chunk := handle.read(_SOURCE_HASH_CHUNK_BYTES):
+            digest.update(chunk)
+    after = source.stat()
+    if (
+        before.st_size != after.st_size
+        or before.st_mtime_ns != after.st_mtime_ns
+    ):
+        raise OSError("source file changed while its SHA-256 was being computed")
+    return f"sha256:{digest.hexdigest()}"
 
 
 def _build_scan_dedupe_key(relative_path: str | Path) -> str:
@@ -272,6 +297,13 @@ def _extract_scan_candidate_payload(
             error_reason=None,
             blocks=payload.blocks,
             markdown_full=payload.markdown_full,
+            parser_provenance=payload.parser_provenance,
+            parser_output_sha256=payload.parser_output_sha256,
+            ocr_report=(
+                payload.ocr_report
+                if isinstance(payload.ocr_report, OcrIngestionReport)
+                else None
+            ),
         )
     except Exception as exc:  # noqa: BLE001
         return ScanCandidateExtraction(content=None, error_reason=str(exc))

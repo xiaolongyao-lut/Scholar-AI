@@ -30,6 +30,7 @@ function evidenceRefFromProvenance(ref: EvidenceGraphProvenanceRef): EvidenceRef
     text: ref.quote || ref.text_hash || '',
     score: null,
     bbox: ref.bbox ?? null,
+    bbox_unit: ref.bbox_unit ?? null,
   };
 }
 
@@ -43,6 +44,7 @@ function sourceRefFromProvenance(ref: EvidenceGraphProvenanceRef): SourceRef | n
     page: ref.page ?? null,
     chunk_id: ref.chunk_id ?? ref.source_vault_chunk_id ?? null,
     bbox: ref.bbox ?? null,
+    bbox_unit: ref.bbox_unit ?? null,
   };
 }
 
@@ -88,9 +90,20 @@ function toV0Relation(relation: EvidenceGraphRelation): GraphEdge['relation'] {
   return 'related';
 }
 
+function statusLabel(status: EvidenceGraphNode['status']): string {
+  if (status === 'trusted') return '可信';
+  if (status === 'candidate') return '候选';
+  if (status === 'rejected') return '已拒绝';
+  return '过期';
+}
+
 function nodeMetadata(node: EvidenceGraphNode): Record<string, unknown> {
   return {
     ...node.metadata,
+    status: statusLabel(node.status),
+    graph_presentation: node.type === 'paper' ? 'paper_network' : node.metadata.graph_presentation,
+    network_kind: node.type === 'paper' ? 'paper' : node.metadata.network_kind,
+    source_title: node.metadata.source_title ?? (node.type === 'paper' ? node.label : undefined),
     evidence_graph_status: node.status,
     evidence_graph_type: node.type,
     evidence_graph_provenance_count: node.provenance_refs.length,
@@ -100,6 +113,11 @@ function nodeMetadata(node: EvidenceGraphNode): Record<string, unknown> {
 function edgeMetadata(edge: EvidenceGraphEdge): Record<string, unknown> {
   return {
     ...edge.metadata,
+    status: statusLabel(edge.status),
+    graph_presentation: edge.relation === 'related' ? 'paper_network' : edge.metadata.graph_presentation,
+    source_path: edge.metadata.source_path ?? edge.metadata.page_path,
+    target_path: edge.metadata.target_path ?? null,
+    frontmatter_field: edge.metadata.frontmatter_field ?? null,
     evidence_graph_status: edge.status,
     evidence_graph_relation: edge.relation,
     evidence_graph_created_by: edge.created_by,
@@ -128,6 +146,7 @@ function toV0Edge(edge: EvidenceGraphEdge): GraphEdge {
     source: edge.source,
     target: edge.target,
     relation: toV0Relation(edge.relation),
+    direction: edge.direction,
     confidence: edge.confidence ?? null,
     material_id: materialId,
     source_ref: firstSourceRef(edge.provenance_refs),
@@ -137,11 +156,12 @@ function toV0Edge(edge: EvidenceGraphEdge): GraphEdge {
 }
 
 /**
- * Convert Evidence Graph v1 into the existing React Flow viewer envelope.
+ * Convert Evidence Graph v1 into the legacy graph envelope used by navigation
+ * controllers while preserving the v1 direction contract.
  *
  * Why:
  * The v1 contract carries trust/provenance semantics, while the current graph
- * viewer already owns fit-view, deep links, hover previews, and canvas behavior.
+ * shared viewport already owns fit-view, deep links, and canvas behavior.
  */
 export function evidenceGraphToGraphPayload(payload: EvidenceGraphPayload): GraphPayloadV0 {
   return {

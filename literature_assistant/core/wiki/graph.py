@@ -351,6 +351,8 @@ def build_wiki_graph(page_store: WikiPageStore) -> WikiGraphSnapshot:
         if not content:
             continue
         parsed = parse_wiki_page(content)
+        if _is_merged_alias_page(parsed.frontmatter):
+            continue
         pages[page_path] = parsed
         node_id = node_id_from_path(page_path)
         nodes.append(_node_from_page(page_path, parsed, content))
@@ -370,6 +372,17 @@ def build_wiki_graph(page_store: WikiPageStore) -> WikiGraphSnapshot:
         edges=tuple(sorted(edges.values(), key=lambda edge: edge.edge_id)),
         updated_at=utc_now_iso(),
     )
+
+
+def _is_merged_alias_page(frontmatter: Mapping[str, Any]) -> bool:
+    extra = frontmatter.get("extra")
+    if not isinstance(extra, Mapping):
+        return False
+    graph_review = extra.get("graph_review")
+    if not isinstance(graph_review, Mapping):
+        return False
+    merged_into = graph_review.get("merged_into")
+    return isinstance(merged_into, str) and bool(merged_into.strip())
 
 
 class WikiGraphStore:

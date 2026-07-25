@@ -104,7 +104,10 @@ def test_context_compression_payload_normalizes_legacy_high_values(
     payload = model_config_router._chat_context_compression_payload()
 
     assert payload.enabled is True
-    assert payload.trigger_tokens == 24_000
+    assert payload.model_auto_compact_token_limit == 150_000
+    assert payload.trigger_tokens == 150_000
+    assert payload.model_context_window == 258_400
+    assert payload.tool_output_token_limit == 8_000
     assert payload.target_tokens == 2_000
     assert payload.keep_recent_turns == 6
     assert payload.updated_at == "2026-05-28T17:26:15Z"
@@ -127,7 +130,7 @@ def test_intelligent_chat_policy_uses_the_same_bounded_defaults(
 
     assert policy == {
         "enabled": True,
-        "trigger_tokens": 24_000,
+        "trigger_tokens": 150_000,
         "target_tokens": 2_000,
         "keep_recent_turns": 6,
     }
@@ -160,7 +163,7 @@ def test_intelligent_chat_default_llm_uses_chat_sampling_defaults(
     assert llm.temperature == 0.35
     assert llm.top_p == 0.8
     assert llm.top_k == 40
-    assert llm.max_tokens == 1536
+    assert llm.max_tokens == 12000
 
 
 def test_intelligent_chat_default_llm_applies_saved_chat_sampling(
@@ -210,8 +213,34 @@ async def test_chat_probe_accepts_non_empty_reply_content(monkeypatch: pytest.Mo
     assert result.ok is True
     assert result.extra["response_chars"] == 2
     assert _AsyncProbeClient.captured_json is not None
-    assert _AsyncProbeClient.captured_json["messages"][0]["content"] == "Hi"
+    assert _AsyncProbeClient.captured_json["messages"][0]["content"].startswith("You are a Scholar AI")
+    assert "evidence_ids" in _AsyncProbeClient.captured_json["messages"][1]["content"]
     assert _AsyncProbeClient.captured_follow_redirects is False
+
+
+@pytest.mark.asyncio
+async def test_chat_probe_accepts_anthropic_messages_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(model_config_router.httpx, "AsyncClient", _AsyncProbeClient)
+    _AsyncProbeClient.payload = {"content": [{"type": "text", "text": "ok"}]}
+
+    result = await model_config_router.test_chat_endpoint(
+        ConfigUpdate(
+            provider="Anthropic",
+            base_url="https://api.anthropic.com/v1",
+            api_key="test-key",
+            model="claude-3-5-haiku-20241022",
+            protocol="anthropic_messages",
+        )
+    )
+
+    assert result.ok is True
+    assert result.extra["response_chars"] == 2
+    assert _AsyncProbeClient.captured_json is not None
+    assert _AsyncProbeClient.captured_json["system"].startswith("You are a Scholar AI")
+    assert "evidence_ids" in _AsyncProbeClient.captured_json["messages"][0]["content"]
+    assert _AsyncProbeClient.captured_json["max_tokens"] >= 180
 
 
 @pytest.mark.asyncio
@@ -372,9 +401,10 @@ async def test_chat_tool_capability_probe_persists_tool_call_ok(
         _model: str,
         *,
         provider: str = "",
+        protocol: str = "openai_chat_completions",
         timeout_s: float = 0.0,
     ) -> ToolCallingProbeResult:
-        _ = provider, timeout_s
+        _ = provider, protocol, timeout_s
         return ToolCallingProbeResult(
             ok=True,
             models_ok=True,
@@ -424,9 +454,11 @@ async def test_chat_tool_capability_probe_passes_nvidia_provider_and_timeout(
         _model: str,
         *,
         provider: str = "",
+        protocol: str = "openai_chat_completions",
         timeout_s: float = 0.0,
     ) -> ToolCallingProbeResult:
         captured["provider"] = provider
+        captured["protocol"] = protocol
         captured["timeout_s"] = timeout_s
         return ToolCallingProbeResult(
             ok=False,
@@ -454,7 +486,107 @@ async def test_chat_tool_capability_probe_passes_nvidia_provider_and_timeout(
     assert result.ok is False
     assert result.status == "probe_failed"
     assert captured["provider"] == "NVIDIA"
+    assert captured["protocol"] == "openai_chat_completions"
     assert captured["timeout_s"] >= 180.0
+
+
+@pytest.mark.asyncio
+async def test_chat_tool_capability_transient_probe_does_not_inherit_saved_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    store = ProviderCapabilityStore(path=tmp_path / "provider-capabilities.json")
+    monkeypatch.setattr(model_config_router, "provider_capability_store", store)
+    monkeypatch.setattr(
+        model_config_router,
+        "chat_store",
+        _StaticResolvedFieldStore({"protocol": "anthropic_messages"}),
+    )
+    captured: dict[str, Any] = {}
+
+    def _probe(
+        _base_url: str,
+        _api_key: str,
+        _model: str,
+        *,
+        provider: str = "",
+        protocol: str = "openai_chat_completions",
+        timeout_s: float = 0.0,
+    ) -> ToolCallingProbeResult:
+        _ = provider, timeout_s
+        captured["protocol"] = protocol
+        return ToolCallingProbeResult(
+            ok=False,
+            models_ok=True,
+            chat_ok=True,
+            forced_tool_choice_ok=False,
+            model="deepseek-ai/deepseek-v4-flash",
+            stage="forced_tool_choice",
+            status_code=200,
+            error="forced_tool_choice_not_returned",
+        )
+
+    monkeypatch.setattr("provider_probe.probe_openai_tool_calling_capability", _probe)
+
+    await model_config_router.test_chat_tool_capability(
+        ConfigUpdate(
+            provider="NVIDIA",
+            base_url="https://integrate.api.nvidia.com/v1",
+            api_key="test-key",
+            model="deepseek-ai/deepseek-v4-flash",
+        )
+    )
+
+    assert captured["protocol"] == "openai_chat_completions"
+
+
+@pytest.mark.asyncio
+async def test_chat_tool_capability_probe_passes_protocol_from_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    store = ProviderCapabilityStore(path=tmp_path / "provider-capabilities.json")
+    monkeypatch.setattr(model_config_router, "provider_capability_store", store)
+    captured: dict[str, Any] = {}
+
+    def _probe(
+        _base_url: str,
+        _api_key: str,
+        _model: str,
+        *,
+        provider: str = "",
+        protocol: str = "openai_chat_completions",
+        timeout_s: float = 0.0,
+    ) -> ToolCallingProbeResult:
+        captured["provider"] = provider
+        captured["protocol"] = protocol
+        captured["timeout_s"] = timeout_s
+        return ToolCallingProbeResult(
+            ok=True,
+            models_ok=True,
+            chat_ok=True,
+            forced_tool_choice_ok=True,
+            protocol=protocol,
+            model="claude-3-5-haiku-20241022",
+            stage="anthropic_tool_choice",
+        )
+
+    monkeypatch.setattr("provider_probe.probe_openai_tool_calling_capability", _probe)
+
+    result = await model_config_router.test_chat_tool_capability(
+        ConfigUpdate(
+            provider="Anthropic",
+            base_url="https://api.anthropic.com/v1",
+            api_key="test-key",
+            model="claude-3-5-haiku-20241022",
+            protocol="anthropic_messages",
+        )
+    )
+
+    assert result.ok is True
+    assert result.status == "tool_call_ok"
+    assert captured["provider"] == "Anthropic"
+    assert captured["protocol"] == "anthropic_messages"
 
 
 @pytest.mark.asyncio
@@ -471,9 +603,10 @@ async def test_chat_tool_capability_probe_persists_probe_failed_when_tools_swall
         _model: str,
         *,
         provider: str = "",
+        protocol: str = "openai_chat_completions",
         timeout_s: float = 0.0,
     ) -> ToolCallingProbeResult:
-        _ = provider, timeout_s
+        _ = provider, protocol, timeout_s
         return ToolCallingProbeResult(
             ok=False,
             models_ok=True,
@@ -525,9 +658,10 @@ async def test_chat_tool_capability_probe_persists_auth_required(
         _model: str,
         *,
         provider: str = "",
+        protocol: str = "openai_chat_completions",
         timeout_s: float = 0.0,
     ) -> ToolCallingProbeResult:
-        _ = provider, timeout_s
+        _ = provider, protocol, timeout_s
         return ToolCallingProbeResult(
             ok=False,
             models_ok=False,

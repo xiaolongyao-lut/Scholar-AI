@@ -6,6 +6,7 @@ of the package) so that pytest ``monkeypatch.setattr(rr, "X", ...)`` keeps
 affecting the live endpoint behaviour.
 """
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,12 @@ from models import (
 )
 
 import routers.resources_router as _rr
+from literature_assistant.core.knowledge_graph.reviewed_knowledge_source_sync import (
+    mark_material_deleted,
+)
+from literature_assistant.core.knowledge_graph.reviewed_knowledge_store import (
+    ReviewedKnowledgeStoreError,
+)
 
 
 def _resolve_project_source_file_for_unlink(project_id: str, source_relative: object) -> Path | None:
@@ -145,6 +152,25 @@ async def delete_material(material_id: str) -> dict[str, str]:
 
     project_id = material.project_id
 
+    # Invalidate reviewed provenance before removing the source.  The sync is
+    # deliberately outside Wiki/candidate state and uses the ledger's own CAS
+    # receipts; if it cannot complete, keep the material available for retry.
+    try:
+        mark_material_deleted(
+            project_id=project_id,
+            material_id=material_id,
+            occurred_at=datetime.now(timezone.utc),
+        )
+    except (OSError, ValueError, ReviewedKnowledgeStoreError) as exc:
+        _rr.logger.exception(
+            "delete_material: reviewed provenance invalidation failed material_id=%s",
+            material_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="无法完成已审核知识来源失效登记，材料未删除",
+        ) from exc
+
     # 0.1.8.1 hotfix: also remove the persisted original file (when present)
     # so the user's "delete this paper" intent actually cleans disk, not just
     # the index entries. Best-effort — never blocks deletion.
@@ -163,15 +189,15 @@ async def delete_material(material_id: str) -> dict[str, str]:
 
     store.delete_material(material_id)
 
-    doc_store = _rr._load_doc_store(project_id)
-    if material_id in doc_store:
-        del doc_store[material_id]
-        _rr._save_doc_store(project_id, doc_store)
+    def _remove_material_state(
+        doc_store: dict[str, dict[str, Any]],
+        chunk_store: dict[str, list[dict[str, Any]]],
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+        doc_store.pop(material_id, None)
+        chunk_store.pop(material_id, None)
+        return doc_store, chunk_store
 
-    chunk_store = _rr._load_chunk_store(project_id)
-    if material_id in chunk_store:
-        del chunk_store[material_id]
-        _rr._save_chunk_store(project_id, chunk_store)
+    _rr._update_project_stores_atomic(project_id, _remove_material_state)
 
     return {"status": "deleted", "material_id": material_id}
 

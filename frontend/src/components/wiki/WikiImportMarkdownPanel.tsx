@@ -67,6 +67,7 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
   const [kind, setKind] = useState<WikiManualPageKind>('synthesis');
   const [status, setStatus] = useState<WikiManualPageStatus>('review');
   const [overwrite, setOverwrite] = useState(false);
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
   const [isDryRun, setIsDryRun] = useState(true);
   const [confirmWrite, setConfirmWrite] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -80,7 +81,11 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
 
   const dryRunModeLabel = isDryRun ? '仅预览' : '确认写入';
   const actionLabel = isDryRun ? '预览' : '写入待确认';
-  const submitDisabled = !isLoading && (!isWikiEnabled || sourcePaths.length === 0 || (!isDryRun && !confirmWrite));
+  const submitDisabled = !isLoading && (
+    !isWikiEnabled
+    || sourcePaths.length === 0
+    || (!isDryRun && (!confirmWrite || (overwrite && !confirmOverwrite)))
+  );
 
   const handlePickFiles = useCallback(async () => {
     const picker = window.pywebview?.api?.open_dialog;
@@ -117,6 +122,10 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
     }
     if (!isDryRun && !confirmWrite) {
       setError('写入前需要勾选确认。');
+      return;
+    }
+    if (!isDryRun && overwrite && !confirmOverwrite) {
+      setError('启用覆盖时，需要再次确认只更新允许覆盖的自动生成页。');
       return;
     }
 
@@ -159,7 +168,7 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
         setIsLoading(false);
       }
     }
-  }, [confirmWrite, kind, isDryRun, isWikiEnabled, onImported, overwrite, sourcePathsText, status]);
+  }, [confirmOverwrite, confirmWrite, kind, isDryRun, isWikiEnabled, onImported, overwrite, sourcePathsText, status]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -276,9 +285,26 @@ export function WikiImportMarkdownPanel({ isWikiEnabled, reviewQueueCount, onImp
               我确认写入
             </label>
             <label className="inline-flex items-center gap-2 text-xs text-foreground/65">
-              <input type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} />
-              覆盖同名页面
+              <input
+                type="checkbox"
+                checked={overwrite}
+                onChange={(event) => {
+                  setOverwrite(event.target.checked);
+                  if (!event.target.checked) setConfirmOverwrite(false);
+                }}
+              />
+              允许更新同名自动生成页（人工页受保护）
             </label>
+            {overwrite ? (
+              <label className="inline-flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+                <input
+                  type="checkbox"
+                  checked={confirmOverwrite}
+                  onChange={(event) => setConfirmOverwrite(event.target.checked)}
+                />
+                我确认只更新允许覆盖的自动生成页
+              </label>
+            ) : null}
           </div>
 
           <div className="rounded-md border border-outline-variant/50 bg-surface-high px-3 py-3 text-xs leading-6 text-foreground/55">

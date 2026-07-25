@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react';
 import { BookOpenText, FileText, Globe, Wrench } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { locateChunk, type ChunkLocator } from '@/services/resourcesApi';
 import { encodePdfBboxParam, type PdfBboxUnit } from '@/lib/pdfAnchor';
+import { normalizePdfQuote } from '@/lib/pdfQuoteAnchor';
 import { cn } from '@/lib/utils';
 
 /**
@@ -40,12 +42,20 @@ export function __resetEvidencePillCacheForTests(): void {
  */
 export interface EvidenceRefLike {
   material_id?: string | null;
+  evidence_role?: 'selected_content' | 'current_material' | 'cited_project_material' | 'project_context' | null;
   chunk_id?: string | null;
   page?: number | null;
   bbox?: number[] | null;
   bbox_unit?: PdfBboxUnit | null;
   text?: string | null;
   quote?: string | null;
+  /** Distinguishes quote-first text anchors from bbox-first visual anchors. */
+  anchor_kind?: 'text' | 'visual' | null;
+  content_hash?: string | null;
+  locator_hash?: string | null;
+  chunk_hash?: string | null;
+  embedding_input_hash?: string | null;
+  hash_version?: string | null;
   source?: string | null;
   /** Optional opaque id for cross-pane selection. */
   evidence_id?: string | null;
@@ -63,11 +73,18 @@ export interface EvidenceRefLike {
   source_path?: string | null;
   /** Weighted project/wiki fusion score. */
   joint_score?: number | null;
+  /** Backend relevance score retained for bounded visual-evidence ranking. */
+  score?: number | null;
   /** Extracted figure/table metadata retained for visual SmartRead evidence. */
   figure_candidate?: string | null;
   figure_candidate_detail?: Record<string, unknown> | null;
   /** Project-relative extracted image assets referenced by this evidence. */
   image_paths?: string[] | null;
+  /**
+   * Explicit backend citation level. In inspector contexts, an absent value
+   * must render as "未标注" instead of being inferred from bbox.
+   */
+  citation_level?: string | null;
   /**
    * 召回路径标签 — 后端给每条 evidence 打的"这条是怎么被选中的"标签
    * (e.g. `sibling` / `dense` / `bm25` / `tolf_text_selector`)。
@@ -100,6 +117,77 @@ interface EvidencePillProps {
   /** 是否在 pill 后追加召回路径小 chip (sibling/语义/关键词/深度检索)。
    *  Chat 场景默认开, 其他场景默认关以避免视觉过载。 */
   showSourceLabels?: boolean;
+  /** Optional Phase 5A inspector badge for backend-declared citation level. */
+  showCitationLevel?: boolean;
+}
+
+type EvidenceNavigationStatus =
+  | 'idle'
+  | 'selected'
+  | 'locating'
+  | 'opened'
+  | 'unavailable'
+  | 'locator_failed';
+
+type CitationLevel =
+  | 'exact_bbox'
+  | 'multi_locator'
+  | 'page_span'
+  | 'context_span'
+  | 'unattributed';
+
+function navigationStatusLabel(status: EvidenceNavigationStatus): string | null {
+  switch (status) {
+    case 'selected':
+      return '已选中';
+    case 'locating':
+      return '定位中';
+    case 'opened':
+      return '已打开';
+    case 'unavailable':
+      return '无定位';
+    case 'locator_failed':
+      return '定位失败';
+    default:
+      return null;
+  }
+}
+
+function navigationStatusClass(status: EvidenceNavigationStatus): string {
+  if (status === 'locator_failed' || status === 'unavailable') {
+    return 'border-amber-400/50 bg-amber-500/10 text-amber-700 dark:text-amber-300';
+  }
+  return 'border-outline-variant/60 bg-surface-low/60 text-foreground/55';
+}
+
+function normalizeCitationLevel(value: string | null | undefined): CitationLevel | null {
+  switch (value) {
+    case 'exact_bbox':
+    case 'multi_locator':
+    case 'page_span':
+    case 'context_span':
+    case 'unattributed':
+      return value;
+    default:
+      return null;
+  }
+}
+
+function citationLevelLabel(value: string | null | undefined): string {
+  switch (normalizeCitationLevel(value)) {
+    case 'exact_bbox':
+      return '精确框';
+    case 'multi_locator':
+      return '多定位';
+    case 'page_span':
+      return '页级';
+    case 'context_span':
+      return '上下文';
+    case 'unattributed':
+      return '未归因';
+    default:
+      return '未标注';
+  }
 }
 
 /**
@@ -115,10 +203,16 @@ function friendlySourceLabel(label: string): string | null {
       return '语义匹配';
     case 'bm25':
       return '关键词';
+    case 'lexical':
+      return '词面匹配';
     case 'tolf_text_selector':
       return '深度检索';
     case 'rerank':
       return '精排';
+    case 'wiki_joint_recall':
+      return 'Wiki 扩展';
+    case 'knowledge_resource':
+      return '知识库';
     case 'web_search':
       return '网络';
     default:
@@ -167,45 +261,78 @@ export function EvidencePill({
   title,
   labelOverride,
   showSourceLabels = false,
+  showCitationLevel = false,
 }: EvidencePillProps) {
   const navigate = useNavigate();
+  const [navigationStatus, setNavigationStatus] = useState<EvidenceNavigationStatus>('idle');
+
+  useEffect(() => {
+    setNavigationStatus('idle');
+  }, [evidence.evidence_id, evidence.chunk_id, evidence.material_id, evidence.page, projectId]);
 
   const handleClick = async () => {
     if (onActivate) {
       onActivate(evidence);
-      if (!navigateAfterActivate) return;
+      if (!navigateAfterActivate) {
+        setNavigationStatus('selected');
+        return;
+      }
     }
+    setNavigationStatus('locating');
     const params = new URLSearchParams();
     const normalizedProjectId = projectId?.trim() ?? '';
     let materialId = evidence.material_id?.trim() ?? '';
+    let locatorIssue: EvidenceNavigationStatus | null = null;
 
     let pageNum =
       typeof evidence.page === 'number' && evidence.page > 0 ? evidence.page : NaN;
     let bboxParam = encodePdfBboxParam(evidence.bbox, evidence.bbox_unit);
 
     if (
-      (!materialId || !(Number.isFinite(pageNum) && pageNum > 0))
+      (!materialId || !(Number.isFinite(pageNum) && pageNum > 0) || !bboxParam)
       && evidence.chunk_id
       && normalizedProjectId
     ) {
       const key = cacheKey(normalizedProjectId, evidence.chunk_id);
       let cached: ChunkLocator | null | undefined = locatorCache.get(key);
       if (cached === undefined) {
-        cached = await locateChunk(evidence.chunk_id, normalizedProjectId);
-        locatorCache.set(key, cached);
+        try {
+          cached = await locateChunk(evidence.chunk_id, normalizedProjectId);
+          locatorCache.set(key, cached);
+        } catch {
+          cached = null;
+          locatorIssue = 'locator_failed';
+        }
       }
-      if (!materialId && cached?.material_id) {
-        materialId = cached.material_id;
+      if (!cached && locatorIssue === null) {
+        locatorIssue = 'unavailable';
       }
-      if (cached && typeof cached.page === 'number' && cached.page > 0) {
-        pageNum = cached.page;
-      }
-      if (!bboxParam && cached?.bbox) {
-        bboxParam = encodePdfBboxParam(cached.bbox, cached.bbox_unit);
+      const locatorMatchesMaterial = !materialId || !cached?.material_id || cached.material_id === materialId;
+      if (cached && locatorMatchesMaterial) {
+        const cachedPage =
+          typeof cached.page === 'number' && Number.isFinite(cached.page) && cached.page > 0
+            ? cached.page
+            : null;
+        if (!materialId && cached.material_id) {
+          materialId = cached.material_id;
+        }
+        if (!(Number.isFinite(pageNum) && pageNum > 0) && cachedPage !== null) {
+          pageNum = cachedPage;
+        }
+        const cachedBboxParam = cachedPage !== null
+          ? encodePdfBboxParam(cached.bbox, cached.bbox_unit)
+          : null;
+        if (!bboxParam && cachedBboxParam && cachedPage !== null) {
+          bboxParam = cachedBboxParam;
+          pageNum = cachedPage;
+        }
       }
     }
 
-    if (!materialId) return;
+    if (!materialId) {
+      setNavigationStatus(locatorIssue ?? 'unavailable');
+      return;
+    }
     if (Number.isFinite(pageNum) && pageNum > 0) params.set('page', String(pageNum));
     params.set('scope', 'paper');
     params.set('material_id', materialId);
@@ -213,7 +340,16 @@ export function EvidencePill({
     if (normalizedProjectId) params.set('project_id', normalizedProjectId);
     if (evidence.chunk_id) params.set('chunk', evidence.chunk_id);
     if (bboxParam) params.set('bbox', bboxParam);
+    const anchorKind = evidence.anchor_kind === 'text' || evidence.anchor_kind === 'visual'
+      ? evidence.anchor_kind
+      : null;
+    if (anchorKind) params.set('anchor_kind', anchorKind);
+    if (anchorKind !== 'visual' && Number.isFinite(pageNum) && pageNum > 0) {
+      const quote = normalizePdfQuote(evidence.quote);
+      if (quote) params.set('quote', quote);
+    }
     navigate(`/dialog?${params.toString()}`);
+    setNavigationStatus('opened');
   };
 
   const label = labelOverride?.trim() || friendlyLabel(evidence);
@@ -224,6 +360,14 @@ export function EvidencePill({
   const KindIcon = sourceType === 'wiki' ? BookOpenText : kind === 'web' ? Globe : kind === 'mcp' ? Wrench : FileText;
   const kindHint =
     sourceType === 'wiki' ? '（Wiki 记忆）' : kind === 'web' ? '（网络搜索）' : kind === 'mcp' ? '（MCP 工具）' : '';
+  const roleHint = (() => {
+    switch (evidence.evidence_role) {
+      case 'selected_content': return '（本轮选中内容）';
+      case 'current_material': return '（当前论文）';
+      case 'cited_project_material': return '（被引项目文献）';
+      default: return '';
+    }
+  })();
   const jointScore =
     typeof evidence.joint_score === 'number' && Number.isFinite(evidence.joint_score) && evidence.joint_score >= 0
       ? evidence.joint_score
@@ -243,12 +387,20 @@ export function EvidencePill({
     if (friendly.length === 0) return '';
     return ` · 来源: ${friendly.join(' / ')}`;
   })();
+  const citationLevel = showCitationLevel ? normalizeCitationLevel(evidence.citation_level) : null;
+  const citationLevelText = showCitationLevel ? citationLevelLabel(evidence.citation_level) : null;
+  const citationTooltipSuffix = showCitationLevel
+    ? ` · 引用等级: ${citationLevelText}${citationLevel ? ` (${citationLevel})` : ''}`
+    : '';
   const scoreTooltipSuffix = jointScore === null ? '' : ` · 融合分 ${formatJointScore(jointScore)}`;
   const tooltip =
     (title ?? evidence.text ?? '在文献中打开此证据') +
     kindHint +
+    roleHint +
     sourceLabelTooltipSuffix +
+    citationTooltipSuffix +
     scoreTooltipSuffix;
+  const navigationStatusText = navigationStatusLabel(navigationStatus);
 
   return (
     <button
@@ -257,9 +409,11 @@ export function EvidencePill({
         void handleClick();
       }}
       title={tooltip}
+      aria-busy={navigationStatus === 'locating' ? true : undefined}
       aria-pressed={selected ? true : undefined}
       data-evidence-id={evidence.evidence_id ?? evidence.chunk_id ?? undefined}
       data-source-kind={kind}
+      data-evidence-role={evidence.evidence_role ?? undefined}
       className={cn(
         'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -303,6 +457,27 @@ export function EvidencePill({
           aria-label={`融合分: ${formatJointScore(jointScore)}`}
         >
           {formatJointScore(jointScore)}
+        </span>
+      )}
+      {citationLevelText && (
+        <span
+          className="ml-0.5 inline-flex items-center whitespace-nowrap rounded border border-outline-variant/60 bg-surface-low/60 px-1 py-px text-[10px] font-normal leading-none text-foreground/55"
+          aria-label={`引用等级: ${citationLevelText}`}
+          data-citation-level={citationLevel ?? 'unlabeled'}
+        >
+          {citationLevelText}
+        </span>
+      )}
+      {navigationStatusText && (
+        <span
+          className={cn(
+            'ml-0.5 inline-flex items-center whitespace-nowrap rounded border px-1 py-px text-[10px] font-normal leading-none',
+            navigationStatusClass(navigationStatus),
+          )}
+          aria-live="polite"
+          data-navigation-status={navigationStatus}
+        >
+          {navigationStatusText}
         </span>
       )}
     </button>

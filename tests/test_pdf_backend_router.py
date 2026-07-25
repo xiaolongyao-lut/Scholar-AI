@@ -10,6 +10,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -28,8 +29,11 @@ from pdf_backends import (  # noqa: E402
     register_ocr_engine,
 )
 from pdf_backends import ocr_builtin_engines  # noqa: E402
+from pdf_backends.ocr_engine import OcrImageRegion, OcrImageResult  # noqa: E402
 from python_adapter_server import app, get_local_api_capability_token  # noqa: E402
+from routers import pdf_backend_router  # noqa: E402
 from routers.pdf_backend_router import (  # noqa: E402
+    OcrCredentialApplyRequest,
     OcrEngineSelectionRequest,
     OcrExecutionProbeRequest,
     OcrHealthRequest,
@@ -39,6 +43,7 @@ from routers.pdf_backend_router import (  # noqa: E402
     list_ocr_engines,
     run_ocr_execution_probe,
     select_ocr_engine_endpoint,
+    apply_ocr_credential,
     check_ocr_engine_health,
 )
 
@@ -91,13 +96,57 @@ class _MockLocalOcrEngine:
         )
 
     def ocr_image(self, image: bytes | Path, *, language: str = "en") -> str:
+        if self.config.get("structured_result") is True:
+            raise AssertionError("execution probe must prefer ocr_image_result")
         image_bytes = image.read_bytes() if isinstance(image, Path) else image
         suffix = str(self.config.get("suffix") or "").strip()
         return f"mock text {language} bytes={len(image_bytes)} {suffix}".strip()
 
+    def ocr_image_result(
+        self,
+        image: bytes | Path,
+        *,
+        language: str = "en",
+    ) -> OcrImageResult:
+        if self.config.get("structured_result") is not True:
+            return OcrImageResult(text=self.ocr_image(image, language=language))
+        return OcrImageResult(
+            text="structured text from provider",
+            regions=tuple(
+                OcrImageRegion(
+                    markdown="x" * 150 if index == 4 else f"region text {index}",
+                    bbox=(index / 10, index / 20, 0.05, 0.05),
+                    block_type="Heading" if index == 0 else "Text",
+                )
+                for index in range(7)
+            ),
+        )
+
 
 def _register_mock_local_ocr() -> None:
     register_ocr_engine("mock_local", lambda config: _MockLocalOcrEngine(dict(config)))
+
+
+def _fake_credential(*, protocol: str = "ocr") -> SimpleNamespace:
+    return SimpleNamespace(
+        credential_id="cred_ocr_test",
+        enabled=True,
+        category=SimpleNamespace(value="ocr"),
+        protocol=SimpleNamespace(value=protocol),
+        provider="custom-ocr",
+        model="test-ocr-model",
+        base_url="https://ocr.example.test",
+        api_key="test-secret-value",
+    )
+
+
+class _FakeCredentialStore:
+    def __init__(self, credential: SimpleNamespace) -> None:
+        self.credential = credential
+
+    def get_internal(self, credential_id: str) -> SimpleNamespace:
+        assert credential_id == self.credential.credential_id
+        return self.credential
 
 
 def test_default_backend_is_pymupdf() -> None:
@@ -119,7 +168,13 @@ def test_env_var_no_longer_selects_external_backend(
     assert get_pdf_backend().name == "pymupdf"
 
 
-def test_status_payload_shape() -> None:
+def test_status_payload_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Do not let a developer's persisted OCR selection change this contract
+    # test's default-state assertion.
+    monkeypatch.setenv("LITASSIST_OCR_CONFIG_PATH", str(tmp_path / "ocr_config.json"))
     payload = get_pdf_backend_status()
     assert payload.active_backend == "pymupdf"
     assert payload.active_source == "default"
@@ -156,7 +211,12 @@ def test_ocr_status_defaults_to_auto_without_requiring_engine(
     assert payload.next_safe_local_actions
 
 
-def test_ocr_engines_endpoint_lists_builtin_engines() -> None:
+def test_ocr_engines_endpoint_lists_builtin_engines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LITASSIST_OCR_CONFIG_PATH", str(tmp_path / "ocr_config.json"))
+
     engines = list_ocr_engines()
     names = {engine.name for engine in engines}
     remote = next(engine for engine in engines if engine.name == "remote_api")
@@ -168,6 +228,90 @@ def test_ocr_engines_endpoint_lists_builtin_engines() -> None:
         "remote OCR requires explicit api_key and base_url configuration"
     ]
     assert any("api_key" in action for action in remote.next_safe_local_actions)
+
+
+def test_apply_ocr_credential_rejects_non_ocr_protocol(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LITASSIST_OCR_CONFIG_PATH", str(tmp_path / "ocr_config.json"))
+    store = _FakeCredentialStore(_fake_credential(protocol="openai_chat_completions"))
+    monkeypatch.setattr(pdf_backend_router, "_get_ocr_credential_store", lambda: store)
+
+    with pytest.raises(HTTPException) as exc_info:
+        apply_ocr_credential(OcrCredentialApplyRequest(credential_id="cred_ocr_test"))
+
+    assert exc_info.value.status_code == 400
+    assert "protocol" in str(exc_info.value.detail).lower()
+    assert not (tmp_path / "ocr_config.json").exists()
+
+
+def test_apply_ocr_credential_preserves_configured_language(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "ocr_config.json"
+    monkeypatch.setenv("LITASSIST_OCR_CONFIG_PATH", str(config_path))
+    store = _FakeCredentialStore(_fake_credential())
+    monkeypatch.setattr(pdf_backend_router, "_get_ocr_credential_store", lambda: store)
+    select_ocr_engine_endpoint(OcrEngineSelectionRequest(policy="none", language="zh"))
+
+    result = apply_ocr_credential(
+        OcrCredentialApplyRequest(credential_id="cred_ocr_test")
+    )
+
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert result.status.language == "zh"
+    assert saved["language"] == "zh"
+    assert saved["engine_config"]["credential_id"] == "cred_ocr_test"
+    assert "api_key" not in saved["engine_config"]
+
+
+def test_apply_ocr_credential_ignores_stale_provider_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "ocr_config.json"
+    monkeypatch.setenv("LITASSIST_OCR_CONFIG_PATH", str(config_path))
+    credential = _fake_credential()
+    credential.provider = "PaddleOCR"
+    credential.model = "PaddleOCR-VL-1.6"
+    credential.base_url = "https://paddleocr.aistudio-app.com"
+    store = _FakeCredentialStore(credential)
+    monkeypatch.setattr(pdf_backend_router, "_get_ocr_credential_store", lambda: store)
+
+    result = apply_ocr_credential(
+        OcrCredentialApplyRequest(
+            credential_id="cred_ocr_test",
+            provider="generic",
+        )
+    )
+
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert result.status.engine_config["provider"] == "paddle_jobs"
+    assert saved["engine_config"]["provider"] == "paddle_jobs"
+    assert "endpoint_path" not in saved["engine_config"]
+
+
+def test_ocr_engine_inventory_uses_current_runtime_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LITASSIST_OCR_CONFIG_PATH", str(tmp_path / "ocr_config.json"))
+    store = _FakeCredentialStore(_fake_credential())
+    monkeypatch.setattr(pdf_backend_router, "_get_ocr_credential_store", lambda: store)
+    apply_ocr_credential(OcrCredentialApplyRequest(credential_id="cred_ocr_test"))
+
+    status_remote = next(
+        engine for engine in get_ocr_status().available_engines if engine.name == "remote_api"
+    )
+    inventory_remote = next(
+        engine for engine in list_ocr_engines() if engine.name == "remote_api"
+    )
+
+    assert status_remote.available is True
+    assert inventory_remote.available is status_remote.available
+    assert inventory_remote.readiness_status == status_remote.readiness_status
 
 
 def test_ocr_engine_selection_writes_local_runtime_config(
@@ -301,6 +445,39 @@ def test_ocr_execution_probe_returns_bounded_execution_proof() -> None:
     assert payload.text_length == len("mock text en bytes=14 ok")
     assert payload.text_sha256 == hashlib.sha256(b"mock text en bytes=14 ok").hexdigest()
     assert payload.text_preview == "mock text"
+
+
+def test_ocr_execution_probe_prefers_structured_result_and_bounds_regions() -> None:
+    _register_mock_local_ocr()
+    image_bytes = b"structured-probe-image"
+
+    payload = run_ocr_execution_probe(
+        OcrExecutionProbeRequest(
+            confirm_execution=True,
+            engine="mock_local",
+            engine_config={
+                "structured_result": True,
+                "api_key": "DO-NOT-LEAK",
+                "raw_provider_payload": "raw-provider-payload",
+            },
+            image_base64=base64.b64encode(image_bytes).decode("ascii"),
+            language="en",
+            preview_chars=10,
+        )
+    )
+
+    assert payload.text_preview == "structured"
+    assert payload.region_count == 7
+    assert len(payload.region_samples) == 5
+    assert payload.region_samples[0].bbox == (0.0, 0.0, 0.05, 0.05)
+    assert payload.region_samples[0].block_type == "Heading"
+    assert payload.region_samples[0].text_preview == "region text 0"
+    assert payload.region_samples[4].bbox == (0.4, 0.2, 0.05, 0.05)
+    assert payload.region_samples[4].text_preview == "x" * 120
+    receipt = json.dumps(payload.model_dump(mode="json"), sort_keys=True)
+    assert "DO-NOT-LEAK" not in receipt
+    assert "raw-provider-payload" not in receipt
+    assert "x" * 150 not in receipt
 
 
 def test_ocr_execution_probe_accepts_bounded_temp_image_path(tmp_path: Path) -> None:

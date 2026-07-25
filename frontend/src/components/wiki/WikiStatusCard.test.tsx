@@ -42,10 +42,10 @@ describe('WikiStatusCard', () => {
 
     render(<WikiStatusCard status={alignedStatus} isLoading={false} error={null} onRefresh={onRefresh} />);
 
-    expect(screen.getByRole('status', { name: 'Wiki 来源完整性' })).toHaveTextContent('来源已对齐');
-    expect(screen.getByRole('status', { name: 'Wiki 来源完整性' })).toHaveTextContent('模型上下文：允许 Wiki 引用');
+    expect(screen.getByRole('status', { name: '知识库来源完整性' })).toHaveTextContent('来源已对齐');
+    expect(screen.getByRole('status', { name: '知识库来源完整性' })).toHaveTextContent('模型上下文：允许引用');
     expect(screen.getByText('3 / 3')).toBeInTheDocument();
-    expect(screen.getAllByText('1234567890ab')).toHaveLength(2);
+    expect(screen.getAllByText('已记录')).toHaveLength(2);
 
     fireEvent.click(screen.getByRole('button', { name: /刷新状态/i }));
     expect(onRefresh).toHaveBeenCalledTimes(1);
@@ -68,12 +68,11 @@ describe('WikiStatusCard', () => {
       />,
     );
 
-    const integrity = screen.getByRole('status', { name: 'Wiki 来源完整性' });
+    const integrity = screen.getByRole('status', { name: '知识库来源完整性' });
     expect(integrity).toHaveTextContent('来源已变更');
-    expect(integrity).toHaveTextContent('模型上下文：阻断 Wiki 引用');
-    expect(screen.getByText('aaaaaaaaaaaa')).toBeInTheDocument();
-    expect(screen.getByText('dddddddddddd')).toBeInTheDocument();
-    expect(screen.getByText('Wiki 来源清单已变化，检索索引需要重新生成。')).toBeInTheDocument();
+    expect(integrity).toHaveTextContent('模型上下文：暂不引用');
+    expect(screen.getAllByText('已记录')).toHaveLength(2);
+    expect(screen.getByText('来源清单已变化，检索索引需要重新生成。')).toBeInTheDocument();
   });
 
   it('renders page-level manifest drift counts and bounded samples', () => {
@@ -130,9 +129,9 @@ describe('WikiStatusCard', () => {
     expect(screen.getByText('源页未入索引')).toBeInTheDocument();
     expect(screen.getByText('索引多余页')).toBeInTheDocument();
     expect(screen.getByText('Hash 不一致')).toBeInTheDocument();
-    expect(screen.getByText('concepts/d.md')).toBeInTheDocument();
+    expect(screen.getByText('d')).toBeInTheDocument();
     expect(screen.getByText('已隐藏路径')).toBeInTheDocument();
-    expect(screen.getByText('concepts/a.md')).toBeInTheDocument();
+    expect(screen.getByText('a')).toBeInTheDocument();
   });
 
   it.each([
@@ -152,8 +151,67 @@ describe('WikiStatusCard', () => {
       />,
     );
 
-    const integrity = screen.getByRole('status', { name: 'Wiki 来源完整性' });
+    const integrity = screen.getByRole('status', { name: '知识库来源完整性' });
     expect(integrity).toHaveTextContent(expectedText);
-    expect(integrity).not.toHaveTextContent('模型上下文：允许 Wiki 引用');
+    expect(integrity).not.toHaveTextContent('模型上下文：允许引用');
+  });
+
+  it('separates read-only preflight from explicit revalidation apply', () => {
+    const onPreflight = vi.fn();
+    const onApply = vi.fn();
+    const staleStatus = {
+      ...alignedStatus,
+      stale: true,
+      integrity_status: 'source_hash_mismatch',
+    };
+    const { rerender } = render(
+      <WikiStatusCard
+        status={staleStatus}
+        isLoading={false}
+        error={null}
+        onRefresh={vi.fn()}
+        onPreflightRevalidation={onPreflight}
+        onApplyRevalidation={onApply}
+      />,
+    );
+
+    expect(onPreflight).not.toHaveBeenCalled();
+    expect(onApply).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '确认重新验证' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '检查变化' }));
+    expect(onPreflight).toHaveBeenCalledTimes(1);
+    expect(onApply).not.toHaveBeenCalled();
+
+    rerender(
+      <WikiStatusCard
+        status={staleStatus}
+        isLoading={false}
+        error={null}
+        onRefresh={vi.fn()}
+        revalidation={{
+          enabled: true,
+          stale: true,
+          can_apply: true,
+          applied: false,
+          integrity_status: 'source_hash_mismatch',
+          source_manifest_hash: 'a'.repeat(64),
+          indexed_source_manifest_hash: 'b'.repeat(64),
+          source_page_count: 3,
+          indexed_page_count: 2,
+          manifest_drilldown: {
+            ...alignedStatus.manifest_drilldown,
+            status: 'source_hash_mismatch',
+            missing_count: 1,
+          },
+          warnings: [],
+          message: 'Preflight complete.',
+        }}
+        onPreflightRevalidation={onPreflight}
+        onApplyRevalidation={onApply}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '确认重新验证' }));
+    expect(onApply).toHaveBeenCalledWith('a'.repeat(64));
   });
 });

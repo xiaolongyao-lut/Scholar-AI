@@ -260,7 +260,9 @@ export function formatCredentialProbeSummary(test: CredentialTestResponse | unde
   }
   if (test.status === 'ok') {
     const parts: string[] = [];
-    if (probe.capability_verdict === 'scholar_ready') {
+    if (probe.capability_verdict === 'ocr_config_ready') {
+      parts.push('配置检查通过 · 配置完整');
+    } else if (probe.capability_verdict === 'scholar_ready') {
       parts.push('真实问答通过');
     } else if (probe.capability_verdict === 'usable_text_response') {
       parts.push('真实问答通过，返回格式需观察');
@@ -1319,9 +1321,15 @@ export function credentialStatusBadge(
     const reason = test.probe?.error === 'scholar_probe_response_unusable'
       ? '模型有响应，但没有完成 Scholar 问答模板。'
       : formatCredentialProbeError(test.probe?.provider_message || test.probe?.error || test.reason);
+    if (test.probe?.error === 'scholar_probe_response_unusable') {
+      return { label: `问答测试未通过 · ${reason}`, cls: 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' };
+    }
     return { label: `连接失败 · ${reason}`, cls: 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' };
   }
   if (test?.status === 'ok') {
+    if (test.probe?.capability_verdict === 'ocr_config_ready') {
+      return { label: '配置检查通过 · 配置完整', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' };
+    }
     if (test.probe?.capability_verdict === 'scholar_ready') {
       return { label: '测试通过 · Scholar 问答可用', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' };
     }

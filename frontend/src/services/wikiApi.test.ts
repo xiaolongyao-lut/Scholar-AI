@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   WikiApiError,
+  approveWikiReviewItem,
+  rejectWikiReviewItem,
+  withdrawWikiReviewPromotion,
   extractCitationWarnings,
   parseWikiCompileDryRun,
   parseWikiDoctor,
@@ -10,8 +13,13 @@ import {
   parseWikiPageDetail,
   parseWikiPageList,
   parseWikiReviewList,
+  parseWikiRevalidation,
   parseWikiStatus,
 } from '@/services/wikiApi';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('wikiApi.parseWikiImport', () => {
   it('preserves bounded evidence locator fields returned by local markdown imports', () => {
@@ -272,6 +280,40 @@ describe('wikiApi.parseWikiReviewList', () => {
           created_at: '2026-05-04T10:00:00Z',
           source: 'wiki',
           metadata: { hash: 'abc' },
+          schema_version: 2,
+          item_revision: 'review-revision-1',
+          target: {
+            schema_version: 'scholar-ai-wiki-page-revision-target/v2',
+            type: 'wiki_page_revision',
+            page_id: 'draft-1',
+            page_path: 'concepts/draft-1.md',
+            expected_content_hash: 'a'.repeat(64),
+            expected_status: 'review',
+          },
+          promotion_intent: {
+            schema_version: 'scholar-ai-wiki-promotion-intent/v2',
+            operation_id: 'operation-1',
+            review_item_id: 'draft-1',
+            request_id: 'request-1',
+            expected_item_revision: 'review-revision-1',
+            request_fingerprint: 'b'.repeat(64),
+            reason: 'Verified before restart.',
+            target: {
+              schema_version: 'scholar-ai-wiki-page-revision-target/v2',
+              type: 'wiki_page_revision',
+              page_id: 'draft-1',
+              page_path: 'concepts/draft-1.md',
+              expected_content_hash: 'a'.repeat(64),
+              expected_status: 'review',
+            },
+            before_content_hash: 'a'.repeat(64),
+            after_content_hash: 'c'.repeat(64),
+            previous_status: 'review',
+            promoted_status: 'final',
+            promoted_at: '2026-07-16T01:00:00Z',
+            promoted_by: 'local-user',
+          },
+          allowed_actions: ['approve', 'reject'],
           decision: null,
         },
       ],
@@ -279,6 +321,77 @@ describe('wikiApi.parseWikiReviewList', () => {
 
     expect(parsed.items[0].metadata.hash).toBe('abc');
     expect(parsed.items[0].status).toBe('pending');
+    expect(parsed.items[0].promotion_intent?.request_id).toBe('request-1');
+    expect(parsed.items[0].promotion_intent?.reason).toBe('Verified before restart.');
+  });
+
+  it('keeps annotation targets decision-only and rejects promotion actions', () => {
+    const annotationItem = {
+      item_id: 'annotation-note-1',
+      kind: 'annotation_note',
+      title: 'Annotation note',
+      page_path: 'annotations/material-1/note-1',
+      summary: 'Needs review.',
+      status: 'pending',
+      created_at: '2026-07-16T00:00:00Z',
+      source: 'annotation',
+      metadata: {},
+      schema_version: 2,
+      item_revision: 'annotation-revision-1',
+      target: {
+        schema_version: 'scholar-ai-annotation-note-review-target/v1',
+        type: 'annotation_note',
+        project_id: 'project-1',
+        material_id: 'material-1',
+        note_id: 'note-1',
+        expected_updated_at: '2026-07-16T00:00:00Z',
+        expected_content_hash: 'd'.repeat(64),
+        required_scope: 'wiki_review',
+      },
+      promotion_intent: null,
+      allowed_actions: ['approve', 'reject'],
+      decision: null,
+    };
+
+    const parsed = parseWikiReviewList({ enabled: true, items: [annotationItem] });
+    expect(parsed.items[0].target?.type).toBe('annotation_note');
+    expect(parsed.items[0].promotion_intent).toBeNull();
+    expect(parsed.items[0].allowed_actions).toEqual(['approve', 'reject']);
+
+    expect(() => parseWikiReviewList({
+      enabled: true,
+      items: [{ ...annotationItem, allowed_actions: ['approve', 'withdraw'] }],
+    })).toThrowError('Annotation review payload cannot expose a promotion withdrawal action.');
+
+    expect(() => parseWikiReviewList({
+      enabled: true,
+      items: [{
+        ...annotationItem,
+        promotion_intent: {
+          schema_version: 'scholar-ai-wiki-promotion-intent/v2',
+          operation_id: 'operation-1',
+          review_item_id: 'annotation-note-1',
+          request_id: 'request-1',
+          expected_item_revision: 'annotation-revision-1',
+          request_fingerprint: 'e'.repeat(64),
+          reason: 'Invalid promotion state.',
+          target: {
+            schema_version: 'scholar-ai-wiki-page-revision-target/v2',
+            type: 'wiki_page_revision',
+            page_id: 'invalid-page',
+            page_path: 'drafts/invalid-page.md',
+            expected_content_hash: 'f'.repeat(64),
+            expected_status: 'review',
+          },
+          before_content_hash: 'f'.repeat(64),
+          after_content_hash: 'a'.repeat(64),
+          previous_status: 'review',
+          promoted_status: 'final',
+          promoted_at: '2026-07-16T01:00:00Z',
+          promoted_by: 'user',
+        },
+      }],
+    })).toThrowError('Annotation review decisions cannot contain Wiki promotion state.');
   });
 });
 
@@ -456,5 +569,207 @@ describe('wikiApi.parseWikiCompileDryRun', () => {
     expect(parsed.budget_summary.total_tokens).toBe(1700);
     expect(parsed.budget_checks[0].source_id).toBe('src-1');
     expect(parsed.warnings[0]).toContain('dry-run');
+  });
+});
+
+describe('wikiApi review decisions', () => {
+  it('requires a bounded explicit reason before sending a decision', async () => {
+    await expect(approveWikiReviewItem({
+      target_type: 'unbound',
+      item_id: 'review-1',
+      reason: '   ',
+      expected_item_revision: 'review-revision-1',
+    }))
+      .rejects.toMatchObject({ status: 400 });
+  });
+
+  it('requires the visible item revision for every review decision', async () => {
+    await expect(rejectWikiReviewItem({
+      target_type: 'unbound',
+      item_id: 'review-1',
+      reason: 'Not supported by the cited evidence.',
+      expected_item_revision: '   ',
+    })).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('encodes the item id and parses the approved item response', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      item_id: 'review/1',
+      kind: 'draft',
+      title: 'Candidate',
+      page_path: 'drafts/candidate.md',
+      summary: 'Summary',
+      status: 'approved',
+      created_at: '2026-07-16T00:00:00Z',
+      source: 'manual_frontend',
+      metadata: {},
+      schema_version: 2,
+      item_revision: 'review-revision-1',
+      target: {
+        schema_version: 'scholar-ai-wiki-page-revision-target/v2',
+        type: 'wiki_page_revision',
+        page_id: 'candidate',
+        page_path: 'drafts/candidate.md',
+        expected_content_hash: 'a'.repeat(64),
+        expected_status: 'review',
+      },
+      allowed_actions: [],
+      decision: {
+        status: 'approved',
+        reason: 'Verified',
+        decided_at: '2026-07-16T01:00:00Z',
+        decided_by: 'user',
+        promotion_receipt: {
+          schema_version: 'scholar-ai-wiki-promotion-receipt/v2',
+          receipt_id: 'receipt-1',
+          review_item_id: 'review/1',
+          request_id: 'request-1',
+          expected_item_revision: 'review-revision-1',
+          request_fingerprint: 'b'.repeat(64),
+          outcome: 'promoted',
+          target: {
+            schema_version: 'scholar-ai-wiki-page-revision-target/v2',
+            type: 'wiki_page_revision',
+            page_id: 'candidate',
+            page_path: 'drafts/candidate.md',
+            expected_content_hash: 'a'.repeat(64),
+            expected_status: 'review',
+          },
+          before_content_hash: 'a'.repeat(64),
+          after_content_hash: 'c'.repeat(64),
+          previous_status: 'review',
+          promoted_status: 'final',
+          promoted_at: '2026-07-16T01:00:00Z',
+          promoted_by: 'user',
+        },
+      },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await approveWikiReviewItem({
+      target_type: 'wiki_page_revision',
+      item_id: 'review/1',
+      reason: ' Verified ',
+      request_id: 'request-1',
+      expected_item_revision: 'review-revision-1',
+      expected_target_content_hash: 'A'.repeat(64),
+    });
+
+    expect(result.status).toBe('approved');
+    expect(result.decision?.promotion_receipt?.request_id).toBe('request-1');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/api/wiki/review/review%2F1/approve');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      reason: 'Verified',
+      decided_by: 'user',
+      request_id: 'request-1',
+      expected_item_revision: 'review-revision-1',
+      expected_target_content_hash: 'a'.repeat(64),
+    });
+  });
+
+  it('sends version-bound withdrawal CAS fields and parses the durable receipt', async () => {
+    const withdrawalReceipt = {
+      schema_version: 'scholar-ai-wiki-promotion-withdrawal-receipt/v1',
+      receipt_id: 'withdrawal-1',
+      review_item_id: 'review/1',
+      promotion_operation_id: 'operation-1',
+      promotion_request_id: 'promotion-request-1',
+      promotion_request_fingerprint: 'b'.repeat(64),
+      expected_item_revision: 'review-revision-1',
+      resulting_item_revision: 'review-revision-2',
+      withdrawal_request_fingerprint: 'd'.repeat(64),
+      outcome: 'withdrawn',
+      target: {
+        schema_version: 'scholar-ai-wiki-page-revision-target/v2',
+        type: 'wiki_page_revision',
+        page_id: 'candidate',
+        page_path: 'drafts/candidate.md',
+        expected_content_hash: 'a'.repeat(64),
+        expected_status: 'review',
+      },
+      before_content_hash: 'a'.repeat(64),
+      planned_after_content_hash: 'c'.repeat(64),
+      reason: 'Needs another source check.',
+      withdrawn_at: '2026-07-16T02:00:00Z',
+      withdrawn_by: 'user',
+    };
+    const item = {
+      item_id: 'review/1',
+      kind: 'draft',
+      title: 'Candidate',
+      page_path: 'drafts/candidate.md',
+      summary: 'Summary',
+      status: 'pending',
+      created_at: '2026-07-16T00:00:00Z',
+      source: 'manual_frontend',
+      metadata: {},
+      schema_version: 2,
+      item_revision: 'review-revision-2',
+      target: withdrawalReceipt.target,
+      promotion_intent: null,
+      promotion_withdrawal_receipts: [withdrawalReceipt],
+      allowed_actions: ['approve', 'reject'],
+      decision: null,
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      item,
+      withdrawal_receipt: withdrawalReceipt,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await withdrawWikiReviewPromotion({
+      item_id: 'review/1',
+      reason: ' Needs another source check. ',
+      expected_item_revision: 'review-revision-1',
+      expected_promotion_operation_id: 'operation-1',
+    });
+
+    expect(result.item.status).toBe('pending');
+    expect(result.item.promotion_intent).toBeNull();
+    expect(result.withdrawal_receipt.resulting_item_revision).toBe('review-revision-2');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/api/wiki/review/review%2F1/withdraw');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      reason: 'Needs another source check.',
+      expected_item_revision: 'review-revision-1',
+      expected_promotion_operation_id: 'operation-1',
+    });
+  });
+});
+
+describe('wikiApi.parseWikiRevalidation', () => {
+  it('parses a bounded read-only preflight result', () => {
+    const parsed = parseWikiRevalidation({
+      enabled: true,
+      stale: true,
+      can_apply: true,
+      applied: false,
+      integrity_status: 'source_hash_mismatch',
+      source_manifest_hash: 'a'.repeat(64),
+      indexed_source_manifest_hash: 'b'.repeat(64),
+      source_page_count: 3,
+      indexed_page_count: 2,
+      manifest_drilldown: {
+        schema_version: 'scholar-ai-wiki-manifest-drilldown/v1',
+        status: 'source_hash_mismatch',
+        hash_algorithm: 'sha256',
+        limit: 10,
+        missing_count: 1,
+        extra_count: 0,
+        mismatched_count: 1,
+        truncated: false,
+        missing_pages: [],
+        extra_pages: [],
+        mismatched_pages: [],
+      },
+      warnings: [],
+      message: 'Preflight only.',
+    });
+
+    expect(parsed.can_apply).toBe(true);
+    expect(parsed.applied).toBe(false);
+    expect(parsed.manifest_drilldown.mismatched_count).toBe(1);
   });
 });

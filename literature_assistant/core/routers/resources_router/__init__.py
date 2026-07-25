@@ -6,6 +6,7 @@ import concurrent.futures as futures
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -16,10 +17,19 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Callable
+from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from chunk_size_guard import hard_max_chars, hard_max_tokens, inspect_chunk
-from chunk_hashing import compute_chunk_store_version
+from chunk_hashing import compute_chunk_hashes, compute_chunk_store_version
 from chunk_models import EnrichedChunk
+from material_revision_sync import (
+    build_material_revision_identity,
+    serialize_ocr_revision_report,
+    serialize_parser_provenance,
+    synchronize_material_revision,
+)
+from pdf_backends import PDFParserProvenance
+from pdf_backends.ocr_ingestion import OcrIngestionReport
 from project_paths import output_path, project_data_path
 from retrieval_gateway import retrieve_candidates
 from models import (
@@ -90,8 +100,9 @@ _CHUNK_STORE_DIR = output_path("chunk_store")
 _CHUNK_STORE_DIR.mkdir(parents=True, exist_ok=True)
 _CHUNK_QUARANTINE_LOG_PATH = output_path("chunk_quarantine.jsonl")
 
-# Thread safety lock for chunk store read-modify-write operations
-_CHUNK_STORE_LOCK = threading.Lock()
+# One re-entrant in-process lock guards doc/chunk publication. Cross-process
+# serialization is added by the persistence helpers beside each project store.
+_CHUNK_STORE_LOCK = threading.RLock()
 
 # Sub-directory name used when storing data alongside literature files
 _SCHOLAR_SUBDIR = ".scholarai"
@@ -115,6 +126,84 @@ _TEST_PROJECT_TITLES = {
     "tolf chat grounding",
     "tolf fallback",
 }
+
+
+@dataclass(frozen=True)
+class _UploadBatchContext:
+    """Bounded correlation data shared by one upload request's file results."""
+
+    batch_id: str
+    submitted_at: str
+    batch_index: int
+    batch_total: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.batch_id, str) or not re.fullmatch(
+            r"batch_[A-Za-z0-9_-]{8,64}", self.batch_id
+        ):
+            raise ValueError("batch_id must use the bounded batch_<opaque> format")
+        if not isinstance(self.submitted_at, str) or len(self.submitted_at) > 40:
+            raise ValueError("submitted_at must be a bounded ISO-8601 string")
+        try:
+            parsed = datetime.fromisoformat(self.submitted_at)
+        except ValueError as exc:
+            raise ValueError("submitted_at must be an ISO-8601 timestamp") from exc
+        if parsed.tzinfo is None or parsed.utcoffset() != timezone.utc.utcoffset(parsed):
+            raise ValueError("submitted_at must be an explicit UTC timestamp")
+        if isinstance(self.batch_index, bool) or not isinstance(self.batch_index, int):
+            raise ValueError("batch_index must be an integer")
+        if isinstance(self.batch_total, bool) or not isinstance(self.batch_total, int):
+            raise ValueError("batch_total must be an integer")
+        if self.batch_total < 1 or self.batch_total > 10000:
+            raise ValueError("batch_total is out of bounds")
+        if self.batch_index < 1 or self.batch_index > self.batch_total:
+            raise ValueError("batch_index must be within batch_total")
+
+    def to_result_fields(self) -> dict[str, Any]:
+        """Return only safe correlation fields for a per-file response."""
+
+        return {
+            "batch_id": self.batch_id,
+            "batch_index": self.batch_index,
+            "batch_total": self.batch_total,
+        }
+
+    def to_job_metadata(self) -> dict[str, Any]:
+        """Return safe correlation fields persisted on a runtime job."""
+
+        return {
+            **self.to_result_fields(),
+            "submitted_at": self.submitted_at,
+        }
+
+
+def _validate_upload_batch_context(
+    batch_context: _UploadBatchContext | None,
+) -> _UploadBatchContext | None:
+    """Reject unvalidated correlation objects before they reach response or job state."""
+
+    if batch_context is not None and not isinstance(batch_context, _UploadBatchContext):
+        raise TypeError("batch_context must be _UploadBatchContext")
+    return batch_context
+
+
+def _with_upload_batch_context(
+    result: Mapping[str, Any],
+    batch_context: _UploadBatchContext | None,
+) -> dict[str, Any]:
+    """Attach validated batch correlation fields when called from a batch route."""
+
+    batch_context = _validate_upload_batch_context(batch_context)
+    payload = dict(result)
+    if batch_context is not None:
+        payload.update(batch_context.to_result_fields())
+    return payload
+
+
+def _new_upload_batch_identity() -> tuple[str, str]:
+    """Create one opaque identifier and UTC submission time for a batch request."""
+
+    return f"batch_{uuid4().hex}", datetime.now(timezone.utc).isoformat()
 
 
 def _get_project_source_folder(project_id: str) -> str:
@@ -225,9 +314,15 @@ from ._chunk_text import (
 )
 from ._document_extraction import (
     ExtractedDocumentPayload,
+    PdfFormulaCandidate,
+    bind_pdf_formula_candidates_to_chunks,
+    extract_pymupdf_formula_candidates,
+    formula_candidates_from_chunks,
+    merge_pdf_formula_candidates,
     _extract_document_content,
     _extract_document_content_from_path,
     _extract_document_payload_from_path,
+    _reconcile_document_blocks,
     _truncate_document_content,
 )
 from ._scan_helpers import (
@@ -335,13 +430,18 @@ def _search_chunks_via_gateway(project_id: str, query: str, top_k: int = 10) -> 
 
     try:
         chunk_store = _ensure_project_chunks(normalized_project_id)
-        chunk_store_version = compute_chunk_store_version(chunk_store)
+        hash_version = _chunk_store_hash_version(normalized_project_id)
+        chunk_store_version = compute_chunk_store_version(
+            chunk_store,
+            hash_version=hash_version,
+        )
         gateway_result = retrieve_candidates(
             normalized_project_id,
             normalized_query,
             "general",
             store=chunk_store,
             chunk_store_version=chunk_store_version,
+            hash_version=hash_version,
             fts_db_path=_chunk_fts_index_path(normalized_project_id),
             limit=top_k,
             lexical_limit=top_k,
@@ -423,65 +523,71 @@ def _ensure_project_chunks(
     material_id: str | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Backfill missing chunks from doc_store and prune stale chunk entries."""
-    doc_store = _load_doc_store(project_id)
-    chunk_store = _load_chunk_store(project_id)
-    material_ids = {material_id} if material_id else set(doc_store.keys()) | set(chunk_store.keys())
-    updated = False
+    def _reconcile_stores(
+        doc_store: dict[str, dict[str, Any]],
+        chunk_store: dict[str, list[dict[str, Any]]],
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+        material_ids = (
+            {material_id}
+            if material_id
+            else set(doc_store.keys()) | set(chunk_store.keys())
+        )
 
-    for mid in list(material_ids):
-        document = doc_store.get(mid)
-        if document is None:
-            if mid in chunk_store and (material_id or doc_store):
-                del chunk_store[mid]
-                updated = True
-            continue
+        for mid in list(material_ids):
+            document = doc_store.get(mid)
+            if document is None:
+                if mid in chunk_store and (material_id or doc_store):
+                    del chunk_store[mid]
+                continue
 
-        title = str(document.get("title") or mid)
-        content = str(document.get("content") or "")
-        existing_chunks = [chunk for chunk in (chunk_store.get(mid) or []) if str(chunk.get("content") or "").strip()]
+            title = str(document.get("title") or mid)
+            content = str(document.get("content") or "")
+            existing_chunks = [
+                chunk
+                for chunk in (chunk_store.get(mid) or [])
+                if str(chunk.get("content") or chunk.get("raw_content") or "").strip()
+            ]
 
-        if not content.strip():
-            if mid in chunk_store:
-                del chunk_store[mid]
-                updated = True
-            continue
+            if not content.strip():
+                chunk_store.pop(mid, None)
+                continue
 
-        if not existing_chunks:
-            chunk_store[mid] = _chunk_document(mid, title, content)
-            updated = True
-            continue
+            if not existing_chunks:
+                chunk_store[mid] = _chunk_document(mid, title, content)
+                continue
 
-        normalized_chunks: list[dict[str, Any]] = []
-        for idx, chunk in enumerate(existing_chunks):
-            normalized_chunk = dict(chunk)
-            changed = False
-            if normalized_chunk.get("material_id") != mid:
-                normalized_chunk["material_id"] = mid
-                changed = True
-            if normalized_chunk.get("title") != title:
-                normalized_chunk["title"] = title
-                changed = True
-            if normalized_chunk.get("chunk_index") != idx:
-                normalized_chunk["chunk_index"] = idx
-                changed = True
-            expected_chunk_id = f"{mid}_chunk_{idx}"
-            if not str(normalized_chunk.get("chunk_id") or "").strip():
-                normalized_chunk["chunk_id"] = expected_chunk_id
-                changed = True
-            char_count = len(str(normalized_chunk.get("content") or ""))
-            if normalized_chunk.get("char_count") != char_count:
-                normalized_chunk["char_count"] = char_count
-                changed = True
-            normalized_chunks.append(normalized_chunk)
-            if changed:
-                updated = True
+            normalized_chunks: list[dict[str, Any]] = []
+            for idx, chunk in enumerate(existing_chunks):
+                normalized_chunk = dict(chunk)
+                if normalized_chunk.get("material_id") != mid:
+                    normalized_chunk["material_id"] = mid
+                if normalized_chunk.get("title") != title:
+                    normalized_chunk["title"] = title
+                if normalized_chunk.get("chunk_index") != idx:
+                    normalized_chunk["chunk_index"] = idx
+                expected_chunk_id = f"{mid}_chunk_{idx}"
+                if not str(normalized_chunk.get("chunk_id") or "").strip():
+                    normalized_chunk["chunk_id"] = expected_chunk_id
+                char_count = len(
+                    str(
+                        normalized_chunk.get("content")
+                        or normalized_chunk.get("raw_content")
+                        or ""
+                    )
+                )
+                if normalized_chunk.get("char_count") != char_count:
+                    normalized_chunk["char_count"] = char_count
+                normalized_chunks.append(normalized_chunk)
 
-        chunk_store[mid] = normalized_chunks
+            chunk_store[mid] = normalized_chunks
 
-    if updated:
-        _save_chunk_store(project_id, chunk_store)
+        return doc_store, chunk_store
 
-    return chunk_store
+    _committed_docs, committed_chunks = _update_project_stores_atomic(
+        project_id,
+        _reconcile_stores,
+    )
+    return committed_chunks
 
 
 def get_writing_resource_store():
@@ -590,7 +696,7 @@ def _collect_pending_scan_candidates(
 
         try:
             stat = file_path.stat()
-            fingerprint = f"{relative_posix}|{stat.st_size}|{int(stat.st_mtime_ns)}"
+            fingerprint = _build_source_fingerprint(root_resolved, file_path)
         except OSError as exc:
             failed_results.append({"title": relative_posix, "status": "error", "reason": str(exc)})
             continue
@@ -613,6 +719,7 @@ def _collect_pending_scan_candidates(
                 "fingerprint": fingerprint,
                 "size": stat.st_size,
                 "mtime": stat.st_mtime,
+                "scan_root": root_resolved,
                 "dedupe_key": dedupe_key,
             }
         )
@@ -674,6 +781,31 @@ def _ingest_pending_candidates(
                         failed += 1
                         results.append({"title": relative_posix, "status": "error", "reason": error_reason or "无法提取文本"})
                         continue
+                    try:
+                        current_fingerprint = _build_source_fingerprint(
+                            item["scan_root"],
+                            item["path"],
+                        )
+                    except (OSError, ValueError) as exc:
+                        failed += 1
+                        results.append(
+                            {
+                                "title": relative_posix,
+                                "status": "error",
+                                "reason": str(exc),
+                            }
+                        )
+                        continue
+                    if current_fingerprint != fingerprint:
+                        failed += 1
+                        results.append(
+                            {
+                                "title": relative_posix,
+                                "status": "error",
+                                "reason": "source changed during extraction",
+                            }
+                        )
+                        continue
 
                     zotero_key = _extract_zotero_item_key(relative_path)
                     zotero_title = zotero_title_map.get(zotero_key, "") if zotero_key else ""
@@ -690,6 +822,9 @@ def _ingest_pending_candidates(
                         source_mtime=float(item["mtime"]),
                         blocks=extraction.blocks,
                         markdown_full=extraction.markdown_full,
+                        parser_provenance=extraction.parser_provenance,
+                        parser_output_sha256=extraction.parser_output_sha256,
+                        ocr_report=extraction.ocr_report,
                     )
                     total_chunks += int(result.get("chunks") or 0)
                     existing_fingerprints.add(fingerprint)
@@ -708,6 +843,31 @@ def _ingest_pending_candidates(
                 failed += 1
                 results.append({"title": relative_posix, "status": "error", "reason": error_reason or "无法提取文本"})
                 continue
+            try:
+                current_fingerprint = _build_source_fingerprint(
+                    item["scan_root"],
+                    item["path"],
+                )
+            except (OSError, ValueError) as exc:
+                failed += 1
+                results.append(
+                    {
+                        "title": relative_posix,
+                        "status": "error",
+                        "reason": str(exc),
+                    }
+                )
+                continue
+            if current_fingerprint != fingerprint:
+                failed += 1
+                results.append(
+                    {
+                        "title": relative_posix,
+                        "status": "error",
+                        "reason": "source changed during extraction",
+                    }
+                )
+                continue
 
             zotero_key = _extract_zotero_item_key(relative_path)
             zotero_title = zotero_title_map.get(zotero_key, "") if zotero_key else ""
@@ -724,6 +884,9 @@ def _ingest_pending_candidates(
                 source_mtime=float(item["mtime"]),
                 blocks=extraction.blocks,
                 markdown_full=extraction.markdown_full,
+                parser_provenance=extraction.parser_provenance,
+                parser_output_sha256=extraction.parser_output_sha256,
+                ocr_report=extraction.ocr_report,
             )
             total_chunks += int(result.get("chunks") or 0)
             existing_fingerprints.add(fingerprint)
@@ -817,6 +980,7 @@ class _UploadedSourceFile:
     path: Path
     fingerprint: str
     size: int
+    created: bool = True
 
 
 def _safe_upload_filename(filename: str) -> str:
@@ -824,6 +988,46 @@ def _safe_upload_filename(filename: str) -> str:
 
     safe_name = Path(str(filename or "unnamed")).name.strip()
     return safe_name or "unnamed"
+
+
+def _uploaded_source_matches(
+    source_path: Path,
+    *,
+    fingerprint: str,
+    size: int,
+) -> bool:
+    """Return whether one source file still has the expected byte identity."""
+
+    try:
+        stat = source_path.stat()
+    except OSError:
+        return False
+    if not source_path.is_file() or stat.st_size != size:
+        return False
+    digest = hashlib.sha256()
+    try:
+        with source_path.open("rb") as source:
+            while True:
+                chunk = source.read(_UPLOAD_READ_CHUNK_BYTES)
+                if not chunk:
+                    break
+                digest.update(chunk)
+    except OSError:
+        return False
+    return f"sha256:{digest.hexdigest()}" == fingerprint
+
+
+def _collision_safe_upload_filename(filename: str, fingerprint: str) -> str:
+    """Return a deterministic sibling filename containing the source digest."""
+
+    digest = str(fingerprint or "").removeprefix("sha256:")
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ValueError("upload fingerprint must be a lowercase SHA-256 digest")
+    safe_filename = _safe_upload_filename(filename)
+    suffix = Path(safe_filename).suffix
+    stem = Path(safe_filename).stem or "upload"
+    max_stem_length = max(1, 240 - len(suffix) - len(digest) - 1)
+    return f"{stem[:max_stem_length]}-{digest}{suffix}"
 
 
 def _max_upload_bytes() -> int:
@@ -920,7 +1124,6 @@ async def _persist_upload_to_source_file(
 
     source_files_dir = project_data_path(project_id, "source_files")
     source_files_dir.mkdir(parents=True, exist_ok=True)
-    target = source_files_dir / safe_filename
     digest = hashlib.sha256()
     total_bytes = 0
     magic_prefix = bytearray()
@@ -951,12 +1154,55 @@ async def _persist_upload_to_source_file(
         if total_bytes == 0:
             raise ValueError(f"文件“{safe_filename}”为空")
         _validate_upload_magic(safe_filename, bytes(magic_prefix))
-        os.replace(temp_path, target)
-        temp_path = None
+        fingerprint = f"sha256:{digest.hexdigest()}"
+        committed_path: Path | None = None
+        created = False
+
+        def _commit_source(
+            doc_store: dict[str, dict[str, Any]],
+            chunk_store: dict[str, list[dict[str, Any]]],
+        ) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+            nonlocal committed_path, created
+            preferred_path = source_files_dir / safe_filename
+            destination = preferred_path
+            if preferred_path.exists():
+                if _uploaded_source_matches(
+                    preferred_path,
+                    fingerprint=fingerprint,
+                    size=total_bytes,
+                ):
+                    committed_path = preferred_path
+                    return doc_store, chunk_store
+                destination = source_files_dir / _collision_safe_upload_filename(
+                    safe_filename,
+                    fingerprint,
+                )
+                if destination.exists():
+                    if _uploaded_source_matches(
+                        destination,
+                        fingerprint=fingerprint,
+                        size=total_bytes,
+                    ):
+                        committed_path = destination
+                        return doc_store, chunk_store
+                    raise FileExistsError(
+                        "collision-safe upload destination contains different bytes"
+                    )
+            os.replace(temp_path, destination)
+            committed_path = destination
+            created = True
+            return doc_store, chunk_store
+
+        _update_project_stores_atomic(project_id, _commit_source)
+        if committed_path is None:
+            raise OSError("upload source commit did not produce a destination")
+        if created:
+            temp_path = None
         return _UploadedSourceFile(
-            path=target,
-            fingerprint=f"sha256:{digest.hexdigest()}",
+            path=committed_path,
+            fingerprint=fingerprint,
             size=total_bytes,
+            created=created,
         )
     finally:
         if temp_path is not None and temp_path.exists():
@@ -1036,6 +1282,74 @@ def _write_markdown_sidecar(
     return target
 
 
+def _coerce_reusable_embedding(value: object) -> list[float] | None:
+    """Return a finite numeric embedding vector or ``None``."""
+
+    if not isinstance(value, list) or not value:
+        return None
+    normalized: list[float] = []
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            return None
+        number = float(item)
+        if not math.isfinite(number):
+            return None
+        normalized.append(number)
+    return normalized
+
+
+def _reuse_compatible_chunk_embeddings(
+    *,
+    material_id: str,
+    previous_chunks: list[dict[str, Any]],
+    current_chunks: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    """Reuse unambiguous embeddings whose canonical input text is unchanged.
+
+    Matching is deliberately independent of ``chunk_id`` because inserting a
+    newly recovered segment can shift every later chunk index. Conflicting
+    vectors for the same input hash are treated as ambiguous and not reused.
+    """
+
+    candidates: dict[str, dict[tuple[float, ...], list[float]]] = {}
+    for previous in previous_chunks:
+        if not isinstance(previous, dict):
+            continue
+        embedding = _coerce_reusable_embedding(previous.get("embedding"))
+        if embedding is None:
+            continue
+        try:
+            embedding_input_hash = compute_chunk_hashes(
+                previous,
+                material_id_hint=material_id,
+            )["embedding_input_hash"]
+        except (TypeError, ValueError):
+            continue
+        candidates.setdefault(embedding_input_hash, {})[tuple(embedding)] = embedding
+
+    reused = 0
+    output: list[dict[str, Any]] = []
+    for current in current_chunks:
+        cloned = dict(current)
+        if _coerce_reusable_embedding(cloned.get("embedding")) is not None:
+            output.append(cloned)
+            continue
+        try:
+            embedding_input_hash = compute_chunk_hashes(
+                cloned,
+                material_id_hint=material_id,
+            )["embedding_input_hash"]
+        except (TypeError, ValueError):
+            output.append(cloned)
+            continue
+        matching_vectors = candidates.get(embedding_input_hash, {})
+        if len(matching_vectors) == 1:
+            cloned["embedding"] = list(next(iter(matching_vectors.values())))
+            reused += 1
+        output.append(cloned)
+    return output, reused
+
+
 def _write_material_document_content(
     project_id: str,
     material_id: str,
@@ -1048,6 +1362,10 @@ def _write_material_document_content(
     source_mtime: float | None = None,
     blocks: list[Any] | None = None,
     markdown_full: str | None = None,
+    parser_provenance: PDFParserProvenance | Mapping[str, object] | None = None,
+    parser_output_sha256: str | None = None,
+    ocr_report: OcrIngestionReport | Mapping[str, object] | None = None,
+    require_existing_material: bool = False,
 ) -> dict[str, Any]:
     """Persist extracted text, optional sidecar markdown, and chunks.
 
@@ -1067,42 +1385,119 @@ def _write_material_document_content(
     if not str(material_id or "").strip():
         raise ValueError("material_id must be non-empty")
     extracted = _ensure_extracted_text(filename, content)
-
-    doc_store = _load_doc_store(project_id)
-    previous = doc_store.get(material_id, {}) if isinstance(doc_store.get(material_id), dict) else {}
-    doc_store[material_id] = {
-        **previous,
-        "title": filename,
-        "content": extracted,
-        "source_relative_path": source_relative_path or previous.get("source_relative_path") or filename,
-        "source_fingerprint": source_fingerprint or previous.get("source_fingerprint") or "",
-        "source_size": int(source_size or previous.get("source_size") or 0),
-        "source_mtime": float(source_mtime or previous.get("source_mtime") or 0.0),
-        "extraction_status": "succeeded",
-        "extraction_error": "",
-    }
-    _save_doc_store(project_id, doc_store)
+    parser_revision = serialize_parser_provenance(parser_provenance)
+    ocr_revision = serialize_ocr_revision_report(ocr_report)
 
     # Sidecar: only when caller passed markdown_full; default
     # path leaves it None and we skip the write entirely.
     sidecar_path = _write_markdown_sidecar(project_id, material_id, markdown_full)
 
+    reconciled_blocks = _reconcile_document_blocks(extracted, blocks)
+
     # Chunker dispatch: blocks=None routes to legacy text chunker
     # (byte-level identical); blocks=[...] routes to structured chunker.
-    chunks = _chunk_document(material_id, filename, extracted, blocks=blocks)
-    chunk_store = _load_chunk_store(project_id)
-    chunk_store[material_id] = chunks
-    _save_chunk_store(project_id, chunk_store)
+    generated_chunks = _chunk_document(
+        material_id,
+        filename,
+        extracted,
+        blocks=reconciled_blocks,
+    )
+    candidate_chunks = generated_chunks
+    reused_embeddings = 0
+
+    def _publish_material(
+        doc_store: dict[str, dict[str, Any]],
+        chunk_store: dict[str, list[dict[str, Any]]],
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+        nonlocal candidate_chunks, reused_embeddings
+
+        current_record = doc_store.get(material_id)
+        if require_existing_material and (
+            not isinstance(current_record, dict)
+            or str(current_record.get("source_fingerprint") or "").strip()
+            != str(source_fingerprint or "").strip()
+        ):
+            raise ValueError("material was deleted or changed before extraction commit")
+        previous = current_record if isinstance(current_record, dict) else {}
+        doc_store[material_id] = {
+            **previous,
+            "title": filename,
+            "content": extracted,
+            "source_relative_path": (
+                source_relative_path or previous.get("source_relative_path") or filename
+            ),
+            "source_fingerprint": (
+                source_fingerprint or previous.get("source_fingerprint") or ""
+            ),
+            "source_size": int(source_size or previous.get("source_size") or 0),
+            "source_mtime": float(source_mtime or previous.get("source_mtime") or 0.0),
+            "extraction_status": "succeeded",
+            "extraction_error": "",
+            "parser_provenance": parser_revision,
+            "parser_output_sha256": parser_output_sha256,
+            "ocr_revision": ocr_revision,
+        }
+        previous_chunks = chunk_store.get(material_id, [])
+        candidate_chunks, reused_embeddings = _reuse_compatible_chunk_embeddings(
+            material_id=material_id,
+            previous_chunks=(
+                previous_chunks if isinstance(previous_chunks, list) else []
+            ),
+            current_chunks=generated_chunks,
+        )
+        chunk_store[material_id] = candidate_chunks
+        return doc_store, chunk_store
+
+    _committed_docs, committed_chunks = _update_project_stores_atomic(
+        project_id,
+        _publish_material,
+    )
+    accepted_chunks = committed_chunks.get(material_id, [])
+    generated_chunk_count = len(candidate_chunks)
+    accepted_chunk_count = len(accepted_chunks)
 
     result: dict[str, Any] = {
         "material_id": material_id,
         "title": filename,
         "content_length": len(extracted),
-        "chunks": len(chunks),
+        "chunks": accepted_chunk_count,
+        "generated_chunks": generated_chunk_count,
+        "quarantined_chunks": max(0, generated_chunk_count - accepted_chunk_count),
+        "reused_embeddings": reused_embeddings,
         "status": "ok",
     }
     if sidecar_path is not None:
         result["sidecar_markdown_path"] = str(sidecar_path)
+    normalized_source_fingerprint = str(source_fingerprint or "").strip().lower()
+    normalized_source_size = int(source_size or 0)
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", normalized_source_fingerprint) and normalized_source_size > 0:
+        identity = build_material_revision_identity(
+            project_id=project_id,
+            material_id=material_id,
+            source_name=source_relative_path or filename,
+            raw_source_sha256=normalized_source_fingerprint,
+            raw_source_size_bytes=normalized_source_size,
+            extracted_text=extracted,
+            chunks=accepted_chunks,
+            parser_provenance=parser_revision,
+            parser_output_sha256=parser_output_sha256,
+            ocr_report=ocr_revision,
+        )
+        sync_result = synchronize_material_revision(identity)
+        result.update(
+            {
+                "material_revision_status": sync_result.receipt.status,
+                "material_revision_receipt_id": sync_result.receipt.receipt_id,
+                "material_revision_fingerprint": identity.revision_fingerprint,
+            }
+        )
+    else:
+        result.update(
+            {
+                "material_revision_status": "unavailable",
+                "material_revision_reason": "authoritative_source_sha256_unavailable",
+            }
+        )
     return result
 
 
@@ -1111,61 +1506,179 @@ def _create_pending_uploaded_document(
     filename: str,
     *,
     store: Any,
+    source_relative_path: str,
     source_fingerprint: str,
     source_size: int,
 ) -> dict[str, Any]:
-    """Create a readable material shell before expensive extraction starts."""
+    """Atomically reserve one PDF fingerprint and create its pending shell."""
 
     if not str(project_id or "").strip():
         raise ValueError("project_id must be non-empty")
     safe_filename = _safe_upload_filename(filename)
-    material = store.create_material(
-        project_id=project_id,
-        title=safe_filename,
-        title_en=safe_filename,
-        summary=f"PDF 已导入，正在后台提取文本：{safe_filename}",
-        summary_en="",
-        material_type="reference",
-    )
-    doc_store = _load_doc_store(project_id)
-    doc_store[material.material_id] = {
-        "title": safe_filename,
-        "content": "",
-        "source_relative_path": safe_filename,
-        "source_fingerprint": source_fingerprint,
-        "source_size": int(source_size),
-        "source_mtime": 0.0,
-        "extraction_status": "queued",
-        "extraction_error": "",
-    }
-    _save_doc_store(project_id, doc_store)
-    chunk_store = _load_chunk_store(project_id)
-    chunk_store[material.material_id] = []
-    _save_chunk_store(project_id, chunk_store)
-    return {
-        "material_id": material.material_id,
-        "title": safe_filename,
-        "content_length": 0,
-        "chunks": 0,
-        "status": "queued",
-    }
+    safe_source_name = _safe_upload_filename(source_relative_path)
+    if safe_source_name != source_relative_path:
+        raise ValueError("source_relative_path must be one safe filename")
+    normalized_fingerprint = str(source_fingerprint or "").strip().lower()
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", normalized_fingerprint):
+        raise ValueError("source_fingerprint must be a SHA-256 fingerprint")
+    if isinstance(source_size, bool) or not isinstance(source_size, int) or source_size < 1:
+        raise ValueError("source_size must be a positive integer")
+    source_root = project_data_path(project_id, "source_files").resolve()
+    source_path = (source_root / safe_source_name).resolve()
+    if source_path.parent != source_root:
+        raise ValueError("uploaded source escaped the project source_files directory")
+    reservation: dict[str, Any] = {}
+
+    def _queue_material(
+        doc_store: dict[str, dict[str, Any]],
+        chunk_store: dict[str, list[dict[str, Any]]],
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+        nonlocal reservation
+        if not _uploaded_source_matches(
+            source_path,
+            fingerprint=normalized_fingerprint,
+            size=source_size,
+        ):
+            raise ValueError("uploaded PDF source changed before fingerprint reservation")
+        for existing_material_id, existing_doc in doc_store.items():
+            if not isinstance(existing_doc, dict):
+                continue
+            if str(existing_doc.get("source_fingerprint") or "").strip().lower() != normalized_fingerprint:
+                continue
+            if not str(existing_doc.get("source_relative_path") or "").strip():
+                existing_doc["source_relative_path"] = safe_source_name
+                existing_doc["source_size"] = int(existing_doc.get("source_size") or source_size)
+                doc_store[existing_material_id] = existing_doc
+            reservation = {
+                "material_id": existing_material_id,
+                "title": str(existing_doc.get("title") or safe_filename),
+                "content_length": len(str(existing_doc.get("content") or "")),
+                "chunks": len(chunk_store.get(existing_material_id, [])),
+                "status": "duplicate",
+            }
+            return doc_store, chunk_store
+
+        material = store.create_material(
+            project_id=project_id,
+            title=safe_filename,
+            title_en=safe_filename,
+            summary=f"PDF 已导入，正在后台提取文本：{safe_filename}",
+            summary_en="",
+            material_type="reference",
+        )
+        doc_store[material.material_id] = {
+            "title": safe_filename,
+            "content": "",
+            "source_relative_path": safe_source_name,
+            "source_fingerprint": normalized_fingerprint,
+            "source_size": int(source_size),
+            "source_mtime": 0.0,
+            "extraction_status": "queued",
+            "extraction_error": "",
+        }
+        chunk_store[material.material_id] = []
+        reservation = {
+            "material_id": material.material_id,
+            "title": safe_filename,
+            "content_length": 0,
+            "chunks": 0,
+            "status": "queued",
+        }
+        return doc_store, chunk_store
+
+    _update_project_stores_atomic(project_id, _queue_material)
+    if not reservation:
+        raise RuntimeError("uploaded PDF fingerprint reservation returned no result")
+    return reservation
+
+
+def _remove_unreferenced_uploaded_source(
+    project_id: str,
+    uploaded: _UploadedSourceFile,
+) -> bool:
+    """Remove only a newly-created source that no document record references."""
+
+    if not uploaded.created:
+        return False
+    source_root = project_data_path(project_id, "source_files").resolve()
+    candidate = uploaded.path.resolve()
+    if candidate.parent != source_root:
+        raise ValueError("uploaded source escaped the project source_files directory")
+    removed = False
+
+    def _references_candidate(record: object) -> bool:
+        if not isinstance(record, dict):
+            return False
+        source_reference = str(record.get("source_relative_path") or "").strip()
+        if not source_reference:
+            return False
+        try:
+            raw_reference = Path(source_reference).expanduser()
+            referenced_path = (
+                raw_reference.resolve()
+                if raw_reference.is_absolute()
+                else (source_root / raw_reference).resolve()
+            )
+        except (OSError, RuntimeError, ValueError):
+            return False
+        if referenced_path == source_root or source_root not in referenced_path.parents:
+            return False
+        return os.path.normcase(str(referenced_path)) == os.path.normcase(str(candidate))
+
+    def _remove_if_unreferenced(
+        doc_store: dict[str, dict[str, Any]],
+        chunk_store: dict[str, list[dict[str, Any]]],
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+        nonlocal removed
+        referenced = any(_references_candidate(record) for record in doc_store.values())
+        if referenced or not _uploaded_source_matches(
+            candidate,
+            fingerprint=uploaded.fingerprint,
+            size=uploaded.size,
+        ):
+            return doc_store, chunk_store
+        try:
+            candidate.unlink()
+        except FileNotFoundError:
+            return doc_store, chunk_store
+        except OSError as exc:
+            logger.warning("duplicate_upload_source_cleanup_failed: file=%s error=%s", candidate.name, exc)
+            return doc_store, chunk_store
+        removed = True
+        return doc_store, chunk_store
+
+    _update_project_stores_atomic(project_id, _remove_if_unreferenced)
+    return removed
 
 
 def _mark_uploaded_document_extraction_failed(
     project_id: str,
     material_id: str,
     error: str,
+    *,
+    expected_source_fingerprint: str | None = None,
 ) -> None:
     """Record recoverable extraction failure state on the material sidecar."""
 
-    doc_store = _load_doc_store(project_id)
-    record = doc_store.get(material_id, {}) if isinstance(doc_store.get(material_id), dict) else {}
-    record.update({
-        "extraction_status": "failed",
-        "extraction_error": str(error or "extraction failed")[:1000],
-    })
-    doc_store[material_id] = record
-    _save_doc_store(project_id, doc_store)
+    def _mark_failed(doc_store: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        record = doc_store.get(material_id)
+        if not isinstance(record, dict):
+            return doc_store
+        if expected_source_fingerprint is not None and (
+            str(record.get("source_fingerprint") or "").strip()
+            != str(expected_source_fingerprint or "").strip()
+        ):
+            return doc_store
+        record.update(
+            {
+                "extraction_status": "failed",
+                "extraction_error": str(error or "extraction failed")[:1000],
+            }
+        )
+        doc_store[material_id] = record
+        return doc_store
+
+    _update_doc_store_atomic(project_id, _mark_failed)
 
 
 def _build_uploaded_document_processing_request(
@@ -1173,12 +1686,16 @@ def _build_uploaded_document_processing_request(
     project_id: str,
     material_id: str,
     filename: str,
+    source_relative_path: str | None = None,
     source_fingerprint: str,
     source_size: int,
 ) -> dict[str, Any]:
     """Build the explicit task contract for background upload extraction."""
 
     safe_filename = _safe_upload_filename(filename)
+    safe_source_name = _safe_upload_filename(source_relative_path or safe_filename)
+    if source_relative_path is not None and safe_source_name != source_relative_path:
+        raise ValueError("source_relative_path must be one safe filename")
     return {
         "schema_version": "material_processing_task_v1",
         "project_id": project_id,
@@ -1186,7 +1703,7 @@ def _build_uploaded_document_processing_request(
         "input_ref": {
             "ref_type": "uploaded_source_file",
             "material_id": material_id,
-            "source_path_label": safe_filename,
+            "source_path_label": safe_source_name,
             "content_digest": source_fingerprint,
             "size_bytes": int(source_size),
         },
@@ -1255,98 +1772,218 @@ def _uploaded_document_processing_artifacts(result: Mapping[str, Any]) -> list[d
     return artifacts
 
 
-async def _start_uploaded_document_extraction_job(
-    project_id: str,
-    material_id: str,
-    filename: str,
-    source_path: Path,
-    *,
-    source_fingerprint: str,
-    source_size: int,
-) -> tuple[str, str]:
-    """Start a runtime-visible extraction/indexing job for one uploaded PDF."""
+@dataclass(frozen=True)
+class _UploadedDocumentExtractionContract:
+    """Durable source identity needed to rebuild one PDF executor."""
 
-    from harness_protocols import JobKind, SessionMode
-    from writing_runtime import get_writing_runtime
+    project_id: str
+    material_id: str
+    filename: str
+    source_relative_path: str
+    source_path: Path
+    source_fingerprint: str
+    source_size: int
 
-    runtime = get_writing_runtime()
-    safe_filename = _safe_upload_filename(filename)
-    processing_request = _build_uploaded_document_processing_request(
+
+def _resolve_uploaded_document_extraction_contract(
+    runtime: Any,
+    job_id: str,
+) -> _UploadedDocumentExtractionContract:
+    """Resolve and validate one executor contract from persisted task state."""
+
+    task = runtime.get_material_processing_task(job_id)
+    if not isinstance(task, dict):
+        raise ValueError(f"Material processing task not found: {job_id}")
+    request = task.get("request")
+    if not isinstance(request, dict):
+        raise ValueError("material processing request must be an object")
+    input_ref = request.get("input_ref")
+    if not isinstance(input_ref, dict):
+        raise ValueError("material processing input_ref must be an object")
+    if str(input_ref.get("ref_type") or "").strip() != "uploaded_source_file":
+        raise ValueError("material processing task is not an uploaded source file")
+
+    project_id = str(request.get("project_id") or "").strip()
+    material_id = str(request.get("material_id") or "").strip()
+    ref_material_id = str(input_ref.get("material_id") or "").strip()
+    source_label = str(input_ref.get("source_path_label") or "").strip()
+    source_fingerprint = str(input_ref.get("content_digest") or "").strip().lower()
+    source_size_raw = input_ref.get("size_bytes")
+    if not project_id or not material_id or ref_material_id != material_id:
+        raise ValueError("material processing source identity is incomplete")
+    source_relative_path = _safe_upload_filename(source_label)
+    if not source_label or source_relative_path != source_label:
+        raise ValueError("uploaded source path label must be one safe filename")
+    metadata = request.get("metadata")
+    display_label = (
+        str(metadata.get("filename") or "").strip()
+        if isinstance(metadata, dict)
+        else ""
+    )
+    filename = _safe_upload_filename(display_label or source_relative_path)
+    if display_label and filename != display_label:
+        raise ValueError("uploaded display filename must be one safe filename")
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", source_fingerprint):
+        raise ValueError("uploaded source content_digest must be a SHA-256 fingerprint")
+    if isinstance(source_size_raw, bool) or not isinstance(source_size_raw, int) or source_size_raw < 1:
+        raise ValueError("uploaded source size_bytes must be a positive integer")
+
+    source_root = project_data_path(project_id, "source_files").resolve()
+    source_path = (source_root / source_relative_path).resolve()
+    if source_path.parent != source_root:
+        raise ValueError("uploaded source path escaped the project source_files directory")
+    return _UploadedDocumentExtractionContract(
         project_id=project_id,
         material_id=material_id,
-        filename=safe_filename,
+        filename=filename,
+        source_relative_path=source_relative_path,
+        source_path=source_path,
         source_fingerprint=source_fingerprint,
-        source_size=source_size,
+        source_size=source_size_raw,
     )
-    session = runtime.create_session(
-        mode=SessionMode.PROMPT,
-        tags=["resource_ingest", "pdf"],
-        metadata={
-            "source": "resource_ingest",
-            "title": "PDF 后台提取",
-            "project_id": project_id,
-            "material_id": material_id,
-        },
-    )
-    job = runtime.create_job(
-        session_id=session.session_id,
-        kind=JobKind.PIPELINE_RUN,
-        input_text=f"提取 {safe_filename}",
-        tags=["resource_ingest", "pdf"],
-        metadata={
-            "source": "resource_ingest",
-            "project_id": project_id,
-            "material_id": material_id,
-            "filename": safe_filename,
-            "route": f"/workbench/paper/{material_id}",
-            "progress_stage": "queued",
-            "progress_message": "PDF 已可阅读，文本提取正在排队",
-            "progress": 1,
-        },
-    )
-    runtime.update_material_processing_task(
-        job.job_id,
-        request=processing_request,
-        status="queued",
-        provenance={"source": "resources_router.upload_queue"},
-    )
+
+
+def _verify_uploaded_document_extraction_source(
+    contract: _UploadedDocumentExtractionContract,
+) -> None:
+    """Verify the persisted source still matches its exact size and digest."""
+
+    try:
+        stat = contract.source_path.stat()
+    except OSError as exc:
+        raise ValueError("uploaded PDF source is missing or unreadable") from exc
+    if not contract.source_path.is_file() or stat.st_size != contract.source_size:
+        raise ValueError("uploaded PDF source size changed before extraction")
+    digest = hashlib.sha256()
+    with contract.source_path.open("rb") as source:
+        while True:
+            chunk = source.read(_UPLOAD_READ_CHUNK_BYTES)
+            if not chunk:
+                break
+            digest.update(chunk)
+    actual_fingerprint = f"sha256:{digest.hexdigest()}"
+    if actual_fingerprint != contract.source_fingerprint:
+        raise ValueError("uploaded PDF source fingerprint changed before extraction")
+
+
+def _is_uploaded_document_extraction_task(task: Mapping[str, Any] | None) -> bool:
+    """Return whether a persisted material task owns the upload executor."""
+
+    if not isinstance(task, Mapping):
+        return False
+    request = task.get("request")
+    if not isinstance(request, Mapping):
+        return False
+    input_ref = request.get("input_ref")
+    return isinstance(input_ref, Mapping) and input_ref.get("ref_type") == "uploaded_source_file"
+
+
+def _build_uploaded_document_extraction_executor(runtime: Any, job_id: str) -> Callable[[Any], Any]:
+    """Rebuild an upload executor using only persisted, validated identity."""
 
     async def _executor(current_job: Any) -> dict[str, Any]:
-        target_job = current_job or job
-        runtime.record_material_processing_task_result(
-            target_job.job_id,
-            status="running",
-            result={"status": "running", "stage": "read_source", "route": f"/workbench/paper/{material_id}"},
-            artifacts=[],
-            warnings=[],
-            provenance={"source": "resources_router.upload_executor"},
-        )
-        runtime.emit_job_progress(target_job.job_id, stage="read_source", message="正在读取已保存的 PDF", progress=12)
-
-        def _extract_and_persist() -> dict[str, Any]:
-            payload = _extract_document_payload_from_path(
-                safe_filename,
-                source_path,
-                project_id=project_id,
-            )
-            content = _truncate_document_content(payload.content)
-            return _write_material_document_content(
-                project_id,
-                material_id,
-                safe_filename,
-                content,
-                source_relative_path=safe_filename,
-                source_fingerprint=source_fingerprint,
-                source_size=source_size,
-                blocks=payload.blocks,
-                markdown_full=payload.markdown_full,
-            )
-
+        target_job = current_job or runtime.get_job(job_id)
+        if target_job is None:
+            raise ValueError(f"Job {job_id} not found")
+        contract: _UploadedDocumentExtractionContract | None = None
         try:
-            runtime.emit_job_progress(target_job.job_id, stage="extract", message="正在后台提取 PDF 文本", progress=35)
-            result = await asyncio.to_thread(_extract_and_persist)
+            contract = _resolve_uploaded_document_extraction_contract(runtime, target_job.job_id)
+            await runtime.wait_for_job_ready(target_job.job_id)
+            _verify_uploaded_document_extraction_source(contract)
+            runtime.record_material_processing_task_result(
+                target_job.job_id,
+                status="running",
+                result={
+                    "status": "running",
+                    "stage": "read_source",
+                    "route": f"/workbench/paper/{contract.material_id}",
+                },
+                artifacts=[],
+                warnings=[],
+                provenance={"source": "resources_router.upload_executor"},
+            )
+            runtime.emit_job_progress(
+                target_job.job_id,
+                stage="read_source",
+                message="正在读取已保存的 PDF",
+                progress=12,
+            )
+            await runtime.wait_for_job_ready(target_job.job_id)
+            runtime.emit_job_progress(
+                target_job.job_id,
+                stage="extract",
+                message="正在后台提取 PDF 文本",
+                progress=35,
+            )
+
+            def _extract() -> ExtractedDocumentPayload:
+                return _extract_document_payload_from_path(
+                    contract.filename,
+                    contract.source_path,
+                    project_id=contract.project_id,
+                )
+
+            payload = await asyncio.to_thread(_extract)
+            content = _truncate_document_content(payload.content)
+            await runtime.wait_for_job_ready(target_job.job_id)
+            runtime.begin_job_commit(target_job.job_id)
+            try:
+                commit_task = asyncio.create_task(
+                    asyncio.to_thread(
+                        _write_material_document_content,
+                        contract.project_id,
+                        contract.material_id,
+                        contract.filename,
+                        content,
+                        source_relative_path=contract.source_relative_path,
+                        source_fingerprint=contract.source_fingerprint,
+                        source_size=contract.source_size,
+                        blocks=payload.blocks,
+                        markdown_full=payload.markdown_full,
+                        parser_provenance=payload.parser_provenance,
+                        parser_output_sha256=payload.parser_output_sha256,
+                        ocr_report=payload.ocr_report,
+                        require_existing_material=True,
+                    )
+                )
+                try:
+                    result = await asyncio.shield(commit_task)
+                except asyncio.CancelledError:
+                    logger.warning(
+                        "upload_commit_cancellation_deferred: job_id=%s material_id=%s",
+                        target_job.job_id,
+                        contract.material_id,
+                    )
+                    result = await commit_task
+            finally:
+                runtime.end_job_commit(target_job.job_id)
+        except asyncio.CancelledError:
+            current = runtime.get_job(target_job.job_id)
+            if current is not None and current.status.value == "cancelled":
+                if contract is not None:
+                    _mark_uploaded_document_extraction_failed(
+                        contract.project_id,
+                        contract.material_id,
+                        "用户已取消 PDF 文本提取",
+                        expected_source_fingerprint=contract.source_fingerprint,
+                    )
+                runtime.record_material_processing_task_result(
+                    target_job.job_id,
+                    status="cancelled",
+                    result={"status": "cancelled", "stage": "cancelled"},
+                    artifacts=[],
+                    warnings=["用户已取消 PDF 文本提取"],
+                    provenance={"source": "resources_router.upload_executor"},
+                )
+            raise
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
-            _mark_uploaded_document_extraction_failed(project_id, material_id, str(exc))
+            if contract is not None:
+                _mark_uploaded_document_extraction_failed(
+                    contract.project_id,
+                    contract.material_id,
+                    str(exc),
+                    expected_source_fingerprint=contract.source_fingerprint,
+                )
             runtime.record_material_processing_task_result(
                 target_job.job_id,
                 status="failed",
@@ -1354,7 +1991,11 @@ async def _start_uploaded_document_extraction_job(
                     "status": "failed",
                     "stage": "extract",
                     "error": str(exc)[:1000],
-                    "route": f"/workbench/paper/{material_id}",
+                    **(
+                        {"route": f"/workbench/paper/{contract.material_id}"}
+                        if contract is not None
+                        else {}
+                    ),
                 },
                 artifacts=[],
                 warnings=[str(exc)[:1000]],
@@ -1373,12 +2014,12 @@ async def _start_uploaded_document_extraction_job(
         result_summary = {
             "status": "completed",
             "kind": "resource_ingest",
-            "project_id": project_id,
-            "material_id": material_id,
-            "title": safe_filename,
+            "project_id": contract.project_id,
+            "material_id": contract.material_id,
+            "title": contract.filename,
             "chunks": int(result.get("chunks") or 0),
             "content_length": int(result.get("content_length") or 0),
-            "route": f"/workbench/paper/{material_id}",
+            "route": f"/workbench/paper/{contract.material_id}",
         }
         runtime.record_material_processing_task_result(
             target_job.job_id,
@@ -1391,8 +2032,171 @@ async def _start_uploaded_document_extraction_job(
         )
         return result_summary
 
-    await runtime.start_job(job.job_id, executor=_executor)
+    return _executor
+
+
+async def _start_uploaded_document_extraction_job(
+    project_id: str,
+    material_id: str,
+    filename: str,
+    source_path: Path,
+    *,
+    source_fingerprint: str,
+    source_size: int,
+    source_relative_path: str | None = None,
+    batch_context: _UploadBatchContext | None = None,
+) -> tuple[str, str]:
+    """Start a runtime-visible extraction/indexing job for one uploaded PDF."""
+
+    batch_context = _validate_upload_batch_context(batch_context)
+    from harness_protocols import JobKind, SessionMode
+    from writing_runtime import get_writing_runtime
+
+    runtime = get_writing_runtime()
+    safe_filename = _safe_upload_filename(filename)
+    safe_source_name = _safe_upload_filename(source_relative_path or source_path.name)
+    if source_relative_path is not None and safe_source_name != source_relative_path:
+        raise ValueError("source_relative_path must be one safe filename")
+    source_root = project_data_path(project_id, "source_files").resolve()
+    expected_source_path = (source_root / safe_source_name).resolve()
+    if expected_source_path.parent != source_root or source_path.resolve() != expected_source_path:
+        raise ValueError("uploaded PDF source must use its persisted project source path")
+    processing_request = _build_uploaded_document_processing_request(
+        project_id=project_id,
+        material_id=material_id,
+        filename=safe_filename,
+        source_relative_path=safe_source_name,
+        source_fingerprint=source_fingerprint,
+        source_size=source_size,
+    )
+    session = runtime.create_session(
+        mode=SessionMode.PROMPT,
+        tags=["resource_ingest", "pdf"],
+        metadata={
+            "source": "resource_ingest",
+            "title": "PDF 后台提取",
+            "project_id": project_id,
+            "material_id": material_id,
+        },
+    )
+    job_metadata: dict[str, Any] = {
+        "source": "resource_ingest",
+        "project_id": project_id,
+        "material_id": material_id,
+        "filename": safe_filename,
+        "route": f"/workbench/paper/{material_id}",
+        "progress_stage": "queued",
+        "progress_message": "PDF 已可阅读，文本提取正在排队",
+        "progress": 1,
+    }
+    if batch_context is not None:
+        job_metadata.update(batch_context.to_job_metadata())
+    job = runtime.create_job(
+        session_id=session.session_id,
+        kind=JobKind.PIPELINE_RUN,
+        input_text=f"提取 {safe_filename}",
+        tags=["resource_ingest", "pdf"],
+        metadata=job_metadata,
+    )
+    runtime.update_material_processing_task(
+        job.job_id,
+        request=processing_request,
+        status="queued",
+        provenance={"source": "resources_router.upload_queue"},
+    )
+
+    await runtime.start_job(
+        job.job_id,
+        executor=_build_uploaded_document_extraction_executor(runtime, job.job_id),
+    )
     return session.session_id, job.job_id
+
+
+async def recover_uploaded_document_extraction_jobs(runtime: Any | None = None) -> dict[str, int]:
+    """Reattach upload executors for persisted non-terminal material tasks."""
+
+    if runtime is None:
+        from writing_runtime import get_writing_runtime
+
+        runtime = get_writing_runtime()
+    counts = {"scanned": 0, "recovered": 0, "paused": 0, "skipped": 0}
+    for session in runtime.list_sessions(include_archived=True):
+        for job in runtime.list_jobs(session.session_id):
+            task = runtime.get_material_processing_task(job.job_id)
+            if not _is_uploaded_document_extraction_task(task):
+                continue
+            counts["scanned"] += 1
+            if runtime.has_active_job_executor(job.job_id):
+                counts["skipped"] += 1
+                continue
+            task_status = str(task.get("status") or "").strip().lower()
+            if task_status in {"completed", "failed", "cancelled"} or job.status.value in {
+                "completed",
+                "failed",
+                "cancelled",
+            }:
+                counts["skipped"] += 1
+                continue
+            if job.status.value == "paused":
+                runtime.record_material_processing_task_result(
+                    job.job_id,
+                    status="paused",
+                    result={"status": "paused", "stage": "recovery"},
+                    artifacts=list(task.get("artifacts") or []),
+                    warnings=list(task.get("warnings") or []),
+                    provenance={"source": "resources_router.startup_recovery"},
+                )
+                counts["paused"] += 1
+            else:
+                runtime.record_material_processing_task_result(
+                    job.job_id,
+                    status="queued",
+                    result={"status": "queued", "stage": "recovery"},
+                    artifacts=list(task.get("artifacts") or []),
+                    warnings=list(task.get("warnings") or []),
+                    provenance={"source": "resources_router.startup_recovery"},
+                )
+                counts["recovered"] += 1
+            await runtime.recover_job_executor(
+                job.job_id,
+                _build_uploaded_document_extraction_executor(runtime, job.job_id),
+            )
+    return counts
+
+
+async def shutdown_uploaded_document_extraction_jobs(runtime: Any | None = None) -> dict[str, int]:
+    """Persist recoverable upload state and stop process-owned executors."""
+
+    if runtime is None:
+        from writing_runtime import get_writing_runtime
+
+        runtime = get_writing_runtime()
+    counts = {"scanned": 0, "interrupted": 0, "completed_commit": 0}
+    for session in runtime.list_sessions(include_archived=True):
+        for job in runtime.list_jobs(session.session_id):
+            task = runtime.get_material_processing_task(job.job_id)
+            if not _is_uploaded_document_extraction_task(task) or not runtime.has_active_job_executor(job.job_id):
+                continue
+            counts["scanned"] += 1
+            if runtime.is_job_commit_in_progress(job.job_id):
+                await runtime.interrupt_job_for_shutdown(job.job_id)
+                counts["completed_commit"] += 1
+                continue
+            preserve_pause = job.status.value == "paused"
+            runtime.record_material_processing_task_result(
+                job.job_id,
+                status="paused" if preserve_pause else "queued",
+                result={
+                    "status": "paused" if preserve_pause else "queued",
+                    "stage": "shutdown_interrupted",
+                },
+                artifacts=list(task.get("artifacts") or []),
+                warnings=list(task.get("warnings") or []),
+                provenance={"source": "resources_router.shutdown"},
+            )
+            await runtime.interrupt_job_for_shutdown(job.job_id)
+            counts["interrupted"] += 1
+    return counts
 
 
 def _persist_uploaded_document(
@@ -1407,6 +2211,9 @@ def _persist_uploaded_document(
     source_mtime: float | None = None,
     blocks: list[Any] | None = None,
     markdown_full: str | None = None,
+    parser_provenance: PDFParserProvenance | Mapping[str, object] | None = None,
+    parser_output_sha256: str | None = None,
+    ocr_report: OcrIngestionReport | Mapping[str, object] | None = None,
 ) -> dict[str, Any]:
     """Create a material entry and persist its document/chunk payload.
 
@@ -1447,6 +2254,9 @@ def _persist_uploaded_document(
         source_mtime=source_mtime,
         blocks=blocks,
         markdown_full=markdown_full,
+        parser_provenance=parser_provenance,
+        parser_output_sha256=parser_output_sha256,
+        ocr_report=ocr_report,
     )
 
 
@@ -1455,98 +2265,114 @@ async def _ingest_uploaded_document(
     upload: UploadFile,
     *,
     store: Any,
+    batch_context: _UploadBatchContext | None = None,
 ) -> dict[str, Any]:
     """Read one uploaded file and persist it into the project knowledge base."""
+    batch_context = _validate_upload_batch_context(batch_context)
     filename = _safe_upload_filename(upload.filename or "unnamed")
     dedupe_key = _build_scan_dedupe_key(filename)
 
     if _is_translated_scan_derivative(filename):
-        return {
+        return _with_upload_batch_context({
             "title": filename,
             "chunks": 0,
             "status": "skipped",
             "reason": "翻译副本（mono/dual/zh-CN），保留原文材料",
             "decision": "translated_duplicate",
             "dedupe_key": dedupe_key,
-        }
+        }, batch_context)
 
     if _is_probable_non_literature_scan_artifact(filename):
-        return {
+        return _with_upload_batch_context({
             "title": filename,
             "chunks": 0,
             "status": "skipped",
             "reason": "疑似非论文 PDF（文件名含 PnP/cutlines 等制图标记）",
             "decision": "non_literature_artifact",
             "dedupe_key": dedupe_key,
-        }
-
-    existing_doc_store = _load_doc_store(project_id)
-    for existing_doc in existing_doc_store.values():
-        if not isinstance(existing_doc, dict):
-            continue
-        for raw_value in (existing_doc.get("source_relative_path"), existing_doc.get("title")):
-            raw_text = str(raw_value or "").strip()
-            if not raw_text:
-                continue
-            try:
-                existing_key = _build_scan_dedupe_key(raw_text)
-            except (TypeError, ValueError):
-                continue
-            if existing_key == dedupe_key:
-                return {
-                    "title": filename,
-                    "chunks": 0,
-                    "status": "skipped",
-                    "reason": "重复文献（规范化标题匹配）",
-                    "decision": "scan_duplicate",
-                    "dedupe_key": dedupe_key,
-                }
+        }, batch_context)
 
     uploaded = await _persist_upload_to_source_file(project_id, filename, upload)
     content_fingerprint = uploaded.fingerprint
 
-    # Content-hash dedup: a paper uploaded twice (whether under the same or a
-    # different filename) collapses into one material. Cheaper than re-running
-    # extraction + chunking, and prevents the symptom where a batch upload
-    # creates two rows for the same PDF.
-    for existing_mid, existing_doc in existing_doc_store.items():
-        if str(existing_doc.get("source_fingerprint") or "") == content_fingerprint:
-            if not str(existing_doc.get("source_relative_path") or "").strip():
-                existing_doc["source_relative_path"] = filename
-                existing_doc["source_size"] = int(existing_doc.get("source_size") or uploaded.size)
-                existing_doc_store[existing_mid] = existing_doc
-                _save_doc_store(project_id, existing_doc_store)
-            return {
-                "material_id": existing_mid,
-                "title": str(existing_doc.get("title") or filename),
-                "content_length": len(str(existing_doc.get("content") or "")),
-                "chunks": 0,
-                "status": "duplicate",
-            }
-
     if Path(filename).suffix.lower() in _ASYNC_UPLOAD_EXTENSIONS:
-        pending = _create_pending_uploaded_document(
-            project_id,
-            filename,
-            store=store,
-            source_fingerprint=content_fingerprint,
-            source_size=uploaded.size,
-        )
+        try:
+            pending = _create_pending_uploaded_document(
+                project_id,
+                filename,
+                store=store,
+                source_relative_path=uploaded.path.name,
+                source_fingerprint=content_fingerprint,
+                source_size=uploaded.size,
+            )
+        except Exception:
+            _remove_unreferenced_uploaded_source(project_id, uploaded)
+            raise
+        if str(pending.get("status") or "") != "queued":
+            _remove_unreferenced_uploaded_source(project_id, uploaded)
+            material_id = str(pending.get("material_id") or "")
+            return _with_upload_batch_context({
+                **pending,
+                **(
+                    {"open_url": f"/workbench/paper/{material_id}"}
+                    if material_id
+                    else {}
+                ),
+            }, batch_context)
+        start_job_kwargs: dict[str, Any] = {
+            "source_fingerprint": content_fingerprint,
+            "source_size": uploaded.size,
+            "source_relative_path": uploaded.path.name,
+        }
+        if batch_context is not None:
+            start_job_kwargs["batch_context"] = batch_context
         session_id, job_id = await _start_uploaded_document_extraction_job(
             project_id,
             str(pending["material_id"]),
             filename,
             uploaded.path,
-            source_fingerprint=content_fingerprint,
-            source_size=uploaded.size,
+            **start_job_kwargs,
         )
-        return {
+        return _with_upload_batch_context({
             **pending,
             "job_id": job_id,
             "session_id": session_id,
             "open_url": f"/workbench/paper/{pending['material_id']}",
             "message": "PDF 已可阅读，文本提取将在后台完成。",
-        }
+        }, batch_context)
+
+    # Content-hash dedup: a paper uploaded twice (whether under the same or a
+    # different filename) collapses into one material. Cheaper than re-running
+    # extraction + chunking, and prevents the symptom where a batch upload
+    # creates two rows for the same PDF.
+    existing_doc_store = _load_doc_store(project_id)
+    for existing_mid, existing_doc in existing_doc_store.items():
+        if str(existing_doc.get("source_fingerprint") or "") == content_fingerprint:
+            if not str(existing_doc.get("source_relative_path") or "").strip():
+                def _repair_duplicate_source(
+                    doc_store: dict[str, dict[str, Any]],
+                ) -> dict[str, dict[str, Any]]:
+                    current = doc_store.get(existing_mid)
+                    if not isinstance(current, dict):
+                        return doc_store
+                    if str(current.get("source_fingerprint") or "") != content_fingerprint:
+                        return doc_store
+                    if str(current.get("source_relative_path") or "").strip():
+                        return doc_store
+                    current["source_relative_path"] = uploaded.path.name
+                    current["source_size"] = int(current.get("source_size") or uploaded.size)
+                    doc_store[existing_mid] = current
+                    return doc_store
+
+                _update_doc_store_atomic(project_id, _repair_duplicate_source)
+            _remove_unreferenced_uploaded_source(project_id, uploaded)
+            return _with_upload_batch_context({
+                "material_id": existing_mid,
+                "title": str(existing_doc.get("title") or filename),
+                "content_length": len(str(existing_doc.get("content") or "")),
+                "chunks": len(_load_chunk_store(project_id).get(existing_mid, [])),
+                "status": "duplicate",
+            }, batch_context)
 
     payload = _extract_document_payload_from_path(
         filename,
@@ -1554,16 +2380,105 @@ async def _ingest_uploaded_document(
         project_id=project_id,
     )
     content = _truncate_document_content(payload.content)
-    return _persist_uploaded_document(
+    result = _persist_uploaded_document(
         project_id,
         filename,
         content,
         store=store,
+        source_relative_path=uploaded.path.name,
         source_fingerprint=content_fingerprint,
         source_size=uploaded.size,
         blocks=payload.blocks,
         markdown_full=payload.markdown_full,
+        parser_provenance=payload.parser_provenance,
+        parser_output_sha256=payload.parser_output_sha256,
+        ocr_report=payload.ocr_report,
     )
+    return _with_upload_batch_context(result, batch_context)
+
+
+async def ingest_validated_pdf_path(
+    project_id: str,
+    source_path: Path,
+    *,
+    expected_sha256: str,
+    expected_size: int,
+) -> dict[str, Any]:
+    """Queue an already validated project-local PDF through normal ingestion.
+
+    Args:
+        project_id: Existing project that owns the acquired artifact.
+        source_path: PDF path below that project's canonical ``source_files``.
+        expected_sha256: Lowercase SHA-256 recorded by acquisition validation.
+        expected_size: Exact byte size recorded by acquisition validation.
+
+    Returns:
+        Existing resource-ingestion result, including material and runtime job
+        identifiers when background extraction is queued.
+
+    Raises:
+        ValueError: If the project, path, digest, size, or PDF structure is
+            invalid, or if the file changed after acquisition validation.
+    """
+
+    normalized_project_id = str(project_id or "").strip()
+    if not normalized_project_id:
+        raise ValueError("project_id must be non-empty")
+    if not re.fullmatch(r"[0-9a-f]{64}", str(expected_sha256 or "")):
+        raise ValueError("expected_sha256 must be a lowercase SHA-256 digest")
+    if isinstance(expected_size, bool) or not isinstance(expected_size, int) or expected_size < 4096:
+        raise ValueError("expected_size must be an integer of at least 4096 bytes")
+
+    from acquisition.validator import validate_pdf_file
+
+    store = _ensure_upload_project(normalized_project_id)
+    source_root = project_data_path(normalized_project_id, "source_files").resolve()
+    candidate = Path(source_path).resolve()
+    if source_root != candidate.parent and source_root not in candidate.parents:
+        raise ValueError("validated PDF must be inside the project source_files directory")
+    if candidate.suffix.lower() != ".pdf":
+        raise ValueError("validated artifact must use the .pdf extension")
+
+    validation = validate_pdf_file(candidate, max_bytes=max(expected_size, 4096))
+    if validation.size_bytes != expected_size or validation.sha256 != expected_sha256:
+        raise ValueError("validated PDF changed before ingestion")
+
+    fingerprint = f"sha256:{validation.sha256}"
+    filename = _safe_upload_filename(candidate.name)
+    pending = _create_pending_uploaded_document(
+        normalized_project_id,
+        filename,
+        store=store,
+        source_relative_path=candidate.name,
+        source_fingerprint=fingerprint,
+        source_size=validation.size_bytes,
+    )
+    if str(pending.get("status") or "") != "queued":
+        material_id = str(pending.get("material_id") or "")
+        return {
+            **pending,
+            **(
+                {"open_url": f"/workbench/paper/{material_id}"}
+                if material_id
+                else {}
+            ),
+        }
+    session_id, job_id = await _start_uploaded_document_extraction_job(
+        normalized_project_id,
+        str(pending["material_id"]),
+        filename,
+        candidate,
+        source_fingerprint=fingerprint,
+        source_size=validation.size_bytes,
+        source_relative_path=candidate.name,
+    )
+    return {
+        **pending,
+        "job_id": job_id,
+        "session_id": session_id,
+        "open_url": f"/workbench/paper/{pending['material_id']}",
+        "message": "PDF 已可阅读，文本提取将在后台完成。",
+    }
 
 
 def _build_unified_batch_upload_service(filter_engine: Any | None = None) -> Any:
@@ -1580,12 +2495,13 @@ def _build_unified_batch_upload_service(filter_engine: Any | None = None) -> Any
     return UnifiedBatchUploadService(
         persist_upload=_persist_upload_to_source_file,
         load_doc_store=_load_doc_store,
-        save_doc_store=_save_doc_store,
+        update_doc_store=_update_doc_store_atomic,
         extract_payload=_extract_document_payload_from_path,
         truncate_content=_truncate_document_content,
         ensure_extracted_text=_ensure_extracted_text,
         write_material_document_content=_write_material_document_content,
         safe_upload_filename=_safe_upload_filename,
+        cleanup_uploaded_source=_remove_unreferenced_uploaded_source,
         filter_engine=filter_engine,
     )
 
@@ -1704,15 +2620,25 @@ from ._chunk_store_internals import (  # noqa: E402,F401
     _read_material_jsonl,
     _write_material_jsonl_atomic,
     _load_manifest,
+    _chunk_store_hash_version,
+    _chunk_store_retrieval_contract,
+    _load_chunk_store_materials_for_retrieval,
     _load_doc_store,
     _save_doc_store,
+    _update_doc_store_atomic,
     _load_chunk_store,
     _save_chunk_store,
     _update_chunk_store_atomic,
+    _update_project_stores_atomic,
     _load_chunk_store_unlocked,
     _save_chunk_store_unlocked,
     _partition_quarantined_chunks,
     _append_chunk_quarantine_log,
+)
+
+from ._publication_integrity import (  # noqa: E402,F401
+    MaterialPublicationIntegrityError,
+    verify_material_publication,
 )
 
 # Endpoint sub-modules. Imported here so their @router decorators
@@ -1762,10 +2688,13 @@ from .endpoints_search_upload import (  # noqa: E402,F401
     get_project_documents,
     get_project_chunks,
     derive_figure_table_candidates,
+    list_material_formula_candidates,
     list_figure_table_candidates,
     search_chunk_refs,
     search_chunks,
     serve_document_file,
+    FormulaCandidatePayload,
+    FormulaCandidatesResponse,
 )
 from .endpoints_merged_projects import (  # noqa: E402,F401
     create_merged_project,

@@ -2,6 +2,7 @@
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -12,6 +13,10 @@ from lit_assistant_mcp.server import (
     EXPERIMENTAL_TOOLS_ENV,
     MCP_TOOL_PROFILE_ENV,
     MINIMAL_MCP_TOOL_NAMES,
+    NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI,
+    NATIVE_HANDOFF_WIDGET_PROBE_SCHEMA_VERSION,
+    NATIVE_HANDOFF_WIDGET_PROBE_TOOL_NAME,
+    NATIVE_HANDOFF_WIDGET_TOOL_NAME,
     SIDEBAR_APP_RESOURCE_MIME_TYPE,
     SIDEBAR_APP_RESOURCE_URI,
     SIDEBAR_APP_STATUS_TOOL_NAME,
@@ -22,6 +27,49 @@ from lit_assistant_mcp.tools.source import SourceTools
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+ACQUISITION_TOOL_NAMES = frozenset(
+    {
+        "literature.acquisition_status",
+        "literature.acquisition_search",
+        "literature.acquisition_search_run",
+        "literature.acquisition_download_queue",
+        "literature.acquisition_download_run",
+        "literature.acquisition_download_control",
+        "literature.acquisition_gate_resolve",
+        "literature.acquisition_artifact_import",
+        "literature.acquisition_import_receipt",
+    }
+)
+
+
+class LatestHandoffRuntime:
+    """Minimal runtime double for testing widget default request binding."""
+
+    def __init__(self) -> None:
+        self.latest_calls: list[str | None] = []
+
+    def codex_handoff_latest(self, project_id: str | None = None) -> dict[str, Any]:
+        self.latest_calls.append(project_id)
+        return {
+            "is_error": False,
+            "error_code": None,
+            "message": None,
+            "data": {
+                "schema_version": "scholar-ai-codex-handoff-latest/v1",
+                "found": True,
+                "request_id": "agentreq_latest",
+                "project_id": "project-latest",
+                "receipt_id": "sidebar_agentreq_latest",
+                "ref_count": 2,
+            },
+            "truncated": False,
+        }
+
+    def __getattr__(self, _name: str) -> Any:
+        def _tool_stub(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+            return {"is_error": False, "error_code": None, "message": None, "data": {}, "truncated": False}
+
+        return _tool_stub
 
 
 def test_find_repo_root_accepts_public_source_tree_anchor(tmp_path: Path, monkeypatch) -> None:
@@ -132,6 +180,8 @@ def test_server_registers_source_and_runtime_tools(monkeypatch) -> None:
         "literature.launch_desktop",
         "literature.config_status",
         "literature.sidebar_app_status",
+        "literature.codex_handoff_widget",
+        "literature.native_handoff_widget_probe",
         "literature.health_check",
         "literature.zotero_attachment_health",
         "literature.list_projects",
@@ -231,6 +281,8 @@ def test_server_registers_source_and_runtime_tools(monkeypatch) -> None:
         "literature.agent_sidebar_url",
         "literature.config_status",
         "literature.sidebar_app_status",
+        "literature.codex_handoff_widget",
+        "literature.native_handoff_widget_probe",
         "literature.health_check",
         "literature.list_projects",
         "literature.list_materials",
@@ -338,6 +390,51 @@ def test_server_full_profile_hides_experimental_tools_without_opt_in(monkeypatch
     assert "workflow.run_json_workflow" in tool_names
 
 
+def test_server_registers_acquisition_tools_only_in_full_profile(monkeypatch) -> None:
+    """Acquisition tools expose explicit action boundaries only in the full profile."""
+    monkeypatch.delenv(EXPERIMENTAL_TOOLS_ENV, raising=False)
+
+    full_server = create_mcp_server(tool_profile="full")
+    full_tools = {tool.name: tool for tool in full_server._tool_manager.list_tools()}
+    minimal_server = create_mcp_server(tool_profile="minimal")
+    minimal_tool_names = {tool.name for tool in minimal_server._tool_manager.list_tools()}
+
+    assert ACQUISITION_TOOL_NAMES.issubset(full_tools)
+    assert ACQUISITION_TOOL_NAMES.isdisjoint(minimal_tool_names)
+
+    expected_annotations = {
+        "literature.acquisition_status": (True, False, True, False),
+        "literature.acquisition_search": (False, False, False, True),
+        "literature.acquisition_search_run": (True, False, True, False),
+        "literature.acquisition_download_queue": (False, False, True, False),
+        "literature.acquisition_download_run": (False, False, False, True),
+        "literature.acquisition_download_control": (False, True, True, False),
+        "literature.acquisition_gate_resolve": (False, False, True, False),
+        "literature.acquisition_artifact_import": (False, False, True, False),
+        "literature.acquisition_import_receipt": (True, False, True, False),
+    }
+    for tool_name, expected in expected_annotations.items():
+        annotations = full_tools[tool_name].annotations
+        assert annotations is not None
+        assert (
+            annotations.readOnlyHint,
+            annotations.destructiveHint,
+            annotations.idempotentHint,
+            annotations.openWorldHint,
+        ) == expected
+
+    search_run_schema = full_tools["literature.acquisition_search_run"].parameters
+    assert search_run_schema["required"] == ["run_id"]
+    assert search_run_schema["properties"]["candidate_offset"]["default"] == 0
+    assert search_run_schema["properties"]["candidate_limit"]["default"] == 10
+
+    control_schema = full_tools["literature.acquisition_download_control"].parameters
+    assert control_schema["properties"]["action"]["enum"] == ["pause", "resume", "cancel"]
+
+    gate_schema = full_tools["literature.acquisition_gate_resolve"].parameters
+    assert gate_schema["properties"]["confirm_user_completed"]["default"] is False
+
+
 def test_server_minimal_profile_exposes_only_core_claude_tools(monkeypatch) -> None:
     """Minimal profile keeps the verified evidence and answer write-back chain."""
     monkeypatch.setenv(EXPERIMENTAL_TOOLS_ENV, "1")
@@ -359,6 +456,7 @@ def test_server_minimal_profile_exposes_only_core_claude_tools(monkeypatch) -> N
 
     resources = asyncio.run(server.list_resources())
     assert SIDEBAR_APP_RESOURCE_URI not in {str(resource.uri) for resource in resources}
+    assert NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI not in {str(resource.uri) for resource in resources}
 
 
 def test_server_reads_minimal_profile_from_environment(monkeypatch) -> None:
@@ -416,6 +514,154 @@ def test_server_registers_sidebar_app_resource_and_status_tool_metadata() -> Non
     assert 'data-schema-version="scholar-ai-sidebar-app/v1"' in resource_content.content
     assert f'data-status-tool="{SIDEBAR_APP_STATUS_TOOL_NAME}"' in resource_content.content
     assert "literature.answer_receipt" not in resource_content.content
+
+
+def test_server_registers_native_handoff_widget() -> None:
+    """The native handoff widget is discoverable but still host-evidence gated."""
+    server = create_mcp_server(tool_profile="full")
+
+    tools_by_name = {tool.name: tool for tool in server._tool_manager.list_tools()}
+    handoff_tool = tools_by_name[NATIVE_HANDOFF_WIDGET_TOOL_NAME]
+    legacy_probe_tool = tools_by_name[NATIVE_HANDOFF_WIDGET_PROBE_TOOL_NAME]
+    _assert_read_only_annotations(handoff_tool)
+    _assert_read_only_annotations(legacy_probe_tool)
+    assert handoff_tool.meta == {
+        "ui": {
+            "resourceUri": NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI,
+            "visibility": ["model", "app"],
+        },
+        "ui/resourceUri": NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI,
+        "openai/outputTemplate": NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI,
+        "openai/widgetAccessible": True,
+        "openai/toolInvocation/invoking": "正在打开 Scholar AI 主栏交接...",
+        "openai/toolInvocation/invoked": "Scholar AI 主栏交接已准备",
+    }
+    assert legacy_probe_tool.meta == handoff_tool.meta
+
+    resources = asyncio.run(server.list_resources())
+    resources_by_uri = {str(resource.uri): resource for resource in resources}
+    probe_resource = resources_by_uri[NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI]
+    assert probe_resource.name == "scholar-ai-main-column-handoff"
+    assert probe_resource.mimeType == SIDEBAR_APP_RESOURCE_MIME_TYPE
+    assert probe_resource.meta == {
+        "ui": {
+            "schemaVersion": NATIVE_HANDOFF_WIDGET_PROBE_SCHEMA_VERSION,
+            "prefersBorder": False,
+            "csp": {
+                "connectDomains": [],
+                "resourceDomains": [],
+            },
+        },
+        "openai/widgetDescription": (
+            "Scholar AI main-column handoff widget. Sends a bounded sidebar "
+            "task handoff to the host conversation only when the user clicks."
+        ),
+        "openai/widgetPrefersBorder": False,
+        "openai/widgetCSP": {
+            "connect_domains": [],
+            "resource_domains": [],
+        },
+    }
+
+    contents = asyncio.run(server.read_resource(NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI))
+    assert len(contents) == 1
+    resource_content = contents[0]
+    assert resource_content.mime_type == SIDEBAR_APP_RESOURCE_MIME_TYPE
+    assert resource_content.meta == probe_resource.meta
+    assert f'data-schema-version="{NATIVE_HANDOFF_WIDGET_PROBE_SCHEMA_VERSION}"' in resource_content.content
+    assert "交接到 Codex 主栏" in resource_content.content
+    assert "发送到主栏" in resource_content.content
+    assert "发送测试消息" in resource_content.content
+    assert "点击后把接手指令发送到当前 Codex 主栏。" in resource_content.content
+    assert '<p id="probe-meta" class="sr-only">' in resource_content.content
+    assert '<code id="payload" hidden>' in resource_content.content
+    assert "调试详情" not in resource_content.content
+    assert "Scholar AI 原生交接探针" not in resource_content.content
+    assert "请接手 Scholar AI 交接任务" in resource_content.content
+    assert "literature.agent_request_read" in resource_content.content
+    assert "literature.agent_result" in resource_content.content
+    assert "window.openai" in resource_content.content
+    assert "hostSupportsMessage" in resource_content.content
+    assert "sendFollowUpMessage" in resource_content.content
+    assert "sendMessage" in resource_content.content
+    assert "ui/initialize" in resource_content.content
+    assert "ui/message" in resource_content.content
+    assert "directWidgetData" in resource_content.content
+    assert "S74_NATIVE_HANDOFF_WIDGET_PROBE_RECEIVED" in resource_content.content
+
+
+def test_native_handoff_widget_carries_real_request_data() -> None:
+    """The host-rendered widget should send the existing sidebar_answer request."""
+    server = create_mcp_server(tool_profile="full")
+
+    result = asyncio.run(
+        server.call_tool(
+            NATIVE_HANDOFF_WIDGET_TOOL_NAME,
+            {
+                "request_id": "agentreq_sidebar",
+                "project_id": "project-a",
+                "receipt_id": "session-sidebar-1",
+                "ref_count": 3,
+            },
+        )
+    )
+
+    assert result.structuredContent["rendering"] == "native_mcp_handoff_widget"
+    assert result.structuredContent["widget_data"] == {
+        "schema_version": NATIVE_HANDOFF_WIDGET_PROBE_SCHEMA_VERSION,
+        "mode": "handoff",
+        "request_id": "agentreq_sidebar",
+        "project_id": "project-a",
+        "receipt_id": "session-sidebar-1",
+        "ref_count": 3,
+        "note": None,
+    }
+    assert result.meta["openai/outputTemplate"] == NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI
+    assert result.meta["widgetData"]["request_id"] == "agentreq_sidebar"
+    assert result.content[0].text == "Scholar AI 主栏交接控件已准备。点击控件按钮发送到 Codex 主栏。"
+
+
+def test_native_handoff_widget_defaults_to_latest_sidebar_request() -> None:
+    """The main-column widget should bind the latest sidebar handoff when omitted."""
+    runtime = LatestHandoffRuntime()
+    server = create_mcp_server(runtime_tools=runtime, tool_profile="full")
+
+    result = asyncio.run(server.call_tool(NATIVE_HANDOFF_WIDGET_TOOL_NAME, {}))
+
+    assert runtime.latest_calls == [None]
+    assert result.structuredContent["rendering"] == "native_mcp_handoff_widget"
+    assert result.structuredContent["widget_data"] == {
+        "schema_version": NATIVE_HANDOFF_WIDGET_PROBE_SCHEMA_VERSION,
+        "mode": "handoff",
+        "request_id": "agentreq_latest",
+        "project_id": "project-latest",
+        "receipt_id": "sidebar_agentreq_latest",
+        "ref_count": 2,
+        "note": "已绑定最新侧栏接手任务。",
+    }
+    assert result.meta["widgetData"]["request_id"] == "agentreq_latest"
+    assert result.content[0].text == "Scholar AI 主栏交接控件已准备。点击控件按钮发送到 Codex 主栏。"
+
+
+def test_native_handoff_widget_probe_alias_carries_real_request_data() -> None:
+    """The legacy probe name remains a compatibility alias for existing host sessions."""
+    server = create_mcp_server(tool_profile="full")
+
+    result = asyncio.run(
+        server.call_tool(
+            NATIVE_HANDOFF_WIDGET_PROBE_TOOL_NAME,
+            {
+                "request_id": "agentreq_sidebar",
+                "project_id": "project-a",
+                "receipt_id": "session-sidebar-1",
+                "ref_count": 3,
+            },
+        )
+    )
+
+    assert result.structuredContent["rendering"] == "native_mcp_handoff_widget"
+    assert result.structuredContent["widget_data"]["request_id"] == "agentreq_sidebar"
+    assert result.meta["openai/outputTemplate"] == NATIVE_HANDOFF_WIDGET_PROBE_RESOURCE_URI
 
 
 def test_server_instructions_point_to_capability_map_without_stale_count() -> None:

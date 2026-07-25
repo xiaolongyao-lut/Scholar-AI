@@ -13,6 +13,10 @@ Inputs / outputs:
     - Input: ``--project-id <pid>`` (repeatable) or ``--all-projects``.
     - Output: rewritten ``*.jsonl`` files (atomic write), plus an evidence
       report at ``workspace_artifacts/embedding-backfill-evidence-<ts>/report.json``.
+      In ``--dry-run`` mode, the report records ``planned_embeddings`` without
+      calling the provider or writing chunk JSONL.
+      Real backfills use a strict embedding contract: no cross-provider/model
+      credential failover and no local fallback.
     - On failure, original files are untouched (atomic ``.tmp`` + ``replace``).
 
 Idempotence:
@@ -47,6 +51,10 @@ from chunk_vector_store import (  # noqa: E402  (sys.path setup above)
     EmbeddingAPIError,
     batch_embed_texts,
 )
+from chunk_hashing import (  # noqa: E402
+    compute_chunk_manifest_digest,
+    is_finite_embedding_vector,
+)
 from runtime_env import env_value as _env_value  # noqa: E402
 
 # Bridge dotenv values into os.environ for libraries that read os.getenv
@@ -80,6 +88,7 @@ class FileReport:
     chunks_total: int = 0
     already_filled: int = 0
     skipped_empty: int = 0
+    planned_embeddings: int = 0
     embedded: int = 0
     errors: list[str] = field(default_factory=list)
     wrote: bool = False
@@ -98,6 +107,7 @@ class ProjectReport:
             "chunks_total": sum(f.chunks_total for f in self.files),
             "already_filled": sum(f.already_filled for f in self.files),
             "skipped_empty": sum(f.skipped_empty for f in self.files),
+            "planned_embeddings": sum(f.planned_embeddings for f in self.files),
             "embedded": sum(f.embedded for f in self.files),
             "files": len(self.files),
             "wrote_files": sum(1 for f in self.files if f.wrote),
@@ -111,28 +121,97 @@ def _chunk_text(chunk: dict[str, Any]) -> str:
 
 
 def _is_valid_embedding(value: Any) -> bool:
-    return (
-        isinstance(value, list)
-        and len(value) >= EMBEDDING_DIM
-        and all(isinstance(x, (int, float)) for x in value[:8])  # cheap structural check
-    )
+    return is_finite_embedding_vector(value) and len(value) >= EMBEDDING_DIM
 
 
-def _atomic_write_jsonl(target: Path, chunks: Iterable[dict[str, Any]]) -> None:
-    """Write chunks atomically (tmp + os.replace) to avoid partial writes on crash."""
+def _atomic_write_text(target: Path, text: str) -> None:
+    """Atomically replace one UTF-8 text file."""
+
     tmp = target.with_suffix(target.suffix + ".tmp")
     try:
         with tmp.open("w", encoding="utf-8") as fp:
-            for chunk in chunks:
-                fp.write(json.dumps(chunk, ensure_ascii=False))
-                fp.write("\n")
+            fp.write(text)
+            fp.flush()
+            os.fsync(fp.fileno())
         os.replace(tmp, target)
     finally:
-        if tmp.exists():  # crashed mid-write; clean tmp
+        if tmp.exists():
             try:
                 tmp.unlink()
             except OSError:
                 pass
+
+
+def _atomic_write_jsonl(target: Path, chunks: Iterable[dict[str, Any]]) -> None:
+    """Write chunks atomically (tmp + os.replace) to avoid partial writes on crash."""
+    lines = "\n".join(json.dumps(chunk, ensure_ascii=False) for chunk in chunks)
+    _atomic_write_text(target, lines + ("\n" if lines else ""))
+
+
+def _load_owning_manifest(
+    path: Path,
+    chunks: list[dict[str, Any]],
+) -> tuple[Path, dict[str, Any], str, dict[str, Any]]:
+    """Return and validate the unique manifest entry that owns ``path``.
+
+    The preflight proves the file has not already drifted before a provider
+    call. Real backfill refuses unmanifested or stale JSONL rather than creating
+    another silent truth/manifest split.
+    """
+
+    manifest_path = path.parent / "manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError("owning manifest.json is missing")
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("owning manifest.json is unreadable or invalid") from exc
+    if not isinstance(payload, dict) or payload.get("version") != 2:
+        raise ValueError("owning manifest must be a version 2 JSON object")
+    materials = payload.get("materials")
+    if not isinstance(materials, dict):
+        raise ValueError("owning manifest materials must be an object")
+
+    resolved_path = path.resolve()
+    matches: list[tuple[str, dict[str, Any]]] = []
+    for material_id, raw_entry in materials.items():
+        if not isinstance(material_id, str) or not material_id.strip():
+            raise ValueError("owning manifest contains an invalid material id")
+        if not isinstance(raw_entry, dict):
+            raise ValueError("owning manifest material entry must be an object")
+        relative_path = raw_entry.get("relative_path") or raw_entry.get("file")
+        if not isinstance(relative_path, str) or not relative_path.strip():
+            raise ValueError("owning manifest material path is invalid")
+        relative = Path(relative_path.strip())
+        if (
+            relative.is_absolute()
+            or relative.name != relative_path.strip()
+            or relative.suffix.lower() != ".jsonl"
+        ):
+            raise ValueError("owning manifest material path must be one local JSONL filename")
+        if (manifest_path.parent / relative).resolve() == resolved_path:
+            matches.append((material_id, raw_entry))
+    if len(matches) != 1:
+        raise ValueError("chunk JSONL must have exactly one owning manifest entry")
+
+    material_id, entry = matches[0]
+    for chunk in chunks:
+        if chunk.get("material_id") != material_id:
+            raise ValueError("chunk material identity differs from its owning manifest entry")
+    expected_count = entry.get("total_chunks", entry.get("count"))
+    if (
+        isinstance(expected_count, bool)
+        or not isinstance(expected_count, int)
+        or expected_count != len(chunks)
+    ):
+        raise ValueError("owning manifest chunk count differs from the JSONL payload")
+    expected_sha256 = entry.get("sha256")
+    if (
+        not isinstance(expected_sha256, str)
+        or expected_sha256 != compute_chunk_manifest_digest(chunks)
+    ):
+        raise ValueError("owning manifest digest differs from the JSONL payload")
+    return manifest_path, payload, material_id, entry
 
 
 def _discover_chunk_files(project_root: Path) -> list[Path]:
@@ -175,8 +254,9 @@ async def _backfill_file(
     started = time.monotonic()
 
     try:
-        raw_lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
+        original_text = path.read_text(encoding="utf-8")
+        raw_lines = original_text.splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
         report.errors.append(f"read_failed: {exc}")
         return report
 
@@ -186,9 +266,16 @@ async def _backfill_file(
         if not line:
             continue
         try:
-            chunks.append(json.loads(line))
+            chunk = json.loads(line)
         except json.JSONDecodeError as exc:
             report.errors.append(f"json_decode_failed line={line_no}: {exc}")
+            report.elapsed_s = time.monotonic() - started
+            return report
+        if not isinstance(chunk, dict):
+            report.errors.append(f"json_row_invalid line={line_no}: expected object")
+            report.elapsed_s = time.monotonic() - started
+            return report
+        chunks.append(chunk)
 
     report.chunks_total = len(chunks)
     if not chunks:
@@ -215,11 +302,22 @@ async def _backfill_file(
         report.elapsed_s = time.monotonic() - started
         return report
 
+    report.planned_embeddings = len(pending_indices)
     logger.info("%s: embedding %d/%d chunks (model=%s)",
                 path.name, len(pending_indices), report.chunks_total, model)
 
     if dry_run:
-        report.errors.append(f"dry_run: would embed {len(pending_indices)} chunks")
+        logger.info("%s: dry-run would embed %d chunks", path.name, len(pending_indices))
+        report.elapsed_s = time.monotonic() - started
+        return report
+
+    try:
+        manifest_path, manifest, _material_id, manifest_entry = _load_owning_manifest(
+            path,
+            chunks,
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        report.errors.append(f"manifest_preflight_failed: {exc}")
         report.elapsed_s = time.monotonic() - started
         return report
 
@@ -232,6 +330,7 @@ async def _backfill_file(
             batch_size=batch_size,
             concurrency=concurrency,
             stage="backfill",
+            strict_contract=True,
         )
     except EmbeddingAPIError as exc:
         report.errors.append(f"embedding_failed: {exc}")
@@ -259,9 +358,21 @@ async def _backfill_file(
     if report.embedded > 0:
         try:
             _atomic_write_jsonl(path, chunks)
-            report.wrote = True
-        except OSError as exc:
+            manifest_entry["sha256"] = compute_chunk_manifest_digest(chunks)
+            manifest_entry["total_chunks"] = len(chunks)
+            manifest_entry.pop("count", None)
+            _atomic_write_text(
+                manifest_path,
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+            )
+        except (OSError, TypeError, ValueError) as exc:
             report.errors.append(f"write_failed: {exc}")
+            try:
+                _atomic_write_text(path, original_text)
+            except OSError as rollback_exc:
+                report.errors.append(f"rollback_failed: {rollback_exc}")
+        else:
+            report.wrote = True
 
     report.elapsed_s = time.monotonic() - started
     return report
@@ -317,6 +428,8 @@ def _write_evidence_report(
     *,
     model: str,
     base_url: str,
+    dry_run: bool,
+    strict_contract: bool,
 ) -> Path:
     """Persist per-file + per-project totals so we can verify after the run."""
     ts = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
@@ -327,6 +440,8 @@ def _write_evidence_report(
         "started_at_utc": ts,
         "model": model,
         "base_url": base_url,
+        "dry_run": dry_run,
+        "strict_contract": strict_contract,
         "embedding_dim": EMBEDDING_DIM,
         "projects": [
             {
@@ -338,6 +453,7 @@ def _write_evidence_report(
                         "chunks_total": f.chunks_total,
                         "already_filled": f.already_filled,
                         "skipped_empty": f.skipped_empty,
+                        "planned_embeddings": f.planned_embeddings,
                         "embedded": f.embedded,
                         "wrote": f.wrote,
                         "errors": f.errors,
@@ -450,7 +566,12 @@ async def _amain() -> int:
         )
 
     report_path = _write_evidence_report(
-        repo_root, project_reports, model=args.model, base_url=args.base_url
+        repo_root,
+        project_reports,
+        model=args.model,
+        base_url=args.base_url,
+        dry_run=bool(args.dry_run),
+        strict_contract=True,
     )
     logger.info("evidence report: %s", report_path)
 

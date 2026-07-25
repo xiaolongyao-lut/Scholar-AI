@@ -13,6 +13,10 @@ import type {
   WikiImportItemModel,
   WikiImportRequestModel,
   WikiImportResponseModel,
+  WikiGraphReviewApplyInputModel,
+  WikiGraphReviewApplyModel,
+  WikiGraphReviewPageSnapshotModel,
+  WikiGraphReviewUndoInputModel,
   WikiManualPageInputModel,
   WikiGraphModel,
   WikiGraphNodeModel,
@@ -27,8 +31,18 @@ import type {
   WikiSearchModel,
   WikiExportModel,
   WikiReviewDecisionModel,
+  WikiReviewDecisionInputModel,
   WikiReviewItemModel,
   WikiReviewListModel,
+  WikiAnnotationNoteReviewTargetModel,
+  WikiPageRevisionReviewTargetModel,
+  WikiReviewTargetModel,
+  WikiReviewPromotionIntentModel,
+  WikiReviewPromotionReceiptModel,
+  WikiReviewPromotionWithdrawalInputModel,
+  WikiReviewPromotionWithdrawalModel,
+  WikiReviewPromotionWithdrawalReceiptModel,
+  WikiRevalidationModel,
   WikiStatusModel,
 } from '@/types/wiki';
 
@@ -303,6 +317,216 @@ function parseStructuredDoctorReport(report: Record<string, unknown>): WikiDocto
   }
 }
 
+function readReviewSha256(record: Record<string, unknown>, key: string): string {
+  const value = readString(record, key).toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(value)) {
+    throw new WikiApiError(`Wiki review payload contains invalid SHA-256 field: ${key}`, 500);
+  }
+  return value;
+}
+
+function parseWikiPageRevisionReviewTarget(payload: unknown): WikiPageRevisionReviewTargetModel {
+  const record = asRecord(payload);
+  const schemaVersion = readString(record, 'schema_version');
+  if (
+    schemaVersion !== 'scholar-ai-wiki-page-revision-target/v1'
+    && schemaVersion !== 'scholar-ai-wiki-page-revision-target/v2'
+  ) {
+    throw new WikiApiError('Wiki review payload contains an unsupported page target schema.', 500);
+  }
+  const targetType = readString(record, 'type');
+  if (targetType !== 'wiki_page_revision') {
+    throw new WikiApiError('Wiki review payload contains an unsupported target type.', 500);
+  }
+  const expectedStatus = readString(record, 'expected_status');
+  if (expectedStatus !== 'draft' && expectedStatus !== 'review') {
+    throw new WikiApiError('Wiki review payload contains an invalid target status.', 500);
+  }
+  const pageId = typeof record.page_id === 'string' ? record.page_id.trim() : '';
+  if (schemaVersion.endsWith('/v2') && !pageId.trim()) {
+    throw new WikiApiError('Wiki review payload is missing a stable page identity.', 500);
+  }
+  return {
+    schema_version: schemaVersion,
+    type: targetType,
+    page_id: pageId,
+    page_path: readString(record, 'page_path'),
+    expected_content_hash: readReviewSha256(record, 'expected_content_hash'),
+    expected_status: expectedStatus,
+  };
+}
+
+function readAnnotationReviewIdentifier(record: Record<string, unknown>, key: string): string {
+  const value = readString(record, key).trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value)) {
+    throw new WikiApiError(`Wiki annotation review payload contains an invalid identifier: ${key}`, 500);
+  }
+  return value;
+}
+
+function parseWikiAnnotationNoteReviewTarget(payload: unknown): WikiAnnotationNoteReviewTargetModel {
+  const record = asRecord(payload);
+  const schemaVersion = readString(record, 'schema_version');
+  if (schemaVersion !== 'scholar-ai-annotation-note-review-target/v1') {
+    throw new WikiApiError('Wiki review payload contains an unsupported annotation target schema.', 500);
+  }
+  const targetType = readString(record, 'type');
+  if (targetType !== 'annotation_note') {
+    throw new WikiApiError('Wiki review payload contains an unsupported target type.', 500);
+  }
+  const requiredScope = readString(record, 'required_scope');
+  if (requiredScope !== 'wiki_review') {
+    throw new WikiApiError('Wiki annotation review payload contains an invalid review scope.', 500);
+  }
+  const expectedUpdatedAt = readString(record, 'expected_updated_at').trim();
+  if (
+    !/(?:Z|[+-]\d{2}:\d{2})$/.test(expectedUpdatedAt)
+    || Number.isNaN(Date.parse(expectedUpdatedAt))
+  ) {
+    throw new WikiApiError('Wiki annotation review payload contains an invalid source timestamp.', 500);
+  }
+  return {
+    schema_version: schemaVersion,
+    type: targetType,
+    project_id: readAnnotationReviewIdentifier(record, 'project_id'),
+    material_id: readAnnotationReviewIdentifier(record, 'material_id'),
+    note_id: readAnnotationReviewIdentifier(record, 'note_id'),
+    expected_updated_at: expectedUpdatedAt,
+    expected_content_hash: readReviewSha256(record, 'expected_content_hash'),
+    required_scope: requiredScope,
+  };
+}
+
+function parseWikiReviewTarget(payload: unknown): WikiReviewTargetModel {
+  const record = asRecord(payload);
+  const targetType = readString(record, 'type');
+  if (targetType === 'wiki_page_revision') {
+    return parseWikiPageRevisionReviewTarget(record);
+  }
+  if (targetType === 'annotation_note') {
+    return parseWikiAnnotationNoteReviewTarget(record);
+  }
+  throw new WikiApiError('Wiki review payload contains an unsupported target type.', 500);
+}
+
+function parseWikiReviewPromotionReceipt(payload: unknown): WikiReviewPromotionReceiptModel {
+  const record = asRecord(payload);
+  const schemaVersion = readString(record, 'schema_version');
+  if (
+    schemaVersion !== 'scholar-ai-wiki-promotion-receipt/v1'
+    && schemaVersion !== 'scholar-ai-wiki-promotion-receipt/v2'
+  ) {
+    throw new WikiApiError('Wiki review payload contains an unsupported promotion receipt schema.', 500);
+  }
+  const outcome = readString(record, 'outcome');
+  const previousStatus = readString(record, 'previous_status');
+  const promotedStatus = readString(record, 'promoted_status');
+  if (outcome !== 'promoted') {
+    throw new WikiApiError('Wiki review payload contains an invalid promotion outcome.', 500);
+  }
+  if (previousStatus !== 'draft' && previousStatus !== 'review') {
+    throw new WikiApiError('Wiki review payload contains an invalid previous page status.', 500);
+  }
+  if (promotedStatus !== 'final') {
+    throw new WikiApiError('Wiki review payload contains an invalid promotion receipt.', 500);
+  }
+  const expectedItemRevision = typeof record.expected_item_revision === 'string'
+    ? record.expected_item_revision.trim()
+    : '';
+  const requestFingerprint = typeof record.request_fingerprint === 'string'
+    ? record.request_fingerprint.trim().toLowerCase()
+    : '';
+  if (schemaVersion.endsWith('/v2') && !expectedItemRevision) {
+    throw new WikiApiError('Wiki review payload is missing the expected item revision.', 500);
+  }
+  if (schemaVersion.endsWith('/v2') && !/^[0-9a-f]{64}$/.test(requestFingerprint)) {
+    throw new WikiApiError('Wiki review payload contains an invalid request fingerprint.', 500);
+  }
+  return {
+    schema_version: schemaVersion,
+    receipt_id: readString(record, 'receipt_id'),
+    review_item_id: readString(record, 'review_item_id'),
+    request_id: readString(record, 'request_id'),
+    expected_item_revision: expectedItemRevision,
+    request_fingerprint: requestFingerprint,
+    outcome,
+    target: parseWikiPageRevisionReviewTarget(record.target),
+    before_content_hash: readReviewSha256(record, 'before_content_hash'),
+    after_content_hash: readReviewSha256(record, 'after_content_hash'),
+    previous_status: previousStatus,
+    promoted_status: promotedStatus,
+    promoted_at: readString(record, 'promoted_at'),
+    promoted_by: readString(record, 'promoted_by'),
+  };
+}
+
+function parseWikiReviewPromotionIntent(payload: unknown): WikiReviewPromotionIntentModel {
+  const record = asRecord(payload);
+  const schemaVersion = readString(record, 'schema_version');
+  if (
+    schemaVersion !== 'scholar-ai-wiki-promotion-intent/v1'
+    && schemaVersion !== 'scholar-ai-wiki-promotion-intent/v2'
+  ) {
+    throw new WikiApiError('Wiki review payload contains an unsupported promotion intent schema.', 500);
+  }
+  const previousStatus = readString(record, 'previous_status');
+  const promotedStatus = readString(record, 'promoted_status');
+  if (previousStatus !== 'draft' && previousStatus !== 'review') {
+    throw new WikiApiError('Wiki review payload contains an invalid promotion intent source status.', 500);
+  }
+  if (promotedStatus !== 'final') {
+    throw new WikiApiError('Wiki review payload contains an invalid promotion intent target status.', 500);
+  }
+  return {
+    schema_version: schemaVersion,
+    operation_id: readString(record, 'operation_id'),
+    review_item_id: readString(record, 'review_item_id'),
+    request_id: readString(record, 'request_id'),
+    expected_item_revision: readString(record, 'expected_item_revision'),
+    request_fingerprint: readReviewSha256(record, 'request_fingerprint'),
+    reason: readString(record, 'reason'),
+    target: parseWikiPageRevisionReviewTarget(record.target),
+    before_content_hash: readReviewSha256(record, 'before_content_hash'),
+    after_content_hash: readReviewSha256(record, 'after_content_hash'),
+    previous_status: previousStatus,
+    promoted_status: promotedStatus,
+    promoted_at: readString(record, 'promoted_at'),
+    promoted_by: readString(record, 'promoted_by'),
+  };
+}
+
+function parseWikiReviewPromotionWithdrawalReceipt(
+  payload: unknown,
+): WikiReviewPromotionWithdrawalReceiptModel {
+  const record = asRecord(payload);
+  const schemaVersion = readString(record, 'schema_version');
+  if (schemaVersion !== 'scholar-ai-wiki-promotion-withdrawal-receipt/v1') {
+    throw new WikiApiError('Wiki review payload contains an unsupported withdrawal receipt schema.', 500);
+  }
+  const outcome = readString(record, 'outcome');
+  if (outcome !== 'withdrawn') {
+    throw new WikiApiError('Wiki review payload contains an invalid withdrawal outcome.', 500);
+  }
+  return {
+    schema_version: schemaVersion,
+    receipt_id: readString(record, 'receipt_id'),
+    review_item_id: readString(record, 'review_item_id'),
+    promotion_operation_id: readString(record, 'promotion_operation_id'),
+    promotion_request_id: readString(record, 'promotion_request_id'),
+    promotion_request_fingerprint: readReviewSha256(record, 'promotion_request_fingerprint'),
+    expected_item_revision: readString(record, 'expected_item_revision'),
+    resulting_item_revision: readString(record, 'resulting_item_revision'),
+    withdrawal_request_fingerprint: readReviewSha256(record, 'withdrawal_request_fingerprint'),
+    outcome,
+    target: parseWikiPageRevisionReviewTarget(record.target),
+    before_content_hash: readReviewSha256(record, 'before_content_hash'),
+    planned_after_content_hash: readReviewSha256(record, 'planned_after_content_hash'),
+    reason: readString(record, 'reason'),
+    withdrawn_at: readString(record, 'withdrawn_at'),
+    withdrawn_by: readString(record, 'withdrawn_by'),
+  };
+}
+
 function parseWikiReviewDecision(payload: unknown): WikiReviewDecisionModel {
   const record = asRecord(payload);
   return {
@@ -310,11 +534,43 @@ function parseWikiReviewDecision(payload: unknown): WikiReviewDecisionModel {
     reason: readString(record, 'reason'),
     decided_at: readString(record, 'decided_at'),
     decided_by: readString(record, 'decided_by'),
+    promotion_receipt: record.promotion_receipt && typeof record.promotion_receipt === 'object'
+      ? parseWikiReviewPromotionReceipt(record.promotion_receipt)
+      : null,
   };
 }
 
 function parseWikiReviewItem(payload: unknown): WikiReviewItemModel {
   const record = asRecord(payload);
+  const allowedActions = readStringArray(record, 'allowed_actions').map((action) => {
+    if (action !== 'approve' && action !== 'reject' && action !== 'withdraw') {
+      throw new WikiApiError('Wiki review payload contains an unsupported action.', 500);
+    }
+    return action;
+  });
+  const target = record.target && typeof record.target === 'object'
+    ? parseWikiReviewTarget(record.target)
+    : null;
+  const promotionIntent = record.promotion_intent && typeof record.promotion_intent === 'object'
+    ? parseWikiReviewPromotionIntent(record.promotion_intent)
+    : null;
+  const promotionWithdrawalReceipts = 'promotion_withdrawal_receipts' in record
+    ? readArray(record, 'promotion_withdrawal_receipts', parseWikiReviewPromotionWithdrawalReceipt)
+    : [];
+  const decision = record.decision && typeof record.decision === 'object'
+    ? parseWikiReviewDecision(record.decision)
+    : null;
+  if (target?.type === 'annotation_note') {
+    if (promotionIntent || promotionWithdrawalReceipts.length > 0 || decision?.promotion_receipt) {
+      throw new WikiApiError('Annotation review decisions cannot contain Wiki promotion state.', 500);
+    }
+    if (allowedActions.includes('withdraw')) {
+      throw new WikiApiError('Annotation review payload cannot expose a promotion withdrawal action.', 500);
+    }
+  }
+  if ((promotionIntent || promotionWithdrawalReceipts.length > 0) && target?.type !== 'wiki_page_revision') {
+    throw new WikiApiError('Wiki promotion state requires a page revision target.', 500);
+  }
   return {
     item_id: readString(record, 'item_id'),
     kind: readString(record, 'kind'),
@@ -325,7 +581,13 @@ function parseWikiReviewItem(payload: unknown): WikiReviewItemModel {
     created_at: readString(record, 'created_at'),
     source: readString(record, 'source'),
     metadata: 'metadata' in record ? asRecord(record.metadata) : {},
-    decision: record.decision && typeof record.decision === 'object' ? parseWikiReviewDecision(record.decision) : null,
+    schema_version: readNumber(record, 'schema_version'),
+    item_revision: readString(record, 'item_revision'),
+    target,
+    promotion_intent: promotionIntent,
+    promotion_withdrawal_receipts: promotionWithdrawalReceipts,
+    allowed_actions: allowedActions,
+    decision,
   };
 }
 
@@ -498,6 +760,24 @@ export function parseWikiStatus(payload: unknown): WikiStatusModel {
   } satisfies WikiStatusModel;
 }
 
+export function parseWikiRevalidation(payload: unknown): WikiRevalidationModel {
+  const record = asRecord(payload);
+  return {
+    enabled: readBoolean(record, 'enabled'),
+    stale: readBoolean(record, 'stale'),
+    can_apply: readBoolean(record, 'can_apply'),
+    applied: readBoolean(record, 'applied'),
+    integrity_status: readString(record, 'integrity_status'),
+    source_manifest_hash: readString(record, 'source_manifest_hash'),
+    indexed_source_manifest_hash: readString(record, 'indexed_source_manifest_hash'),
+    source_page_count: readNullableNumber(record, 'source_page_count'),
+    indexed_page_count: readNumber(record, 'indexed_page_count'),
+    manifest_drilldown: parseWikiManifestDrilldown(record.manifest_drilldown),
+    warnings: readOptionalStringArray(record, 'warnings'),
+    message: readString(record, 'message'),
+  } satisfies WikiRevalidationModel;
+}
+
 export function parseWikiPageList(payload: unknown): WikiPageListModel {
   const record = asRecord(payload);
   return {
@@ -536,6 +816,29 @@ export function parseWikiGraph(payload: unknown): WikiGraphModel {
     graph,
     structuredGraph: parseStructuredGraph(graph),
   } satisfies WikiGraphModel;
+}
+
+function parseWikiGraphReviewSnapshot(payload: unknown): WikiGraphReviewPageSnapshotModel {
+  const record = asRecord(payload);
+  return {
+    page_path: readString(record, 'page_path'),
+    content: readString(record, 'content'),
+    content_hash: readString(record, 'content_hash'),
+    expected_current_hash: readString(record, 'expected_current_hash'),
+  } satisfies WikiGraphReviewPageSnapshotModel;
+}
+
+export function parseWikiGraphReviewApply(payload: unknown): WikiGraphReviewApplyModel {
+  const record = asRecord(payload);
+  return {
+    enabled: readBoolean(record, 'enabled'),
+    operation_id: readString(record, 'operation_id'),
+    operation_kind: readString(record, 'operation_kind'),
+    updated_page_paths: readStringArray(record, 'updated_page_paths'),
+    snapshots: readArray(record, 'snapshots', parseWikiGraphReviewSnapshot),
+    message: readString(record, 'message'),
+    warnings: readStringArray(record, 'warnings'),
+  } satisfies WikiGraphReviewApplyModel;
 }
 
 export function parseWikiPageDetail(payload: unknown): WikiPageDetailModel {
@@ -644,6 +947,35 @@ export async function getWikiStatus(timeoutMs: number = 15000): Promise<WikiStat
   return parseWikiStatus(await fetchWikiJson('/api/wiki/status', timeoutMs));
 }
 
+export async function preflightWikiRevalidation(
+  timeoutMs: number = 15000,
+  options: { signal?: AbortSignal } = {},
+): Promise<WikiRevalidationModel> {
+  return parseWikiRevalidation(
+    await fetchWikiJson('/api/wiki/revalidation/preflight', timeoutMs, { method: 'POST' }, options.signal),
+  );
+}
+
+export async function applyWikiRevalidation(
+  expectedSourceManifestHash: string,
+  timeoutMs: number = 30000,
+  options: { signal?: AbortSignal } = {},
+): Promise<WikiRevalidationModel> {
+  const expectedHash = expectedSourceManifestHash.trim();
+  if (!expectedHash || expectedHash === 'unknown' || expectedHash === 'none') {
+    throw new WikiApiError('缺少可验证的来源清单，不能重新生成索引。', 400);
+  }
+  return parseWikiRevalidation(
+    await fetchWikiJson('/api/wiki/revalidation/apply', timeoutMs, {
+      method: 'POST',
+      body: JSON.stringify({
+        expected_source_manifest_hash: expectedHash,
+        confirm: true,
+      }),
+    }, options.signal),
+  );
+}
+
 export async function getWikiPages(timeoutMs: number = 15000): Promise<WikiPageListModel> {
   return parseWikiPageList(await fetchWikiJson('/api/wiki/pages', timeoutMs));
 }
@@ -673,8 +1005,176 @@ export async function getWikiReview(timeoutMs: number = 15000): Promise<WikiRevi
   return parseWikiReviewList(await fetchWikiJson('/api/wiki/review', timeoutMs));
 }
 
+function normalizedWikiReviewDecision(input: WikiReviewDecisionInputModel): {
+  itemId: string;
+  reason: string;
+  decidedBy: string;
+  requestId: string;
+  expectedItemRevision: string;
+  expectedTargetContentHash: string | null;
+} {
+  const itemId = input.item_id.trim();
+  const reason = input.reason.trim();
+  const requestId = input.request_id?.trim() ?? '';
+  const expectedItemRevision = input.expected_item_revision.trim();
+  const expectedTargetContentHash = 'expected_target_content_hash' in input
+    ? input.expected_target_content_hash?.trim().toLowerCase() || null
+    : null;
+  if (!itemId) throw new WikiApiError('待审项标识不能为空。', 400);
+  if (!reason) throw new WikiApiError('请填写审核理由。', 400);
+  if (reason.length > 500) throw new WikiApiError('审核理由不能超过 500 个字符。', 400);
+  if (requestId.length > 128) throw new WikiApiError('审核请求标识不能超过 128 个字符。', 400);
+  if (input.target_type !== 'unbound' && !requestId) {
+    throw new WikiApiError('版本绑定的审核请求必须提供请求标识。', 400);
+  }
+  if (!expectedItemRevision || expectedItemRevision.length > 128) {
+    throw new WikiApiError('待审项版本标识无效。', 400);
+  }
+  if (input.target_type !== 'unbound' && !expectedTargetContentHash) {
+    throw new WikiApiError('版本绑定的审核请求必须提供目标内容哈希。', 400);
+  }
+  if (expectedTargetContentHash && !/^[0-9a-f]{64}$/.test(expectedTargetContentHash)) {
+    throw new WikiApiError('页面版本哈希格式无效。', 400);
+  }
+  return {
+    itemId,
+    reason,
+    decidedBy: input.decided_by?.trim() || 'user',
+    requestId,
+    expectedItemRevision,
+    expectedTargetContentHash,
+  };
+}
+
+async function decideWikiReviewItem(
+  action: 'approve' | 'reject',
+  input: WikiReviewDecisionInputModel,
+  timeoutMs: number,
+  options: { signal?: AbortSignal },
+): Promise<WikiReviewItemModel> {
+  const decision = normalizedWikiReviewDecision(input);
+  return parseWikiReviewItem(
+    await fetchWikiJson(
+      `/api/wiki/review/${encodeURIComponent(decision.itemId)}/${action}`,
+      timeoutMs,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          reason: decision.reason,
+          decided_by: decision.decidedBy,
+          request_id: decision.requestId,
+          expected_item_revision: decision.expectedItemRevision,
+          expected_target_content_hash: decision.expectedTargetContentHash,
+        }),
+      },
+      options.signal,
+    ),
+  );
+}
+
+export async function approveWikiReviewItem(
+  input: WikiReviewDecisionInputModel,
+  timeoutMs: number = 15000,
+  options: { signal?: AbortSignal } = {},
+): Promise<WikiReviewItemModel> {
+  return decideWikiReviewItem('approve', input, timeoutMs, options);
+}
+
+export async function rejectWikiReviewItem(
+  input: WikiReviewDecisionInputModel,
+  timeoutMs: number = 15000,
+  options: { signal?: AbortSignal } = {},
+): Promise<WikiReviewItemModel> {
+  return decideWikiReviewItem('reject', input, timeoutMs, options);
+}
+
+export async function withdrawWikiReviewPromotion(
+  input: WikiReviewPromotionWithdrawalInputModel,
+  timeoutMs: number = 15000,
+  options: { signal?: AbortSignal } = {},
+): Promise<WikiReviewPromotionWithdrawalModel> {
+  const itemId = input.item_id.trim();
+  const reason = input.reason.trim();
+  const expectedItemRevision = input.expected_item_revision.trim();
+  const expectedPromotionOperationId = input.expected_promotion_operation_id.trim();
+  if (!itemId) throw new WikiApiError('待审项标识不能为空。', 400);
+  if (!reason) throw new WikiApiError('请填写撤回理由。', 400);
+  if (reason.length > 500) throw new WikiApiError('撤回理由不能超过 500 个字符。', 400);
+  if (!expectedItemRevision || expectedItemRevision.length > 128) {
+    throw new WikiApiError('待审项版本标识无效。', 400);
+  }
+  if (!expectedPromotionOperationId || expectedPromotionOperationId.length > 128) {
+    throw new WikiApiError('晋升操作标识无效。', 400);
+  }
+  const record = asRecord(await fetchWikiJson(
+    `/api/wiki/review/${encodeURIComponent(itemId)}/withdraw`,
+    timeoutMs,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        reason,
+        expected_item_revision: expectedItemRevision,
+        expected_promotion_operation_id: expectedPromotionOperationId,
+      }),
+    },
+    options.signal,
+  ));
+  return {
+    item: parseWikiReviewItem(record.item),
+    withdrawal_receipt: parseWikiReviewPromotionWithdrawalReceipt(record.withdrawal_receipt),
+  };
+}
+
 export async function getWikiGraph(timeoutMs: number = 15000): Promise<WikiGraphModel> {
   return parseWikiGraph(await fetchWikiJson('/api/wiki/graph', timeoutMs));
+}
+
+export async function applyWikiGraphReview(
+  input: WikiGraphReviewApplyInputModel,
+  timeoutMs: number = 15000,
+  options: { signal?: AbortSignal } = {},
+): Promise<WikiGraphReviewApplyModel> {
+  const nodes = input.nodes ?? [];
+  const edges = input.edges ?? [];
+  if ((!Array.isArray(nodes) || nodes.length === 0) && (!Array.isArray(edges) || edges.length === 0)) {
+    throw new WikiApiError('请选择至少一个可写 Wiki 节点或关系。', 400);
+  }
+  return parseWikiGraphReviewApply(
+    await fetchWikiJson('/api/wiki/graph/review/apply', timeoutMs, {
+      method: 'POST',
+      body: JSON.stringify({
+        operation_kind: input.operation_kind,
+        review_item_key: input.review_item_key ?? '',
+        keep_node_id: input.keep_node_id ?? null,
+        merge_node_ids: input.merge_node_ids ?? [],
+        nodes,
+        edges,
+        evidence_refs: input.evidence_refs ?? [],
+        decided_by: input.decided_by ?? 'user',
+      }),
+    }, options.signal),
+  );
+}
+
+export async function undoWikiGraphReview(
+  input: WikiGraphReviewUndoInputModel,
+  timeoutMs: number = 15000,
+  options: { signal?: AbortSignal } = {},
+): Promise<WikiGraphReviewApplyModel> {
+  if (!input.operation_id.trim() || input.snapshots.length === 0) {
+    throw new WikiApiError('没有可撤回的图谱复审记录。', 400);
+  }
+  return parseWikiGraphReviewApply(
+    await fetchWikiJson('/api/wiki/graph/review/undo', timeoutMs, {
+      method: 'POST',
+      body: JSON.stringify({
+        operation_id: input.operation_id,
+        operation_kind: input.operation_kind ?? 'undo_graph_review',
+        snapshots: input.snapshots,
+        decided_by: input.decided_by ?? 'user',
+      }),
+    }, options.signal),
+  );
 }
 
 export async function runWikiCompileDryRun(

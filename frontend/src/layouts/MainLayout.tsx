@@ -3,6 +3,7 @@ import { useNavigate, useLocation, NavLink } from 'react-router-dom';
 import {
   BookOpen,
   BookMarked,
+  BookDown,
   BookOpenCheck,
   ChevronDown,
   ChevronLeft,
@@ -391,6 +392,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
   const _getHeaderTitle = () => {
     if (isWritingRoute) return t('writing.workbench_title');
     if (location.pathname.startsWith('/knowledge')) return t('kb.title');
+    if (location.pathname.startsWith('/acquisition')) return '文献获取';
     if (location.pathname.startsWith('/wiki')) return '知识沉淀';
     if (location.pathname.startsWith('/projects')) return t('projects.title');
     if (location.pathname.startsWith('/settings')) return t('settings.title');
@@ -521,6 +523,14 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
         label={t('nav.knowledge')}
         collapsed={collapsed}
         activePaths={['/knowledge']}
+        onNavigate={onNavigate}
+      />
+      <NavItem
+        to="/acquisition"
+        icon={<BookDown size={20} />}
+        label="文献获取"
+        collapsed={collapsed}
+        activePaths={['/acquisition']}
         onNavigate={onNavigate}
       />
 

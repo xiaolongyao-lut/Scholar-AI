@@ -9,7 +9,12 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
-from lit_assistant_mcp.backend_client import BackendClient, CircuitState
+from lit_assistant_mcp.backend_client import (
+    DEFAULT_READ_TIMEOUT_SEC,
+    READ_TIMEOUT_ENV,
+    BackendClient,
+    CircuitState,
+)
 
 DEFAULT_TEST_BASE_URL = "http://127.0.0.1:8000"
 
@@ -19,6 +24,39 @@ def mock_httpx_client():
     """Mock httpx.Client for testing."""
     with patch("lit_assistant_mcp.backend_client.httpx.Client") as mock:
         yield mock
+
+
+def test_default_read_timeout_supports_local_revalidation_budget(mock_httpx_client, monkeypatch):
+    """Default local MCP read timeout should cover heavy receipt revalidation."""
+
+    monkeypatch.delenv(READ_TIMEOUT_ENV, raising=False)
+    mock_instance = Mock()
+    mock_response = Mock()
+    mock_response.json.return_value = {"status": "ok"}
+    mock_instance.get.return_value = mock_response
+    mock_httpx_client.return_value = mock_instance
+
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL)
+    result = client.get("/health")
+
+    assert result["is_error"] is False
+    timeout = mock_httpx_client.call_args.kwargs["timeout"]
+    assert timeout.read == DEFAULT_READ_TIMEOUT_SEC
+
+
+def test_read_timeout_env_override_is_bounded(monkeypatch):
+    """Operators can tune local MCP read budget without accepting invalid values."""
+
+    monkeypatch.setenv(READ_TIMEOUT_ENV, "45")
+    assert BackendClient(base_url=DEFAULT_TEST_BASE_URL).read_timeout_sec == 45
+
+    monkeypatch.setenv(READ_TIMEOUT_ENV, "0")
+    with pytest.raises(ValueError, match=READ_TIMEOUT_ENV):
+        BackendClient(base_url=DEFAULT_TEST_BASE_URL)
+
+    monkeypatch.setenv(READ_TIMEOUT_ENV, "not-an-int")
+    with pytest.raises(ValueError, match=READ_TIMEOUT_ENV):
+        BackendClient(base_url=DEFAULT_TEST_BASE_URL)
 
 
 def test_circuit_breaker_opens_after_failures(mock_httpx_client):
@@ -141,6 +179,65 @@ def test_backend_413_has_specific_error_code(mock_httpx_client):
 
     assert result["is_error"] is True
     assert result["error_code"] == "backend_payload_too_large"
+
+
+def test_structured_fastapi_detail_preserves_bounded_domain_error(mock_httpx_client):
+    """MCP callers should receive stable backend domain codes without trace details."""
+
+    mock_instance = Mock()
+    response = httpx.Response(
+        status_code=409,
+        json={
+            "detail": {
+                "code": "download_job_conflict",
+                "message": "Download job is not queued.",
+                "debug_path": "C:/private/runtime/acquisition.sqlite3",
+            }
+        },
+        request=httpx.Request("POST", "http://127.0.0.1:8000/api/acquisition/downloads/job/run"),
+    )
+    mock_instance.post.side_effect = httpx.HTTPStatusError(
+        "Conflict",
+        request=response.request,
+        response=response,
+    )
+    mock_httpx_client.return_value = mock_instance
+
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL)
+    result = client.post_json("/api/acquisition/downloads/job/run", payload={})
+
+    assert result == {
+        "is_error": True,
+        "error_code": "download_job_conflict",
+        "message": "Download job is not queued.",
+        "data": None,
+    }
+
+
+def test_domain_4xx_responses_do_not_open_availability_circuit(mock_httpx_client):
+    """Reachable backend policy/conflict responses must not look like outages."""
+
+    mock_instance = Mock()
+    response = httpx.Response(
+        status_code=409,
+        json={"detail": {"code": "download_job_conflict", "message": "Conflict"}},
+        request=httpx.Request("POST", "http://127.0.0.1:8000/api/acquisition/downloads/job/run"),
+    )
+    mock_instance.post.side_effect = httpx.HTTPStatusError(
+        "Conflict",
+        request=response.request,
+        response=response,
+    )
+    mock_httpx_client.return_value = mock_instance
+    client = BackendClient(base_url=DEFAULT_TEST_BASE_URL, fail_max=2)
+
+    for _ in range(3):
+        result = client.post_json("/api/acquisition/downloads/job/run", payload={})
+        assert result["error_code"] == "download_job_conflict"
+
+    assert client.state == CircuitState.CLOSED
+    assert client.fail_count == 0
+    assert mock_instance.post.call_count == 3
 
 
 def test_successful_request(mock_httpx_client):

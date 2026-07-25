@@ -20,6 +20,7 @@ _NVIDIA_REASONING_EFFORT_ALIASES = {
 }
 _NVIDIA_DEEPSEEK_V4_FLASH_MODEL = "deepseek-ai/deepseek-v4-flash"
 _NVIDIA_DEFAULT_TIMEOUT_S = 180.0
+_ANTHROPIC_MESSAGES_DEFAULT_TIMEOUT_S = 120.0
 
 
 def _clean_string(value: object) -> str:
@@ -61,6 +62,26 @@ def is_nvidia_deepseek_v4_flash_model(model: str) -> bool:
 
     normalized = _clean_string(model).lower()
     return normalized == _NVIDIA_DEEPSEEK_V4_FLASH_MODEL
+
+
+def is_anthropic_messages_endpoint(provider: str, base_url: str) -> bool:
+    """Return whether a chat probe should use Anthropic Messages timing."""
+
+    provider_key = _clean_string(provider).lower()
+    host = _host_from_url(base_url)
+    return (
+        "anthropic" in provider_key
+        or "claude" in provider_key
+        or host == "api.anthropic.com"
+        or host.endswith(".anthropic.com")
+    )
+
+
+def is_glm_thinking_model(model: str) -> bool:
+    """Return whether the model often spends probe tokens on hidden reasoning."""
+
+    normalized = _clean_string(model).lower()
+    return normalized.startswith("glm-") or "/glm-" in normalized or "z-ai/glm-" in normalized
 
 
 def _env_first_float(names: tuple[str, ...], default: float) -> float:
@@ -111,6 +132,14 @@ def provider_http_timeout_s(
                 _NVIDIA_DEFAULT_TIMEOUT_S,
             ),
         )
+    if is_anthropic_messages_endpoint(provider, base_url) or is_glm_thinking_model(model):
+        return max(
+            default_s,
+            _env_first_float(
+                ("LITASSIST_ANTHROPIC_MESSAGES_HTTP_TIMEOUT", "ANTHROPIC_MESSAGES_HTTP_TIMEOUT"),
+                _ANTHROPIC_MESSAGES_DEFAULT_TIMEOUT_S,
+            ),
+        )
     return default_s
 
 
@@ -154,7 +183,6 @@ def apply_openai_chat_payload_compat(
         base_url: Provider base URL.
         model: Provider model id already resolved by the caller.
         top_k: Optional sampling value from Scholar AI's generic settings.
-
     Raises:
         TypeError: If payload is not a JSON-object-like dictionary.
         ValueError: If top_k is outside the bounded positive integer shape.
@@ -184,6 +212,8 @@ def apply_openai_chat_payload_compat(
 
 __all__ = [
     "apply_openai_chat_payload_compat",
+    "is_anthropic_messages_endpoint",
+    "is_glm_thinking_model",
     "is_nvidia_chat_endpoint",
     "is_nvidia_deepseek_v4_flash_model",
     "nvidia_reasoning_effort_for_model",

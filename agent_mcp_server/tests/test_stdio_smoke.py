@@ -83,6 +83,17 @@ def test_stdio_wrapper_initialize_list_and_call() -> None:
         assert "literature.agent_request_create" in tool_names
         assert "literature.single_paper_task_create" in tool_names
         assert "literature.single_paper_completion_check" in tool_names
+        assert {
+            "literature.acquisition_status",
+            "literature.acquisition_search",
+            "literature.acquisition_search_run",
+            "literature.acquisition_download_queue",
+            "literature.acquisition_download_run",
+            "literature.acquisition_download_control",
+            "literature.acquisition_gate_resolve",
+            "literature.acquisition_artifact_import",
+            "literature.acquisition_import_receipt",
+        }.issubset(tool_names)
         assert "workflow.run_json_workflow" in tool_names
         assert "artifact.write_markdown" in tool_names
         assert result.structuredContent is not None
