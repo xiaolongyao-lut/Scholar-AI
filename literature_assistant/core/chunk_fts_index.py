@@ -812,8 +812,8 @@ def search_chunk_fts_index(
             ).fetchall()
             query_fallback_reason = ""
             relaxed_match_query = _fts_relaxed_match_query(normalized_query)
-            if not rows and relaxed_match_query and relaxed_match_query != match_query:
-                rows = conn.execute(
+            if len(rows) < limit and relaxed_match_query and relaxed_match_query != match_query:
+                relaxed_rows = conn.execute(
                     """
                     SELECT
                         chunks.project_id,
@@ -835,7 +835,17 @@ def search_chunk_fts_index(
                     """,
                     (relaxed_match_query, normalized_project_id, limit),
                 ).fetchall()
-                if rows:
+                seen_keys = {(str(row["material_id"]), str(row["chunk_id"])) for row in rows}
+                strict_row_count = len(rows)
+                for row in relaxed_rows:
+                    key = (str(row["material_id"]), str(row["chunk_id"]))
+                    if key in seen_keys:
+                        continue
+                    rows.append(row)
+                    seen_keys.add(key)
+                    if len(rows) >= limit:
+                        break
+                if len(rows) > strict_row_count:
                     query_fallback_reason = "fts_relaxed_or"
     except sqlite3.Error:
         return ChunkFtsSearchResult(
