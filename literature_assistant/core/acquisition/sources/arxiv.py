@@ -9,6 +9,8 @@ from datetime import datetime
 
 import httpx
 
+from literature_assistant.version import SCHOLAR_AI_USER_AGENT
+
 from ..models import (
     AccessEvidence,
     AccessEvidenceKind,
@@ -95,7 +97,7 @@ class ArxivSourceAdapter:
         client = self._client or httpx.AsyncClient(
             follow_redirects=False,
             timeout=httpx.Timeout(30.0, connect=10.0),
-            headers={"User-Agent": "ScholarAI/0.1.8.4 compliant-open-access-client"},
+            headers={"User-Agent": SCHOLAR_AI_USER_AGENT},
         )
         try:
             content = await self._request_atom(client, params)

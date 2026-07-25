@@ -14,6 +14,8 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
+from literature_assistant.version import SCHOLAR_AI_USER_AGENT
+
 from .models import SourcePolicy, sanitize_public_https_url
 from .validator import DEFAULT_MAX_PDF_BYTES, PdfValidationResult, validate_pdf_file
 
@@ -189,7 +191,7 @@ async def download_validated_pdf(
     http_client = client or httpx.AsyncClient(
         follow_redirects=False,
         timeout=httpx.Timeout(60.0, connect=15.0),
-        headers={"User-Agent": "ScholarAI/0.1.8.4 compliant-open-access-client"},
+        headers={"User-Agent": SCHOLAR_AI_USER_AGENT},
     )
     try:
         result = await _stream_with_redirects(

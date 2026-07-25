@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scholar-ai-workbench"
-version = "0.1.8.4"
+dynamic = ["version"]
 description = "Local literature MCP toolbox for Claude, Codex, and source-checkout research workflows"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -72,6 +72,9 @@ dev-advanced = [
     "sentence-transformers>=2.2,<6.0",
     "umap-learn>=0.5.0,<0.6.0",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "literature_assistant.version.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["literature_assistant*"]
