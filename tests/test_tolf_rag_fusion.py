@@ -1134,6 +1134,36 @@ def test_chat_image_paths_filter_whole_page_captures() -> None:
     assert _extract_image_paths(chunk) == []
 
 
+@pytest.mark.parametrize(
+    "bbox_unit",
+    [
+        "normalized_1000",
+        "pdf_points",
+        "css_pixels",
+        pytest.param(0, id="zero"),
+        pytest.param(False, id="false"),
+        pytest.param([], id="empty-list"),
+        pytest.param({}, id="empty-object"),
+    ],
+)
+def test_chat_image_paths_do_not_infer_non_ratio_units_as_full_page(
+    bbox_unit: object,
+) -> None:
+    """Whole-page filtering must reject explicit non-ratio or malformed units."""
+
+    asset_path = "figure_assets/extracted/cui/p0003_page_list.png"
+    chunk = {
+        "chunk_id": "non_ratio_page_list_chunk",
+        "material_id": "mat_surface",
+        "content": "Fig. 18. Surface morphology of the welded joints in SLM AlSi10Mg alloys.",
+        "bbox": [0.0, 0.0, 1.0, 1.0],
+        "bbox_unit": bbox_unit,
+        "image_paths": [asset_path],
+    }
+
+    assert _extract_image_paths(chunk) == [asset_path]
+
+
 def test_has_image_asset_paths_recognizes_derived_asset_fields() -> None:
     """Project-derived table crops must participate in visual ranking."""
 
@@ -1353,3 +1383,49 @@ def test_build_context_binds_overlapping_table_text_to_caption_chunk(
     assert "SLM\n0.05\n0.55\n0.20-0.45" in table_context.content
     assert "Casting\n0.03\n0.12\n0.417" in table_context.content
     assert "outside the table crop" not in table_context.content
+
+
+@pytest.mark.parametrize(
+    "bbox_unit",
+    [
+        "normalized_1000",
+        "pdf_points",
+        "css_pixels",
+        pytest.param(0, id="zero"),
+        pytest.param(False, id="false"),
+        pytest.param([], id="empty-list"),
+        pytest.param({}, id="empty-object"),
+    ],
+)
+def test_table_text_binding_rejects_explicit_non_ratio_units(
+    bbox_unit: object,
+) -> None:
+    """Ratio thresholds must reject explicit non-ratio or malformed units."""
+
+    from routers import intelligent_chat_router as router
+
+    table = {
+        "chunk_id": "table-non-ratio",
+        "chunk_index": 1,
+        "material_id": "mat-non-ratio",
+        "page": 1,
+        "bbox": [0.0, 0.0, 1.0, 1.0],
+        "bbox_unit": bbox_unit,
+        "content": "Table 1. Explicit non-ratio geometry.",
+        "chunk_type": "table",
+    }
+    fragment = {
+        "chunk_id": "table-non-ratio-fragment",
+        "chunk_index": 2,
+        "material_id": "mat-non-ratio",
+        "page": 1,
+        "bbox": [0.1, 0.1, 0.5, 0.05],
+        "bbox_unit": bbox_unit,
+        "content": "Element\nCu\nFe\nMg",
+        "chunk_type": "narrative",
+    }
+
+    [bound] = router._bind_overlapping_table_text([table], [table, fragment])
+
+    assert bound["content"] == table["content"]
+    assert "table_text_window" not in bound.get("source_labels", [])

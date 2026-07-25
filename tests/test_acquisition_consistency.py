@@ -2150,6 +2150,8 @@ async def test_validated_pdf_ingest_reuses_resource_pipeline(
         *,
         source_fingerprint: str,
         source_size: int,
+        source_relative_path: str | None = None,
+        batch_context: resources_router._UploadBatchContext | None = None,
     ) -> tuple[str, str]:
         assert requested_project_id == project_id
         assert material_id == "material_fixture"
@@ -2157,6 +2159,8 @@ async def test_validated_pdf_ingest_reuses_resource_pipeline(
         assert queued_source_path == source_path
         assert source_fingerprint == f"sha256:{validation.sha256}"
         assert source_size == validation.size_bytes
+        assert source_relative_path == source_path.name
+        assert batch_context is None
         return "session_fixture", "job_fixture"
 
     monkeypatch.setattr(resources_router, "_start_uploaded_document_extraction_job", _start_job)

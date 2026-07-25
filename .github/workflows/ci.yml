@@ -55,7 +55,11 @@ jobs:
           python -X utf8 -m pytest \
             tests/test_provider_probe.py \
             tests/test_api_chat_local_literature_tool_use.py \
+            tests/test_acquisition_consistency.py \
+            tests/test_chat_router_multimodal.py \
             tests/test_evidence_pack_build_contract.py \
+            tests/test_formula_candidates.py \
+            tests/test_intelligent_chat_evidence_roles.py \
             tests/test_knowledge_router.py \
             tests/test_live_api_chat_knowledge_context_receipt_smoke_harness.py \
             tests/test_agent_bridge_router.py \
@@ -66,6 +70,8 @@ jobs:
             tests/test_ocr_classifier.py \
             tests/test_ocr_engine_registry.py \
             tests/test_ocr_ingestion.py \
+            tests/test_resources_chunk_locator.py \
+            tests/test_terminal_output.py \
             tests/test_ci_visibility_contract.py \
             tests/test_wiki_crud.py \
             tests/wiki/test_query.py \
@@ -103,14 +109,23 @@ jobs:
       - name: Run Wiki Frontend Evidence Tests
         run: |
           npm run test -- --run \
+            src/components/PdfViewer/PdfReaderShell.test.tsx \
+            src/components/PdfViewer/PdfViewer.test.tsx \
             src/components/DiscussionPanel/DiscussionPanel.evidencePills.test.tsx \
+            src/components/chat/ChatInput.test.tsx \
             src/components/chat/MessageBubble.test.tsx \
+            src/components/chat/relatedFigures.test.ts \
             src/components/evidence/EvidencePill.test.tsx \
             src/components/graph/GraphPayloadViewer.test.tsx \
             src/components/inspiration/SparkEvidencePills.test.tsx \
             src/components/mcp/McpPendingCallPoller.test.tsx \
             src/components/wiki/WikiPagePreviewPanel.test.tsx \
+            src/contexts/SmartReadContext.test.tsx \
+            src/lib/pdfQuoteAnchor.test.ts \
             src/services/agentWorkspaceApi.test.ts \
+            src/services/acquisitionApi.test.ts \
+            src/services/agentSidebarApi.test.ts \
+            src/services/backgroundJobRunner.test.ts \
             src/services/knowledgeApi.test.tsx \
             src/services/wikiApi.test.ts \
             src/components/knowledge/KnowledgePackagesPanel.test.tsx \
@@ -118,6 +133,11 @@ jobs:
             src/components/wiki/WikiImportMarkdownPanel.test.tsx \
             src/components/wiki/WikiStatusCard.test.tsx \
             src/hooks/useJobEventPolling.test.tsx \
+            src/pages/AgentSidebar.test.tsx \
             src/pages/AgentWorkspace.test.tsx \
             src/pages/DesktopAcceptanceAgentWorkspace.test.tsx \
+            src/pages/Dialog.test.tsx \
+            src/pages/KnowledgeBase.test.tsx \
+            src/pages/LiteratureAcquisition.test.tsx \
+            src/pages/UploadBatchSummary.test.tsx \
             src/pages/WikiWorkbench.test.tsx

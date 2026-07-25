@@ -427,6 +427,35 @@ def _coerce_context_bbox(value: object, unit: PdfBboxUnit | None) -> list[float]
     return bbox if pdf_bbox_matches_unit(bbox, unit) else None
 
 
+def _coerce_internal_normalized_ratio_bbox(
+    value: object,
+    unit: object,
+) -> list[float] | None:
+    """Return ratio geometry for internal legacy chunk matching only.
+
+    Unitless persisted chunks predate the public bbox-unit invariant. Their
+    coordinates may be used by this private geometry heuristic, but this helper
+    never supplies a unit to public context or evidence payloads.
+    """
+
+    if unit is None:
+        raw_unit = ""
+    elif isinstance(unit, PdfBboxUnit):
+        raw_unit = unit.value
+    elif isinstance(unit, str):
+        raw_unit = unit.strip().casefold()
+    else:
+        return None
+    if raw_unit not in {"", PdfBboxUnit.NORMALIZED_RATIO.value}:
+        return None
+    bbox = coerce_pdf_bbox(value)
+    if bbox is None:
+        return None
+    if not pdf_bbox_matches_unit(bbox, PdfBboxUnit.NORMALIZED_RATIO):
+        return None
+    return bbox
+
+
 def _coerce_evidence_anchor_kind(value: object, *, chunk_type: object = None) -> Literal["text", "visual"] | None:
     """Return an explicit evidence anchor kind without guessing unknown chunks."""
 
@@ -3346,8 +3375,10 @@ def _bind_overlapping_table_text(
 
         material_id = _clean_optional_text(result.get("material_id"))
         page = result.get("page")
-        table_unit = _coerce_pdf_bbox_unit(result.get("bbox_unit"))
-        table_bbox = _coerce_context_bbox(result.get("bbox"), table_unit)
+        table_bbox = _coerce_internal_normalized_ratio_bbox(
+            result.get("bbox"),
+            result.get("bbox_unit"),
+        )
         if material_id is None or page is None or table_bbox is None:
             enriched_results.append(result)
             continue
@@ -3373,10 +3404,10 @@ def _bind_overlapping_table_text(
                 "unknown",
             }:
                 continue
-            candidate_unit = _coerce_pdf_bbox_unit(candidate.get("bbox_unit"))
-            if candidate_unit != table_unit:
-                continue
-            candidate_bbox = _coerce_context_bbox(candidate.get("bbox"), candidate_unit)
+            candidate_bbox = _coerce_internal_normalized_ratio_bbox(
+                candidate.get("bbox"),
+                candidate.get("bbox_unit"),
+            )
             if candidate_bbox is None:
                 continue
             fragment_text = str(

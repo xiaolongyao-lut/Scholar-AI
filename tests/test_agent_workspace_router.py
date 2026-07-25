@@ -430,8 +430,16 @@ def test_agent_workspace_ocr_status_probe_returns_http_success_and_matches_statu
         "warning": "OCR policy is engine and mock_local is ready for explicit local probes only",
         "next_safe_local_actions": ["Inspect literature.ocr_engines before running OCR."],
     }
-    monkeypatch.setattr(agent_workspace_router, "public_ocr_status", lambda: ocr_status_payload)
-    monkeypatch.setattr(pdf_backend_router_module, "public_ocr_status", lambda: ocr_status_payload)
+    def _public_ocr_status(
+        runtime_config: object | None = None,
+        *,
+        credential_store: object | None = None,
+    ) -> dict[str, object]:
+        assert runtime_config is None
+        return ocr_status_payload
+
+    monkeypatch.setattr(agent_workspace_router, "public_ocr_status", _public_ocr_status)
+    monkeypatch.setattr(pdf_backend_router_module, "public_ocr_status", _public_ocr_status)
 
     client = TestClient(server.app)
     headers = {"X-LitAssist-Capability": server.get_local_api_capability_token()}
@@ -491,6 +499,14 @@ def test_agent_workspace_ocr_health_probe_returns_http_success_without_ocr_execu
     monkeypatch.delenv("LITASSIST_OCR_API_KEY", raising=False)
     monkeypatch.delenv("LITASSIST_OCR_BASE_URL", raising=False)
     monkeypatch.delenv("LITASSIST_OCR_ALLOW_REMOTE_UPLOAD", raising=False)
+    monkeypatch.setattr(
+        pdf_backend_router_module,
+        "resolve_ocr_runtime_config",
+        lambda: pdf_backend_router_module.OcrRuntimeConfig(
+            policy="none",
+            source="default",
+        ),
+    )
 
     client = TestClient(server.app)
     headers = {"X-LitAssist-Capability": server.get_local_api_capability_token()}
@@ -637,10 +653,11 @@ def test_agent_workspace_krt_actual_loading_gate_probe_returns_http_success_and_
     ]
     assert status_gate["claim_boundary"] == gate["claim_boundary"][:240]
     assert any(ref["ref"] == "/api/knowledge/runtime-conformance" for ref in recovery_refs)
-    assert any(
-        ref["ref"] == "/api/chat/tool-capability/test" and ref["requires_authorization"] is True
-        for ref in recovery_refs
-    ) or gate["status"] == "proved"
+    provider_ready = gate["provider_preflight"]["status"] == "proved"
+    provider_preflight_ref = next(
+        ref for ref in recovery_refs if ref["ref"] == "/api/chat/tool-capability/test"
+    )
+    assert provider_preflight_ref["requires_authorization"] is (not provider_ready)
 
 
 def test_agent_workspace_search_and_resource_recovery_probes_return_http_success(
