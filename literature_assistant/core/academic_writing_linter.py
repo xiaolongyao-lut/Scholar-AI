@@ -306,8 +306,10 @@ def _strip_tags(value: str) -> str:
 def _resolve_language(text: str, requested: AcademicLintLanguage) -> Literal["zh", "en"]:
     """Resolve ``auto`` language to Chinese or English."""
 
-    if requested in {"zh", "en"}:
-        return requested
+    if requested == "zh":
+        return "zh"
+    if requested == "en":
+        return "en"
     if requested != "auto":
         raise ValueError("language must be zh, en, or auto")
     zh_chars = len(re.findall(r"[\u4e00-\u9fff]", text))

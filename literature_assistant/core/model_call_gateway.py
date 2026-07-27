@@ -11,9 +11,12 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
-from project_paths import output_path
+if TYPE_CHECKING:
+    from literature_assistant.core.project_paths import output_path
+else:
+    from project_paths import output_path
 
 
 GatewayKind = Literal["embedding", "rerank", "llm"]
@@ -226,8 +229,13 @@ def _retry_after_seconds(exc: BaseException) -> float | None:
     headers = getattr(response, "headers", None)
     if headers is None:
         return None
-    retry_after = headers.get("Retry-After")
+    retry_after: object = headers.get("Retry-After")
     if retry_after is None:
+        return None
+    if isinstance(retry_after, bool) or not isinstance(
+        retry_after,
+        (str, bytes, bytearray, int, float),
+    ):
         return None
     try:
         return max(0.0, float(retry_after))
@@ -254,8 +262,9 @@ def _backoff_seconds(attempt: int, exc: BaseException) -> float:
     retry_after = _retry_after_seconds(exc)
     if retry_after is not None:
         return retry_after
-    base = min(BASE_BACKOFF_SECONDS * (2 ** attempt), MAX_BACKOFF_SECONDS)
-    return base + random.uniform(0.0, base)
+    base: float = min(BASE_BACKOFF_SECONDS * (2 ** attempt), MAX_BACKOFF_SECONDS)
+    jitter: float = random.uniform(0.0, base)
+    return base + jitter
 
 
 def _append_metric(record: dict[str, Any]) -> None:
@@ -474,7 +483,10 @@ def _resolve_generation_pool() -> Any:
     if os.environ.get("LITERATURE_DISABLE_KEY_POOL") == "1":
         return None
     try:
-        from key_pool import get_pool  # noqa: PLC0415
+        if TYPE_CHECKING:
+            from literature_assistant.core.key_pool import get_pool
+        else:
+            from key_pool import get_pool  # noqa: PLC0415
     except ImportError:
         return None
     try:
@@ -541,11 +553,18 @@ def with_generation_pool_failover(
         # Lazy-import to keep the module load order tolerant of partial
         # checkouts (consistent with _resolve_generation_pool style).
         try:
-            from generation_dispatch_adapter import (  # noqa: PLC0415
-                build_candidates_from_pool,
-                make_pool_invoke_wrapper,
-            )
-            from model_dispatcher import invoke_failover  # noqa: PLC0415
+            if TYPE_CHECKING:
+                from literature_assistant.core.generation_dispatch_adapter import (
+                    build_candidates_from_pool,
+                    make_pool_invoke_wrapper,
+                )
+                from literature_assistant.core.model_dispatcher import invoke_failover
+            else:
+                from generation_dispatch_adapter import (  # noqa: PLC0415
+                    build_candidates_from_pool,
+                    make_pool_invoke_wrapper,
+                )
+                from model_dispatcher import invoke_failover  # noqa: PLC0415
         except ImportError:
             # Defensive fallback: behave as legacy if adapter is missing.
             return pool.try_call(_GENERATION_CATEGORY, lambda cred: invoke_factory(cred)())

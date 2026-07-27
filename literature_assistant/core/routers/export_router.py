@@ -14,10 +14,10 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
@@ -107,10 +107,13 @@ def _build_docx_action_preflight(req: ExportDocxRequest) -> dict[str, Any] | Non
             )
         return None
     try:
-        from writing_runtime import get_writing_runtime
+        if TYPE_CHECKING:
+            from literature_assistant.core.writing_runtime import get_writing_runtime
+        else:
+            from writing_runtime import get_writing_runtime
 
         runtime = get_writing_runtime()
-        preflight = runtime.build_action_preflight(
+        raw_preflight: object = runtime.build_action_preflight(
             action_id="export.docx",
             required_claim_id="export_readiness",
             project_id=project_id,
@@ -119,6 +122,13 @@ def _build_docx_action_preflight(req: ExportDocxRequest) -> dict[str, Any] | Non
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not isinstance(raw_preflight, dict):
+        raise HTTPException(status_code=500, detail="Invalid export action preflight response")
+    preflight: dict[str, Any] = {}
+    for key, value in raw_preflight.items():
+        if not isinstance(key, str):
+            raise HTTPException(status_code=500, detail="Invalid export action preflight response")
+        preflight[key] = value
     if req.require_action_preflight and not bool(preflight.get("can_proceed")):
         return JSONResponse(
             status_code=409,
@@ -383,12 +393,18 @@ def _safe_profile_token(value: str, *, fallback: str = "journal") -> str:
 def _project_style_profile_path(project_id: str) -> Path:
     """Return the project-scoped journal style profile store path."""
 
-    from project_paths import project_data_path
+    if TYPE_CHECKING:
+        from literature_assistant.core.project_paths import project_data_path
+    else:
+        from project_paths import project_data_path
 
     normalized_project_id = str(project_id or "").strip()
     if not normalized_project_id:
         raise ValueError("project_id is required")
-    return project_data_path(normalized_project_id, "journal_style_profiles.json")
+    raw_path: object = project_data_path(normalized_project_id, "journal_style_profiles.json")
+    if not isinstance(raw_path, Path):
+        raise TypeError("project_data_path must return a pathlib.Path")
+    return raw_path
 
 
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -1402,7 +1418,9 @@ def _html_to_docx(
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for run in title_para.runs:
         run.font.name = profile.latin_font
-        run._element.rPr.get_or_add_rFonts().set(qn("w:eastAsia"), profile.heading_cjk_font)
+        run._element.get_or_add_rPr().get_or_add_rFonts().set(
+            qn("w:eastAsia"), profile.heading_cjk_font
+        )
         run.font.size = Pt(profile.title_pt)
 
     parser = _TipTapDocxParser()
@@ -1417,7 +1435,7 @@ def _html_to_docx(
 
 
 @router.post("/docx")
-async def export_docx(req: ExportDocxRequest):
+async def export_docx(req: ExportDocxRequest) -> Response:
     """Export TipTap content as formatted DOCX."""
     action_preflight = _build_docx_action_preflight(req)
     if isinstance(action_preflight, JSONResponse):

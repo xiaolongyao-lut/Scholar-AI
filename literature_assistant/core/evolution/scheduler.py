@@ -5,11 +5,22 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
-from evolution.config import curator_interval_seconds, is_curator_enabled
-from evolution.curator import EvolutionCurator
-from evolution.service import EvolutionService, get_evolution_service
+if TYPE_CHECKING:
+    from literature_assistant.core.evolution.config import (
+        curator_interval_seconds,
+        is_curator_enabled,
+    )
+    from literature_assistant.core.evolution.curator import EvolutionCurator
+    from literature_assistant.core.evolution.service import (
+        EvolutionService,
+        get_evolution_service,
+    )
+else:
+    from evolution.config import curator_interval_seconds, is_curator_enabled
+    from evolution.curator import EvolutionCurator
+    from evolution.service import EvolutionService, get_evolution_service
 
 logger = logging.getLogger("EvolutionCuratorScheduler")
 

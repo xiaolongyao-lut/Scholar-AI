@@ -36,6 +36,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _chat_response_content(payload: object) -> str | None:
+    """Return chat text only when an external response has the expected shape."""
+    if not isinstance(payload, dict):
+        return None
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        return None
+    message = first_choice.get("message")
+    if not isinstance(message, dict):
+        return None
+    content = message.get("content")
+    return content if isinstance(content, str) else None
+
+
 class FocusExtractor:
     """从文献中自动提取关键概念标签"""
     
@@ -183,8 +200,11 @@ class FocusExtractor:
                 logger.error(f"API 调用失败 {response.status_code}: {response.text}")
                 return []
             
-            result = response.json()
-            response_text = result['choices'][0]['message']['content']
+            payload: object = response.json()
+            response_text = _chat_response_content(payload)
+            if response_text is None:
+                logger.error("API 响应缺少 choices[0].message.content: %s", doc_path)
+                return []
             
             # 解析响应，提取标签
             tags = self._parse_tags(response_text)
@@ -241,21 +261,21 @@ class FocusExtractor:
         Returns:
             所有去重后的关注点集合
         """
-        doc_folder = Path(doc_folder)
+        folder_path = Path(doc_folder)
 
-        if not doc_folder.exists():
-            logger.error(f"文件夹不存在: {doc_folder}")
+        if not folder_path.exists():
+            logger.error(f"文件夹不存在: {folder_path}")
             return set()
 
         # 收集所有支持的文献文件
         doc_files = (
-            list(doc_folder.glob('**/*.md')) +
-            list(doc_folder.glob('**/*.txt')) +
-            list(doc_folder.glob('**/*.pdf'))
+            list(folder_path.glob('**/*.md')) +
+            list(folder_path.glob('**/*.txt')) +
+            list(folder_path.glob('**/*.pdf'))
         )
 
         if not doc_files:
-            logger.warning(f"文件夹中未找到支持的文献文件 (.md, .txt, .pdf): {doc_folder}")
+            logger.warning(f"文件夹中未找到支持的文献文件 (.md, .txt, .pdf): {folder_path}")
             return set()
 
         logger.info(f"发现 {len(doc_files)} 个文献文件")
@@ -275,7 +295,7 @@ class FocusExtractor:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for doc, result in zip(batch, results):
-                if isinstance(result, Exception):
+                if isinstance(result, BaseException):
                     logger.error(f"处理异常 {doc}: {result}")
                 else:
                     self.extracted_points.update(result)
@@ -332,7 +352,7 @@ class FocusExtractor:
         await self.client.aclose()
 
 
-async def main():
+async def main() -> None:
     """主函数"""
     parser = argparse.ArgumentParser(
         description="从文献中自动提取关键概念标签"

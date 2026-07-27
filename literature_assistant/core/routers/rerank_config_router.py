@@ -18,13 +18,16 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-import rerank_runtime_config
+if TYPE_CHECKING:
+    from literature_assistant.core import rerank_runtime_config
+else:
+    import rerank_runtime_config
 
 
 logger = logging.getLogger("rerank_config_router")
@@ -144,7 +147,10 @@ async def get_local_rerank_status() -> LocalRerankStatusPayload:
     See ``LocalRerankStatusPayload`` docstring for rendering hints.
     """
     try:
-        from local_rerank_adapter import get_status
+        if TYPE_CHECKING:
+            from literature_assistant.core.local_rerank_adapter import get_status
+        else:
+            from local_rerank_adapter import get_status
     except ImportError as exc:  # adapter module missing — degrade gracefully
         logger.warning("local_rerank_adapter unavailable: %s", exc)
         return LocalRerankStatusPayload(
@@ -179,8 +185,12 @@ async def put_rerank_config(payload: RerankConfigUpdate) -> RerankConfigPayload:
 async def apply_rerank_credential(
     payload: RerankCredentialApplyRequest,
 ) -> RerankConfigPayload:
-    from credential_store import CredentialNotFoundError
-    from routers.credentials_router import get_credential_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.credential_store import CredentialNotFoundError
+        from literature_assistant.core.routers.credentials_router import get_credential_store
+    else:
+        from credential_store import CredentialNotFoundError
+        from routers.credentials_router import get_credential_store
 
     try:
         credential = get_credential_store().get_internal(payload.credential_id)
@@ -240,7 +250,10 @@ async def test_rerank_endpoint(payload: RerankConfigUpdate) -> RerankProbeResult
         raise HTTPException(status_code=400, detail="base_url is required")
 
     try:
-        from routers.chat_router import _validate_outbound_llm_base_url
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.chat_router import _validate_outbound_llm_base_url
+        else:
+            from routers.chat_router import _validate_outbound_llm_base_url
 
         # B20 (2026-06-13): user-initiated rerank probe — see chat_router note.
         _validate_outbound_llm_base_url(base_url, "Local LLM", skip_dns=True)
@@ -302,12 +315,23 @@ async def test_rerank_endpoint(payload: RerankConfigUpdate) -> RerankProbeResult
 @router.post("/models/discover")
 async def discover_rerank_models(payload: RerankConfigUpdate) -> dict[str, Any]:
     """Discover models from a rerank service without URL credentials."""
-    from routers.model_config_router import discover_models_from_endpoint
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.model_config_router import discover_models_from_endpoint
+    else:
+        from routers.model_config_router import discover_models_from_endpoint
 
     base_url = (payload.base_url or rerank_runtime_config.get_resolved_field("base_url") or "").strip()
     api_key = (payload.api_key or rerank_runtime_config.get_resolved_field("api_key") or "").strip()
     result = await discover_models_from_endpoint(base_url, api_key)
-    return result.model_dump()
+    raw_payload: object = result.model_dump()
+    if not isinstance(raw_payload, dict):
+        raise TypeError("model discovery result must serialize to an object")
+    payload_dict: dict[str, Any] = {}
+    for key, value in raw_payload.items():
+        if not isinstance(key, str):
+            raise TypeError("model discovery result contains a non-string key")
+        payload_dict[key] = value
+    return payload_dict
 
 
 __all__ = ["router"]

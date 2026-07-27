@@ -55,10 +55,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Any, Awaitable, Callable, TypeVar
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, TypeVar
 
-from key_pool import Category, Credential, KeyPool
-from model_dispatcher import DispatchCandidate
+if TYPE_CHECKING:
+    from literature_assistant.core.key_pool import Category, Credential, KeyPool
+    from literature_assistant.core.model_dispatcher import DispatchCandidate
+else:
+    from key_pool import Category, Credential, KeyPool
+    from model_dispatcher import DispatchCandidate
 
 logger = logging.getLogger("GenerationDispatchAdapter")
 

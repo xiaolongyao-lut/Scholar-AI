@@ -4,9 +4,12 @@ import json
 import os
 import threading
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from llm_defaults import resolve_llm_params
+if TYPE_CHECKING:
+    from literature_assistant.core.llm_defaults import resolve_llm_params
+else:
+    from llm_defaults import resolve_llm_params
 
 _ALLOWED_KEYS = ("temperature", "top_p", "top_k", "max_tokens")
 _WRITE_LOCK = threading.Lock()

@@ -1073,6 +1073,14 @@ def _session_summary_source(metadata: Mapping[str, object]) -> str | None:
     return source or None
 
 
+def _coerce_json_integer(value: object) -> int:
+    """Convert a persisted JSON scalar to an integer without accepting objects."""
+
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        raise TypeError("value must be a numeric JSON scalar")
+    return int(value)
+
+
 def _session_summary_agent_count(metadata: Mapping[str, object]) -> int | None:
     """Return a bounded agent count stored in session metadata."""
 
@@ -1080,7 +1088,7 @@ def _session_summary_agent_count(metadata: Mapping[str, object]) -> int | None:
     if isinstance(raw_count, bool) or raw_count is None:
         return None
     try:
-        count = int(raw_count)
+        count = _coerce_json_integer(raw_count)
     except (TypeError, ValueError):
         return None
     return count if count >= 0 else None
@@ -1240,17 +1248,20 @@ def build_session_compression_record(
     max_summary_chars = target_tokens * 4
     summary = _trim_summary_text("\n".join(lines), limit=max_summary_chars)
     covered_until = covered[-1].get("id") if covered else None
-    return {
+    covered_messages: list[object] = []
+    covered_messages.extend(covered)
+    record: SessionCompressionRecord = {
         "version": 1,
         "strategy": "deterministic_extractive_v1",
         "created_at": now_iso,
         "covered_message_count": len(covered),
         "covered_until_message_id": str(covered_until) if covered_until is not None else None,
-        "original_estimated_tokens": estimate_messages_tokens(covered),
+        "original_estimated_tokens": estimate_messages_tokens(covered_messages),
         "target_tokens": target_tokens,
         "keep_recent_turns": keep_recent_turns,
         "summary": summary,
     }
+    return record
 
 
 def apply_session_auto_compression(
@@ -1363,12 +1374,15 @@ def summarize_session_record(session: Mapping[str, object]) -> SessionSummaryRec
             if created_at:
                 fork["created_at"] = created_at
 
+    raw_total_tokens = session.get("total_tokens") or 0
+    total_tokens = _coerce_json_integer(raw_total_tokens)
+
     return {
         "session_id": session_id,
         "project_id": project_id or None,
         "title": title_from_session_messages(messages, session_id=session_id),
         "total_turns": len(messages),
-        "total_tokens": int(session.get("total_tokens") or 0),
+        "total_tokens": total_tokens,
         "created_at": str(session.get("created_at")) if session.get("created_at") is not None else None,
         "updated_at": str(session.get("updated_at")) if session.get("updated_at") is not None else None,
         "preview": preview,

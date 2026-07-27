@@ -18,10 +18,15 @@ Schema (unchanged)::
 from __future__ import annotations
 
 import sys
+from os import PathLike
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import TYPE_CHECKING, Any
 
-from model_config_store import rerank_store
+if TYPE_CHECKING:
+    from literature_assistant.core.model_config_store import rerank_store
+else:
+    from model_config_store import rerank_store
 
 # Backwards-compatible: tests monkeypatch rerank_runtime_config._OVERRIDE_PATH
 # to redirect file I/O to a temp path. We intercept that via a module wrapper
@@ -63,18 +68,21 @@ def clear_config() -> None:
 class _OverridePathProxy:
     """Module wrapper that syncs _OVERRIDE_PATH setattr to rerank_store._path."""
 
-    def __init__(self, module):
-        object.__setattr__(self, '_module', module)
+    _module: ModuleType
 
-    def __getattr__(self, name):
-        return getattr(object.__getattribute__(self, '_module'), name)
+    def __init__(self, module: ModuleType) -> None:
+        object.__setattr__(self, "_module", module)
 
-    def __setattr__(self, name, value):
-        if name == '_OVERRIDE_PATH':
-            rerank_store._path = Path(value) if not isinstance(value, Path) else value
-            setattr(object.__getattribute__(self, '_module'), name, value)
-        else:
-            setattr(object.__getattribute__(self, '_module'), name, value)
+    def __getattr__(self, name: str) -> object:
+        value: object = getattr(self._module, name)
+        return value
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name == "_OVERRIDE_PATH":
+            if not isinstance(value, (str, PathLike)):
+                raise TypeError("_OVERRIDE_PATH must be a path-like value")
+            rerank_store._path = Path(value)
+        setattr(self._module, name, value)
 
 
 sys.modules[__name__] = _OverridePathProxy(sys.modules[__name__])  # type: ignore[assignment]

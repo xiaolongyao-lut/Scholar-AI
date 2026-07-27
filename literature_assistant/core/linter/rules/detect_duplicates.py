@@ -1,24 +1,29 @@
 # -*- coding: utf-8 -*-
 """重复检测规则"""
 
+from typing import Any
+
 from literature_assistant.core.linter.rule_base import ItemRule, PrepareContext, ApplyContext, ReportLevel, register_rule
 
 
 class NoDuplicateDoi(ItemRule):
     """重复 DOI 检测"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="no-duplicate-doi",
             name="检测重复 DOI",
             description="检测项目内是否有重复的 DOI",
         )
 
-    async def prepare(self, ctx: PrepareContext) -> dict:
+    async def prepare(self, ctx: PrepareContext) -> dict[str, Any]:
         """构建 DOI 索引"""
-        doi_index = {}
+        doi_index: dict[str, list[Any]] = {}
         for item in ctx.items:
-            doi = item.get("metadata", {}).get("doi", "")
+            metadata = item.get("metadata")
+            if not isinstance(metadata, dict):
+                continue
+            doi = metadata.get("doi", "")
             if doi and isinstance(doi, str):
                 doi = doi.strip().lower()
                 if doi not in doi_index:
@@ -28,13 +33,20 @@ class NoDuplicateDoi(ItemRule):
         return {"doi_index": doi_index}
 
     async def apply(self, ctx: ApplyContext) -> None:
-        doi = ctx.item.get("metadata", {}).get("doi", "")
+        metadata = ctx.item.get("metadata")
+        if not isinstance(metadata, dict):
+            return
+        doi = metadata.get("doi", "")
         if not doi or not isinstance(doi, str):
             return
 
         doi = doi.strip().lower()
-        doi_index = ctx.options.get("doi_index", )
+        doi_index = ctx.options.get("doi_index")
+        if not isinstance(doi_index, dict):
+            return
         material_ids = doi_index.get(doi, [])
+        if not isinstance(material_ids, list):
+            return
 
         if len(material_ids) > 1:
             ctx.report(
@@ -47,16 +59,16 @@ class NoDuplicateDoi(ItemRule):
 class NoItemDuplication(ItemRule):
     """重复文献检测（基于标题相似度）"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="no-item-duplication",
             name="检测重复文献",
             description="基于标题相似度检测重复文献",
         )
 
-    async def prepare(self, ctx: PrepareContext) -> dict:
+    async def prepare(self, ctx: PrepareContext) -> dict[str, Any]:
         """构建标题索引"""
-        title_index = {}
+        title_index: dict[str, list[Any]] = {}
         for item in ctx.items:
             title = item.get("title_en") or item.get("title", "")
             if title and isinstance(title, str):
@@ -74,8 +86,12 @@ class NoItemDuplication(ItemRule):
             return
 
         normalized = title.strip().lower()
-        title_index = ctx.options.get("title_index", {})
+        title_index = ctx.options.get("title_index")
+        if not isinstance(title_index, dict):
+            return
         material_ids = title_index.get(normalized, [])
+        if not isinstance(material_ids, list):
+            return
 
         if len(material_ids) > 1:
             ctx.report(

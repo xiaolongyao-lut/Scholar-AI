@@ -2,8 +2,12 @@ import json
 import asyncio
 import logging
 import os
-from typing import List, Dict, Any, Optional, Tuple, Callable
-from models.p2_logic_models import Claim, ConflictResult, ConflictType
+from typing import TYPE_CHECKING, List, Dict, Any, Optional, Tuple, Callable
+
+if TYPE_CHECKING:
+    from literature_assistant.core.models.p2_logic_models import Claim, ConflictResult, ConflictType
+else:
+    from models.p2_logic_models import Claim, ConflictResult, ConflictType
 import numpy as np
 
 logger = logging.getLogger("P2_ConflictDetector")

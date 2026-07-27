@@ -7,7 +7,10 @@ from typing import Any
 
 
 def _load_json(path: str | Path) -> dict[str, Any]:
-    return json.loads(Path(path).read_text(encoding='utf-8'))
+    payload: object = json.loads(Path(path).read_text(encoding='utf-8'))
+    if not isinstance(payload, dict):
+        raise ValueError(f'Material pack must be a JSON object: {path}')
+    return {str(key): value for key, value in payload.items()}
 
 
 def build_volume_bundle(material_pack_paths: list[str | Path], volume_id: str = 'V01') -> dict[str, Any]:

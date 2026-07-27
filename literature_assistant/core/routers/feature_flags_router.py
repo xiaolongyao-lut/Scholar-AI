@@ -15,10 +15,15 @@ unknown flag names return 404 from POST and are filtered out of GET.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from feature_flags import FEATURE_FLAGS, list_flags, set_flag
+if TYPE_CHECKING:
+    from literature_assistant.core.feature_flags import FEATURE_FLAGS, list_flags, set_flag
+else:
+    from feature_flags import FEATURE_FLAGS, list_flags, set_flag
 
 
 router = APIRouter(prefix="/api/feature-flags", tags=["FeatureFlags"])

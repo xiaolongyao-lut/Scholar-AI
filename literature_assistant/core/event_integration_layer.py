@@ -14,11 +14,37 @@ modifying any business logic.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
-from datetime_utils import utc_now, utc_timestamp
-from harness_canonical_events import CanonicalEvent
-from canonical_event_store import CanonicalEventStore
+if TYPE_CHECKING:
+    from literature_assistant.core.canonical_event_store import CanonicalEventStore
+    from literature_assistant.core.datetime_utils import to_iso_z, utc_now_iso_z, utc_timestamp
+    from literature_assistant.core.harness_canonical_events import CanonicalEvent
+else:
+    from canonical_event_store import CanonicalEventStore
+    from datetime_utils import to_iso_z, utc_now_iso_z, utc_timestamp
+    from harness_canonical_events import CanonicalEvent
+
+
+def _canonical_timestamp(value: object | None = None) -> str:
+    """Normalize compatible timestamp inputs to the canonical UTC ISO shape."""
+
+    if value is None:
+        return utc_now_iso_z()
+    if isinstance(value, datetime):
+        return to_iso_z(value)
+    if not isinstance(value, str):
+        raise TypeError("event timestamp must be ISO text or a datetime")
+
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("event timestamp must not be empty")
+    try:
+        parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("event timestamp must be valid ISO text") from exc
+    return to_iso_z(parsed)
 
 
 class CanonicalEventHook(ABC):
@@ -73,7 +99,7 @@ class RuntimeEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_session_{session_id}_{utc_timestamp()}',
             correlation_id=f'sess_{session_id}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=session_id,
             job_id=None,
             user_id=data['user_id'],
@@ -98,7 +124,7 @@ class RuntimeEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_job_start_{job_id}_{utc_timestamp()}',
             correlation_id=f'job_{job_id}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=data['session_id'],
             job_id=job_id,
             user_id=data['user_id'],
@@ -123,7 +149,7 @@ class RuntimeEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_job_done_{job_id}_{utc_timestamp()}',
             correlation_id=f'job_{job_id}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=data['session_id'],
             job_id=job_id,
             user_id=data['user_id'],
@@ -148,7 +174,7 @@ class RuntimeEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_job_fail_{job_id}_{utc_timestamp()}',
             correlation_id=f'job_{job_id}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=data['session_id'],
             job_id=job_id,
             user_id=data['user_id'],
@@ -173,7 +199,7 @@ class RuntimeEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_job_cancel_{job_id}_{utc_timestamp()}',
             correlation_id=f'job_{job_id}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=data['session_id'],
             job_id=job_id,
             user_id=data['user_id'],
@@ -226,7 +252,7 @@ class AuditEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_cap_req_{agg_id}_{utc_timestamp()}',
             correlation_id=f'cap_{skill_name}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=data.get('session_id'),
             job_id=data.get('job_id'),
             user_id=data.get('user_id', 'system'),
@@ -253,7 +279,7 @@ class AuditEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_exec_start_{agg_id}_{utc_timestamp()}',
             correlation_id=f'exec_{skill_name}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=data.get('session_id'),
             job_id=data.get('job_id'),
             user_id=data.get('user_id', 'system'),
@@ -280,7 +306,7 @@ class AuditEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_exec_done_{agg_id}_{utc_timestamp()}',
             correlation_id=f'exec_{skill_name}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=data.get('session_id'),
             job_id=data.get('job_id'),
             user_id=data.get('user_id', 'system'),
@@ -310,7 +336,7 @@ class AuditEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_exec_fail_{agg_id}_{utc_timestamp()}',
             correlation_id=f'exec_{skill_name}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=data.get('session_id'),
             job_id=data.get('job_id'),
             user_id=data.get('user_id', 'system'),
@@ -362,7 +388,7 @@ class ResourceEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_res_mod_{res_id}_{utc_timestamp()}',
             correlation_id=f'res_{res_id}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=data.get('session_id'),
             job_id=data.get('job_id'),
             user_id=data['user_id'],
@@ -392,7 +418,7 @@ class ResourceEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_res_pub_{res_id}_{utc_timestamp()}',
             correlation_id=f'res_{res_id}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=data.get('session_id'),
             job_id=data.get('job_id'),
             user_id=data['user_id'],
@@ -422,7 +448,7 @@ class ResourceEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_res_del_{res_id}_{utc_timestamp()}',
             correlation_id=f'res_{res_id}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=data.get('session_id'),
             job_id=data.get('job_id'),
             user_id=data['user_id'],
@@ -448,7 +474,7 @@ class ResourceEventHook(CanonicalEventHook):
         return CanonicalEvent(
             event_id=f'evt_res_restore_{res_id}_{utc_timestamp()}',
             correlation_id=f'res_{res_id}',
-            timestamp=data.get('timestamp', utc_now()),
+            timestamp=_canonical_timestamp(data.get('timestamp')),
             session_id=data.get('session_id'),
             job_id=data.get('job_id'),
             user_id=data['user_id'],

@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Callable
 
 from literature_assistant.core.terminal_logger import linter_logger
 from literature_assistant.core.linter import lint_materials as new_lint_materials
@@ -16,7 +16,12 @@ from literature_assistant.core.linter import lint_materials as new_lint_material
 class LinterTask:
     """Linter 后台任务"""
 
-    def __init__(self, task_id: str, project_id: str, material_ids: list[str] | None = None):
+    def __init__(
+        self,
+        task_id: str,
+        project_id: str,
+        material_ids: list[str] | None = None,
+    ) -> None:
         """
         Args:
             task_id: 任务 ID
@@ -28,7 +33,7 @@ class LinterTask:
         self.material_ids = material_ids
         self.cancelled = False
 
-    async def execute(self, update_progress: callable) -> dict[str, Any]:
+    async def execute(self, update_progress: Callable[[int, int, str], None]) -> dict[str, Any]:
         """执行 Linter 检查
 
         Args:
@@ -100,7 +105,7 @@ class LinterTask:
             linter_logger.error("Linter 任务失败", error=str(e))
             raise
 
-    def cancel(self):
+    def cancel(self) -> None:
         """取消任务"""
         self.cancelled = True
         linter_logger.info("收到取消请求", task_id=self.task_id)

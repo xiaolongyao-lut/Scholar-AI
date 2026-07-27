@@ -7,22 +7,34 @@ import json
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 import re
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from pdf_backends import public_ocr_status
-from project_paths import (
-    REPO_ROOT,
-    WORKSPACE_ARTIFACTS_ROOT,
-    WORKSPACE_OUTPUT_ROOT,
-    WORKSPACE_RUNTIME_STATE_ROOT,
-    wiki_runtime_db_path,
-)
-from runtime_env import wiki_enabled
-from wiki.source_registry import WikiRegistry
+if TYPE_CHECKING:
+    from literature_assistant.core.pdf_backends import public_ocr_status
+    from literature_assistant.core.project_paths import (
+        REPO_ROOT,
+        WORKSPACE_ARTIFACTS_ROOT,
+        WORKSPACE_OUTPUT_ROOT,
+        WORKSPACE_RUNTIME_STATE_ROOT,
+        wiki_runtime_db_path,
+    )
+    from literature_assistant.core.runtime_env import wiki_enabled
+    from literature_assistant.core.wiki.source_registry import WikiRegistry
+else:
+    from pdf_backends import public_ocr_status
+    from project_paths import (
+        REPO_ROOT,
+        WORKSPACE_ARTIFACTS_ROOT,
+        WORKSPACE_OUTPUT_ROOT,
+        WORKSPACE_RUNTIME_STATE_ROOT,
+        wiki_runtime_db_path,
+    )
+    from runtime_env import wiki_enabled
+    from wiki.source_registry import WikiRegistry
 
 
 router = APIRouter(prefix="/api/agent-workspace", tags=["Agent Workspace"])
@@ -576,7 +588,7 @@ class AgentWorkspaceStatus(BaseModel):
 def _workspace_root() -> Path:
     """Return the local MCP workflow artifact root."""
 
-    return (WORKSPACE_ARTIFACTS_ROOT / WORKSPACE_DIR_NAME).resolve()
+    return (Path(WORKSPACE_ARTIFACTS_ROOT) / WORKSPACE_DIR_NAME).resolve()
 
 
 def _audit_root() -> Path:
@@ -939,7 +951,7 @@ def _read_git_workspace_state() -> AgentWorkspaceGitState:
 def _latest_goal_state_file() -> Path | None:
     """Return the newest longrun goal-state JSON file under docs/plans."""
 
-    plans_root = (REPO_ROOT / "docs" / "plans").resolve()
+    plans_root = (Path(REPO_ROOT) / "docs" / "plans").resolve()
     if not plans_root.exists() or not plans_root.is_dir():
         return None
     files = [path for path in plans_root.glob("longrun-goal-state-*.json") if path.is_file()]
@@ -1010,7 +1022,7 @@ def _safe_goal_completion_claim(value: Any) -> AgentWorkspaceGoalCompletionClaim
 def _desktop_smoke_root() -> Path:
     """Return the generated desktop smoke artifact root."""
 
-    return (WORKSPACE_ARTIFACTS_ROOT / "generated" / "desktop_smoke").resolve()
+    return (Path(WORKSPACE_ARTIFACTS_ROOT) / "generated" / "desktop_smoke").resolve()
 
 
 def _read_json_object(path: Path) -> dict[str, Any] | None:
@@ -1283,10 +1295,13 @@ def _load_wiki_doctor_state() -> AgentWorkspaceWikiDoctorState:
 def _read_knowledge_actual_loading_gate() -> Any:
     """Return the Knowledge Runtime actual-loading gate from its owner module."""
 
-    try:
-        from routers.knowledge_router import _actual_loading_gate
-    except ModuleNotFoundError:
+    if TYPE_CHECKING:
         from literature_assistant.core.routers.knowledge_router import _actual_loading_gate
+    else:
+        try:
+            from routers.knowledge_router import _actual_loading_gate
+        except ModuleNotFoundError:
+            from literature_assistant.core.routers.knowledge_router import _actual_loading_gate
 
     return _actual_loading_gate()
 
@@ -1374,17 +1389,17 @@ def _safe_goal_lifecycle_blocker(value: Any) -> AgentWorkspaceGoalLifecycleBlock
     """Return one bounded lifecycle blocker without exposing raw local records."""
 
     if isinstance(value, str):
-        raw_id = value.strip()
-        if not raw_id:
+        string_id = value.strip()
+        if not string_id:
             return None
-        return AgentWorkspaceGoalLifecycleBlocker(id=_redact_text(raw_id)[:160])
+        return AgentWorkspaceGoalLifecycleBlocker(id=_redact_text(string_id)[:160])
     if not isinstance(value, dict):
         return None
-    raw_id = value.get("id")
-    if not isinstance(raw_id, str) or not raw_id.strip():
+    object_id = value.get("id")
+    if not isinstance(object_id, str) or not object_id.strip():
         return None
     return AgentWorkspaceGoalLifecycleBlocker(
-        id=_redact_text(raw_id.strip())[:160],
+        id=_redact_text(object_id.strip())[:160],
         status=_safe_optional_text(value.get("status"), max_chars=120),
         requirement_surface=_safe_optional_text(value.get("requirement_surface"), max_chars=240),
         missing_evidence=_safe_optional_text(value.get("missing_evidence"), max_chars=240),
@@ -1422,6 +1437,7 @@ def _safe_goal_lifecycle_rollup(value: Any) -> AgentWorkspaceGoalLifecycleRollup
             blocker = _safe_goal_lifecycle_blocker(item)
             if blocker is not None:
                 completion_blockers.append(blocker)
+    requirements_total = value.get("requirements_total")
     return AgentWorkspaceGoalLifecycleRollup(
         schema_version=_safe_optional_text(value.get("schema_version"), max_chars=120),
         updated_at=_safe_optional_text(value.get("updated_at"), max_chars=80),
@@ -1430,8 +1446,8 @@ def _safe_goal_lifecycle_rollup(value: Any) -> AgentWorkspaceGoalLifecycleRollup
         can_mark_goal_complete=value.get("can_mark_goal_complete")
         if isinstance(value.get("can_mark_goal_complete"), bool)
         else None,
-        requirements_total=value.get("requirements_total")
-        if isinstance(value.get("requirements_total"), int) and value.get("requirements_total") >= 0
+        requirements_total=requirements_total
+        if isinstance(requirements_total, int) and requirements_total >= 0
         else None,
         requirement_status_counts=_safe_goal_lifecycle_status_counts(value.get("requirement_status_counts")),
         requirements_all_proved=value.get("requirements_all_proved")
@@ -1704,19 +1720,22 @@ def _load_goal_requirement_drilldown(requirement_id: str) -> AgentWorkspaceGoalR
     )
     checkpoint_id = _goal_state_checkpoint_id(payload)
     updated_at = payload.get("updated_at")
-    base = {
-        "path": path_label,
-        "updated_at": _redact_text(updated_at)[:80] if isinstance(updated_at, str) and updated_at.strip() else None,
-        "checkpoint_id": checkpoint_id,
-        "next_safe_local_actions": _safe_text_list(payload.get("next_authorized_local_actions"), MAX_GOAL_STATE_ACTIONS),
-        "stop_boundaries": _safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES),
-    }
+    updated_at_text = _redact_text(updated_at)[:80] if isinstance(updated_at, str) and updated_at.strip() else None
+    next_safe_local_actions = _safe_text_list(
+        payload.get("next_authorized_local_actions"),
+        MAX_GOAL_STATE_ACTIONS,
+    )
+    stop_boundaries = _safe_text_list(payload.get("stop_boundary"), MAX_GOAL_STATE_BOUNDARIES)
     if match is None:
         return AgentWorkspaceGoalRequirementDrilldown(
             available=False,
+            path=path_label,
+            updated_at=updated_at_text,
+            checkpoint_id=checkpoint_id,
             id=_redact_text(normalized_id)[:160],
+            next_safe_local_actions=next_safe_local_actions,
+            stop_boundaries=stop_boundaries,
             error="requirement id was not found in the selected goal-state record",
-            **base,
         )
 
     evidence_refs, evidence_count, truncated = _safe_goal_requirement_evidence_refs(match.get("evidence"))
@@ -1724,6 +1743,9 @@ def _load_goal_requirement_drilldown(requirement_id: str) -> AgentWorkspaceGoalR
     row_id = match.get("id")
     return AgentWorkspaceGoalRequirementDrilldown(
         available=True,
+        path=path_label,
+        updated_at=updated_at_text,
+        checkpoint_id=checkpoint_id,
         id=_redact_text(row_id.strip())[:160] if isinstance(row_id, str) and row_id.strip() else _redact_text(normalized_id)[:160],
         status=_redact_text(status.strip())[:80] if isinstance(status, str) and status.strip() else None,
         requirement=_safe_requirement_text(match.get("requirement")),
@@ -1731,7 +1753,8 @@ def _load_goal_requirement_drilldown(requirement_id: str) -> AgentWorkspaceGoalR
         evidence=evidence_refs,
         evidence_count=evidence_count,
         truncated=truncated,
-        **base,
+        next_safe_local_actions=next_safe_local_actions,
+        stop_boundaries=stop_boundaries,
     )
 
 

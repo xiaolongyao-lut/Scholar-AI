@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Mapping, Protocol
 
 if TYPE_CHECKING:
-    from models.credentials import RuntimeCredential
+    from literature_assistant.core.models.credentials import RuntimeCredential
 
 
 _CREDENTIAL_ERROR_KEY = "_credential_error"
@@ -81,12 +81,20 @@ def resolve_remote_ocr_credential_config(
     resolved["credential_id"] = credential_id
 
     try:
-        from credential_store import (
-            CredentialNotFoundError,
-            CredentialSchemaError,
-            CredentialSecretStorageError,
-            RuntimeCredentialStore,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.credential_store import (
+                CredentialNotFoundError,
+                CredentialSchemaError,
+                CredentialSecretStorageError,
+                RuntimeCredentialStore,
+            )
+        else:
+            from credential_store import (
+                CredentialNotFoundError,
+                CredentialSchemaError,
+                CredentialSecretStorageError,
+                RuntimeCredentialStore,
+            )
 
         store = credential_store if credential_store is not None else RuntimeCredentialStore()
         credential = store.get_internal(credential_id)

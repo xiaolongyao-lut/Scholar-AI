@@ -9,12 +9,13 @@ import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import httpx
+from pydantic import BaseModel, ValidationError
 
 from .downloader import (
-    ControlProbe,
+    DownloadControl,
     DownloadCancelled,
     DownloadHumanGateRequired,
     DownloadPaused,
@@ -148,10 +149,29 @@ class MaterialPublicationVerifier(Protocol):
 class RuntimeJobRecord(Protocol):
     """Minimum persisted runtime job fields needed for import reconciliation."""
 
-    job_id: str
-    session_id: str
-    status: object
-    error: str | None
+    @property
+    def job_id(self) -> str:
+        """Return the persisted job identifier."""
+
+        ...
+
+    @property
+    def session_id(self) -> str:
+        """Return the owning runtime session identifier."""
+
+        ...
+
+    @property
+    def status(self) -> object:
+        """Return the runtime-specific job status value."""
+
+        ...
+
+    @property
+    def error(self) -> str | None:
+        """Return the persisted failure message, when present."""
+
+        ...
 
 
 class ImportRuntimeReader(Protocol):
@@ -165,13 +185,22 @@ class ImportRuntimeReader(Protocol):
 
 
 def _default_project_path(project_id: str, *parts: str) -> Path:
-    from project_paths import project_data_path
+    if TYPE_CHECKING:
+        from literature_assistant.core.project_paths import project_data_path
+    else:
+        from project_paths import project_data_path
 
-    return project_data_path(project_id, *parts)
+    resolved = project_data_path(project_id, *parts)
+    if not isinstance(resolved, Path):
+        raise TypeError("project_data_path must return pathlib.Path")
+    return resolved
 
 
 def _default_project_validator(project_id: str) -> None:
-    from writing_resources import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_resources import get_writing_resource_store
+    else:
+        from writing_resources import get_writing_resource_store
 
     if get_writing_resource_store().get_project(project_id) is None:
         raise AcquisitionNotFoundError("project_not_found", f"Project not found: {project_id}")
@@ -184,14 +213,26 @@ async def _default_ingest_pdf(
     expected_sha256: str,
     expected_size: int,
 ) -> Mapping[str, object]:
-    from routers.resources_router import ingest_validated_pdf_path
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import ingest_validated_pdf_path
+    else:
+        from routers.resources_router import ingest_validated_pdf_path
 
-    return await ingest_validated_pdf_path(
+    result = await ingest_validated_pdf_path(
         project_id,
         source_path,
         expected_sha256=expected_sha256,
         expected_size=expected_size,
     )
+    if not isinstance(result, Mapping):
+        raise TypeError("validated PDF ingestion must return a mapping")
+
+    normalized: dict[str, object] = {}
+    for key, value in result.items():
+        if not isinstance(key, str):
+            raise TypeError("validated PDF ingestion keys must be strings")
+        normalized[key] = value
+    return normalized
 
 
 def _default_verify_material_publication(
@@ -201,14 +242,23 @@ def _default_verify_material_publication(
     expected_source_fingerprint: str,
     expected_source_size: int,
 ) -> ImportPublicationEvidence:
-    from routers.resources_router import verify_material_publication
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import verify_material_publication
+    else:
+        from routers.resources_router import verify_material_publication
 
-    return verify_material_publication(
+    evidence = verify_material_publication(
         project_id,
         material_id,
         expected_source_fingerprint=expected_source_fingerprint,
         expected_source_size=expected_source_size,
     )
+    if not isinstance(evidence, BaseModel):
+        raise TypeError("material publication verifier returned invalid evidence")
+    try:
+        return ImportPublicationEvidence.model_validate(evidence, from_attributes=True)
+    except ValidationError as exc:
+        raise TypeError("material publication verifier returned invalid evidence") from exc
 
 
 class LiteratureAcquisitionService:
@@ -607,7 +657,7 @@ class LiteratureAcquisitionService:
         attempt_id = _download_attempt_id(running)
         promotion_proof: ArtifactPromotionProof | None = None
 
-        def control_probe() -> str:
+        def control_probe() -> DownloadControl:
             latest = self.store.get_download_job(running.job_id)
             if latest is not None and latest.status is DownloadJobStatus.PAUSED:
                 return "pause"
@@ -649,13 +699,15 @@ class LiteratureAcquisitionService:
                 size_bytes=validation.size_bytes,
                 sha256=validation.sha256,
                 page_count=validation.page_count,
-                validation=PdfValidationProvenance(
-                    validator_id=PDF_VALIDATOR_ID,
-                    validator_version=PDF_VALIDATOR_VERSION,
-                    parser_id=PDF_PARSER_ID,
-                    parser_version=PDF_PARSER_VERSION,
-                    checks=PDF_VALIDATION_CHECKS,
-                    validated_at=validated_at,
+                validation=PdfValidationProvenance.model_validate(
+                    {
+                        "validator_id": PDF_VALIDATOR_ID,
+                        "validator_version": PDF_VALIDATOR_VERSION,
+                        "parser_id": PDF_PARSER_ID,
+                        "parser_version": PDF_PARSER_VERSION,
+                        "checks": PDF_VALIDATION_CHECKS,
+                        "validated_at": validated_at,
+                    }
                 ),
                 prepared_at=utc_now(),
             )
@@ -1237,7 +1289,10 @@ class LiteratureAcquisitionService:
             return None, None
         reader = self._runtime_reader
         if reader is None:
-            from writing_runtime import get_writing_runtime
+            if TYPE_CHECKING:
+                from literature_assistant.core.writing_runtime import get_writing_runtime
+            else:
+                from writing_runtime import get_writing_runtime
 
             reader = get_writing_runtime()
             self._runtime_reader = reader
@@ -1507,14 +1562,16 @@ class LiteratureAcquisitionService:
         message: str,
     ) -> HumanAccessGate:
         gate_id = f"gate_{_stable_digest(run_id, source_id, gate_type, url)[:24]}"
-        gate = HumanAccessGate(
-            gate_id=gate_id,
-            project_id=query.project_id,
-            platform=source_id,
-            gate_type=gate_type,
-            url=url,
-            message=message,
-            next_action="Complete the access step in a visible browser before a new explicit search.",
+        gate = HumanAccessGate.model_validate(
+            {
+                "gate_id": gate_id,
+                "project_id": query.project_id,
+                "platform": source_id,
+                "gate_type": gate_type,
+                "url": url,
+                "message": message,
+                "next_action": "Complete the access step in a visible browser before a new explicit search.",
+            }
         )
         return self.store.save_gate(gate)
 
@@ -1808,15 +1865,19 @@ class LiteratureAcquisitionService:
         started_at: datetime,
     ) -> DownloadJob:
         gate_id = f"gate_{_stable_digest(running.job_id, str(running.attempts), exc.gate_type, exc.url)[:24]}"
-        gate = HumanAccessGate(
-            gate_id=gate_id,
-            project_id=running.project_id,
-            job_id=running.job_id,
-            platform=running.source_platform,
-            gate_type=exc.gate_type,
-            url=exc.url,
-            message=exc.safe_message,
-            next_action="Complete the access step in a visible browser, then explicitly resolve this gate.",
+        gate = HumanAccessGate.model_validate(
+            {
+                "gate_id": gate_id,
+                "project_id": running.project_id,
+                "job_id": running.job_id,
+                "platform": running.source_platform,
+                "gate_type": exc.gate_type,
+                "url": exc.url,
+                "message": exc.safe_message,
+                "next_action": (
+                    "Complete the access step in a visible browser, then explicitly resolve this gate."
+                ),
+            }
         )
         attempt = self._build_download_attempt(
             running,
@@ -1891,7 +1952,10 @@ def _optional_result_text(result: Mapping[str, object], key: str) -> str | None:
 def build_default_acquisition_service() -> LiteratureAcquisitionService:
     """Build the process-local service without starting network work."""
 
-    from project_paths import runtime_state_path
+    if TYPE_CHECKING:
+        from literature_assistant.core.project_paths import runtime_state_path
+    else:
+        from project_paths import runtime_state_path
 
     store = AcquisitionStore(runtime_state_path("acquisition", "acquisition.sqlite3"))
     service = LiteratureAcquisitionService(store)

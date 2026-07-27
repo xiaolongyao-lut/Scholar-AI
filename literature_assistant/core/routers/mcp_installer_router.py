@@ -26,35 +26,61 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from models.mcp_installation import McpPackageScanRequest, McpPackageScanResult
-from mcp_runtime.package_scanner import (
-    McpPackageScanError,
-    McpPackageScanner,
-    get_package_scanner,
-)
-from mcp_runtime.scan_registry import (
-    McpScanRegistry,
-    get_scan_registry,
-)
-from mcp_runtime.template_installer import (
-    InstallCandidateMismatchError,
-    InstallCredentialDisabledError,
-    InstallCredentialMissingError,
-    InstallPlaintextSecretConfigError,
-    InstallError,
-    InstallResult,
-    InstallScanExpiredError,
-    InstallScanNotFoundError,
-    InstallSlugConflictError,
-    InstallTransportUnsupportedError,
-    McpTemplateInstaller,
-    get_template_installer,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.mcp_runtime.package_scanner import (
+        McpPackageScanError,
+        McpPackageScanner,
+        get_package_scanner,
+    )
+    from literature_assistant.core.mcp_runtime.scan_registry import (
+        McpScanRegistry,
+        get_scan_registry,
+    )
+    from literature_assistant.core.mcp_runtime.template_installer import (
+        InstallCandidateMismatchError,
+        InstallCredentialDisabledError,
+        InstallCredentialMissingError,
+        InstallError,
+        InstallPlaintextSecretConfigError,
+        InstallResult,
+        InstallScanExpiredError,
+        InstallScanNotFoundError,
+        InstallSlugConflictError,
+        InstallTransportUnsupportedError,
+        McpTemplateInstaller,
+        get_template_installer,
+    )
+    from literature_assistant.core.models.mcp_installation import (
+        McpPackageScanRequest,
+        McpPackageScanResult,
+    )
+else:
+    from mcp_runtime.package_scanner import (
+        McpPackageScanError,
+        McpPackageScanner,
+        get_package_scanner,
+    )
+    from mcp_runtime.scan_registry import McpScanRegistry, get_scan_registry
+    from mcp_runtime.template_installer import (
+        InstallCandidateMismatchError,
+        InstallCredentialDisabledError,
+        InstallCredentialMissingError,
+        InstallError,
+        InstallPlaintextSecretConfigError,
+        InstallResult,
+        InstallScanExpiredError,
+        InstallScanNotFoundError,
+        InstallSlugConflictError,
+        InstallTransportUnsupportedError,
+        McpTemplateInstaller,
+        get_template_installer,
+    )
+    from models.mcp_installation import McpPackageScanRequest, McpPackageScanResult
 
 
 logger = logging.getLogger("McpInstallerRouter")
@@ -158,7 +184,7 @@ async def scan_local_package(
     scanner = _get_scanner()
     registry = _get_registry()
     try:
-        result = scanner.scan(body)
+        result: McpPackageScanResult = scanner.scan(body)
     except McpPackageScanError as exc:
         raise HTTPException(
             status_code=400,

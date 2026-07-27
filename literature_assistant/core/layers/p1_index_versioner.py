@@ -3,7 +3,7 @@ import shutil
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import List, Dict
+from typing import Any
 
 logger = logging.getLogger("P1_IndexVersioner")
 
@@ -29,7 +29,11 @@ class IndexVersionManager:
         if not self.version_log_path.exists():
             self.version_log_path.write_text(json.dumps({"versions": []}, indent=2, ensure_ascii=False))
     
-    def save_index_version(self, version_name: str, description: str = ""):
+    def save_index_version(
+        self,
+        version_name: str,
+        description: str = "",
+    ) -> dict[str, object]:
         """
         保存当前索引为新版本
         """
@@ -53,7 +57,7 @@ class IndexVersionManager:
         except:
             log_data = {"versions": []}
             
-        new_version = {
+        new_version: dict[str, object] = {
             "version": version_name,
             "timestamp": datetime.now().isoformat(),
             "description": description,
@@ -65,15 +69,29 @@ class IndexVersionManager:
         logger.info(f"Successfully saved index version: {version_name}")
         return new_version
 
-    def list_versions(self) -> List[Dict]:
+    def list_versions(self) -> list[dict[str, Any]]:
         """列出所有已保存的版本"""
         try:
-            log_data = json.loads(self.version_log_path.read_text(encoding='utf-8'))
-            return log_data.get("versions", [])
-        except:
+            log_data: object = json.loads(
+                self.version_log_path.read_text(encoding='utf-8')
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            logger.warning("Failed to read index version history: %s", exc)
             return []
+        if not isinstance(log_data, dict):
+            logger.warning("Index version history must be a JSON object")
+            return []
+        raw_versions: object = log_data.get("versions", [])
+        if not isinstance(raw_versions, list):
+            logger.warning("Index version history 'versions' must be a list")
+            return []
+        return [
+            {str(key): value for key, value in version.items()}
+            for version in raw_versions
+            if isinstance(version, dict)
+        ]
 
-    def restore_index_version(self, version_name: str):
+    def restore_index_version(self, version_name: str) -> bool:
         """
         回滚索引到指定版本
         """

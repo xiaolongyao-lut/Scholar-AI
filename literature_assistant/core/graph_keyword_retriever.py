@@ -3,10 +3,14 @@ from __future__ import annotations
 import math
 import re
 from collections import defaultdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from retrieval_provenance import attach_source_labels
-from text_utils import cjk_aware_tokenize
+if TYPE_CHECKING:
+    from literature_assistant.core.retrieval_provenance import attach_source_labels
+    from literature_assistant.core.text_utils import cjk_aware_tokenize
+else:
+    from retrieval_provenance import attach_source_labels
+    from text_utils import cjk_aware_tokenize
 
 
 _CJK_TOKEN_RE = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")

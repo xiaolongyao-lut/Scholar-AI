@@ -13,60 +13,101 @@ import logging
 import os
 import random
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr, TypeAdapter
 
-from models.analysis_chain import AnalysisChainPayload
-from prompts.project_reasoning_bias import (
-    ProjectReasoningBiasContext,
-    apply_project_reasoning_bias,
-    load_project_reasoning_bias,
-    render_project_reasoning_bias_block,
-    should_apply_project_reasoning_bias,
-)
-
-from ai_cost_profile import normalize_cost_profile, use_cost_profile
-from llm_defaults import resolve_llm_params
-from llm_cost_logger import log_llm_call
-from llm_pricing import usage_from_response
-from sampling_storage import load_user_sampling
-from model_config_store import (
-    CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
-    CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT,
-    chat_context_compression_store,
-    chat_store,
-    normalize_chat_context_compression_settings,
-)
-from mcp_runtime.tool_use_runner import (
-    RunCaps,
-    ToolLoopStopReason,
-    failed_tool_use_run_result,
-)
-import provider_capabilities
-from provider_capabilities import ProviderToolCapabilityError
-from runtime_env import env_value
-from routers import chat_mcp_integration
-from provider_endpoint_policy import TrustSource, validate_endpoint
-from provider_payload_compat import (
-    apply_openai_chat_payload_compat,
-    provider_http_timeout_s,
-)
-from provider_catalog import (
-    MODEL_CATALOG,
-    SUPPORTED_PROVIDERS,
-    ModelInfo,
-    ProviderInfo,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core import provider_capabilities
+    from literature_assistant.core.ai_cost_profile import normalize_cost_profile, use_cost_profile
+    from literature_assistant.core.llm_cost_logger import log_llm_call
+    from literature_assistant.core.llm_defaults import resolve_llm_params
+    from literature_assistant.core.llm_pricing import usage_from_response
+    from literature_assistant.core.mcp_runtime.tool_use_runner import (
+        RunCaps,
+        ToolLoopStopReason,
+        failed_tool_use_run_result,
+    )
+    from literature_assistant.core.model_config_store import (
+        CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
+        CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT,
+        chat_context_compression_store,
+        chat_store,
+        normalize_chat_context_compression_settings,
+    )
+    from literature_assistant.core.models.analysis_chain import AnalysisChainPayload
+    from literature_assistant.core.prompts.project_reasoning_bias import (
+        ProjectReasoningBiasContext,
+        apply_project_reasoning_bias,
+        load_project_reasoning_bias,
+        render_project_reasoning_bias_block,
+        should_apply_project_reasoning_bias,
+    )
+    from literature_assistant.core.provider_capabilities import ProviderToolCapabilityError
+    from literature_assistant.core.provider_catalog import (
+        MODEL_CATALOG,
+        SUPPORTED_PROVIDERS,
+        ModelInfo,
+        ProviderInfo,
+    )
+    from literature_assistant.core.provider_endpoint_policy import TrustSource, validate_endpoint
+    from literature_assistant.core.provider_payload_compat import (
+        apply_openai_chat_payload_compat,
+        provider_http_timeout_s,
+    )
+    from literature_assistant.core.routers import chat_mcp_integration
+    from literature_assistant.core.runtime_env import env_value
+    from literature_assistant.core.sampling_storage import load_user_sampling
+else:
+    import provider_capabilities
+    from ai_cost_profile import normalize_cost_profile, use_cost_profile
+    from llm_cost_logger import log_llm_call
+    from llm_defaults import resolve_llm_params
+    from llm_pricing import usage_from_response
+    from mcp_runtime.tool_use_runner import (
+        RunCaps,
+        ToolLoopStopReason,
+        failed_tool_use_run_result,
+    )
+    from model_config_store import (
+        CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
+        CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT,
+        chat_context_compression_store,
+        chat_store,
+        normalize_chat_context_compression_settings,
+    )
+    from models.analysis_chain import AnalysisChainPayload
+    from prompts.project_reasoning_bias import (
+        ProjectReasoningBiasContext,
+        apply_project_reasoning_bias,
+        load_project_reasoning_bias,
+        render_project_reasoning_bias_block,
+        should_apply_project_reasoning_bias,
+    )
+    from provider_capabilities import ProviderToolCapabilityError
+    from provider_catalog import (
+        MODEL_CATALOG,
+        SUPPORTED_PROVIDERS,
+        ModelInfo,
+        ProviderInfo,
+    )
+    from provider_endpoint_policy import TrustSource, validate_endpoint
+    from provider_payload_compat import apply_openai_chat_payload_compat, provider_http_timeout_s
+    from routers import chat_mcp_integration
+    from runtime_env import env_value
+    from sampling_storage import load_user_sampling
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
+_PROVIDER_CATALOG_ADAPTER = TypeAdapter(list[ProviderInfo])
+_MODEL_CATALOG_ADAPTER = TypeAdapter(list[ModelInfo])
 
 _CHAT_ASK_DEPRECATION_HEADERS = {
     "Deprecation": "Tue, 26 May 2026 00:00:00 GMT",
@@ -535,7 +576,10 @@ def _validate_outbound_llm_base_url(
     skip_dns=True  → strict=False (user-initiated probe — credential test,
     model discover, "应用" button reachability).
     """
-    from provider_probe import validate_outbound_endpoint
+    if TYPE_CHECKING:
+        from literature_assistant.core.provider_probe import validate_outbound_endpoint
+    else:
+        from provider_probe import validate_outbound_endpoint
     validate_outbound_endpoint(
         base_url,
         provider,
@@ -590,7 +634,10 @@ def _system_text_with_project_reasoning_bias(
             return base_system_text
         assert bias is not None
         rendered = render_project_reasoning_bias_block(bias, locale=bias.language)
-        return apply_project_reasoning_bias(base_system_text, rendered)
+        biased_text: object = apply_project_reasoning_bias(base_system_text, rendered)
+        if not isinstance(biased_text, str):
+            raise TypeError("project reasoning bias renderer must return text")
+        return biased_text
     except Exception as exc:  # noqa: BLE001 - preference injection must not block chat.
         logger.warning("project_reasoning_bias injection skipped: project=%s err=%s", normalized_project_id, exc)
         return base_system_text
@@ -1271,7 +1318,15 @@ async def _post_chat_with_retry(
                 # as a retryable upstream error so D's HTTPException transparency still
                 # carries an actionable 502 to the job runtime instead of a stack trace.
                 try:
-                    return resp.json()
+                    decoded: object = resp.json()
+                    if not isinstance(decoded, dict):
+                        raise ValueError("LLM API response must be a JSON object")
+                    response_data: dict[str, Any] = {}
+                    for key, value in decoded.items():
+                        if not isinstance(key, str):
+                            raise ValueError("LLM API response keys must be strings")
+                        response_data[key] = value
+                    return response_data
                 except (json.JSONDecodeError, ValueError) as decode_exc:
                     last_exc = decode_exc
                     raw_body = (resp.text or "")[:500]
@@ -1533,7 +1588,10 @@ async def _maybe_build_analysis_chain(
     the deterministic chain so the user's chat response is never blocked.
     """
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
     except ImportError:
         return None
     if getattr(req, "_internal_skip_analysis_chain", False):
@@ -1541,7 +1599,10 @@ async def _maybe_build_analysis_chain(
     if not is_enabled("analysis_chain_rag"):
         return None
     try:
-        from analysis_chain_rag_builder import build_analysis_chain_async
+        if TYPE_CHECKING:
+            from literature_assistant.core.analysis_chain_rag_builder import build_analysis_chain_async
+        else:
+            from analysis_chain_rag_builder import build_analysis_chain_async
     except ImportError:
         return None
 
@@ -1573,7 +1634,7 @@ async def _maybe_build_analysis_chain(
         return sub_resp.answer
 
     try:
-        return await build_analysis_chain_async(
+        chain: AnalysisChainPayload = await build_analysis_chain_async(
             query=req.query,
             answer=answer,
             evidence_snippets=evidence_snippets,
@@ -1586,6 +1647,7 @@ async def _maybe_build_analysis_chain(
                 surface="analysis_chain_rag",
             ),
         )
+        return chain
     except Exception:  # noqa: BLE001 — final safety net
         logger.exception("analysis_chain_rag builder crashed; returning None")
         return None
@@ -1677,7 +1739,7 @@ async def chat_stream(req: ChatStreamRequest) -> StreamingResponse:
         default_s=float(os.getenv("LLM_HTTP_STREAM_TIMEOUT", "180")),
     )
 
-    async def event_generator():
+    async def event_generator() -> AsyncIterator[str]:
         started_at = time.perf_counter()
         usage: dict[str, Any] | None = None
         model_used = telemetry_model
@@ -1801,7 +1863,10 @@ async def list_providers(response: Response) -> list[ProviderInfo]:
     """
     for k, v in _PROVIDERS_DEPRECATION_HEADERS.items():
         response.headers[k] = v
-    return MODEL_CATALOG
+    return _PROVIDER_CATALOG_ADAPTER.validate_python(
+        MODEL_CATALOG,
+        from_attributes=True,
+    )
 
 
 @router.get("/models", response_model=list[ModelInfo])
@@ -1817,8 +1882,15 @@ async def list_supported_models(
     for k, v in _PROVIDERS_DEPRECATION_HEADERS.items():
         response.headers[k] = v
     if provider:
-        return [m for p in MODEL_CATALOG for m in p.models if p.provider == provider]
-    return SUPPORTED_PROVIDERS
+        providers = _PROVIDER_CATALOG_ADAPTER.validate_python(
+            MODEL_CATALOG,
+            from_attributes=True,
+        )
+        return [model for item in providers for model in item.models if item.provider == provider]
+    return _MODEL_CATALOG_ADAPTER.validate_python(
+        SUPPORTED_PROVIDERS,
+        from_attributes=True,
+    )
 
 
 @router.get("/models/discover")
@@ -1872,7 +1944,13 @@ async def _discover_models_impl(*, base_url: str, api_key: str) -> dict[str, Any
     provider/context_window fields) while routing all real work through the
     single discovery implementation.
     """
-    from provider_probe import discover_models as _probe_discover, validate_outbound_endpoint
+    if TYPE_CHECKING:
+        from literature_assistant.core.provider_probe import (
+            discover_models as _probe_discover,
+            validate_outbound_endpoint,
+        )
+    else:
+        from provider_probe import discover_models as _probe_discover, validate_outbound_endpoint
 
     try:
         validate_outbound_endpoint(base_url, "Local LLM", strict=False)

@@ -12,12 +12,26 @@ to avoid copy-paste drift between stores.
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import tempfile
 from pathlib import Path
 from types import TracebackType
-from typing import Any
+from typing import Any, BinaryIO, Literal
+
+
+PosixLockOperation = Literal["LOCK_EX", "LOCK_UN"]
+
+
+def _apply_posix_lock(handle: BinaryIO, operation_name: PosixLockOperation) -> None:
+    """Apply a POSIX advisory lock through the platform-only ``fcntl`` API."""
+    module = importlib.import_module("fcntl")
+    flock: object = getattr(module, "flock", None)
+    operation: object = getattr(module, operation_name, None)
+    if not callable(flock) or not isinstance(operation, int):
+        raise RuntimeError("fcntl.flock support is unavailable on this platform")
+    flock(handle.fileno(), operation)
 
 
 class CrossProcessFileLock:
@@ -31,7 +45,7 @@ class CrossProcessFileLock:
 
     def __init__(self, path: Path) -> None:
         self._path = Path(path)
-        self._handle: Any | None = None
+        self._handle: BinaryIO | None = None
 
     def __enter__(self) -> "CrossProcessFileLock":
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -46,9 +60,7 @@ class CrossProcessFileLock:
                 handle.seek(0)
                 msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
             else:
-                import fcntl
-
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                _apply_posix_lock(handle, "LOCK_EX")
         except Exception:
             handle.close()
             raise
@@ -72,9 +84,7 @@ class CrossProcessFileLock:
                 handle.seek(0)
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
             else:
-                import fcntl
-
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                _apply_posix_lock(handle, "LOCK_UN")
         finally:
             handle.close()
 

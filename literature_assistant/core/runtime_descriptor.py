@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from project_paths import (
+from literature_assistant.core.project_paths import (
     REPO_ROOT,
     WORKSPACE_RUNTIME_STATE_ROOT,
     api_port_file_path,

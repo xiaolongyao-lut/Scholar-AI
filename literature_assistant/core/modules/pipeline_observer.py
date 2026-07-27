@@ -12,22 +12,22 @@ class PipelineObserver(Protocol):
     Enables decoupled logging, metrics, and telemetry.
     """
 
-    def on_run_start(self, pipeline_id: str, context: Dict[str, Any]):
+    def on_run_start(self, pipeline_id: str, context: Dict[str, Any]) -> None:
         """Called when a new pipeline run begins."""
         ...
 
-    def on_phase_start(self, phase_name: str, pipeline_id: str):
+    def on_phase_start(self, phase_name: str, pipeline_id: str) -> None:
         """Called when a specific phase starts."""
         ...
 
-    def on_phase_success(self, phase_name: str, pipeline_id: str, results: Dict[str, Any]):
+    def on_phase_success(self, phase_name: str, pipeline_id: str, results: Dict[str, Any]) -> None:
         """Called when a phase completes successfully."""
         ...
 
-    def on_run_success(self, pipeline_id: str, total_duration: float, summary: Dict[str, Any]):
+    def on_run_success(self, pipeline_id: str, total_duration: float, summary: Dict[str, Any]) -> None:
         """Called when the entire pipeline run succeeds."""
         ...
 
-    def on_error(self, pipeline_id: str, phase_name: Optional[str], error: Exception):
+    def on_error(self, pipeline_id: str, phase_name: Optional[str], error: Exception) -> None:
         """Called when an error occurs during execution."""
         ...

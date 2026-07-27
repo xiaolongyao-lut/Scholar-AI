@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Inspiration API Router — 启发点生成与续写上下文"""
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -9,40 +11,64 @@ import time
 from collections.abc import Mapping, Sequence
 from importlib import resources
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from inspiration_store import InspirationStore, InspirationStoreError
 from literature_assistant.core.graph_payload import GraphPayloadV0
-from llm_cost_logger import log_llm_call
-from llm_defaults import resolve_llm_params
-from llm_pricing import usage_from_response
-from models.project_reasoning_bias import ProjectReasoningBiasPayload
-from prompts.project_reasoning_bias import (
-    ProjectReasoningBiasContext,
-    apply_project_reasoning_bias,
-    load_project_reasoning_bias,
-    render_project_reasoning_bias_block,
-    should_apply_project_reasoning_bias,
-)
-from prompts.identity_renderer import render_identity_header  # 2026-05-18 identity injection plan
-from project_paths import output_path
-from sampling_storage import load_user_sampling
 
-from routers.chat_router import (
-    LLMConfig,
-    _build_chat_request,
-    _extract_chat_response,
-    _validate_outbound_llm_base_url,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.inspiration_engine import InspirationEngine, InspirationSpark
+    from literature_assistant.core.inspiration_store import InspirationStore, InspirationStoreError
+    from literature_assistant.core.llm_cost_logger import log_llm_call
+    from literature_assistant.core.llm_defaults import resolve_llm_params
+    from literature_assistant.core.llm_pricing import usage_from_response
+    from literature_assistant.core.models.project_reasoning_bias import ProjectReasoningBiasPayload
+    from literature_assistant.core.project_paths import output_path
+    from literature_assistant.core.prompts.identity_renderer import render_identity_header
+    from literature_assistant.core.prompts.project_reasoning_bias import (
+        ProjectReasoningBiasContext,
+        apply_project_reasoning_bias,
+        load_project_reasoning_bias,
+        render_project_reasoning_bias_block,
+        should_apply_project_reasoning_bias,
+    )
+    from literature_assistant.core.routers.chat_router import (
+        LLMConfig,
+        _build_chat_request,
+        _extract_chat_response,
+        _validate_outbound_llm_base_url,
+    )
+    from literature_assistant.core.sampling_storage import load_user_sampling
+else:
+    from inspiration_store import InspirationStore, InspirationStoreError
+    from llm_cost_logger import log_llm_call
+    from llm_defaults import resolve_llm_params
+    from llm_pricing import usage_from_response
+    from models.project_reasoning_bias import ProjectReasoningBiasPayload
+    from project_paths import output_path
+    from prompts.identity_renderer import render_identity_header
+    from prompts.project_reasoning_bias import (
+        ProjectReasoningBiasContext,
+        apply_project_reasoning_bias,
+        load_project_reasoning_bias,
+        render_project_reasoning_bias_block,
+        should_apply_project_reasoning_bias,
+    )
+    from routers.chat_router import (
+        LLMConfig,
+        _build_chat_request,
+        _extract_chat_response,
+        _validate_outbound_llm_base_url,
+    )
+    from sampling_storage import load_user_sampling
 
 logger = logging.getLogger("InspirationRouter")
-router = APIRouter(prefix="/inspiration", tags=["Inspiration"])
+router: APIRouter = APIRouter(prefix="/inspiration", tags=["Inspiration"])
 
 # Lazy singleton
-_engine_instance = None
+_engine_instance: InspirationEngine | None = None
 _inspiration_store_instance: InspirationStore | None = None
 
 InspirationFrame = Literal["auto", "irac", "fincot"]
@@ -61,13 +87,19 @@ PROMPT_TEMPLATE_FILES: dict[Literal["irac", "fincot"], str] = {
 }
 
 
-def _get_engine():
+def _get_engine() -> InspirationEngine:
     """延迟初始化 InspirationEngine，自动加载已有因果 DAG 和 MemPalace。"""
     global _engine_instance
     if _engine_instance is not None:
         return _engine_instance
 
-    from inspiration_engine import InspirationEngine, load_causal_dags_from_output
+    if TYPE_CHECKING:
+        from literature_assistant.core.inspiration_engine import (
+            InspirationEngine,
+            load_causal_dags_from_output,
+        )
+    else:
+        from inspiration_engine import InspirationEngine, load_causal_dags_from_output
 
     # 加载因果 DAG
     output_root = output_path()
@@ -78,7 +110,10 @@ def _get_engine():
     # 加载 MemPalace（可选）
     mempalace = None
     try:
-        from python_adapter_server import get_memory_adapter
+        if TYPE_CHECKING:
+            from literature_assistant.core.python_adapter_server import get_memory_adapter
+        else:
+            from python_adapter_server import get_memory_adapter
         mem = get_memory_adapter()
         if mem is not None and mem.is_enabled():
             mempalace = mem
@@ -88,7 +123,10 @@ def _get_engine():
     # 加载冲突检测器（可选）
     conflict_detector = None
     try:
-        from layers.w_layer_cross_paper_analysis import ConflictDetector
+        if TYPE_CHECKING:
+            from literature_assistant.core.layers.w_layer_cross_paper_analysis import ConflictDetector
+        else:
+            from layers.w_layer_cross_paper_analysis import ConflictDetector
         conflict_detector = ConflictDetector()
     except Exception:
         logger.warning("ConflictDetector unavailable for inspiration engine", exc_info=True)
@@ -101,7 +139,7 @@ def _get_engine():
     return _engine_instance
 
 
-def reload_engine():
+def reload_engine() -> None:
     """外部调用以重新加载引擎（例如新论文入库后）。"""
     global _engine_instance
     _engine_instance = None
@@ -472,8 +510,10 @@ def _select_inspiration_frame(
         ``"irac"`` for argument/boundary work, ``"fincot"`` for
         mechanism/metric/causal-chain work.
     """
-    if frame in {"irac", "fincot"}:
-        return frame
+    if frame == "irac":
+        return "irac"
+    if frame == "fincot":
+        return "fincot"
     normalized = str(query or "").strip().lower()
     irac_keywords = (
         "论证", "边界", "反例", "反驳", "争议", "支持", "假设", "问题",
@@ -717,7 +757,10 @@ def _coerce_analysis_chain(raw: Any) -> AnalysisChainPayload | None:
 
 
 def _coerce_llm_sparks(answer: str, limit: int) -> list[SparkResponse]:
-    from inspiration_engine import _spark_id
+    if TYPE_CHECKING:
+        from literature_assistant.core.inspiration_engine import _spark_id
+    else:
+        from inspiration_engine import _spark_id
 
     payload = json.loads(answer)
     items = payload.get("sparks") if isinstance(payload, dict) else None
@@ -760,12 +803,18 @@ def _coerce_llm_sparks(answer: str, limit: int) -> list[SparkResponse]:
     return sparks
 
 
-def _generate_local_sparks(req: GenerateSparksRequest, engine) -> list[Any]:
+def _generate_local_sparks(
+    req: GenerateSparksRequest,
+    engine: InspirationEngine,
+) -> list[InspirationSpark]:
     sparks = engine.generate_sparks(req.query, limit=req.limit)
 
     if not sparks and req.project_id:
         try:
-            from routers.resources_router import _ensure_project_chunks  # noqa: PLC0415
+            if TYPE_CHECKING:
+                from literature_assistant.core.routers.resources_router import _ensure_project_chunks
+            else:
+                from routers.resources_router import _ensure_project_chunks  # noqa: PLC0415
             chunk_store = _ensure_project_chunks(req.project_id)
             all_chunks = [c for chunks in chunk_store.values() for c in chunks]
             if all_chunks:
@@ -800,7 +849,10 @@ def _resolve_inspiration_project_reasoning_bias(req: GenerateSparksRequest) -> P
 
 
 async def _generate_llm_sparks(req: GenerateSparksRequest) -> list[SparkResponse] | None:
-    from routers.chat_router import _resolve_chat_llm
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.chat_router import _resolve_chat_llm
+    else:
+        from routers.chat_router import _resolve_chat_llm
 
     try:
         resolved_llm = _resolve_chat_llm(req.llm)
@@ -957,7 +1009,7 @@ def _gate_sparks(sparks: list[SparkResponse]) -> list[SparkResponse]:
 # --- Endpoints ---
 
 @router.post("/generate", response_model=GenerateSparksResponse)
-async def generate_inspirations(req: GenerateSparksRequest):
+async def generate_inspirations(req: GenerateSparksRequest) -> GenerateSparksResponse:
     """基于查询生成启发点列表。"""
     engine = _get_engine()
     llm_sparks = await _generate_llm_sparks(req)
@@ -1082,7 +1134,10 @@ def _schedule_inspiration_capture(
     """Fire capture off the request path. See evolution/background.py."""
 
     try:
-        from evolution import run_capture_in_background
+        if TYPE_CHECKING:
+            from literature_assistant.core.evolution import run_capture_in_background
+        else:
+            from evolution import run_capture_in_background
     except Exception as exc:  # pragma: no cover - evolution package missing
         logger.debug("evolution package unavailable; capture skipped: %s", exc)
         return
@@ -1104,11 +1159,18 @@ def _capture_inspiration_candidates(
     """
 
     try:
-        from evolution import (
-            extract_from_sparks,
-            get_evolution_service,
-            is_candidate_capture_enabled,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.evolution import (
+                extract_from_sparks,
+                get_evolution_service,
+                is_candidate_capture_enabled,
+            )
+        else:
+            from evolution import (
+                extract_from_sparks,
+                get_evolution_service,
+                is_candidate_capture_enabled,
+            )
     except Exception as exc:  # pragma: no cover - evolution package missing
         logger.debug("evolution package unavailable; capture skipped: %s", exc)
         return
@@ -1164,7 +1226,7 @@ def _capture_inspiration_candidates(
                      captured, len(args_list))
 
 
-def _local_spark_to_response(spark: "InspirationSpark") -> SparkResponse:
+def _local_spark_to_response(spark: InspirationSpark) -> SparkResponse:
     """Convert an engine-side InspirationSpark dataclass to the public
     SparkResponse, materializing evidence_refs from evidence_chunks
     (Track B E2 wiring). Per D-EVR-4 never fabricates: when the
@@ -1179,7 +1241,7 @@ def _local_spark_to_response(spark: "InspirationSpark") -> SparkResponse:
 
 
 @router.get("/{spark_id}/context", response_model=ContinuationResponse)
-async def get_spark_context(spark_id: str):
+async def get_spark_context(spark_id: str) -> ContinuationResponse:
     """获取启发点的续写上下文。"""
     engine = _get_engine()
     ctx = engine.get_continuation_context(spark_id)
@@ -1196,7 +1258,7 @@ async def get_spark_context(spark_id: str):
 
 
 @router.post("/reload")
-async def reload_inspiration_engine():
+async def reload_inspiration_engine() -> dict[str, str]:
     """重新加载启发引擎（例如新论文入库后调用）。"""
     reload_engine()
     return {"status": "ok", "message": "InspirationEngine 已重新加载"}

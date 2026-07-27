@@ -4,48 +4,87 @@
 import asyncio
 import logging
 import sys
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, List
+from typing import TYPE_CHECKING, Any, List
 from fastapi import APIRouter, HTTPException, Query
-from models import (
-    SessionPayload,
-    CreateSessionRequest,
-    JobPayload,
-    CreateJobRequest,
-    JobStatusPayload,
-    EventPayload,
-    JobEventSnapshotPayload,
-    ArtifactPayload,
-    WritingWorkflowStateRequest,
-    WritingWorkflowStatePayload,
-    MaterialProcessingTaskRequest,
-    MaterialProcessingTaskPayload,
-    ResearchProjectionPayload,
-    WorkflowPassportPayload,
-    EvidenceIntegrityGatePayload,
-    ResearchActionLifecyclePayload,
-    BehaviorEvalPackPayload,
-    AgentHandoffCardPayload,
-    PreflightRefreshReceiptPayload,
-    WorkflowReplayLineagePayload,
-    WorkflowReplayIndexPayload,
-    TimelinePagePayload,
-    CheckpointPayload,
-    ResumeSessionPayload,
-    RewindSessionRequest,
-    ForkSessionRequest,
-)
+from fastapi.responses import JSONResponse
+
+if TYPE_CHECKING:
+    from literature_assistant.core.harness_protocols import WritingJob
+    from literature_assistant.core.models import (
+        AgentHandoffCardPayload,
+        ArtifactPayload,
+        BehaviorEvalPackPayload,
+        CheckpointPayload,
+        CreateJobRequest,
+        CreateSessionRequest,
+        EventPayload,
+        EvidenceIntegrityGatePayload,
+        ForkSessionRequest,
+        JobEventSnapshotPayload,
+        JobPayload,
+        JobStatusPayload,
+        MaterialProcessingTaskPayload,
+        MaterialProcessingTaskRequest,
+        PreflightRefreshReceiptPayload,
+        ResearchActionLifecyclePayload,
+        ResearchProjectionPayload,
+        ResumeSessionPayload,
+        RewindSessionRequest,
+        SessionPayload,
+        TimelinePagePayload,
+        WorkflowPassportPayload,
+        WorkflowReplayIndexPayload,
+        WorkflowReplayLineagePayload,
+        WritingWorkflowStatePayload,
+        WritingWorkflowStateRequest,
+    )
+    from literature_assistant.core.skills.runtime import SkillRunResult
+    from literature_assistant.core.writing_runtime import WritingRuntime
+else:
+    from models import (
+        AgentHandoffCardPayload,
+        ArtifactPayload,
+        BehaviorEvalPackPayload,
+        CheckpointPayload,
+        CreateJobRequest,
+        CreateSessionRequest,
+        EventPayload,
+        EvidenceIntegrityGatePayload,
+        ForkSessionRequest,
+        JobEventSnapshotPayload,
+        JobPayload,
+        JobStatusPayload,
+        MaterialProcessingTaskPayload,
+        MaterialProcessingTaskRequest,
+        PreflightRefreshReceiptPayload,
+        ResearchActionLifecyclePayload,
+        ResearchProjectionPayload,
+        ResumeSessionPayload,
+        RewindSessionRequest,
+        SessionPayload,
+        TimelinePagePayload,
+        WorkflowPassportPayload,
+        WorkflowReplayIndexPayload,
+        WorkflowReplayLineagePayload,
+        WritingWorkflowStatePayload,
+        WritingWorkflowStateRequest,
+    )
 
 logger = logging.getLogger("RuntimeRouter")
-router = APIRouter(prefix="/runtime", tags=["Runtime"])
+router: APIRouter = APIRouter(prefix="/runtime", tags=["Runtime"])
 _FIGURE_LOADER_VERSION = 3
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _MCP_SRC_ROOT = _REPO_ROOT / "agent_mcp_server" / "src"
 
 
-def get_runtime():
+def get_runtime() -> "WritingRuntime":
     """Import and return the writing runtime service."""
-    from writing_runtime import get_writing_runtime
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_runtime import get_writing_runtime
+    else:
+        from writing_runtime import get_writing_runtime
     return get_writing_runtime()
 
 
@@ -55,7 +94,22 @@ def _normalize_metadata(job: Any) -> dict[str, Any]:
     return dict(metadata) if isinstance(metadata, dict) else {}
 
 
-def _build_job_executor(job):
+def _validated_string_mapping(value: object, *, context: str) -> dict[str, Any]:
+    """Validate an internal dynamic mapping before exposing it through FastAPI."""
+
+    if not isinstance(value, dict):
+        raise TypeError(f"{context} must return an object")
+    result: dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise TypeError(f"{context} returned a non-string key")
+        result[key] = item
+    return result
+
+
+def _build_job_executor(
+    job: "WritingJob",
+) -> "Callable[[WritingJob], Awaitable[object]] | None":
     """Build an async executor for runtime-backed jobs when references are available."""
     kind = str(getattr(getattr(job, "kind", None), "value", getattr(job, "kind", "")))
     if kind == "smart_read":
@@ -71,16 +125,19 @@ def _build_job_executor(job):
     if not getattr(job, "action_id", None) and not getattr(job, "skill_id", None):
         return None
 
-    from skills.service import get_writing_skill_service
+    if TYPE_CHECKING:
+        from literature_assistant.core.skills.service import get_writing_skill_service
+    else:
+        from skills.service import get_writing_skill_service
 
     service = get_writing_skill_service()
 
-    async def _executor(current_job):
+    async def _executor(current_job: "WritingJob") -> "SkillRunResult | None":
         target_job = current_job or job
         if getattr(target_job, "action_id", None):
             action_id = str(target_job.action_id)
 
-            def _run_action_skill_result():
+            def _run_action_skill_result() -> "SkillRunResult":
                 actions = service.list_legacy_actions()
                 action = next((item for item in actions if item.get("id") == action_id), None)
                 if action is None:
@@ -98,10 +155,11 @@ def _build_job_executor(job):
             return await asyncio.to_thread(
                 _run_action_skill_result,
             )
-        if getattr(target_job, "skill_id", None):
+        skill_id = target_job.skill_id
+        if skill_id:
             return await asyncio.to_thread(
                 service.run_skill,
-                target_job.skill_id,
+                skill_id,
                 target_job.input_text,
                 target_job.scope,
                 target_job.output_mode,
@@ -174,7 +232,10 @@ def _build_behavior_eval_pack_payload(*, include_cases: bool) -> dict[str, Any]:
     _ensure_agent_mcp_path()
     from lit_assistant_mcp.behavior_eval import build_behavior_eval_pack
 
-    payload = build_behavior_eval_pack(observations=None, include_cases=include_cases)
+    payload = _validated_string_mapping(
+        build_behavior_eval_pack(observations=None, include_cases=include_cases),
+        context="behavior eval pack",
+    )
     payload["run_record"] = {}
     provenance = dict(payload.get("provenance") or {})
     provenance.update(
@@ -288,11 +349,13 @@ def _coerce_figure_load_limit(value: Any, default: int = 96) -> int:
     return max(1, min(200, parsed))
 
 
-def _build_figure_load_executor(job):
+def _build_figure_load_executor(
+    job: "WritingJob",
+) -> "Callable[[WritingJob], Awaitable[dict[str, object]]]":
     """Build a figure/table loader that only returns chunk-produced pixel assets."""
     metadata = _normalize_metadata(job)
 
-    async def _executor(current_job):
+    async def _executor(current_job: "WritingJob") -> dict[str, object]:
         target_job = current_job or job
         runtime = get_runtime()
         project_id = str(metadata.get("project_id") or "").strip()
@@ -303,9 +366,16 @@ def _build_figure_load_executor(job):
         runtime.emit_job_progress(target_job.job_id, stage="prepare", message="正在读取项目图表库", progress=8)
 
         def _load_payload() -> dict[str, Any]:
-            import routers.resources_router as resources_router
-            from routers.resources_router.endpoints_search_upload import derive_figure_table_candidates
-            from routers.writing_router import _figure_asset_payload
+            if TYPE_CHECKING:
+                from literature_assistant.core.routers import resources_router
+                from literature_assistant.core.routers.resources_router.endpoints_search_upload import (
+                    derive_figure_table_candidates,
+                )
+                from literature_assistant.core.routers.writing_router import _figure_asset_payload
+            else:
+                import routers.resources_router as resources_router
+                from routers.resources_router.endpoints_search_upload import derive_figure_table_candidates
+                from routers.writing_router import _figure_asset_payload
 
             store = resources_router._ensure_upload_project(project_id)
             assets = [
@@ -370,12 +440,14 @@ def _coerce_resource_ingest_int(value: Any, *, default: int, minimum: int, maxim
     return max(minimum, min(maximum, parsed))
 
 
-def _build_resource_ingest_executor(job):
+def _build_resource_ingest_executor(
+    job: "WritingJob",
+) -> "Callable[[WritingJob], Awaitable[dict[str, object]]]":
     """Build a resource-ingest executor for project source-folder scans."""
 
     metadata = _normalize_metadata(job)
 
-    async def _executor(current_job):
+    async def _executor(current_job: "WritingJob") -> dict[str, object]:
         target_job = current_job or job
         runtime = get_runtime()
         project_id = str(metadata.get("project_id") or "").strip()
@@ -388,14 +460,22 @@ def _build_resource_ingest_executor(job):
         runtime.emit_job_progress(target_job.job_id, stage="prepare", message="正在校验项目文献文件夹", progress=8)
 
         def _scan_payload() -> dict[str, Any]:
-            from routers.resources_router.endpoints_projects import _run_scan_folder_payload
+            if TYPE_CHECKING:
+                from literature_assistant.core.routers.resources_router.endpoints_projects import (
+                    _run_scan_folder_payload,
+                )
+            else:
+                from routers.resources_router.endpoints_projects import _run_scan_folder_payload
 
-            return _run_scan_folder_payload(
-                project_id,
-                scan_mode=scan_mode,
-                batch_size=batch_size,
-                max_workers=max_workers,
-                runtime_job_id=target_job.job_id,
+            return _validated_string_mapping(
+                _run_scan_folder_payload(
+                    project_id,
+                    scan_mode=scan_mode,
+                    batch_size=batch_size,
+                    max_workers=max_workers,
+                    runtime_job_id=target_job.job_id,
+                ),
+                context="resource ingest scan",
             )
 
         runtime.emit_job_progress(target_job.job_id, stage="ingest", message="正在扫描并写入项目库", progress=35)
@@ -421,19 +501,28 @@ def _build_resource_ingest_executor(job):
     return _executor
 
 
-def _build_smart_read_executor(job):
+def _build_smart_read_executor(
+    job: "WritingJob",
+) -> "Callable[[WritingJob], Awaitable[dict[str, object]]]":
     """Build a SmartRead executor that stores the final answer as a job artifact."""
     metadata = _normalize_metadata(job)
 
-    async def _executor(current_job):
+    async def _executor(current_job: "WritingJob") -> dict[str, object]:
         target_job = current_job or job
         runtime = get_runtime()
         runtime.emit_job_progress(target_job.job_id, stage="prepare", message="正在准备智能研读上下文", progress=10)
-        from routers.intelligent_chat_router import (
-            IntelligentChatRequest,
-            _is_light_chat_query,
-            intelligent_chat,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.intelligent_chat_router import (
+                IntelligentChatRequest,
+                _is_light_chat_query,
+                intelligent_chat,
+            )
+        else:
+            from routers.intelligent_chat_router import (
+                IntelligentChatRequest,
+                _is_light_chat_query,
+                intelligent_chat,
+            )
 
         # B11 (2026-06-14): light-chat fast path — short greetings like "hi" /
         # "你好" / "嗯" should skip the full RAG pipeline (18+ LLM calls / ~2min)
@@ -496,7 +585,9 @@ def _build_smart_read_executor(job):
             "images": metadata.get("images") or [],
         }
         runtime.emit_job_progress(target_job.job_id, stage="running", message="AI 正在研读并生成回答", progress=35)
-        response = await intelligent_chat(IntelligentChatRequest(**request_payload))
+        response = await intelligent_chat(IntelligentChatRequest.model_validate(request_payload))
+        if isinstance(response, JSONResponse):
+            raise RuntimeError(f"intelligent chat failed with HTTP {response.status_code}")
         runtime.emit_job_progress(target_job.job_id, stage="finalize", message="正在保存智能研读结果", progress=90)
         return {
             "status": "completed",
@@ -519,16 +610,22 @@ def _build_smart_read_executor(job):
     return _executor
 
 
-def _build_discussion_executor(job):
+def _build_discussion_executor(
+    job: "WritingJob",
+) -> "Callable[[WritingJob], Awaitable[dict[str, object]]]":
     """Build a discussion executor that writes the completed run to artifacts."""
     metadata = _normalize_metadata(job)
 
-    async def _executor(current_job):
+    async def _executor(current_job: "WritingJob") -> dict[str, object]:
         target_job = current_job or job
         runtime = get_runtime()
         runtime.emit_job_progress(target_job.job_id, stage="prepare", message="正在准备多智能体讨论", progress=10)
-        from models.discussion import DiscussionRunConfig
-        from routers.discussion_advanced_router import post_discussion_run
+        if TYPE_CHECKING:
+            from literature_assistant.core.models.discussion import DiscussionRunConfig
+            from literature_assistant.core.routers.discussion_advanced_router import post_discussion_run
+        else:
+            from models.discussion import DiscussionRunConfig
+            from routers.discussion_advanced_router import post_discussion_run
 
         config_payload = metadata.get("config")
         if not isinstance(config_payload, dict):
@@ -554,15 +651,24 @@ def _build_discussion_executor(job):
     return _executor
 
 
-def _build_ai_review_executor(job):
+def _build_ai_review_executor(
+    job: "WritingJob",
+) -> "Callable[[WritingJob], Awaitable[dict[str, object]]]":
     """Build an AI-review executor using the configured chat model."""
     metadata = _normalize_metadata(job)
 
-    async def _executor(current_job):
+    async def _executor(current_job: "WritingJob") -> dict[str, object]:
         target_job = current_job or job
         runtime = get_runtime()
         runtime.emit_job_progress(target_job.job_id, stage="prepare", message="正在整理手稿、引用和图表", progress=10)
-        from routers.intelligent_chat_router import IntelligentChatRequest, intelligent_chat
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.intelligent_chat_router import (
+                ChatMode,
+                IntelligentChatRequest,
+                intelligent_chat,
+            )
+        else:
+            from routers.intelligent_chat_router import ChatMode, IntelligentChatRequest, intelligent_chat
 
         query = str(metadata.get("prompt") or target_job.input_text or "").strip()
         if not query:
@@ -574,10 +680,12 @@ def _build_ai_review_executor(job):
                 query=query,
                 project_id=metadata.get("project_id"),
                 tier=metadata.get("tier") or "thorough",
-                mode="literature_qa",
+                mode=ChatMode.LITERATURE_QA,
                 project_reasoning_bias_enabled=metadata.get("project_reasoning_bias_enabled"),
             )
         )
+        if isinstance(response, JSONResponse):
+            raise RuntimeError(f"intelligent chat failed with HTTP {response.status_code}")
         runtime.emit_job_progress(target_job.job_id, stage="finalize", message="正在保存 AI 审稿报告", progress=90)
         return {
             "status": "completed",
@@ -597,7 +705,10 @@ def _build_ai_review_executor(job):
 def _describe_current_chat_model() -> str:
     """Return the configured chat provider/model without exposing secrets."""
     try:
-        from routers.intelligent_chat_router import _load_default_llm_config
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.intelligent_chat_router import _load_default_llm_config
+        else:
+            from routers.intelligent_chat_router import _load_default_llm_config
 
         llm = _load_default_llm_config()
         provider = str(getattr(llm, "provider", "") or "").strip()
@@ -616,7 +727,10 @@ def _describe_current_chat_model() -> str:
 @router.post("/session", response_model=SessionPayload)
 async def create_session(request: CreateSessionRequest) -> SessionPayload:
     """Create a new writing session."""
-    from writing_runtime import SessionMode
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_runtime import SessionMode
+    else:
+        from writing_runtime import SessionMode
     runtime = get_runtime()
     try:
         mode = SessionMode(request.mode)
@@ -647,7 +761,10 @@ async def list_sessions(
     runtime = get_runtime()
     resolved_workspace_key = workspace_key
     if resolved_workspace_key is None and workspace_root is not None:
-        from writing_runtime import _stable_workspace_key
+        if TYPE_CHECKING:
+            from literature_assistant.core.writing_runtime import _stable_workspace_key
+        else:
+            from writing_runtime import _stable_workspace_key
         from pathlib import Path
 
         resolved_workspace_key = _stable_workspace_key(Path(workspace_root).expanduser().resolve())
@@ -756,7 +873,10 @@ async def fork_session(session_id: str, request: ForkSessionRequest) -> ResumeSe
 @router.post("/job", response_model=JobPayload)
 async def create_job(request: CreateJobRequest) -> JobPayload:
     """Create a new job in a session."""
-    from writing_runtime import JobKind
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_runtime import JobKind
+    else:
+        from writing_runtime import JobKind
     runtime = get_runtime()
     try:
         kind = JobKind(request.kind)
@@ -801,7 +921,10 @@ async def list_jobs(
     Raises:
         HTTPException: If ``status`` is not a known runtime job status.
     """
-    from writing_runtime import JobStatus
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_runtime import JobStatus
+    else:
+        from writing_runtime import JobStatus
 
     runtime = get_runtime()
     parsed_status = None

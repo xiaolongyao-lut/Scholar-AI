@@ -13,7 +13,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-TOOL_OUTCOME_SCHEMA_VERSION = "scholar-ai-tool-outcome/v1"
+TOOL_OUTCOME_SCHEMA_VERSION: Literal["scholar-ai-tool-outcome/v1"] = (
+    "scholar-ai-tool-outcome/v1"
+)
 
 OutcomeStatus = Literal[
     "success",

@@ -8,7 +8,9 @@ import time.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 import base64
+from collections.abc import Callable, Iterable, Iterator
 import importlib
 import importlib.util
 import json
@@ -16,18 +18,36 @@ import math
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Literal, Mapping, Protocol, TypeVar, cast
 from urllib.parse import urljoin, urlparse
 
+import httpcore
 import httpx
 
 from .ocr_engine import OcrEngineHealth, OcrImageRegion, OcrImageResult, OcrReadinessStatus
+
+if TYPE_CHECKING or __package__ == "literature_assistant.core.pdf_backends":
+    from literature_assistant.core.ip_guard import (
+        classify_resolved_ips,
+        classify_unsafe_ip,
+        parse_ip,
+        resolve_host_to_ips,
+    )
+else:
+    from ip_guard import (
+        classify_resolved_ips,
+        classify_unsafe_ip,
+        parse_ip,
+        resolve_host_to_ips,
+    )
 
 
 _LANGUAGE_TAG_RE = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*$")
@@ -40,6 +60,11 @@ _PADDLE_JOBS_DEFAULT_POLL_TIMEOUT_SECONDS = 600.0
 _PADDLE_JOBS_STATES = {"pending", "running", "done", "failed"}
 _PADDLE_JOBS_QUOTA_CODES = frozenset({12001})
 _PADDLE_ERROR_DETAIL_MAX_CHARS = 300
+_PADDLE_RESULT_MAX_BYTES = 32 * 1024 * 1024
+_PADDLE_RESULT_MAX_BACKGROUND_WORKERS = 4
+_PADDLE_RESULT_WORKER_SLOTS = threading.BoundedSemaphore(
+    _PADDLE_RESULT_MAX_BACKGROUND_WORKERS
+)
 _PADDLE_AUTHORIZATION_DETAIL_RE = re.compile(
     r"(?i)(\bauthorization\b\s*(?:[:=]\s*|\s+))(?:bearer\s+)?[^\s,;]+"
 )
@@ -267,16 +292,24 @@ if __name__ == "__main__":
 """.strip()
 
 
-class _BaseOptionalOcrEngine:
+class _BaseOptionalOcrEngine(ABC):
     """Shared guards for optional OCR engines."""
 
-    name = "unknown"
-    display_name = "Unknown OCR"
-    engine_type = "local"
-    requires_network = False
+    name: str = "unknown"
+    display_name: str = "Unknown OCR"
+    engine_type: Literal["local", "remote"] = "local"
+    requires_network: bool = False
 
     def __init__(self, config: Mapping[str, Any] | None = None) -> None:
         self.config = dict(config or {})
+
+    @abstractmethod
+    def is_available(self) -> bool:
+        """Return whether this optional engine can execute locally."""
+
+    @abstractmethod
+    def ocr_image(self, image: bytes | Path, *, language: str = "en") -> str:
+        """Extract text from one rendered page image."""
 
     def _health_from_availability(self) -> OcrEngineHealth:
         started = time.perf_counter()
@@ -623,7 +656,7 @@ class PaddleOcrGpuEngine(_BaseOptionalOcrEngine):
 
     name = "paddleocr_gpu"
     display_name = "PaddleOCR GPU"
-    engine_type = "local"
+    engine_type: Literal["local", "remote"] = "local"
     requires_network = False
 
     def _external_python_executable(self) -> Path | None:
@@ -877,7 +910,7 @@ class RapidOcrEngine(_BaseOptionalOcrEngine):
 
     name = "rapidocr"
     display_name = "RapidOCR"
-    engine_type = "local"
+    engine_type: Literal["local", "remote"] = "local"
     requires_network = False
 
     def _external_python_executable(self) -> Path | None:
@@ -1060,7 +1093,7 @@ class WindowsOcrEngine(_BaseOptionalOcrEngine):
 
     name = "windows"
     display_name = "Windows OCR"
-    engine_type = "local"
+    engine_type: Literal["local", "remote"] = "local"
     requires_network = False
 
     def _powershell_executable(self) -> str | None:
@@ -1171,12 +1204,399 @@ class WindowsOcrEngine(_BaseOptionalOcrEngine):
                     pass
 
 
+_SocketOption = (
+    tuple[int, int, int]
+    | tuple[int, int, bytes | bytearray]
+    | tuple[int, int, None, int]
+)
+
+_T = TypeVar("_T")
+
+
+class _PaddleResultDeadlineExceeded(TimeoutError):
+    """Signal a caller-visible Paddle result wall-clock timeout."""
+
+
+def _run_with_wall_clock_deadline(
+    operation: Callable[[], _T],
+    *,
+    deadline: float,
+) -> _T:
+    """Run blocking result I/O without letting it hold the caller past deadline."""
+
+    remaining = deadline - time.monotonic()
+    if remaining <= 0 or not _PADDLE_RESULT_WORKER_SLOTS.acquire(timeout=remaining):
+        raise _PaddleResultDeadlineExceeded
+
+    completed = threading.Event()
+    values: list[_T] = []
+    failures: list[BaseException] = []
+
+    def _worker() -> None:
+        try:
+            values.append(operation())
+        except BaseException as exc:  # preserve the worker's original exception
+            failures.append(exc)
+        finally:
+            _PADDLE_RESULT_WORKER_SLOTS.release()
+            completed.set()
+
+    worker = threading.Thread(
+        target=_worker,
+        name="scholar-ai-paddle-result-download",
+        daemon=True,
+    )
+    try:
+        worker.start()
+    except BaseException:
+        _PADDLE_RESULT_WORKER_SLOTS.release()
+        raise
+
+    remaining = deadline - time.monotonic()
+    if remaining <= 0 or not completed.wait(timeout=remaining):
+        raise _PaddleResultDeadlineExceeded
+    if failures:
+        raise failures[0]
+    if not values:
+        raise RuntimeError("PaddleOCR result worker completed without a result")
+    return values[0]
+
+
+def _remaining_network_timeout(
+    *,
+    deadline: float | None,
+    timeout: float | None,
+    timeout_error: type[httpcore.TimeoutException],
+) -> float | None:
+    """Clamp one network phase to the remaining absolute deadline."""
+
+    if deadline is None:
+        return timeout
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise timeout_error("PaddleOCR result download deadline expired")
+    return remaining if timeout is None else min(timeout, remaining)
+
+
+class _DeadlineNetworkStream(httpcore.NetworkStream):
+    """Clamp every socket and TLS operation to one absolute deadline."""
+
+    def __init__(
+        self,
+        stream: httpcore.NetworkStream,
+        *,
+        deadline: float | None,
+    ) -> None:
+        self._stream = stream
+        self._deadline = deadline
+
+    def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+        bounded_timeout = _remaining_network_timeout(
+            deadline=self._deadline,
+            timeout=timeout,
+            timeout_error=httpcore.ReadTimeout,
+        )
+        data = self._stream.read(max_bytes, timeout=bounded_timeout)
+        _remaining_network_timeout(
+            deadline=self._deadline,
+            timeout=None,
+            timeout_error=httpcore.ReadTimeout,
+        )
+        return data
+
+    def write(self, buffer: bytes, timeout: float | None = None) -> None:
+        bounded_timeout = _remaining_network_timeout(
+            deadline=self._deadline,
+            timeout=timeout,
+            timeout_error=httpcore.WriteTimeout,
+        )
+        self._stream.write(buffer, timeout=bounded_timeout)
+        _remaining_network_timeout(
+            deadline=self._deadline,
+            timeout=None,
+            timeout_error=httpcore.WriteTimeout,
+        )
+
+    def close(self) -> None:
+        self._stream.close()
+
+    def start_tls(
+        self,
+        ssl_context: ssl.SSLContext,
+        server_hostname: str | None = None,
+        timeout: float | None = None,
+    ) -> "_DeadlineNetworkStream":
+        bounded_timeout = _remaining_network_timeout(
+            deadline=self._deadline,
+            timeout=timeout,
+            timeout_error=httpcore.ConnectTimeout,
+        )
+        stream = self._stream.start_tls(
+            ssl_context,
+            server_hostname=server_hostname,
+            timeout=bounded_timeout,
+        )
+        _remaining_network_timeout(
+            deadline=self._deadline,
+            timeout=None,
+            timeout_error=httpcore.ConnectTimeout,
+        )
+        return _DeadlineNetworkStream(stream, deadline=self._deadline)
+
+    def get_extra_info(self, info: str) -> Any:
+        return self._stream.get_extra_info(info)
+
+
+class _PinnedPublicNetworkBackend(httpcore.NetworkBackend):
+    """Resolve at connect time and pass only validated IPs to the socket."""
+
+    def __init__(
+        self,
+        network_backend: httpcore.NetworkBackend | None = None,
+        *,
+        deadline: float | None = None,
+    ) -> None:
+        self._network_backend = network_backend or httpcore.SyncBackend()
+        self._deadline = deadline
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[_SocketOption] | None = None,
+    ) -> httpcore.NetworkStream:
+        _remaining_network_timeout(
+            deadline=self._deadline,
+            timeout=timeout,
+            timeout_error=httpcore.ConnectTimeout,
+        )
+        resolved_ips = self._resolve_public_ips(host, port)
+        last_error: httpcore.ConnectError | httpcore.ConnectTimeout | None = None
+        for resolved_ip in resolved_ips:
+            try:
+                attempt_timeout = _remaining_network_timeout(
+                    deadline=self._deadline,
+                    timeout=timeout,
+                    timeout_error=httpcore.ConnectTimeout,
+                )
+                stream = self._network_backend.connect_tcp(
+                    resolved_ip,
+                    port,
+                    timeout=attempt_timeout,
+                    local_address=local_address,
+                    socket_options=socket_options,
+                )
+                try:
+                    _remaining_network_timeout(
+                        deadline=self._deadline,
+                        timeout=None,
+                        timeout_error=httpcore.ConnectTimeout,
+                    )
+                except httpcore.ConnectTimeout:
+                    stream.close()
+                    raise
+                return _DeadlineNetworkStream(stream, deadline=self._deadline)
+            except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
+        raise httpcore.ConnectError(
+            f"PaddleOCR result host {host!r} resolved to no public addresses"
+        )
+
+    def connect_unix_socket(
+        self,
+        path: str,
+        timeout: float | None = None,
+        socket_options: Iterable[_SocketOption] | None = None,
+    ) -> httpcore.NetworkStream:
+        del path, timeout, socket_options
+        raise httpcore.ConnectError(
+            "PaddleOCR result transport does not support Unix sockets"
+        )
+
+    def sleep(self, seconds: float) -> None:
+        self._network_backend.sleep(seconds)
+
+    def _resolve_public_ips(self, host: str, port: int) -> tuple[str, ...]:
+        literal = parse_ip(host)
+        if literal is not None:
+            unsafe, reason = classify_unsafe_ip(literal)
+            if unsafe:
+                raise httpcore.ConnectError(
+                    "PaddleOCR result URL has an unsafe network target "
+                    f"({reason})"
+                )
+            _remaining_network_timeout(
+                deadline=self._deadline,
+                timeout=None,
+                timeout_error=httpcore.ConnectTimeout,
+            )
+            return (str(literal),)
+
+        try:
+            resolved_ips = resolve_host_to_ips(host, port)
+        except OSError as exc:
+            raise httpcore.ConnectError(
+                f"PaddleOCR result URL host {host!r} could not be resolved"
+            ) from exc
+        if not resolved_ips:
+            raise httpcore.ConnectError(
+                f"PaddleOCR result URL host {host!r} resolved to no addresses"
+            )
+
+        for ip_string, unsafe, reason in classify_resolved_ips(resolved_ips):
+            if unsafe:
+                raise httpcore.ConnectError(
+                    "PaddleOCR result URL has an unsafe network target: "
+                    f"host {host!r} resolves to {ip_string} ({reason})"
+                )
+        _remaining_network_timeout(
+            deadline=self._deadline,
+            timeout=None,
+            timeout_error=httpcore.ConnectTimeout,
+        )
+        return tuple(resolved_ips)
+
+
+class _ClosableByteStream(Protocol):
+    def __iter__(self) -> Iterator[bytes]: ...
+
+    def close(self) -> None: ...
+
+
+def _mapped_httpx_error(
+    exc: Exception,
+    *,
+    request: httpx.Request | None,
+) -> httpx.HTTPError | None:
+    message = str(exc)
+    if isinstance(exc, httpcore.PoolTimeout):
+        return httpx.PoolTimeout(message, request=request)
+    if isinstance(exc, httpcore.ConnectTimeout):
+        return httpx.ConnectTimeout(message, request=request)
+    if isinstance(exc, httpcore.ReadTimeout):
+        return httpx.ReadTimeout(message, request=request)
+    if isinstance(exc, httpcore.WriteTimeout):
+        return httpx.WriteTimeout(message, request=request)
+    if isinstance(exc, httpcore.TimeoutException):
+        return httpx.TimeoutException(message, request=request)
+    if isinstance(exc, httpcore.ConnectError):
+        return httpx.ConnectError(message, request=request)
+    if isinstance(exc, httpcore.ReadError):
+        return httpx.ReadError(message, request=request)
+    if isinstance(exc, httpcore.WriteError):
+        return httpx.WriteError(message, request=request)
+    if isinstance(exc, httpcore.NetworkError):
+        return httpx.NetworkError(message, request=request)
+    if isinstance(exc, httpcore.ProxyError):
+        return httpx.ProxyError(message, request=request)
+    if isinstance(exc, httpcore.UnsupportedProtocol):
+        return httpx.UnsupportedProtocol(message, request=request)
+    if isinstance(exc, httpcore.RemoteProtocolError):
+        return httpx.RemoteProtocolError(message, request=request)
+    if isinstance(exc, httpcore.LocalProtocolError):
+        return httpx.LocalProtocolError(message, request=request)
+    if isinstance(exc, httpcore.ProtocolError):
+        return httpx.ProtocolError(message, request=request)
+    return None
+
+
+class _PinnedHTTPResponseStream(httpx.SyncByteStream):
+    def __init__(
+        self,
+        stream: Iterable[bytes],
+        *,
+        request: httpx.Request,
+    ) -> None:
+        self._stream = cast(_ClosableByteStream, stream)
+        self._request = request
+
+    def __iter__(self) -> Iterator[bytes]:
+        try:
+            yield from self._stream
+        except Exception as exc:
+            mapped = _mapped_httpx_error(exc, request=self._request)
+            if mapped is not None:
+                raise mapped from exc
+            raise
+
+    def close(self) -> None:
+        self._stream.close()
+
+
+class _PinnedPublicHTTPTransport(httpx.BaseTransport):
+    """HTTPX transport whose TCP backend cannot re-resolve the URL host."""
+
+    def __init__(
+        self,
+        *,
+        network_backend: httpcore.NetworkBackend | None = None,
+        deadline: float | None = None,
+    ) -> None:
+        ssl_context = httpx.create_ssl_context(verify=True, trust_env=False)
+        self._pool = httpcore.ConnectionPool(
+            ssl_context=ssl_context,
+            max_connections=1,
+            max_keepalive_connections=0,
+            http1=True,
+            http2=False,
+            network_backend=_PinnedPublicNetworkBackend(
+                network_backend,
+                deadline=deadline,
+            ),
+        )
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        if not isinstance(request.stream, httpx.SyncByteStream):
+            raise TypeError("PaddleOCR result request stream must be synchronous")
+        core_request = httpcore.Request(
+            method=request.method,
+            url=httpcore.URL(
+                scheme=request.url.raw_scheme,
+                host=request.url.raw_host,
+                port=request.url.port,
+                target=request.url.raw_path,
+            ),
+            headers=request.headers.raw,
+            content=request.stream,
+            extensions=request.extensions,
+        )
+        try:
+            response = self._pool.handle_request(core_request)
+        except Exception as exc:
+            mapped = _mapped_httpx_error(exc, request=request)
+            if mapped is not None:
+                raise mapped from exc
+            raise
+        return httpx.Response(
+            status_code=response.status,
+            headers=response.headers,
+            stream=_PinnedHTTPResponseStream(
+                cast(Iterable[bytes], response.stream),
+                request=request,
+            ),
+            extensions=response.extensions,
+        )
+
+    def close(self) -> None:
+        try:
+            self._pool.close()
+        except Exception as exc:
+            mapped = _mapped_httpx_error(exc, request=None)
+            if mapped is not None:
+                raise mapped from exc
+            raise
+
+
 class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
     """Remote OCR adapter requiring credentials and explicit upload consent."""
 
     name = "remote_api"
     display_name = "Remote API OCR"
-    engine_type = "remote"
+    engine_type: Literal["local", "remote"] = "remote"
     requires_network = True
 
     def is_available(self) -> bool:
@@ -1596,20 +2016,106 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
                 job_id=job_id.strip(),
                 headers=headers,
             )
-            result_response = self._paddle_request(
-                lambda: client.get(result_url, follow_redirects=True),
-                operation="result download",
-            )
-            if not 200 <= result_response.status_code < 300:
-                detail = self._safe_paddle_detail(result_response.text)
-                raise RuntimeError(
-                    "PaddleOCR result download failed "
-                    f"(HTTP {result_response.status_code}): {detail}"
-                )
+            result_text = self._download_paddle_result(result_url)
             return self._paddle_jsonl_result(
-                result_response.text,
+                result_text,
                 image_size=image_size,
             )
+
+    def _download_paddle_result(
+        self,
+        result_url: str,
+    ) -> str:
+        """Download one validated, bounded PaddleOCR JSONL result."""
+
+        timeout_seconds = self._timeout_seconds()
+        deadline = time.monotonic() + timeout_seconds
+        try:
+            return _run_with_wall_clock_deadline(
+                lambda: self._download_paddle_result_with_deadline(
+                    result_url,
+                    timeout_seconds=timeout_seconds,
+                    deadline=deadline,
+                ),
+                deadline=deadline,
+            )
+        except (_PaddleResultDeadlineExceeded, httpx.TimeoutException) as exc:
+            raise RuntimeError("PaddleOCR result download timed out") from exc
+        except httpx.RequestError as exc:
+            detail = self._safe_paddle_detail(str(exc), fallback="request failed")
+            raise RuntimeError(
+                f"PaddleOCR result download network error: {detail}"
+            ) from exc
+
+    def _download_paddle_result_with_deadline(
+        self,
+        result_url: str,
+        *,
+        timeout_seconds: float,
+        deadline: float,
+    ) -> str:
+        """Perform one result fetch while every phase shares the same deadline."""
+
+        validated_url = self._validated_paddle_result_url(result_url)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _PaddleResultDeadlineExceeded
+        with httpx.Client(
+            timeout=min(timeout_seconds, remaining),
+            follow_redirects=False,
+            transport=_PinnedPublicHTTPTransport(deadline=deadline),
+            trust_env=False,
+        ) as client:
+            with client.stream(
+                "GET",
+                validated_url,
+                headers={"Accept-Encoding": "identity"},
+                follow_redirects=False,
+            ) as response:
+                if not isinstance(response, httpx.Response):
+                    raise RuntimeError(
+                        "PaddleOCR result download returned an invalid HTTP response"
+                    )
+                result_text = self._bounded_paddle_result_text(
+                    response,
+                    deadline=deadline,
+                )
+
+        if not 200 <= response.status_code < 300:
+            detail = self._safe_paddle_detail(result_text)
+            raise RuntimeError(
+                "PaddleOCR result download failed "
+                f"(HTTP {response.status_code}): {detail}"
+            )
+        return result_text
+
+    def _bounded_paddle_result_text(
+        self,
+        response: httpx.Response,
+        *,
+        deadline: float | None = None,
+    ) -> str:
+        content_encoding = response.headers.get("Content-Encoding", "").strip().lower()
+        if content_encoding and content_encoding != "identity":
+            raise RuntimeError(
+                "PaddleOCR result download requires identity content encoding"
+            )
+
+        payload = bytearray()
+        for chunk in response.iter_raw():
+            if deadline is not None and time.monotonic() >= deadline:
+                raise RuntimeError("PaddleOCR result download timed out")
+            if not chunk:
+                continue
+            if len(payload) + len(chunk) > _PADDLE_RESULT_MAX_BYTES:
+                raise RuntimeError(
+                    "PaddleOCR result download exceeds the "
+                    f"{_PADDLE_RESULT_MAX_BYTES}-byte limit"
+                )
+            payload.extend(chunk)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise RuntimeError("PaddleOCR result download timed out")
+        return bytes(payload).decode("utf-8", errors="replace")
 
     def _poll_paddle_job(
         self,
@@ -1619,7 +2125,7 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
         job_id: str,
         headers: Mapping[str, str],
     ) -> str:
-        """Poll one PaddleOCR job until a validated result URL is available."""
+        """Poll one PaddleOCR job until its raw result URL is available."""
 
         deadline = time.monotonic() + self._poll_timeout_seconds()
         request_timeout = self._timeout_seconds()
@@ -1665,7 +2171,7 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
                     raise RuntimeError(
                         "PaddleOCR completed job response is missing resultUrl.jsonUrl"
                     )
-                return self._validated_paddle_result_url(json_url.strip())
+                return json_url.strip()
 
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -1678,10 +2184,45 @@ class RemoteApiOcrEngine(_BaseOptionalOcrEngine):
 
     def _validated_paddle_result_url(self, result_url: str) -> str:
         parsed = urlparse(result_url)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        host = (parsed.hostname or "").strip()
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc or not host:
             raise RuntimeError("PaddleOCR result URL must be a valid http(s) URL")
-        if parsed.scheme == "http" and not self._allow_insecure_http(parsed.hostname or ""):
+        if parsed.scheme == "http":
             raise RuntimeError("PaddleOCR result URL must use https")
+
+        try:
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        except ValueError as exc:
+            raise RuntimeError(
+                "PaddleOCR result URL must be a valid http(s) URL"
+            ) from exc
+
+        literal = parse_ip(host)
+        if literal is not None:
+            unsafe, reason = classify_unsafe_ip(literal)
+            if unsafe:
+                raise RuntimeError(
+                    "PaddleOCR result URL has an unsafe network target "
+                    f"({reason})"
+                )
+        else:
+            try:
+                resolved_ips = resolve_host_to_ips(host, port)
+            except OSError as exc:
+                raise RuntimeError(
+                    f"PaddleOCR result URL host {host!r} could not be resolved"
+                ) from exc
+            if not resolved_ips:
+                raise RuntimeError(
+                    f"PaddleOCR result URL host {host!r} resolved to no addresses"
+                )
+            for ip_string, unsafe, reason in classify_resolved_ips(resolved_ips):
+                if unsafe:
+                    raise RuntimeError(
+                        "PaddleOCR result URL has an unsafe network target: "
+                        f"host {host!r} resolves to {ip_string} ({reason})"
+                    )
+
         return result_url
 
     def _paddle_request(

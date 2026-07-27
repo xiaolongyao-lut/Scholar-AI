@@ -6,12 +6,32 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from chunk_chroma_index import ChunkChromaSearchResult, query_chunk_chroma_index
-from chunk_fts_index import ChunkFtsHit, ChunkFtsSearchResult, search_chunk_fts_index
-from chunk_hashing import CHUNK_HASH_VERSION, SUPPORTED_CHUNK_HASH_VERSIONS, compute_chunk_hashes
-from chunk_index_consistency_gate import IndexedChunkRecord, build_chunk_truth_records
+if TYPE_CHECKING:
+    from literature_assistant.core.chunk_chroma_index import (
+        ChunkChromaSearchResult,
+        query_chunk_chroma_index,
+    )
+    from literature_assistant.core.chunk_fts_index import (
+        ChunkFtsHit,
+        ChunkFtsSearchResult,
+        search_chunk_fts_index,
+    )
+    from literature_assistant.core.chunk_hashing import (
+        CHUNK_HASH_VERSION,
+        SUPPORTED_CHUNK_HASH_VERSIONS,
+        compute_chunk_hashes,
+    )
+    from literature_assistant.core.chunk_index_consistency_gate import (
+        IndexedChunkRecord,
+        build_chunk_truth_records,
+    )
+else:
+    from chunk_chroma_index import ChunkChromaSearchResult, query_chunk_chroma_index
+    from chunk_fts_index import ChunkFtsHit, ChunkFtsSearchResult, search_chunk_fts_index
+    from chunk_hashing import CHUNK_HASH_VERSION, SUPPORTED_CHUNK_HASH_VERSIONS, compute_chunk_hashes
+    from chunk_index_consistency_gate import IndexedChunkRecord, build_chunk_truth_records
 
 
 RetrievalCandidateSource = Literal["dense", "lexical", "visual"]
@@ -202,8 +222,10 @@ def _coerce_limit(value: int, *, name: str) -> int:
 def _coerce_page(value: object) -> int | None:
     if isinstance(value, bool):
         return None
+    if not isinstance(value, (int, float, str, bytes, bytearray)):
+        return None
     try:
-        page = int(value)  # type: ignore[arg-type]
+        page = int(value)
     except (TypeError, ValueError):
         return None
     return page if page > 0 else None
@@ -501,8 +523,7 @@ def retrieve_candidates(
     dense_seen = 0
     lexical_seen = 0
 
-    dense_requested = chroma_persist_dir is not None and query_embedding is not None and expected_contract_hash is not None
-    if dense_requested:
+    if chroma_persist_dir is not None and query_embedding is not None and expected_contract_hash is not None:
         normalized_contract = _require_non_empty_string(expected_contract_hash, name="expected_contract_hash")
         dense_result = query_chunk_chroma_index(
             persist_dir=chroma_persist_dir,
@@ -515,11 +536,11 @@ def retrieve_candidates(
         )
         if dense_result.diagnostics.fallback_reason:
             fallback_reasons.append(dense_result.diagnostics.fallback_reason)
-        for hit in dense_result.hits:
-            if not _matches_material(hit.material_id, normalized_material_id):
+        for dense_hit in dense_result.hits:
+            if not _matches_material(dense_hit.material_id, normalized_material_id):
                 continue
             if not _validate_dense_hit(
-                hit=hit,
+                hit=dense_hit,
                 project_id=normalized_project_id,
                 expected_contract_hash=normalized_contract,
                 hash_version=hash_version,
@@ -527,22 +548,22 @@ def retrieve_candidates(
                 counts=gate_status_counts,
             ):
                 continue
-            chunk = chunk_lookup[hit.key]
+            chunk = chunk_lookup[dense_hit.key]
             page, title, chunk_type, snippet, metadata = _truth_metadata(chunk)
             dense_seen += 1
             _merge_candidate(
                 candidates,
                 source="dense",
                 project_id=normalized_project_id,
-                material_id=hit.material_id,
-                chunk_id=hit.chunk_id,
-                chunk_hash=hit.chunk_hash,
-                embedding_input_hash=hit.embedding_input_hash,
+                material_id=dense_hit.material_id,
+                chunk_id=dense_hit.chunk_id,
+                chunk_hash=dense_hit.chunk_hash,
+                embedding_input_hash=dense_hit.embedding_input_hash,
                 page=page,
                 title=title,
                 chunk_type=chunk_type,
                 snippet=snippet,
-                score=hit.score if hit.score is not None else 0.0,
+                score=dense_hit.score if dense_hit.score is not None else 0.0,
                 metadata=metadata,
             )
     elif chroma_persist_dir is not None or query_embedding is not None:
@@ -558,33 +579,36 @@ def retrieve_candidates(
     if lexical_result.fallback_reason:
         fallback_reasons.append(lexical_result.fallback_reason)
     if lexical_result.status == "valid":
-        for hit in lexical_result.hits:
-            if not _matches_material(hit.material_id, normalized_material_id):
+        for lexical_hit in lexical_result.hits:
+            if not _matches_material(lexical_hit.material_id, normalized_material_id):
                 continue
             if not _validate_lexical_hit(
-                hit=hit,
+                hit=lexical_hit,
                 hash_version=hash_version,
                 chunk_lookup=chunk_lookup,
                 counts=gate_status_counts,
             ):
                 continue
-            chunk = chunk_lookup[(hit.material_id, hit.chunk_id)]
-            page, title, chunk_type, snippet, metadata = _truth_metadata(chunk, snippet=hit.snippet)
-            metadata.update(hit.metadata)
+            chunk = chunk_lookup[(lexical_hit.material_id, lexical_hit.chunk_id)]
+            page, title, chunk_type, snippet, metadata = _truth_metadata(
+                chunk,
+                snippet=lexical_hit.snippet,
+            )
+            metadata.update(lexical_hit.metadata)
             lexical_seen += 1
             _merge_candidate(
                 candidates,
                 source="lexical",
                 project_id=normalized_project_id,
-                material_id=hit.material_id,
-                chunk_id=hit.chunk_id,
-                chunk_hash=hit.chunk_hash,
-                embedding_input_hash=hit.embedding_input_hash,
-                page=page if page is not None else hit.page,
-                title=title or hit.title,
-                chunk_type=chunk_type or hit.chunk_type,
+                material_id=lexical_hit.material_id,
+                chunk_id=lexical_hit.chunk_id,
+                chunk_hash=lexical_hit.chunk_hash,
+                embedding_input_hash=lexical_hit.embedding_input_hash,
+                page=page if page is not None else lexical_hit.page,
+                title=title or lexical_hit.title,
+                chunk_type=chunk_type or lexical_hit.chunk_type,
                 snippet=snippet,
-                score=_lexical_score(hit.score),
+                score=_lexical_score(lexical_hit.score),
                 metadata=metadata,
             )
 

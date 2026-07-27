@@ -36,7 +36,7 @@ import time
 from collections.abc import Awaitable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Iterable, TypedDict, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +84,13 @@ _NESTED_ENV_URL_VALUE_RE = re.compile(r"^(?:[A-Z][A-Z0-9_]*=)+(https?://.+)$")
 _EMPTY_POOLS: dict[Category, list[Credential]] = {"embedding": [], "rerank": [], "generation": []}
 
 
+class _PendingCredential(TypedDict, total=False):
+    key: str
+    key_var_name: str
+    url: str
+    models: list[tuple[str, int, Category | None]]
+
+
 def _dotenv_disabled() -> bool:
     """Return whether default key-pool env catalog loading is disabled."""
 
@@ -111,9 +118,12 @@ def _default_env_catalog_path() -> Path | None:
     if cwd_dotenv.exists() and not cwd_inside_repo and cwd_dotenv != Path(__file__).resolve().with_name(".env"):
         return cwd_dotenv
     try:
-        from runtime_env import _runtime_env_path
+        if TYPE_CHECKING or __package__ == "literature_assistant.core":
+            from literature_assistant.core.runtime_env import _runtime_env_path
+        else:
+            from runtime_env import _runtime_env_path
 
-        return _runtime_env_path()
+        return Path(_runtime_env_path())
     except Exception:
         return Path("workspace_artifacts/runtime_state/local_env/literature_assistant.env")
 
@@ -270,7 +280,7 @@ def parse_env_pools(path: str | Path | None = None) -> dict[Category, list[Crede
 
     active_category: Category | None = None
     active_provider: str = "unknown"
-    pending: dict[str, object] = {}  # {key, url, models: list[(model, line_no, forced_cat)]}
+    pending: _PendingCredential = {}
 
     def emit_pending(reset_key: bool) -> None:
         """Emit credentials from pending; optionally clear the key as well.
@@ -284,7 +294,7 @@ def parse_env_pools(path: str | Path | None = None) -> dict[Category, list[Crede
             return
         key = pending.get("key")
         url = pending.get("url")
-        models: list[tuple[str, int, Category | None]] = pending.get("models", [])  # type: ignore[assignment]
+        models = pending.get("models", [])
         if key and url and models:
             url_cat = _normalise_category(str(url))
             for model_name, line_no, forced in models:
@@ -309,10 +319,10 @@ def parse_env_pools(path: str | Path | None = None) -> dict[Category, list[Crede
         else:
             # Keep key + key_var_name across URL changes (single key reused
             # for multiple URLs in the legacy layout).
-            pending = {
-                "key": pending.get("key"),
-                "key_var_name": pending.get("key_var_name", ""),
-            }
+            retained_key = pending.get("key")
+            pending = {"key_var_name": pending.get("key_var_name", "")}
+            if retained_key:
+                pending["key"] = retained_key
 
     # GPT review rule 3(a) — DISABLED_ARCHIVE block skip.
     # A header like ``## [STATUS:DISABLED_ARCHIVE_2026-04-30] ...`` puts the
@@ -390,13 +400,16 @@ def parse_env_pools(path: str | Path | None = None) -> dict[Category, list[Crede
             # but keep the key (legacy section reuses one key for emb+rerank).
             if pending.get("url") and pending.get("models"):
                 emit_pending(reset_key=False)
+            normalized_url = _normalize_url_value(value)
+            if not normalized_url:
+                continue
             if forced:
                 active_category = forced
             else:
-                active_category = _normalise_category(_normalize_url_value(value))
-            pending["url"] = _normalize_url_value(value)
+                active_category = _normalise_category(normalized_url)
+            pending["url"] = normalized_url
         elif var_kind == "model":
-            pending.setdefault("models", []).append((value, idx, forced))  # type: ignore[union-attr]
+            pending.setdefault("models", []).append((value, idx, forced))
 
     emit_pending(reset_key=True)
     # GPT rule 3(b) — stable sort: provider-specific keys before generic.

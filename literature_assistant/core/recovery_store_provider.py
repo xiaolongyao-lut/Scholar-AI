@@ -16,10 +16,21 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from canonical_event_store import CanonicalEventStore, HarnessStore, create_integrated_store
-from memory_fact_store import MemoryFactStore, create_default_fact_store
+if TYPE_CHECKING:
+    from literature_assistant.core.canonical_event_store import (
+        CanonicalEventStore,
+        HarnessStore,
+        create_integrated_store,
+    )
+    from literature_assistant.core.memory_fact_store import (
+        MemoryFactStore,
+        create_default_fact_store,
+    )
+else:
+    from canonical_event_store import CanonicalEventStore, HarnessStore, create_integrated_store
+    from memory_fact_store import MemoryFactStore, create_default_fact_store
 
 logger = logging.getLogger("RecoveryStoreProvider")
 

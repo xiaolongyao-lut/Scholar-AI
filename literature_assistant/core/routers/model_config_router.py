@@ -26,46 +26,85 @@ import json
 import logging
 import math
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from provider_capabilities import (
-    CAPABILITY_STATUS_AUTH_REQUIRED,
-    CAPABILITY_STATUS_PROBE_FAILED,
-    CAPABILITY_STATUS_TOOL_CALL_OK,
-    provider_capability_store,
-)
-from model_config_store import (
-    CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT,
-    CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MAX,
-    CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MIN,
-    CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
-    CHAT_CONTEXT_COMPRESSION_TARGET_MAX,
-    CHAT_CONTEXT_COMPRESSION_TARGET_MIN,
-    CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
-    CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX,
-    CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN,
-    CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT,
-    CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MAX,
-    CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN,
-    CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
-    CHAT_MODEL_CONTEXT_WINDOW_MAX,
-    CHAT_MODEL_CONTEXT_WINDOW_MIN,
-    CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT,
-    CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MAX,
-    CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MIN,
-    chat_context_compression_store,
-    chat_store,
-    discussion_defaults_store,
-    embedding_store,
-    ModelConfigStore,
-    normalize_chat_context_compression_settings,
-)
-from models.discussion import DISCUSSION_MAX_TURNS_LIMIT
-from provider_payload_compat import apply_openai_chat_payload_compat, provider_http_timeout_s
+if TYPE_CHECKING:
+    from literature_assistant.core.model_config_store import (
+        CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT,
+        CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MAX,
+        CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MIN,
+        CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
+        CHAT_CONTEXT_COMPRESSION_TARGET_MAX,
+        CHAT_CONTEXT_COMPRESSION_TARGET_MIN,
+        CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
+        CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX,
+        CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN,
+        CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT,
+        CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MAX,
+        CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN,
+        CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
+        CHAT_MODEL_CONTEXT_WINDOW_MAX,
+        CHAT_MODEL_CONTEXT_WINDOW_MIN,
+        CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT,
+        CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MAX,
+        CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MIN,
+        ModelConfigStore,
+        chat_context_compression_store,
+        chat_store,
+        discussion_defaults_store,
+        embedding_store,
+        normalize_chat_context_compression_settings,
+    )
+    from literature_assistant.core.models.discussion import DISCUSSION_MAX_TURNS_LIMIT
+    from literature_assistant.core.provider_capabilities import (
+        CAPABILITY_STATUS_AUTH_REQUIRED,
+        CAPABILITY_STATUS_PROBE_FAILED,
+        CAPABILITY_STATUS_TOOL_CALL_OK,
+        provider_capability_store,
+    )
+    from literature_assistant.core.provider_payload_compat import (
+        apply_openai_chat_payload_compat,
+        provider_http_timeout_s,
+    )
+else:
+    from model_config_store import (
+        CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT,
+        CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MAX,
+        CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_MIN,
+        CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
+        CHAT_CONTEXT_COMPRESSION_TARGET_MAX,
+        CHAT_CONTEXT_COMPRESSION_TARGET_MIN,
+        CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
+        CHAT_CONTEXT_COMPRESSION_TRIGGER_MAX,
+        CHAT_CONTEXT_COMPRESSION_TRIGGER_MIN,
+        CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_DEFAULT,
+        CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MAX,
+        CHAT_MODEL_AUTO_COMPACT_TOKEN_LIMIT_MIN,
+        CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
+        CHAT_MODEL_CONTEXT_WINDOW_MAX,
+        CHAT_MODEL_CONTEXT_WINDOW_MIN,
+        CHAT_TOOL_OUTPUT_TOKEN_LIMIT_DEFAULT,
+        CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MAX,
+        CHAT_TOOL_OUTPUT_TOKEN_LIMIT_MIN,
+        ModelConfigStore,
+        chat_context_compression_store,
+        chat_store,
+        discussion_defaults_store,
+        embedding_store,
+        normalize_chat_context_compression_settings,
+    )
+    from models.discussion import DISCUSSION_MAX_TURNS_LIMIT
+    from provider_capabilities import (
+        CAPABILITY_STATUS_AUTH_REQUIRED,
+        CAPABILITY_STATUS_PROBE_FAILED,
+        CAPABILITY_STATUS_TOOL_CALL_OK,
+        provider_capability_store,
+    )
+    from provider_payload_compat import apply_openai_chat_payload_compat, provider_http_timeout_s
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +278,10 @@ def _build_chat_probe_body(
 
 def _embedding_vectors_from_payload(payload: Any) -> list[list[float]]:
     try:
-        from runtime_env import extract_embedding_vectors
+        if TYPE_CHECKING:
+            from literature_assistant.core.runtime_env import extract_embedding_vectors
+        else:
+            from runtime_env import extract_embedding_vectors
     except (ImportError, AttributeError):
         return []
     raw_vectors = extract_embedding_vectors(payload)
@@ -325,7 +367,10 @@ def _embedding_representation_mode(base_url: str, model: str, vectors: list[list
     if not vectors:
         raise ValueError("vectors must contain at least one dense vector")
     try:
-        from runtime_env import is_dashscope_multimodal_embedding_config
+        if TYPE_CHECKING:
+            from literature_assistant.core.runtime_env import is_dashscope_multimodal_embedding_config
+        else:
+            from runtime_env import is_dashscope_multimodal_embedding_config
 
         if is_dashscope_multimodal_embedding_config(base_url, model):
             return "multimodal-dense"
@@ -490,10 +535,16 @@ async def discover_models_from_endpoint(base_url: str, api_key: str) -> Discover
         return DiscoverResult(ok=False, error="Base URL is empty")
 
     try:
-        from routers.chat_router import (
-            _build_models_discovery_endpoint,
-            _validate_outbound_llm_base_url,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.chat_router import (
+                _build_models_discovery_endpoint,
+                _validate_outbound_llm_base_url,
+            )
+        else:
+            from routers.chat_router import (
+                _build_models_discovery_endpoint,
+                _validate_outbound_llm_base_url,
+            )
 
         # B15 (2026-06-13): user is exploring a new provider — let probes hit
         # any HTTPS host without requiring a pre-baked .env allowlist entry.
@@ -539,15 +590,19 @@ def _credential_category_for_store(store: ModelConfigStore) -> str:
         return "generation"
     if store.subsystem == "embedding":
         return "embedding"
-    return store.subsystem
+    return str(store.subsystem)
 
 
 def _apply_credential_to_store(
     store: ModelConfigStore,
     credential_id: str,
 ) -> ConfigPayload:
-    from credential_store import CredentialNotFoundError
-    from routers.credentials_router import get_credential_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.credential_store import CredentialNotFoundError
+        from literature_assistant.core.routers.credentials_router import get_credential_store
+    else:
+        from credential_store import CredentialNotFoundError
+        from routers.credentials_router import get_credential_store
 
     credential_store = get_credential_store()
     try:
@@ -788,11 +843,18 @@ async def test_chat_endpoint(payload: ConfigUpdate) -> ProbeResult:
 
     # Reuse the real chat endpoint URL builder
     try:
-        from routers.chat_router import (
-            _build_chat_endpoint,
-            _resolve_api_key,
-            _validate_outbound_llm_base_url,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.chat_router import (
+                _build_chat_endpoint,
+                _resolve_api_key,
+                _validate_outbound_llm_base_url,
+            )
+        else:
+            from routers.chat_router import (
+                _build_chat_endpoint,
+                _resolve_api_key,
+                _validate_outbound_llm_base_url,
+            )
 
         # B20 (2026-06-13): user-initiated probe — skip strict IP classification
         # so freshly-added third-party gateways don't get rejected before the
@@ -876,11 +938,11 @@ def _capability_status_from_probe_result(probe_result: Any) -> str:
     if bool(getattr(probe_result, "ok", False)) and bool(
         getattr(probe_result, "forced_tool_choice_ok", False)
     ):
-        return CAPABILITY_STATUS_TOOL_CALL_OK
+        return str(CAPABILITY_STATUS_TOOL_CALL_OK)
     status_code = getattr(probe_result, "status_code", None)
     if status_code in {401, 403}:
-        return CAPABILITY_STATUS_AUTH_REQUIRED
-    return CAPABILITY_STATUS_PROBE_FAILED
+        return str(CAPABILITY_STATUS_AUTH_REQUIRED)
+    return str(CAPABILITY_STATUS_PROBE_FAILED)
 
 
 def _has_temporary_chat_probe_override(payload: ConfigUpdate) -> bool:
@@ -968,7 +1030,10 @@ async def test_chat_tool_capability(payload: ConfigUpdate) -> ToolCapabilityProb
         )
 
     try:
-        from provider_probe import probe_openai_tool_calling_capability
+        if TYPE_CHECKING:
+            from literature_assistant.core.provider_probe import probe_openai_tool_calling_capability
+        else:
+            from provider_probe import probe_openai_tool_calling_capability
     except ImportError as exc:
         record = provider_capability_store.upsert_record(
             provider=provider,
@@ -1084,7 +1149,10 @@ async def get_local_embedding_status() -> LocalEmbeddingStatusPayload:
     runs in <1 ms on a warm process.
     """
     try:
-        from local_embedding_adapter import get_status
+        if TYPE_CHECKING:
+            from literature_assistant.core.local_embedding_adapter import get_status
+        else:
+            from local_embedding_adapter import get_status
     except ImportError as exc:  # adapter module missing — degrade gracefully
         logger.warning("local_embedding_adapter unavailable: %s", exc)
         return LocalEmbeddingStatusPayload(
@@ -1115,7 +1183,10 @@ async def test_embedding_endpoint(payload: ConfigUpdate) -> ProbeResult:
         return ProbeResult(ok=False, error="base_url is required")
 
     try:
-        from routers.chat_router import _validate_outbound_llm_base_url
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.chat_router import _validate_outbound_llm_base_url
+        else:
+            from routers.chat_router import _validate_outbound_llm_base_url
 
         # B20: user-initiated embedding probe — see B20 note above.
         _validate_outbound_llm_base_url(base_url, provider or "Local LLM", skip_dns=True)
@@ -1124,7 +1195,13 @@ async def test_embedding_endpoint(payload: ConfigUpdate) -> ProbeResult:
 
     # Use runtime_env helpers if available for URL construction (DashScope compat)
     try:
-        from runtime_env import resolve_embedding_request_url, build_embedding_request_payload
+        if TYPE_CHECKING:
+            from literature_assistant.core.runtime_env import (
+                build_embedding_request_payload,
+                resolve_embedding_request_url,
+            )
+        else:
+            from runtime_env import build_embedding_request_payload, resolve_embedding_request_url
         url = resolve_embedding_request_url(base_url, model)
         body = build_embedding_request_payload(["test"], base_url=base_url, model=model)
     except (ImportError, AttributeError):

@@ -22,11 +22,16 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
-from datetime_utils import utc_now, utc_timestamp
-from memory_fact_store import MemoryFactStore, TemporalFact
-from memory_policy import MemoryPolicyEngine
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now, utc_timestamp
+    from literature_assistant.core.memory_fact_store import MemoryFactStore, TemporalFact
+    from literature_assistant.core.memory_policy import MemoryPolicyEngine
+else:
+    from datetime_utils import utc_now, utc_timestamp
+    from memory_fact_store import MemoryFactStore, TemporalFact
+    from memory_policy import MemoryPolicyEngine
 
 
 class ExecutionStrategy(Enum):
@@ -87,6 +92,26 @@ class ExecutionPlan:
     reasoning: str = ""                     # Human-readable explanation
 
 
+class _MutablePlanData(TypedDict):
+    """Mutable execution-plan shape shared by planning rules."""
+
+    plan_id: str
+    session_id: str
+    job_kind: str
+    created_at: datetime
+    parallelism_strategy: str
+    skill_sequence: list[str]
+    skill_constraints: dict[str, Any]
+    resources_required: dict[str, Any]
+    resource_constraints: dict[str, Any]
+    injected_memory: dict[str, Any]
+    memory_policy_applied: str
+    confidence: float
+    fact_sources: list[str]
+    policy_sources: list[str]
+    reasoning: str
+
+
 class PlanningRule(ABC):
     """Base class for planning decision rules."""
     
@@ -98,7 +123,7 @@ class PlanningRule(ABC):
     def apply(
         self,
         context: PlanningContext,
-        plan_data: dict[str, Any],
+        plan_data: _MutablePlanData,
         fact_store: MemoryFactStore,
     ) -> None:
         """Apply rule logic to modify plan data dict."""
@@ -114,7 +139,7 @@ class SkillAvailabilityRule(PlanningRule):
     def apply(
         self,
         context: PlanningContext,
-        plan_data: dict[str, Any],
+        plan_data: _MutablePlanData,
         fact_store: MemoryFactStore,
     ) -> None:
         """Filter to only enabled skills."""
@@ -150,7 +175,7 @@ class ResourceConstraintRule(PlanningRule):
     def apply(
         self,
         context: PlanningContext,
-        plan_data: dict[str, Any],
+        plan_data: _MutablePlanData,
         fact_store: MemoryFactStore,
     ) -> None:
         """Add resource constraints to plan."""
@@ -181,7 +206,7 @@ class ExecutionStrategyRule(PlanningRule):
     def apply(
         self,
         context: PlanningContext,
-        plan_data: dict[str, Any],
+        plan_data: _MutablePlanData,
         fact_store: MemoryFactStore,
     ) -> None:
         """Select execution strategy based on current load."""
@@ -214,7 +239,7 @@ class SuccessPatternRule(PlanningRule):
     def apply(
         self,
         context: PlanningContext,
-        plan_data: dict[str, Any],
+        plan_data: _MutablePlanData,
         fact_store: MemoryFactStore,
     ) -> None:
         """Adjust confidence based on skill success rates."""
@@ -252,7 +277,7 @@ class MemoryContextRule(PlanningRule):
     def apply(
         self,
         context: PlanningContext,
-        plan_data: dict[str, Any],
+        plan_data: _MutablePlanData,
         fact_store: MemoryFactStore,
     ) -> None:
         """Inject relevant memory context."""
@@ -328,7 +353,7 @@ class MemoryAwarePlanner:
             ExecutionPlan with strategy, skills, and memory
         """
         # Build plan data as mutable dict first
-        plan_data = {
+        plan_data: _MutablePlanData = {
             "plan_id": f"plan_{context.session_id}_{utc_timestamp()}",
             "session_id": context.session_id,
             "job_kind": context.job_kind,

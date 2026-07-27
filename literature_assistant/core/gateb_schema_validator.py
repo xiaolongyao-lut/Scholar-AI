@@ -75,7 +75,7 @@ FORBIDDEN_DERIVED_ONLY = {"binary_threshold"}
 
 class ValidatorState:
     """Accumulate cross-record stats and errors."""
-    def __init__(self):
+    def __init__(self) -> None:
         self.errors: List[str] = []
         self.warnings: List[str] = []
         self.query_ids: set = set()
@@ -85,7 +85,7 @@ class ValidatorState:
         self.relevance_dist: Counter = Counter()
         self.no_gold_count = 0
         self.pool_sizes: List[int] = []
-        self.created_at_range: Tuple[str, str] = (None, None)
+        self.created_at_range: tuple[str | None, str | None] = (None, None)
 
 
 def validate_json_structure(record: Dict[str, Any], idx: int, state: ValidatorState) -> bool:
@@ -543,7 +543,7 @@ def validate_run_provenance_completeness(metrics_payload: Dict[str, Any]) -> Lis
     return errors
 
 
-def report(state: ValidatorState):
+def report(state: ValidatorState) -> int:
     """Print validation report."""
     print("╔═══════════════════════════════════════════════════════════════╗")
     print("║           GATEB LEDGER SCHEMA VALIDATION REPORT              ║")

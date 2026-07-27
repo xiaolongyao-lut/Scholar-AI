@@ -18,21 +18,54 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Optional, Protocol
 
-from datetime_utils import utc_now_iso_z
-from canonical_event_store import CanonicalEventStore, CanonicalEvent
-from memory_fact_store import MemoryFactStore, TemporalFact
-from recovery_recommendation_engine import (
-    RecoveryRecommendation,
-    RecoveryRecommendationEngine,
-    RecommendationRequest,
-)
-from recovery_execution_engine import RecoveryExecutionEngine, ExecutionResult
-from recovery_console import RecoveryConsole, InspectionContext
-from recovery_store_provider import get_event_store, get_fact_store
+if TYPE_CHECKING:
+    from literature_assistant.core.canonical_event_store import (
+        CanonicalEvent,
+        CanonicalEventStore,
+    )
+    from literature_assistant.core.datetime_utils import ensure_utc, utc_now_iso_z
+    from literature_assistant.core.memory_fact_store import MemoryFactStore, TemporalFact
+    from literature_assistant.core.recovery_console import InspectionContext, RecoveryConsole
+    from literature_assistant.core.recovery_execution_engine import (
+        ExecutionResult,
+        RecoveryExecutionEngine,
+    )
+    from literature_assistant.core.recovery_recommendation_engine import (
+        RecommendationRequest,
+        RecoveryRecommendation,
+        RecoveryRecommendationEngine,
+        resolve_recovery_session_id,
+    )
+    from literature_assistant.core.recovery_store_provider import get_event_store, get_fact_store
+else:
+    from canonical_event_store import CanonicalEvent, CanonicalEventStore
+    from datetime_utils import ensure_utc, utc_now_iso_z
+    from memory_fact_store import MemoryFactStore, TemporalFact
+    from recovery_console import InspectionContext, RecoveryConsole
+    from recovery_execution_engine import ExecutionResult, RecoveryExecutionEngine
+    from recovery_recommendation_engine import (
+        RecommendationRequest,
+        RecoveryRecommendation,
+        RecoveryRecommendationEngine,
+        resolve_recovery_session_id,
+    )
+    from recovery_store_provider import get_event_store, get_fact_store
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_recovery_timestamp(value: str) -> datetime:
+    """Parse an ISO recovery timestamp and normalize it to UTC."""
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("target_timestamp must not be empty")
+    try:
+        parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("target_timestamp must be valid ISO 8601 text") from exc
+    return ensure_utc(parsed)
 
 
 class WorkflowApprovalStatus(str, Enum):
@@ -126,8 +159,8 @@ class RecommendationReviewWorkflow:
         
         # Step 1: Fetch recommendations
         request = RecommendationRequest(
+            session_id=resolve_recovery_session_id(self.engine.event_store, self.job_id),
             job_id=self.job_id,
-            correlation_id=workflow_id,
             max_recommendations=5,
         )
         result = self.engine.generate_recommendations(request)
@@ -256,7 +289,7 @@ class DryRunPreviewWorkflow:
         # Fetch recent events to inform simulation
         event_store = get_event_store()
         try:
-            recent_events = event_store.query_all(limit=10)
+            recent_events = event_store.get_all_events(limit=10)
         except Exception:
             recent_events = []
         
@@ -341,13 +374,12 @@ class FactInvalidationWorkflow:
         
         # Check if fact exists in real store
         try:
-            facts = self.fact_store.query_facts(fact_id=fact_id, limit=1) if hasattr(self.fact_store, 'query_facts') else []
-            fact_exists = len(facts) > 0
-            fact_details = facts[0] if fact_exists else {}
+            fact = self.fact_store.get_current_fact(fact_id)
+            fact_exists = fact is not None
         except Exception as e:
             logger.debug(f"Could not query fact details: {e}")
             fact_exists = True  # Optimistic; assume it exists
-            fact_details = {}
+            fact = None
         
         # Generate confirmation token
         import hashlib
@@ -362,7 +394,7 @@ class FactInvalidationWorkflow:
             "confirmation_required": True,
             "confirmation_token": confirmation_token,
             "fact_exists": fact_exists,
-            "fact_namespace": fact_details.get("namespace", "unknown") if fact_details else "unknown",
+            "fact_namespace": fact.namespace if fact is not None else "unknown",
         }
     
     def confirm_invalidation(
@@ -436,6 +468,8 @@ class StateRehydrationWorkflow:
             Preview including state changes and effect summary
         """
         logger.info(f"Previewing rehydration to {target_timestamp} for job {self.job_id}")
+
+        target_time = _parse_recovery_timestamp(target_timestamp)
         
         # Fetch events and facts at target time
         event_store = get_event_store()
@@ -443,14 +477,16 @@ class StateRehydrationWorkflow:
         
         try:
             # Query events up to target timestamp
-            events_before_target = event_store.query_by_aggregate_id(
+            events_before_target = event_store.get_events_by_aggregate(
                 aggregate_type="job",
                 aggregate_id=self.job_id,
-                limit=50,
             )
-            
-            # Filter to target time (simplified; real impl would use proper timestamp query)
-            target_events = [e for e in events_before_target if str(e.timestamp) <= target_timestamp]
+
+            target_events = [
+                event
+                for event in events_before_target
+                if _parse_recovery_timestamp(event.timestamp) <= target_time
+            ][-50:]
             
         except Exception as e:
             logger.debug(f"Could not query events for rehydration preview: {e}")
@@ -458,11 +494,11 @@ class StateRehydrationWorkflow:
         
         try:
             # Query facts valid at target time
-            facts_at_target = fact_store.query_facts(
+            facts_at_target = fact_store.get_facts_at_time(
+                namespace="execution",
+                timestamp=target_time,
                 subject=self.job_id,
-                valid_at=None,  # Real impl would parse target_timestamp
-                limit=20,
-            )
+            )[:20]
         except Exception as e:
             logger.debug(f"Could not query facts for rehydration preview: {e}")
             facts_at_target = []

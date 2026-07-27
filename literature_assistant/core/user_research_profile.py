@@ -78,7 +78,7 @@ def add_fact(profile: ResearchProfile, category: str, value: str, confidence: fl
     )
     if not exists:
         profile.facts.append(ResearchFact(
-            category=category, value=value, confidence=confidence,
+            category=category, value=value, confidence=confidence, source="user",
         ))
     return profile
 

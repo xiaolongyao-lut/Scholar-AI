@@ -10,21 +10,32 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from datetime_utils import utc_now_iso_z
-from project_paths import REPO_ROOT, output_path
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.project_paths import REPO_ROOT, output_path
+else:
+    from datetime_utils import utc_now_iso_z
+    from project_paths import REPO_ROOT, output_path
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from layers.m_layer_mempalace_memory import (  # noqa: E402
-    MempalaceMemoryAdapter,
-    MempalaceSettings,
-    load_mempalace_settings,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.m_layer_mempalace_memory import (
+        MempalaceMemoryAdapter,
+        MempalaceSettings,
+        load_mempalace_settings,
+    )
+else:
+    from layers.m_layer_mempalace_memory import (  # noqa: E402
+        MempalaceMemoryAdapter,
+        MempalaceSettings,
+        load_mempalace_settings,
+    )
 
 
 DEFAULT_BOOTSTRAP_AGENT = "modular-pipeline-bootstrap"
@@ -75,7 +86,7 @@ class BootstrapSummary:
 
 def _iso_utc_now() -> str:
     """Return a UTC ISO timestamp."""
-    return utc_now_iso_z()
+    return str(utc_now_iso_z())
 
 
 def _slugify(value: str) -> str:
@@ -296,7 +307,10 @@ def _record_bootstrap_memory(
         metadata={"bootstrap": True, "room_count": len(rooms)},
         added_by=DEFAULT_BOOTSTRAP_AGENT,
     )
-    return result.to_dict()
+    payload = result.to_dict()
+    if not isinstance(payload, dict) or not all(isinstance(key, str) for key in payload):
+        raise TypeError("MemPalace add_memory result must serialize to a string-keyed mapping")
+    return payload
 
 
 def bootstrap_repo_memory(args: argparse.Namespace) -> BootstrapSummary:

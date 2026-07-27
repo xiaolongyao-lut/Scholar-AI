@@ -4,7 +4,7 @@ import argparse
 import json
 import textwrap
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 PREVIEW_LIMIT_SHORT = 180
 PREVIEW_LIMIT_MED = 220
@@ -13,7 +13,15 @@ PREVIEW_LIMIT_LONG = 260
 
 def load_json(path: str | Path) -> dict[str, Any]:
     with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
+        payload: object = json.load(f)
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected a JSON object in {path}")
+    normalized: dict[str, Any] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            raise ValueError(f"expected string keys in JSON object: {path}")
+        normalized[key] = value
+    return normalized
 
 
 def dump_json(obj: Any, path: str | Path) -> None:
@@ -81,29 +89,44 @@ def page_image_lookup(bound: dict[str, Any]) -> dict[tuple[int, int], dict[str, 
     return out
 
 
-def build_indexes(bound: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    indexes: dict[str, dict[str, Any]] = {}
-    indexes['chunks'] = {row['chunk_id']: row for row in bound.get('chunks', []) if row.get('chunk_id')}
-    indexes['figures'] = {row['figure_id']: row for row in bound.get('figures', []) if row.get('figure_id')}
-    indexes['tables'] = {row['table_id']: row for row in bound.get('tables', []) if row.get('table_id')}
-    indexes['figure_bindings'] = {row['figure_id']: row for row in bound.get('figure_bindings', []) if row.get('figure_id')}
-    indexes['table_bindings'] = {row['table_id']: row for row in bound.get('table_bindings', []) if row.get('table_id')}
-    indexes['parameters'] = {row['parameter_id']: row for row in bound.get('parameter_cards', []) if row.get('parameter_id')}
-    indexes['results'] = {row['result_id']: row for row in bound.get('result_cards', []) if row.get('result_id')}
+class BundleIndexes(TypedDict):
+    """Lookup tables built from one bound-material contract."""
+
+    chunks: dict[str, dict[str, Any]]
+    figures: dict[str, dict[str, Any]]
+    tables: dict[str, dict[str, Any]]
+    figure_bindings: dict[str, dict[str, Any]]
+    table_bindings: dict[str, dict[str, Any]]
+    parameters: dict[str, dict[str, Any]]
+    results: dict[str, dict[str, Any]]
+    references: dict[str, dict[str, Any]]
+    page_images: dict[tuple[int, int], dict[str, Any]]
+
+
+def build_indexes(bound: dict[str, Any]) -> BundleIndexes:
+    indexes: BundleIndexes = {
+        'chunks': {row['chunk_id']: row for row in bound.get('chunks', []) if row.get('chunk_id')},
+        'figures': {row['figure_id']: row for row in bound.get('figures', []) if row.get('figure_id')},
+        'tables': {row['table_id']: row for row in bound.get('tables', []) if row.get('table_id')},
+        'figure_bindings': {row['figure_id']: row for row in bound.get('figure_bindings', []) if row.get('figure_id')},
+        'table_bindings': {row['table_id']: row for row in bound.get('table_bindings', []) if row.get('table_id')},
+        'parameters': {row['parameter_id']: row for row in bound.get('parameter_cards', []) if row.get('parameter_id')},
+        'results': {row['result_id']: row for row in bound.get('result_cards', []) if row.get('result_id')},
+        'references': {},
+        'page_images': page_image_lookup(bound),
+    }
     marker_map = stable_marker_map(bound)
     ref_text_map = stable_ref_text_map(bound)
-    indexes['references'] = {}
     for ref_id, marker in marker_map.items():
         indexes['references'][ref_id] = {
             'ref_id': ref_id,
             'raw_marker': marker,
             'entry_text': ref_text_map.get(ref_id, ''),
         }
-    indexes['page_images'] = page_image_lookup(bound)
     return indexes
 
 
-def enrich_reference(ref: dict[str, Any], indexes: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def enrich_reference(ref: dict[str, Any], indexes: BundleIndexes) -> dict[str, Any]:
     base = indexes.get('references', {}).get(ref.get('ref_id', ''), {})
     return {
         'ref_id': ref.get('ref_id') or base.get('ref_id'),
@@ -115,7 +138,7 @@ def enrich_reference(ref: dict[str, Any], indexes: dict[str, dict[str, Any]]) ->
     }
 
 
-def build_figure_card(fig: dict[str, Any], indexes: dict[str, dict[str, Any]], selected_wp_map: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def build_figure_card(fig: dict[str, Any], indexes: BundleIndexes, selected_wp_map: dict[str, dict[str, Any]]) -> dict[str, Any]:
     fig_id = fig['figure_id']
     base = indexes.get('figures', {}).get(fig_id, {})
     binding = indexes.get('figure_bindings', {}).get(fig_id, {})
@@ -163,7 +186,7 @@ def build_figure_card(fig: dict[str, Any], indexes: dict[str, dict[str, Any]], s
     }
 
 
-def build_table_card(tab: dict[str, Any], indexes: dict[str, dict[str, Any]], selected_wp_map: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def build_table_card(tab: dict[str, Any], indexes: BundleIndexes, selected_wp_map: dict[str, dict[str, Any]]) -> dict[str, Any]:
     tab_id = tab['table_id']
     base = indexes.get('tables', {}).get(tab_id, {})
     binding = indexes.get('table_bindings', {}).get(tab_id, {})
@@ -190,7 +213,7 @@ def build_table_card(tab: dict[str, Any], indexes: dict[str, dict[str, Any]], se
     }
 
 
-def build_parameter_card(row: dict[str, Any], indexes: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def build_parameter_card(row: dict[str, Any], indexes: BundleIndexes) -> dict[str, Any]:
     base = indexes.get('parameters', {}).get(row.get('parameter_id', ''), {})
     text = row.get('text') or base.get('text', '')
     return {
@@ -209,7 +232,7 @@ def build_parameter_card(row: dict[str, Any], indexes: dict[str, dict[str, Any]]
     }
 
 
-def build_result_card(row: dict[str, Any], indexes: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def build_result_card(row: dict[str, Any], indexes: BundleIndexes) -> dict[str, Any]:
     base = indexes.get('results', {}).get(row.get('result_id', ''), {})
     text = row.get('text') or base.get('text', '')
     return {

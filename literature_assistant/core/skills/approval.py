@@ -8,9 +8,12 @@ import sqlite3
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from datetime_utils import utc_now_iso_z
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+else:
+    from datetime_utils import utc_now_iso_z
 
 
 class ApprovalPolicy(str, Enum):

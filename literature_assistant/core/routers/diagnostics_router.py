@@ -31,14 +31,14 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("diagnostics_router")
 
-router = APIRouter(prefix="/api/diagnostics", tags=["Diagnostics"])
+router: APIRouter = APIRouter(prefix="/api/diagnostics", tags=["Diagnostics"])
 
 # Hard limits — UI cannot ask for more than this in one round-trip.
 MAX_LINES = 2000
@@ -89,9 +89,12 @@ def _logs_dir() -> Path:
     """Resolve the absolute logs directory, importing project_paths lazily
     so the router stays importable in test environments that don't have
     the production runtime path setup."""
-    from project_paths import runtime_state_path  # local import, mirrors adapter
+    if TYPE_CHECKING:
+        from literature_assistant.core.project_paths import runtime_state_path
+    else:
+        from project_paths import runtime_state_path  # local import, mirrors adapter
 
-    return runtime_state_path("logs")
+    return Path(runtime_state_path("logs"))
 
 
 def _list_available_files() -> list[str]:
@@ -161,8 +164,14 @@ def _redact(text: str) -> str:
     if "***REDACTED***" in text:
         return text
     try:
-        from python_adapter_server import _redact_sensitive_log_text  # type: ignore[attr-defined]
-        return _redact_sensitive_log_text(text)
+        if TYPE_CHECKING:
+            from literature_assistant.core.python_adapter_server import _redact_sensitive_log_text
+        else:
+            from python_adapter_server import _redact_sensitive_log_text
+        redacted: object = _redact_sensitive_log_text(text)
+        if not isinstance(redacted, str):
+            raise TypeError("log redactor must return text")
+        return redacted
     except Exception:
         # Conservative inline patterns — never silently let raw secrets
         # reach the API consumer.

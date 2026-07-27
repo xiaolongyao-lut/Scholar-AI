@@ -7,9 +7,17 @@ frontend clients.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, HTTPException, Query
 
-from volume_analysis_service import get_volume_analysis, list_volume_summaries
+if TYPE_CHECKING:
+    from literature_assistant.core.volume_analysis_service import (
+        get_volume_analysis,
+        list_volume_summaries,
+    )
+else:
+    from volume_analysis_service import get_volume_analysis, list_volume_summaries
 
 router = APIRouter(prefix="/volumes", tags=["Volume"])
 
@@ -29,7 +37,15 @@ async def get_volume_analysis_endpoint(
     refresh: bool = Query(False, description="Force rebuild the cached analysis artifacts"),
 ) -> dict[str, object]:
     try:
-        return await get_volume_analysis(volume_key, refresh=refresh)
+        raw_analysis: object = await get_volume_analysis(volume_key, refresh=refresh)
+        if not isinstance(raw_analysis, dict):
+            raise HTTPException(status_code=500, detail="Invalid volume analysis response")
+        analysis: dict[str, object] = {}
+        for key, value in raw_analysis.items():
+            if not isinstance(key, str):
+                raise HTTPException(status_code=500, detail="Invalid volume analysis response")
+            analysis[key] = value
+        return analysis
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Volume not found: {volume_key}") from exc
     except FileNotFoundError as exc:

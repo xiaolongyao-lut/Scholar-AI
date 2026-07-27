@@ -20,7 +20,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Iterable
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Protocol, TypeGuard
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,26 @@ _TOKENIZER_MODEL = "BAAI/bge-m3"
 _CJK_CHAR_RATIO = 0.75  # conservative lower bound for Chinese-heavy text
 _OFFLINE_ENV_VAR = "LITASSIST_TOKEN_UTILS_OFFLINE"
 
-_tokenizer = None
+class _Tokenizer(Protocol):
+    """Small tokenizer surface used by the length guards."""
+
+    def __call__(
+        self,
+        text: str,
+        *,
+        add_special_tokens: bool,
+        truncation: bool,
+    ) -> object: ...
+
+    def decode(
+        self,
+        token_ids: Sequence[int],
+        *,
+        skip_special_tokens: bool,
+    ) -> object: ...
+
+
+_tokenizer: _Tokenizer | None = None
 _tokenizer_loaded = False
 
 
@@ -42,7 +62,35 @@ def _is_offline_forced() -> bool:
     return val in ("1", "true", "yes")
 
 
-def _get_tokenizer():
+def _is_tokenizer(value: object) -> TypeGuard[_Tokenizer]:
+    """Check the callable and decoder capabilities consumed by this module."""
+
+    return callable(value) and callable(getattr(value, "decode", None))
+
+
+def _token_ids(tokenizer: _Tokenizer, text: str) -> list[int]:
+    """Encode text and validate the tokenizer response shape."""
+
+    encoded = tokenizer(text, add_special_tokens=False, truncation=False)
+    if not isinstance(encoded, Mapping):
+        raise TypeError("tokenizer output must be a mapping")
+    raw_ids = encoded.get("input_ids")
+    if not isinstance(raw_ids, list) or any(
+        isinstance(token_id, bool) or not isinstance(token_id, int)
+        for token_id in raw_ids
+    ):
+        raise TypeError("tokenizer input_ids must be a list of integers")
+    return raw_ids
+
+
+def _decode_tokens(tokenizer: _Tokenizer, token_ids: Sequence[int]) -> str:
+    """Decode token ids while preserving the historical string coercion."""
+
+    decoded = tokenizer.decode(token_ids, skip_special_tokens=True)
+    return decoded.strip() if isinstance(decoded, str) else str(decoded).strip()
+
+
+def _get_tokenizer() -> _Tokenizer | None:
     global _tokenizer, _tokenizer_loaded
     if _tokenizer_loaded:
         return _tokenizer
@@ -59,7 +107,13 @@ def _get_tokenizer():
     try:
         from transformers import AutoTokenizer
 
-        _tokenizer = AutoTokenizer.from_pretrained(_TOKENIZER_MODEL, trust_remote_code=False)
+        candidate: object = AutoTokenizer.from_pretrained(
+            _TOKENIZER_MODEL,
+            trust_remote_code=False,
+        )
+        if not _is_tokenizer(candidate):
+            raise TypeError("loaded tokenizer does not expose call and decode")
+        _tokenizer = candidate
     except Exception as exc:  # pragma: no cover - offline / install-missing
         logger.warning("token_utils: tokenizer load failed (%s); fallback to char-ratio estimator", exc)
         _tokenizer = None
@@ -72,7 +126,7 @@ def count_tokens(text: str) -> int:
     tok = _get_tokenizer()
     if tok is None:
         return max(1, int(len(text) * _CJK_CHAR_RATIO))
-    ids = tok(text, add_special_tokens=False, truncation=False)["input_ids"]
+    ids = _token_ids(tok, text)
     return len(ids)
 
 
@@ -85,10 +139,10 @@ def truncate_to_tokens(text: str, max_tokens: int) -> str:
         # char-ratio fallback: conservative upper bound on chars we can keep
         safe_chars = max(1, int(max_tokens / _CJK_CHAR_RATIO))
         return text[:safe_chars]
-    ids = tok(text, add_special_tokens=False, truncation=False)["input_ids"]
+    ids = _token_ids(tok, text)
     if len(ids) <= max_tokens:
         return text
-    return tok.decode(ids[:max_tokens], skip_special_tokens=True).strip()
+    return _decode_tokens(tok, ids[:max_tokens])
 
 
 _PARA_SPLIT = re.compile(r"\n\s*\n+")
@@ -101,11 +155,11 @@ def _chunk_by_tokens(text: str, max_tokens: int) -> list[str]:
     if tok is None:
         safe_chars = max(1, int(max_tokens / _CJK_CHAR_RATIO))
         return [text[i : i + safe_chars] for i in range(0, len(text), safe_chars)] or [text]
-    ids = tok(text, add_special_tokens=False, truncation=False)["input_ids"]
+    ids = _token_ids(tok, text)
     pieces: list[str] = []
     for i in range(0, len(ids), max_tokens):
         window = ids[i : i + max_tokens]
-        pieces.append(tok.decode(window, skip_special_tokens=True).strip())
+        pieces.append(_decode_tokens(tok, window))
     return [p for p in pieces if p] or [text]
 
 

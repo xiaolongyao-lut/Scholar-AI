@@ -8,18 +8,34 @@ from __future__ import annotations
 
 import logging
 import importlib.util
-from collections.abc import Callable
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol
 
-from chunk_models import EnrichedChunk
-from chunk_size_guard import inspect_text
-from contextual_chunker import batch_contextualize
-from project_paths import EXTERNAL_REFERENCES_ROOT
+if TYPE_CHECKING or __package__ == "literature_assistant.core":
+    from literature_assistant.core.chunk_models import EnrichedChunk
+    from literature_assistant.core.chunk_size_guard import inspect_text
+    from literature_assistant.core.contextual_chunker import batch_contextualize
+    from literature_assistant.core.project_paths import EXTERNAL_REFERENCES_ROOT
+else:
+    from chunk_models import EnrichedChunk
+    from chunk_size_guard import inspect_text
+    from contextual_chunker import batch_contextualize
+    from project_paths import EXTERNAL_REFERENCES_ROOT
 
 logger = logging.getLogger(__name__)
 
 
-SplitFunction = Callable[[str, int, int, Optional[Dict[str, Any]]], List[Dict[str, Any]]]
+class SplitFunction(Protocol):
+    """Callable contract shared by local and reference chunk splitters."""
+
+    def __call__(
+        self,
+        text: str,
+        *,
+        chunk_size: int,
+        chunk_overlap: int,
+        base_metadata: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        ...
 
 
 def _fallback_split_text_with_metadata(
@@ -81,7 +97,24 @@ def _load_reference_splitter() -> SplitFunction:
     if not callable(splitter):
         logger.warning("Reference chunk splitter has no split_text_with_metadata function")
         return _fallback_split_text_with_metadata
-    return splitter
+
+    def _validated_splitter(
+        text: str,
+        chunk_size: int,
+        chunk_overlap: int,
+        base_metadata: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        result: object = splitter(
+            text,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            base_metadata=base_metadata,
+        )
+        if not isinstance(result, list) or not all(isinstance(item, dict) for item in result):
+            raise TypeError("reference chunk splitter must return a list of dictionaries")
+        return [dict(item) for item in result]
+
+    return _validated_splitter
 
 
 split_text_with_metadata = _load_reference_splitter()
@@ -116,7 +149,7 @@ class ChunkingPipeline:
             text,
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
-            base_metadata=base_metadata
+            base_metadata=base_metadata,
         )
 
         # 2. 转换数据模型并执行守卫 (DoD §3.8)
@@ -160,6 +193,17 @@ class ChunkingPipeline:
         logger.info(f"切块流水线完成: 生成 {len(enriched_chunks)} 个切块")
         return enriched_chunks
 
-def get_chunking_pipeline(**kwargs) -> ChunkingPipeline:
+def get_chunking_pipeline(
+    *,
+    chunk_size: int = 500,
+    chunk_overlap: int = 50,
+    enable_contextual: bool = True,
+    enable_guard: bool = True,
+) -> ChunkingPipeline:
     """流水线单例/工厂"""
-    return ChunkingPipeline(**kwargs)
+    return ChunkingPipeline(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        enable_contextual=enable_contextual,
+        enable_guard=enable_guard,
+    )

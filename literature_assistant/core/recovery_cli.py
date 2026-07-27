@@ -24,28 +24,59 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from canonical_event_store import CanonicalEventStore, CanonicalEvent
-from memory_fact_store import MemoryFactStore, TemporalFact
-from recovery_recommendation_engine import RecoveryRecommendationEngine, RecommendationRequest
-from recovery_execution_engine import RecoveryExecutionEngine
-from recovery_console import RecoveryConsole
-from recovery_metrics_exporter import get_recovery_metrics_collector
-from recovery_store_provider import get_event_store, get_fact_store
-from datetime_utils import utc_now_iso_z
-
-# Import autopilot CLI commands
-from recovery_autopilot_cli import (
-    cmd_autopilot_status,
-    cmd_autopilot_enable,
-    cmd_autopilot_disable,
-    cmd_autopilot_emergency_stop,
-    cmd_autopilot_emergency_resume,
-    cmd_autopilot_policy_show,
-    cmd_autopilot_policy_set,
-    reset_autopilot_control_plane,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.canonical_event_store import (
+        CanonicalEvent,
+        CanonicalEventStore,
+    )
+    from literature_assistant.core.datetime_utils import ensure_utc, utc_now_iso_z
+    from literature_assistant.core.memory_fact_store import MemoryFactStore, TemporalFact
+    from literature_assistant.core.recovery_autopilot_cli import (
+        cmd_autopilot_disable,
+        cmd_autopilot_emergency_resume,
+        cmd_autopilot_emergency_stop,
+        cmd_autopilot_enable,
+        cmd_autopilot_policy_set,
+        cmd_autopilot_policy_show,
+        cmd_autopilot_status,
+        reset_autopilot_control_plane,
+    )
+    from literature_assistant.core.recovery_console import RecoveryConsole
+    from literature_assistant.core.recovery_execution_engine import RecoveryExecutionEngine
+    from literature_assistant.core.recovery_metrics_exporter import (
+        get_recovery_metrics_collector,
+    )
+    from literature_assistant.core.recovery_recommendation_engine import (
+        RecommendationRequest,
+        RecoveryRecommendationEngine,
+        resolve_recovery_session_id,
+    )
+    from literature_assistant.core.recovery_store_provider import get_event_store, get_fact_store
+else:
+    from canonical_event_store import CanonicalEvent, CanonicalEventStore
+    from datetime_utils import ensure_utc, utc_now_iso_z
+    from memory_fact_store import MemoryFactStore, TemporalFact
+    from recovery_autopilot_cli import (
+        cmd_autopilot_disable,
+        cmd_autopilot_emergency_resume,
+        cmd_autopilot_emergency_stop,
+        cmd_autopilot_enable,
+        cmd_autopilot_policy_set,
+        cmd_autopilot_policy_show,
+        cmd_autopilot_status,
+        reset_autopilot_control_plane,
+    )
+    from recovery_console import RecoveryConsole
+    from recovery_execution_engine import RecoveryExecutionEngine
+    from recovery_metrics_exporter import get_recovery_metrics_collector
+    from recovery_recommendation_engine import (
+        RecommendationRequest,
+        RecoveryRecommendationEngine,
+        resolve_recovery_session_id,
+    )
+    from recovery_store_provider import get_event_store, get_fact_store
 
 logger = logging.getLogger("RecoveryCLI")
 
@@ -63,17 +94,17 @@ def _format_event(event: CanonicalEvent) -> dict[str, Any]:
     }
 
 
-def _format_fact(fact: dict[str, Any]) -> dict[str, Any]:
+def _format_fact(fact: TemporalFact) -> dict[str, Any]:
     """Format a temporal fact for CLI display."""
     return {
-        "fact_id": fact.get("fact_id"),
-        "namespace": fact.get("namespace"),
-        "subject": fact.get("subject"),
-        "predicate": fact.get("predicate"),
-        "object": fact.get("object"),
-        "valid_from": fact.get("valid_from"),
-        "valid_to": fact.get("valid_to"),
-        "is_current": fact.get("valid_to") is None,
+        "fact_id": fact.fact_id,
+        "namespace": fact.namespace,
+        "subject": fact.subject,
+        "predicate": fact.predicate,
+        "object": fact.object,
+        "valid_from": fact.valid_from.isoformat(),
+        "valid_to": fact.valid_to.isoformat() if fact.valid_to is not None else None,
+        "is_current": fact.is_current(),
     }
 
 
@@ -81,11 +112,9 @@ def cmd_events(args: argparse.Namespace) -> int:
     """Display event timeline for a job."""
     try:
         store = get_event_store()
-        events = store.query_by_aggregate_id(
-            aggregate_type="job",
-            aggregate_id=args.job_id,
-            limit=args.limit,
-        )
+        events = store.get_job_timeline(args.job_id)
+        limit = max(int(args.limit), 0)
+        events = events[-limit:] if limit else []
         
         if not events:
             print(f"No events found for job {args.job_id}")
@@ -111,16 +140,15 @@ def cmd_events(args: argparse.Namespace) -> int:
 def cmd_memory(args: argparse.Namespace) -> int:
     """Display current memory state for a job."""
     try:
-        console = RecoveryConsole(get_event_store(), get_fact_store())
-        context = console.create_inspection_context(
-            job_id=args.job_id,
-            correlation_id=f"mem-{utc_now_iso_z()}",
-        )
-        
+        event_store = get_event_store()
+        fact_store = get_fact_store()
+        session_id = resolve_recovery_session_id(event_store, args.job_id)
+        facts = fact_store.get_current_facts("execution", subject=args.job_id)
+
         print(f"\n🧠 Memory State for Job: {args.job_id}")
-        print(f"   Context created at: {context.created_at}\n")
-        print(f"   Aggregate ID: {context.aggregate_id}")
-        print(f"   Session ID: {context.session_id}\n")
+        print(f"   Observed at: {utc_now_iso_z()}")
+        print(f"   Session ID: {session_id}")
+        print(f"   Current execution facts: {len(facts)}\n")
         
         return 0
     except Exception as e:
@@ -137,18 +165,22 @@ def cmd_facts(args: argparse.Namespace) -> int:
         query_time = None
         if args.valid_at:
             try:
-                from datetime import datetime
-                query_time = datetime.fromisoformat(args.valid_at)
+                query_time = ensure_utc(
+                    datetime.fromisoformat(args.valid_at.strip().replace("Z", "+00:00"))
+                )
             except ValueError:
                 logger.warning(f"Invalid timestamp format: {args.valid_at}, using current time")
         
         # Query facts for this job from the shared store
-        facts = store.query_facts(
-            namespace="job",
-            subject=args.job_id,
-            valid_at=query_time,
-            limit=args.limit if hasattr(args, "limit") else 50,
-        )
+        if query_time is None:
+            facts = store.get_current_facts("execution", subject=args.job_id)
+        else:
+            facts = store.get_facts_at_time(
+                "execution",
+                query_time,
+                subject=args.job_id,
+            )
+        facts = facts[:50]
         
         print(f"\n📊 Temporal Facts for Job: {args.job_id}")
         if args.valid_at:
@@ -183,8 +215,8 @@ def cmd_recommendations(args: argparse.Namespace) -> int:
         )
         
         request = RecommendationRequest(
+            session_id=resolve_recovery_session_id(engine.event_store, args.job_id),
             job_id=args.job_id,
-            correlation_id=f"rec-{utc_now_iso_z()}",
             max_recommendations=args.limit,
         )
         
@@ -278,13 +310,14 @@ def cmd_invalidate_fact(args: argparse.Namespace) -> int:
         store = get_fact_store()
         
         # Step 1: Retrieve the fact
+        fact_exists = False
         try:
-            facts = store.query_facts(fact_id=args.fact_id, limit=1)
-            if not facts:
+            fact = store.get_current_fact(args.fact_id)
+            fact_exists = fact is not None
+            if not fact_exists:
                 print(f"❌ Fact not found: {args.fact_id}", file=sys.stderr)
-                return 1
         except Exception as e:
-            logger.debug(f"Could not query by fact_id: {e}, proceeding with invalidation request")
+            logger.debug(f"Could not query by fact_id: {e}")
         
         # Step 2: Request invalidation with audit trail
         print(f"\n🚫 Invalidating Fact: {args.fact_id}")
@@ -302,7 +335,12 @@ def cmd_invalidate_fact(args: argparse.Namespace) -> int:
         
         print(f"\n   📋 Invalidation Audit Entry:")
         print(f"   ├─ Timestamp: {invalidation_timestamp}")
-        print(f"   ├─ Status: Pending Operator Confirmation")
+        status = (
+            "Pending Operator Confirmation"
+            if fact_exists
+            else "Blocked: Fact Not Found; Confirmation Unavailable"
+        )
+        print(f"   ├─ Status: {status}")
         print(f"   └─ Expected Action: Two-phase commit with approval\n")
         
         # Step 4: Display invalidation flow
@@ -312,7 +350,7 @@ def cmd_invalidate_fact(args: argparse.Namespace) -> int:
         print(f"   3. Operator provides final approval")
         print(f"   4. Fact marked as invalid with audit trail\n")
         
-        return 0
+        return 0 if fact_exists else 1
     except Exception as e:
         logger.error(f"Error invalidating fact: {e}")
         print(f"❌ Error: {e}", file=sys.stderr)
@@ -477,8 +515,15 @@ Examples:
     if not args.command:
         parser.print_help()
         return 0
-    
-    return args.func(args)
+
+    handler = getattr(args, "func", None)
+    if not callable(handler):
+        parser.print_help()
+        return 2
+    result: object = handler(args)
+    if isinstance(result, bool) or not isinstance(result, int):
+        raise TypeError("recovery command handlers must return an integer exit code")
+    return result
 
 
 if __name__ == "__main__":

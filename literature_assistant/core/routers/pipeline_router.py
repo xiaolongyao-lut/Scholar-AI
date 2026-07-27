@@ -8,20 +8,31 @@ import os
 import time
 from pathlib import Path
 from uuid import uuid4
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 from fastapi import APIRouter, HTTPException
-from project_paths import output_path
-from models import (
-    PipelineRequest,
-    PipelineTaskSubmitResponse,
-    PipelineTaskStatusResponse,
-    TaskState,
-    BatchProcessRequest,
-)
+
+if TYPE_CHECKING:
+    from literature_assistant.core.models import (
+        BatchProcessRequest,
+        PipelineRequest,
+        PipelineTaskStatusResponse,
+        PipelineTaskSubmitResponse,
+        TaskState,
+    )
+    from literature_assistant.core.project_paths import output_path
+else:
+    from models import (
+        BatchProcessRequest,
+        PipelineRequest,
+        PipelineTaskStatusResponse,
+        PipelineTaskSubmitResponse,
+        TaskState,
+    )
+    from project_paths import output_path
 
 logger = logging.getLogger("PipelineRouter")
-router = APIRouter(tags=["Pipeline"], prefix="/pipeline")
+router: APIRouter = APIRouter(tags=["Pipeline"], prefix="/pipeline")
 
 # Global task cache (moved from main adapter)
 TASKS: dict[str, dict[str, Any]] = {}
@@ -39,6 +50,22 @@ def _now_ts() -> float:
 def _task_terminal(status: str) -> bool:
     """Return True when a task is no longer running."""
     return status in (TaskState.succeeded.value, TaskState.failed.value, TaskState.cancelled.value)
+
+
+def _task_cancellation_requested(task: Mapping[str, Any]) -> bool:
+    """Return whether a running worker must discard its eventual outcome."""
+
+    return task.get("cancel_requested") is True
+
+
+def _finalize_task_cancellation(task: dict[str, Any]) -> None:
+    """Move a task to the terminal cancelled state after its worker exits."""
+
+    task["status"] = TaskState.cancelled.value
+    task["stage"] = "cancelled"
+    task["result"] = None
+    task["error"] = None
+    task["updated_at"] = _now_ts()
 
 
 def _task_status_response(task_id: str, task: Mapping[str, Any]) -> PipelineTaskStatusResponse:
@@ -91,11 +118,28 @@ def _run_pipeline_sync(request: PipelineRequest) -> dict[str, Any]:
     return _augment_pipeline_result(result, request)
 
 
+def _validated_string_mapping(value: object, *, context: str) -> dict[str, Any]:
+    """Validate a dynamic internal mapping before exposing or mutating it."""
+
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{context} must return a mapping")
+    result: dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise TypeError(f"{context} returned a non-string key")
+        result[key] = item
+    return result
+
+
 def _run_pipeline_core(request: PipelineRequest) -> dict[str, Any]:
     """Run the underlying pipeline core with validated request fields."""
     try:
-        from integrated_pipeline import run_pipeline
-        from python_adapter_server import get_pipeline_observer
+        if TYPE_CHECKING:
+            from literature_assistant.core.integrated_pipeline import run_pipeline
+            from literature_assistant.core.python_adapter_server import get_pipeline_observer
+        else:
+            from integrated_pipeline import run_pipeline
+            from python_adapter_server import get_pipeline_observer
     except ImportError as exc:
         raise HTTPException(status_code=501, detail="Pipeline engine not available in this environment") from exc
 
@@ -109,11 +153,14 @@ def _run_pipeline_core(request: PipelineRequest) -> dict[str, Any]:
     observer = get_pipeline_observer()
     
     # Standard v4.0 pipeline expects (pdf_path, goal, output_dir, observer)
-    return run_pipeline(
-        pdf_path=input_path,
-        goal=goal,
-        output_dir=request.output_dir or str(output_path()),
-        observer=observer
+    return _validated_string_mapping(
+        run_pipeline(
+            pdf_path=input_path,
+            goal=goal,
+            output_dir=request.output_dir or str(output_path()),
+            observer=observer,
+        ),
+        context="pipeline core",
     )
 
 
@@ -367,7 +414,10 @@ def _resolve_pipeline_memory_hits(request: PipelineRequest, association_query: s
     if not request.association_use_memory:
         return []
     try:
-        from python_adapter_server import get_memory_adapter
+        if TYPE_CHECKING:
+            from literature_assistant.core.python_adapter_server import get_memory_adapter
+        else:
+            from python_adapter_server import get_memory_adapter
     except ImportError as exc:
         logger.warning("Memory adapter unavailable for pipeline association: %s", exc)
         return []
@@ -406,7 +456,10 @@ def _resolve_pipeline_memory_hits(request: PipelineRequest, association_query: s
 def _resolve_pipeline_ai_adapter() -> Any | None:
     """Reuse the association AI adapter strategy from the resources layer."""
     try:
-        from routers.resources_router import get_ai_adapter
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.resources_router import get_ai_adapter
+        else:
+            from routers.resources_router import get_ai_adapter
 
         return get_ai_adapter()
     except ImportError as exc:
@@ -427,10 +480,16 @@ def _build_pipeline_association_bundle(
         return None
 
     try:
-        from writing_resources import (
-            build_association_bundle_from_runtime_context,
-            apply_analysis_enrichment_to_bundle,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.writing_resources import (
+                apply_analysis_enrichment_to_bundle,
+                build_association_bundle_from_runtime_context,
+            )
+        else:
+            from writing_resources import (
+                apply_analysis_enrichment_to_bundle,
+                build_association_bundle_from_runtime_context,
+            )
     except ImportError as exc:
         logger.warning("Writing resource layer unavailable for pipeline association: %s", exc)
         return None
@@ -474,7 +533,10 @@ def _build_pipeline_association_bundle(
         logger.warning("Pipeline association bundle build failed: %s", exc)
         return None
 
-    payload = enriched_bundle.to_dict()
+    payload = _validated_string_mapping(
+        enriched_bundle.to_dict(),
+        context="pipeline association bundle",
+    )
     payload["ephemeral_project"] = ephemeral
     payload["source"] = "pipeline"
     payload["analysis_enriched"] = was_enriched
@@ -503,8 +565,10 @@ async def _run_pipeline_async(task_id: str, request: PipelineRequest) -> None:
     try:
         result = await asyncio.to_thread(_run_pipeline_sync, request)
         async with TASKS_LOCK:
-            if str(TASKS[task_id].get("status")) == TaskState.cancelled.value:
+            if _task_cancellation_requested(TASKS[task_id]):
+                _finalize_task_cancellation(TASKS[task_id])
                 BACKGROUND_TASKS.pop(task_id, None)
+                await _cleanup_tasks_locked()
                 return
             TASKS[task_id]["status"] = TaskState.succeeded.value
             TASKS[task_id]["progress"] = 1.0
@@ -526,8 +590,10 @@ async def _run_pipeline_async(task_id: str, request: PipelineRequest) -> None:
     except HTTPException as exc:
         logger.error("Async pipeline task failed with HTTPException: %s", exc, exc_info=True)
         async with TASKS_LOCK:
-            if str(TASKS[task_id].get("status")) == TaskState.cancelled.value:
+            if _task_cancellation_requested(TASKS[task_id]):
+                _finalize_task_cancellation(TASKS[task_id])
                 BACKGROUND_TASKS.pop(task_id, None)
+                await _cleanup_tasks_locked()
                 return
             TASKS[task_id]["status"] = TaskState.failed.value
             TASKS[task_id]["progress"] = 1.0
@@ -540,8 +606,10 @@ async def _run_pipeline_async(task_id: str, request: PipelineRequest) -> None:
     except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.error("Async pipeline task failed: %s", exc, exc_info=True)
         async with TASKS_LOCK:
-            if str(TASKS[task_id].get("status")) == TaskState.cancelled.value:
+            if _task_cancellation_requested(TASKS[task_id]):
+                _finalize_task_cancellation(TASKS[task_id])
                 BACKGROUND_TASKS.pop(task_id, None)
+                await _cleanup_tasks_locked()
                 return
             TASKS[task_id]["status"] = TaskState.failed.value
             TASKS[task_id]["progress"] = 1.0
@@ -563,8 +631,11 @@ def _safe_get_pool_stats() -> dict[str, Any]:
     if os.environ.get("LITERATURE_DISABLE_KEY_POOL") == "1":
         return {"disabled": True, "reason": "LITERATURE_DISABLE_KEY_POOL=1"}
     try:
-        from key_pool import get_pool
-        return get_pool().stats()
+        if TYPE_CHECKING:
+            from literature_assistant.core.key_pool import get_pool
+        else:
+            from key_pool import get_pool
+        return _validated_string_mapping(get_pool().stats(), context="key pool stats")
     except FileNotFoundError:
         return {"disabled": True, "reason": "no .env found"}
     except Exception as exc:  # pragma: no cover — defensive
@@ -635,7 +706,7 @@ async def get_pipeline_task_status(task_id: str) -> PipelineTaskStatusResponse:
 
 @router.post("/task/{task_id}/cancel", response_model=PipelineTaskStatusResponse)
 async def cancel_pipeline_task(task_id: str) -> PipelineTaskStatusResponse:
-    """Mark a queued/running pipeline task as cancelled and stop its async wrapper."""
+    """Cancel queued work immediately or request cancellation of active work."""
     background_task: Any | None = None
     async with TASKS_LOCK:
         await _cleanup_tasks_locked()
@@ -644,11 +715,13 @@ async def cancel_pipeline_task(task_id: str) -> PipelineTaskStatusResponse:
             raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
 
         status = str(task.get("status", TaskState.failed.value))
-        if not _task_terminal(status):
-            task["status"] = TaskState.cancelled.value
-            task["stage"] = "cancelled"
+        if status == TaskState.running.value:
+            task["cancel_requested"] = True
+            task["stage"] = "cancellation_requested"
             task["error"] = None
             task["updated_at"] = _now_ts()
+        elif not _task_terminal(status):
+            _finalize_task_cancellation(task)
             background_task = BACKGROUND_TASKS.pop(task_id, None)
         response = _task_status_response(task_id, task)
 
@@ -664,6 +737,8 @@ async def _update_batch_task_progress(task_id: str, progress: float, stage: str)
         if task is None:
             return
         if str(task.get("status")) != TaskState.running.value:
+            return
+        if _task_cancellation_requested(task):
             return
         task["progress"] = max(0.0, min(100.0, float(progress)))
         if stage:
@@ -685,7 +760,7 @@ async def _run_batch_processing_task(task_id: str, pdf_folder: str, output_root:
             TASKS[task_id]["updated_at"] = _now_ts()
         
         # Import batch controller
-        from batch_controller import BatchProcessController
+        from literature_assistant.core.batch_controller import BatchProcessController
 
         loop = asyncio.get_running_loop()
 
@@ -698,7 +773,7 @@ async def _run_batch_processing_task(task_id: str, pdf_folder: str, output_root:
             )
         
         # Run batch processing in thread pool
-        def _batch_sync():
+        def _batch_sync() -> dict[str, Any]:
             controller = BatchProcessController(
                 pdf_folder=pdf_folder,
                 output_root=output_root,
@@ -707,14 +782,18 @@ async def _run_batch_processing_task(task_id: str, pdf_folder: str, output_root:
                 enable_llm=True,
                 progress_callback=_progress_callback,
             )
-            report = controller.process_batch()
-            return report
+            return _validated_string_mapping(
+                controller.process_batch(),
+                context="batch controller",
+            )
         
         report = await asyncio.to_thread(_batch_sync)
         
         async with TASKS_LOCK:
-            if str(TASKS[task_id].get("status")) == TaskState.cancelled.value:
+            if _task_cancellation_requested(TASKS[task_id]):
+                _finalize_task_cancellation(TASKS[task_id])
                 BACKGROUND_TASKS.pop(task_id, None)
+                await _cleanup_tasks_locked()
                 return
             TASKS[task_id]["status"] = TaskState.succeeded.value
             TASKS[task_id]["stage"] = "Completed"
@@ -738,8 +817,10 @@ async def _run_batch_processing_task(task_id: str, pdf_folder: str, output_root:
     except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.error("Batch processing task %s failed: %s", task_id, exc, exc_info=True)
         async with TASKS_LOCK:
-            if str(TASKS[task_id].get("status")) == TaskState.cancelled.value:
+            if _task_cancellation_requested(TASKS[task_id]):
+                _finalize_task_cancellation(TASKS[task_id])
                 BACKGROUND_TASKS.pop(task_id, None)
+                await _cleanup_tasks_locked()
                 return
             TASKS[task_id]["status"] = TaskState.failed.value
             TASKS[task_id]["stage"] = "Failed"
@@ -771,4 +852,3 @@ async def submit_batch_processing(request: BatchProcessRequest) -> PipelineTaskS
         _run_batch_processing_task(task_id, request.pdf_folder, request.output_root, request.goal, request.batch_size)
     )
     return PipelineTaskSubmitResponse(task_id=task_id, status=TaskState.queued.value)
-

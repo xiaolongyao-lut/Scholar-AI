@@ -8,7 +8,6 @@ https://github.com/northword/zotero-format-metadata/blob/main/src/modules/rules/
 """
 
 import re
-from typing import Optional
 
 from .special_words import (
     ALL_SPECIAL_WORDS,
@@ -42,45 +41,45 @@ def to_sentence_case(text: str, locale: str = "en-US") -> str:
     6. 保护内部有大写的词（如 iPhone, LaTeX）
     7. 全大写文本转为小写（除了保护的词）
     """
-    preserve: list[dict[str, int]] = []  # 需要保护的文本区间
+    preserve: list[tuple[int, int]] = []  # 需要保护的文本区间
     allcaps = text == text.upper()
 
     # 1. 保护 sub-sentence 开头（. ? ! 后的首字母）
     # 注意：Python re 不支持 \p{Lu}，需要用 [A-Z] 或其他方式
-    for match in re.finditer(r'([.?!]\s+)(<[^>]+>)?([A-Z])', text):
-        end, markup, char = match.groups()
+    for sentence_match in re.finditer(r'([.?!]\s+)(<[^>]+>)?([A-Z])', text):
+        end, markup, char = sentence_match.groups()
         markup = markup or ""
-        i = match.start()
+        i = sentence_match.start()
         # 排除缩写（如 U.S.A.）
         prefix = text[:i + len(end)]
         if not re.search(r'([A-Z]\.){2,}$', prefix):
             start_pos = i + len(end) + len(markup)
-            preserve.append({"start": start_pos, "end": start_pos + len(char)})
+            preserve.append((start_pos, start_pos + len(char)))
 
     # 2. 保护句首首字母
-    match = re.match(r'^([""'']?)(<[^>]+>)?([A-Z])', text)
-    if match:
-        prefix, markup, char = match.groups()
+    initial_match = re.match(r'^([""'']?)(<[^>]+>)?([A-Z])', text)
+    if initial_match:
+        prefix, markup, char = initial_match.groups()
         markup = markup or ""
         offset = len(prefix) + len(markup)
-        preserve.append({"start": offset, "end": offset + len(char)})
+        preserve.append((offset, offset + len(char)))
 
     # 3. 保护 nocase 标签
     for match in re.finditer(r'<span class="nocase">.*?</span>|<nc>.*?</nc>', text, re.IGNORECASE):
-        preserve.append({"start": match.start(), "end": match.end(), "description": "nocase"})
+        preserve.append((match.start(), match.end()))
 
     # 4. 保护格式化标签内容（sup, sub, i, b, em, strong）
     for match in re.finditer(r'<(i|b|em|strong|sup|sub)(?:\s[^>]*)?>.*?</\1>', text, re.IGNORECASE):
-        preserve.append({"start": match.start(), "end": match.end(), "description": "formatting-tag"})
+        preserve.append((match.start(), match.end()))
 
     # 5. 用占位符遮罩 HTML 标签
     masked = text
     for match in re.finditer(r'<[^>]+>', text):
-        preserve.append({"start": match.start(), "end": match.end(), "description": "markup"})
+        preserve.append((match.start(), match.end()))
         masked = masked[:match.start()] + "�" * (match.end() - match.start()) + masked[match.end():]
 
     # 6. 处理词语转换
-    def process_word(match: re.Match) -> str:
+    def process_word(match: re.Match[str]) -> str:
         word = match.group(0)
 
         # 全大写文本转小写
@@ -144,9 +143,7 @@ def to_sentence_case(text: str, locale: str = "en-US") -> str:
                 masked = masked[:start] + special_word + masked[end:]
 
     # 9. 恢复保护的区间
-    for region in preserve:
-        start = region["start"]
-        end = region["end"]
+    for start, end in preserve:
         masked = masked[:start] + text[start:end] + masked[end:]
 
     # 10. 确保首字母大写

@@ -236,21 +236,21 @@ def compute_extraction_metrics(
     ):
         if not type_name:
             continue
-        exp_keys = {
+        node_exp_keys = {
             (n.label.strip().lower(), n.type)
             for n in expected_entry.expected_nodes
             if n.type == type_name
         }
-        pred_keys = {
+        node_pred_keys = {
             (str(p.get("label", "")).strip().lower(), str(p.get("type", "")))
             for p in predicted_nodes
             if p.get("type") == type_name
         }
-        tp = len(exp_keys & pred_keys)
-        nodes_by_type[type_name] = _prf1(tp, len(pred_keys), len(exp_keys))
+        tp = len(node_exp_keys & node_pred_keys)
+        nodes_by_type[type_name] = _prf1(tp, len(node_pred_keys), len(node_exp_keys))
         total_node_tp += tp
-        total_node_pred += len(pred_keys)
-        total_node_exp += len(exp_keys)
+        total_node_pred += len(node_pred_keys)
+        total_node_exp += len(node_exp_keys)
 
     # --- Edges -------------------------------------------------------------
     # Build a label-resolved view of expected edges (source/target are ids
@@ -268,12 +268,12 @@ def compute_extraction_metrics(
     ):
         if not rel:
             continue
-        exp_keys = {
+        edge_exp_keys = {
             (_resolve(e.source), _resolve(e.target), e.relation)
             for e in expected_entry.expected_edges
             if e.relation == rel
         }
-        pred_keys = {
+        edge_pred_keys = {
             (
                 str(p.get("source", "")).strip().lower(),
                 str(p.get("target", "")).strip().lower(),
@@ -282,11 +282,11 @@ def compute_extraction_metrics(
             for p in predicted_edges
             if p.get("relation") == rel
         }
-        tp = len(exp_keys & pred_keys)
-        edges_by_relation[rel] = _prf1(tp, len(pred_keys), len(exp_keys))
+        tp = len(edge_exp_keys & edge_pred_keys)
+        edges_by_relation[rel] = _prf1(tp, len(edge_pred_keys), len(edge_exp_keys))
         total_edge_tp += tp
-        total_edge_pred += len(pred_keys)
-        total_edge_exp += len(exp_keys)
+        total_edge_pred += len(edge_pred_keys)
+        total_edge_exp += len(edge_exp_keys)
 
     return {
         "nodes_by_type": nodes_by_type,

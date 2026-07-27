@@ -8,22 +8,37 @@ affecting the live endpoint behaviour.
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 
-from models import (
-    MaterialPayload,
-    DraftPayload,
-    RevisionPayload,
-    WritingAssociationPayload,
-    CreateMaterialRequest,
-    CreateDraftRequest,
-    SaveDraftRequest,
-    BuildAssociationRequest,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.models import (
+        BuildAssociationRequest,
+        CreateDraftRequest,
+        CreateMaterialRequest,
+        DraftPayload,
+        MaterialPayload,
+        RevisionPayload,
+        SaveDraftRequest,
+        WritingAssociationPayload,
+    )
+    from literature_assistant.core.routers import resources_router as _rr
+    _router: APIRouter
+else:
+    from models import (
+        BuildAssociationRequest,
+        CreateDraftRequest,
+        CreateMaterialRequest,
+        DraftPayload,
+        MaterialPayload,
+        RevisionPayload,
+        SaveDraftRequest,
+        WritingAssociationPayload,
+    )
 
-import routers.resources_router as _rr
+    import routers.resources_router as _rr
+    _router = _rr.router
 from literature_assistant.core.knowledge_graph.reviewed_knowledge_source_sync import (
     mark_material_deleted,
 )
@@ -46,7 +61,10 @@ def _resolve_project_source_file_for_unlink(project_id: str, source_relative: ob
     if not normalized_project_id or not normalized_source:
         return None
     try:
-        from project_paths import project_data_path
+        if TYPE_CHECKING:
+            from literature_assistant.core.project_paths import project_data_path
+        else:
+            from project_paths import project_data_path
 
         root = project_data_path(normalized_project_id, "source_files").resolve()
         raw = Path(normalized_source).expanduser()
@@ -62,7 +80,7 @@ def _resolve_project_source_file_for_unlink(project_id: str, source_relative: ob
 # Material CRUD
 # =========================================================================
 
-@_rr.router.post("/material", response_model=MaterialPayload)
+@_router.post("/material", response_model=MaterialPayload)
 async def create_material(request: CreateMaterialRequest) -> MaterialPayload:
     """Create a project-scoped reference material."""
     store = _rr.get_writing_resource_store()
@@ -83,7 +101,7 @@ async def create_material(request: CreateMaterialRequest) -> MaterialPayload:
     return MaterialPayload(**material.to_dict())
 
 
-@_rr.router.get("/material/{material_id}", response_model=MaterialPayload)
+@_router.get("/material/{material_id}", response_model=MaterialPayload)
 async def get_material(material_id: str) -> MaterialPayload:
     """Get a project-scoped material by ID."""
     store = _rr.get_writing_resource_store()
@@ -93,7 +111,7 @@ async def get_material(material_id: str) -> MaterialPayload:
     return MaterialPayload(**material.to_dict())
 
 
-@_rr.router.get("/materials", response_model=list[MaterialPayload])
+@_router.get("/materials", response_model=list[MaterialPayload])
 async def list_materials(project_id: str = Query(...)) -> list[MaterialPayload]:
     """List all materials attached to a project."""
     store = _rr.get_writing_resource_store()
@@ -101,7 +119,7 @@ async def list_materials(project_id: str = Query(...)) -> list[MaterialPayload]:
     return [MaterialPayload(**material.to_dict()) for material in materials]
 
 
-@_rr.router.get("/material/{material_id}/chunks")
+@_router.get("/material/{material_id}/chunks")
 async def get_material_chunks(
     material_id: str,
     project_id: str = Query(...),
@@ -116,7 +134,7 @@ async def get_material_chunks(
     }
 
 
-@_rr.router.get("/material/{material_id}/suggested-questions")
+@_router.get("/material/{material_id}/suggested-questions")
 async def get_material_suggested_questions(
     material_id: str,
     project_id: str = Query(...),
@@ -127,7 +145,10 @@ async def get_material_suggested_questions(
     questions are more paper-aware than the frontend's lightweight
     first-chunks heuristic. No model call is made.
     """
-    from suggested_questions import build_suggested_questions
+    if TYPE_CHECKING:
+        from literature_assistant.core.suggested_questions import build_suggested_questions
+    else:
+        from suggested_questions import build_suggested_questions
 
     store = _rr.get_writing_resource_store()
     material = store.get_material(material_id)
@@ -142,7 +163,7 @@ async def get_material_suggested_questions(
     }
 
 
-@_rr.router.delete("/material/{material_id}", tags=["Resources"])
+@_router.delete("/material/{material_id}", tags=["Resources"])
 async def delete_material(material_id: str) -> dict[str, str]:
     """Delete a single material by ID."""
     store = _rr.get_writing_resource_store()
@@ -206,7 +227,7 @@ async def delete_material(material_id: str) -> dict[str, str]:
 # Draft CRUD + Revisions
 # =========================================================================
 
-@_rr.router.post("/draft", response_model=DraftPayload)
+@_router.post("/draft", response_model=DraftPayload)
 async def create_draft(request: CreateDraftRequest) -> DraftPayload:
     """Create a new draft."""
     store = _rr.get_writing_resource_store()
@@ -230,7 +251,7 @@ async def create_draft(request: CreateDraftRequest) -> DraftPayload:
     return DraftPayload(**draft.to_dict())
 
 
-@_rr.router.get("/draft/{draft_id}", response_model=DraftPayload)
+@_router.get("/draft/{draft_id}", response_model=DraftPayload)
 async def get_draft(draft_id: str) -> DraftPayload:
     """Get a draft by ID."""
     store = _rr.get_writing_resource_store()
@@ -240,7 +261,7 @@ async def get_draft(draft_id: str) -> DraftPayload:
     return DraftPayload(**draft.to_dict())
 
 
-@_rr.router.get("/drafts", response_model=list[DraftPayload])
+@_router.get("/drafts", response_model=list[DraftPayload])
 async def list_drafts(
     project_id: str = Query(...),
     section_id: str | None = Query(None),
@@ -251,7 +272,7 @@ async def list_drafts(
     return [DraftPayload(**d.to_dict()) for d in drafts]
 
 
-@_rr.router.put("/draft/{draft_id}")
+@_router.put("/draft/{draft_id}")
 async def save_draft(draft_id: str, request: SaveDraftRequest) -> DraftPayload:
     """Save draft content."""
     store = _rr.get_writing_resource_store()
@@ -267,7 +288,7 @@ async def save_draft(draft_id: str, request: SaveDraftRequest) -> DraftPayload:
     return DraftPayload(**draft.to_dict())
 
 
-@_rr.router.get("/revision/{revision_id}", response_model=RevisionPayload)
+@_router.get("/revision/{revision_id}", response_model=RevisionPayload)
 async def get_revision(revision_id: str) -> RevisionPayload:
     """Get a revision by ID."""
     store = _rr.get_writing_resource_store()
@@ -277,7 +298,7 @@ async def get_revision(revision_id: str) -> RevisionPayload:
     return RevisionPayload(**revision.to_dict())
 
 
-@_rr.router.get("/revisions", response_model=list[RevisionPayload])
+@_router.get("/revisions", response_model=list[RevisionPayload])
 async def list_revisions(draft_id: str = Query(...)) -> list[RevisionPayload]:
     """List all revisions for a draft."""
     store = _rr.get_writing_resource_store()
@@ -285,7 +306,7 @@ async def list_revisions(draft_id: str = Query(...)) -> list[RevisionPayload]:
     return [RevisionPayload(**r.to_dict()) for r in revisions]
 
 
-@_rr.router.post("/draft/{draft_id}/restore")
+@_router.post("/draft/{draft_id}/restore")
 async def restore_revision(
     draft_id: str,
     revision_id: str = Query(...),
@@ -301,7 +322,7 @@ async def restore_revision(
     return DraftPayload(**draft.to_dict())
 
 
-@_rr.router.delete("/draft/{draft_id}", tags=["Resources"])
+@_router.delete("/draft/{draft_id}", tags=["Resources"])
 async def delete_draft(draft_id: str) -> dict[str, str]:
     """Delete a draft by ID."""
     store = _rr.get_writing_resource_store()
@@ -316,7 +337,7 @@ async def delete_draft(draft_id: str) -> dict[str, str]:
 # Writing Association
 # =========================================================================
 
-@_rr.router.post("/association", response_model=WritingAssociationPayload)
+@_router.post("/association", response_model=WritingAssociationPayload)
 async def build_writing_association(
     request: BuildAssociationRequest,
 ) -> WritingAssociationPayload:

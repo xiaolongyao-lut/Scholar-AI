@@ -1,14 +1,31 @@
 import asyncio
 import logging
 import requests
-from typing import List, Dict, Any, Optional
+from typing import TYPE_CHECKING, List, Dict, Any, Optional
 from datetime import datetime
-from models.p2_logic_models import (
-    Claim, ClassifiedConflict, ReasoningChain, ReasoningStep, 
-    SourceMeta, ConflictResult
-)
-from layers.p2_claim_extractor import ClaimExtractor
-from layers.p2_conflict_detector import ConflictDetector
+
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.p2_claim_extractor import ClaimExtractor
+    from literature_assistant.core.layers.p2_conflict_detector import ConflictDetector
+    from literature_assistant.core.models.p2_logic_models import (
+        Claim,
+        ClassifiedConflict,
+        ConflictResult,
+        ReasoningChain,
+        ReasoningStep,
+        SourceMeta,
+    )
+else:
+    from layers.p2_claim_extractor import ClaimExtractor
+    from layers.p2_conflict_detector import ConflictDetector
+    from models.p2_logic_models import (
+        Claim,
+        ClassifiedConflict,
+        ConflictResult,
+        ReasoningChain,
+        ReasoningStep,
+        SourceMeta,
+    )
 
 logger = logging.getLogger("P2_LogicEngine")
 
@@ -60,9 +77,9 @@ class CostTracker:
     def __init__(self, budget_limit: float = 2.0):
         self.budget_limit = budget_limit
         self.total_cost = 0.0
-        self.calls = []
+        self.calls: list[dict[str, str | float | datetime]] = []
     
-    def track(self, service: str, cost: float):
+    def track(self, service: str, cost: float) -> None:
         """记录一次 API 调用"""
         self.total_cost += cost
         self.calls.append({"service": service, "cost": cost, "time": datetime.now()})
@@ -70,7 +87,7 @@ class CostTracker:
         if self.total_cost > self.budget_limit:
             logger.warning(f"成本预警: 已花费 ${self.total_cost:.2f}，接近上限 ${self.budget_limit:.2f}")
     
-    def get_summary(self) -> Dict:
+    def get_summary(self) -> dict[str, float | int]:
         """获取成本统计"""
         return {
             "total_cost": round(self.total_cost, 2),

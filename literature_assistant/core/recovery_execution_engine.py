@@ -14,17 +14,26 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from datetime_utils import to_iso_z, utc_now
-from canonical_event_store import CanonicalEventStore, CanonicalEvent
-from memory_fact_store import MemoryFactStore, TemporalFact
-from recovery_console import (
-    RecoveryConsole,
-    RecoveryAction,
-    RecoveryActionType,
-    InspectionContext,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.canonical_event_store import (
+        CanonicalEvent,
+        CanonicalEventStore,
+    )
+    from literature_assistant.core.datetime_utils import to_iso_z, utc_now
+    from literature_assistant.core.memory_fact_store import MemoryFactStore, TemporalFact
+    from literature_assistant.core.recovery_console import (
+        InspectionContext,
+        RecoveryAction,
+        RecoveryActionType,
+        RecoveryConsole,
+    )
+else:
+    from canonical_event_store import CanonicalEvent, CanonicalEventStore
+    from datetime_utils import to_iso_z, utc_now
+    from memory_fact_store import MemoryFactStore, TemporalFact
+    from recovery_console import InspectionContext, RecoveryAction, RecoveryActionType, RecoveryConsole
 
 
 logger = logging.getLogger("RecoveryExecutionEngine")

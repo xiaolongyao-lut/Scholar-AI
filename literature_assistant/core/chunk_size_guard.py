@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
-from token_utils import count_tokens
+if TYPE_CHECKING:
+    from literature_assistant.core.token_utils import count_tokens
+else:
+    from token_utils import count_tokens
 
 DEFAULT_CHUNK_HARD_MAX_CHARS = 5000
 DEFAULT_CHUNK_HARD_MAX_TOKENS = 1200

@@ -19,6 +19,7 @@ from .tools import (
     create_default_source_tools,
     create_default_workflow_tools,
 )
+from .workflow_runtime.interpreter import ToolCallable
 
 SIDEBAR_APP_RESOURCE_URI = "ui://scholar-ai/sidebar"
 SIDEBAR_APP_RESOURCE_MIME_TYPE = "text/html;profile=mcp-app"
@@ -866,6 +867,39 @@ def _server_instructions(tool_profile: str, experimental_enabled: bool) -> str:
     )
 
 
+def _hidden_tool_names_for_profile(
+    registered_tool_names: set[str],
+    tool_profile: str,
+    *,
+    experimental_enabled: bool,
+) -> set[str]:
+    """Return tool names excluded by the resolved MCP exposure profile."""
+
+    hidden_tool_names: set[str] = set()
+    if not experimental_enabled:
+        hidden_tool_names.update(EXPERIMENTAL_MCP_TOOL_NAMES)
+    if tool_profile == MCP_TOOL_PROFILE_MINIMAL:
+        hidden_tool_names.update(registered_tool_names.difference(MINIMAL_MCP_TOOL_NAMES))
+    return hidden_tool_names
+
+
+def _filter_workflow_registry(
+    tool_registry: dict[str, ToolCallable],
+    tool_profile: str,
+    *,
+    experimental_enabled: bool,
+) -> None:
+    """Apply the effective MCP profile to one workflow dispatch registry."""
+
+    hidden_tool_names = _hidden_tool_names_for_profile(
+        set(tool_registry),
+        tool_profile,
+        experimental_enabled=experimental_enabled,
+    )
+    for tool_name in hidden_tool_names:
+        tool_registry.pop(tool_name, None)
+
+
 def _apply_tool_profile(
     mcp: FastMCP,
     tool_profile: str,
@@ -875,14 +909,15 @@ def _apply_tool_profile(
     """Remove tools that should not be exposed for the active profile."""
 
     registered_tool_names = {tool.name for tool in mcp._tool_manager.list_tools()}
-    hidden_tool_names: set[str] = set()
-    if not experimental_enabled:
-        hidden_tool_names.update(EXPERIMENTAL_MCP_TOOL_NAMES)
     if tool_profile == MCP_TOOL_PROFILE_MINIMAL:
         missing = sorted(MINIMAL_MCP_TOOL_NAMES.difference(registered_tool_names))
         if missing:
             raise RuntimeError(f"minimal MCP tool profile is missing registered tools: {missing}")
-        hidden_tool_names.update(registered_tool_names.difference(MINIMAL_MCP_TOOL_NAMES))
+    hidden_tool_names = _hidden_tool_names_for_profile(
+        registered_tool_names,
+        tool_profile,
+        experimental_enabled=experimental_enabled,
+    )
 
     for tool_name in sorted(hidden_tool_names.intersection(registered_tool_names)):
         mcp._tool_manager.remove_tool(tool_name)
@@ -961,7 +996,7 @@ def create_mcp_server(
         runtime=runtime,
         audit_root=audit_root,
     )
-    workflow_registry = {
+    workflow_registry: dict[str, ToolCallable] = {
         "source.list_tree": source.list_tree,
         "source.search": source.search,
         "source.read_file": source.read_file,
@@ -1056,6 +1091,11 @@ def create_mcp_server(
         "literature.translate_pack": experimental.translate_pack,
         "literature.export_project_pack": experimental.export_project_pack,
     }
+    _filter_workflow_registry(
+        workflow_registry,
+        resolved_tool_profile,
+        experimental_enabled=experimental_enabled,
+    )
     workflow_impl = workflow_tools or create_default_workflow_tools(
         repo_root=repo_root,
         tool_registry=workflow_registry,
@@ -1069,7 +1109,14 @@ def create_mcp_server(
             "workflow.run_python_sandbox": experimental.run_python_sandbox,
         }
     )
+    _filter_workflow_registry(
+        workflow_registry,
+        resolved_tool_profile,
+        experimental_enabled=experimental_enabled,
+    )
+    workflow_impl.tool_registry.clear()
     workflow_impl.tool_registry.update(workflow_registry)
+    workflow_impl.interpreter.tool_registry.clear()
     workflow_impl.interpreter.tool_registry.update(workflow_registry)
 
     mcp = FastMCP(

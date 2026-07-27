@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+import types
 from pathlib import Path
 from typing import Any
 
@@ -44,3 +45,26 @@ def test_pdf_strategy_type_alias_accepts_known_classifier_strategies() -> None:
     strategies: tuple[PDFStrategy, ...] = ("text_only", "ocr_only", "hybrid")
 
     assert strategies == ("text_only", "ocr_only", "hybrid")
+
+
+def test_classifier_closes_incomplete_document(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[bool] = []
+
+    class _CloseOnlyDocument:
+        def close(self) -> None:
+            closed.append(True)
+
+    fake_pymupdf = types.ModuleType("pymupdf")
+    fake_pymupdf.open = lambda _path: _CloseOnlyDocument()
+    monkeypatch.setitem(sys.modules, "pymupdf", fake_pymupdf)
+
+    pdf_path = tmp_path / "incomplete-classifier.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    with pytest.raises(TypeError, match="page-sequence document"):
+        OCRNeedClassifier().classify_pdf(pdf_path)
+
+    assert closed == [True]

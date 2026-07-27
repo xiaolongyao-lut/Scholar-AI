@@ -5,15 +5,20 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
 import numpy as np
 
 import hashlib
 
-from layers.tolf_engine import EvidenceGate, TOLFConfig, TOLFEngine
-from retrieval_provenance import merge_source_labels
-from tolf_bridge_lexicon_store import get_bridge_lexicon_entries
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.tolf_engine import EvidenceGate, TOLFConfig, TOLFEngine
+    from literature_assistant.core.retrieval_provenance import merge_source_labels
+    from literature_assistant.core.tolf_bridge_lexicon_store import get_bridge_lexicon_entries
+else:
+    from layers.tolf_engine import EvidenceGate, TOLFConfig, TOLFEngine
+    from retrieval_provenance import merge_source_labels
+    from tolf_bridge_lexicon_store import get_bridge_lexicon_entries
 
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_一-鿿]+", re.UNICODE)
 _NUMERIC_EVIDENCE_RE = re.compile(

@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Literal, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Literal, Mapping, Sequence
 
-from models.project_reasoning_bias import (
-    ProjectReasoningBiasFieldSuggestions,
-    ProjectReasoningBiasOptimizeResponse,
-    ProjectReasoningBiasOptimizeScope,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.models.project_reasoning_bias import (
+        ProjectReasoningBiasFieldSuggestions,
+        ProjectReasoningBiasOptimizeResponse,
+        ProjectReasoningBiasOptimizeScope,
+    )
+else:
+    from models.project_reasoning_bias import (
+        ProjectReasoningBiasFieldSuggestions,
+        ProjectReasoningBiasOptimizeResponse,
+        ProjectReasoningBiasOptimizeScope,
+    )
 
 OptimizerLocale = Literal["zh", "en"]
 

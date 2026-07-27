@@ -177,7 +177,7 @@ class GraphRAGBridge:
         return str(value)
 
     @staticmethod
-    def _safe_list(value: Any) -> list:
+    def _safe_list(value: Any) -> list[Any]:
         """
         将 parquet 中的列表字段归一化为 Python list。
         处理 JSON 字符串、逗号分隔字符串、numpy array 等各种格式。
@@ -192,7 +192,12 @@ class GraphRAGBridge:
             return list(value)
         # numpy array
         if hasattr(value, 'tolist'):
-            return value.tolist()
+            converted: object = value.tolist()
+            if isinstance(converted, list):
+                return converted
+            if isinstance(converted, (set, tuple)):
+                return list(converted)
+            return [converted]
         # JSON string: "[\"a\", \"b\"]"
         if isinstance(value, str):
             stripped = value.strip()

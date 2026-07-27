@@ -77,7 +77,7 @@ def normalize_date(date_str: str) -> str | None:
 class CorrectDateFormat(FieldRule):
     """标准化日期格式"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-date-format",
             target_field="publication_date",

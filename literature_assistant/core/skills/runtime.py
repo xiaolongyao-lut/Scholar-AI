@@ -6,10 +6,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 import re
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 from uuid import uuid4
 
-from datetime_utils import utc_now, utc_now_iso_z
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now, utc_now_iso_z
+else:
+    from datetime_utils import utc_now, utc_now_iso_z
 
 
 class ExecutionStatus(str, Enum):

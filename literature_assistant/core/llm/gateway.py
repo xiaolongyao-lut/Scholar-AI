@@ -8,9 +8,12 @@ This module is intentionally thin. It gives callers a stable
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Literal, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
-import model_call_gateway as _legacy_gateway
+if TYPE_CHECKING:
+    from literature_assistant.core import model_call_gateway as _legacy_gateway
+else:
+    import model_call_gateway as _legacy_gateway
 
 
 GatewayKind: TypeAlias = Literal["embedding", "rerank", "llm"]

@@ -15,10 +15,14 @@ import sqlite3
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from pdf_backends import PDFParserProvenance
-from pdf_backends.ocr_ingestion import OcrIngestionReport
+if TYPE_CHECKING:
+    from literature_assistant.core.pdf_backends import PDFParserProvenance
+    from literature_assistant.core.pdf_backends.ocr_ingestion import OcrIngestionReport
+else:
+    from pdf_backends import PDFParserProvenance
+    from pdf_backends.ocr_ingestion import OcrIngestionReport
 
 from ._document_extraction import (
     ExtractedDocumentPayload,

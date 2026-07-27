@@ -418,6 +418,14 @@ def test_persisted_formula_chunks_are_strictly_filtered_and_preferred() -> None:
             "bbox_unit": "pdf_points",
             "equation_latex": "F = ma",
         },
+        {
+            "material_id": "mat-paper",
+            "chunk_id": "chunk-unitless",
+            "chunk_type": "formula",
+            "page": 5,
+            "bbox": [0.15, 0.25, 0.50, 0.10],
+            "equation_latex": "p = mv",
+        },
     ]
     persisted = document_extraction.formula_candidates_from_chunks(
         chunks,
@@ -435,6 +443,32 @@ def test_persisted_formula_chunks_are_strictly_filtered_and_preferred() -> None:
     assert bound[0].chunk_id == "chunk-formula-1"
     merged = document_extraction.merge_pdf_formula_candidates(persisted, bound)
     assert merged == persisted
+
+
+def test_formula_binding_does_not_infer_unitless_chunk_geometry() -> None:
+    """Numeric range alone must not turn a chunk bbox into reader geometry."""
+
+    detected = document_extraction.PdfFormulaCandidate(
+        candidate_id="detected-formula",
+        page=7,
+        bbox=(0.20, 0.30, 0.40, 0.08),
+    )
+    chunks = [
+        {
+            "material_id": "mat-paper",
+            "chunk_id": "chunk-unitless",
+            "chunk_type": "formula",
+            "page": 7,
+            "bbox": [0.20, 0.30, 0.40, 0.08],
+        }
+    ]
+
+    [bound] = document_extraction.bind_pdf_formula_candidates_to_chunks(
+        [detected],
+        chunks,
+    )
+
+    assert bound.chunk_id is None
 
 
 def test_merge_prefers_overlapping_persisted_candidate_with_same_chunk_id() -> None:

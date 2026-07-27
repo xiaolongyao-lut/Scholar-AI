@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 from .ocr_engine import (
     OcrEngine,
@@ -50,9 +50,12 @@ def _default_config_path() -> Path:
         return Path(raw).expanduser().resolve()
 
     try:
-        from project_paths import runtime_state_path
+        if TYPE_CHECKING:
+            from literature_assistant.core.project_paths import runtime_state_path
+        else:
+            from project_paths import runtime_state_path
 
-        return runtime_state_path("ocr_config.json")
+        return Path(runtime_state_path("ocr_config.json"))
     except Exception:  # pragma: no cover - only for broken bootstrap paths
         return (Path.cwd() / "workspace_artifacts" / "runtime_state" / "ocr_config.json").resolve()
 
@@ -526,9 +529,9 @@ def select_ocr_engine(
         if engine.is_available():
             available_by_name[name] = engine
     for preferred in _AUTO_PRIORITY:
-        engine = available_by_name.get(preferred)
-        if engine is not None:
-            return engine, None
+        selected_engine = available_by_name.get(preferred)
+        if selected_engine is not None:
+            return selected_engine, None
     return None, "OCR policy is auto but no available OCR engine was found"
 
 

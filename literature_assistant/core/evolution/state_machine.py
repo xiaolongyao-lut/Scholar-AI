@@ -28,9 +28,12 @@ Idempotency:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import FrozenSet, Mapping
+from typing import TYPE_CHECKING, FrozenSet, Mapping
 
-from models.evolution import CandidateStatus
+if TYPE_CHECKING:
+    from literature_assistant.core.models.evolution import CandidateStatus
+else:
+    from models.evolution import CandidateStatus
 
 TERMINAL_STATES: FrozenSet[CandidateStatus] = frozenset({
     CandidateStatus.REJECTED,

@@ -30,12 +30,16 @@ import logging
 import re
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import httpx
 
-from llm.gateway import invoke as invoke_llm_gateway
-from runtime_env import resolve_llm_config
+if TYPE_CHECKING:
+    from literature_assistant.core.llm.gateway import invoke as invoke_llm_gateway
+    from literature_assistant.core.runtime_env import resolve_llm_config
+else:
+    from llm.gateway import invoke as invoke_llm_gateway
+    from runtime_env import resolve_llm_config
 
 
 logger = logging.getLogger("EvolutionCuratorJudge")
@@ -137,20 +141,28 @@ def _extract_output_text(payload: Any) -> str:
                     texts.append(text.strip())
         if texts:
             return "\n".join(texts)
-    if isinstance(payload.get("output_text"), str):
-        return payload["output_text"]
-    if isinstance(payload.get("text"), str):
-        return payload["text"]
+    output_text = payload.get("output_text")
+    if isinstance(output_text, str):
+        return output_text
+    text = payload.get("text")
+    if isinstance(text, str):
+        return text
     return ""
 
 
 def _call_judge_once(prompt: str, api_key: str, *, model: str, base_url: str) -> str:
     # Security gate: validate endpoint before sending credentials
     try:
-        from provider_endpoint_policy import (
-            TrustSource,
-            validate_endpoint,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.provider_endpoint_policy import (
+                TrustSource,
+                validate_endpoint,
+            )
+        else:
+            from provider_endpoint_policy import (
+                TrustSource,
+                validate_endpoint,
+            )
 
         decision = validate_endpoint(
             base_url,

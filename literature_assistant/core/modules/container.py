@@ -4,8 +4,14 @@ Dependency Injection Container
 Provides IoC (Inversion of Control) for easy dependency management and testing.
 """
 
-from typing import Dict, Callable, Any, Optional, TypeVar, Generic
-from modules.logger_config import get_logger
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Dict, Callable, Any, Optional, TypeVar, Generic
+
+if TYPE_CHECKING:
+    from literature_assistant.core.modules.logger_config import get_logger
+else:
+    from modules.logger_config import get_logger
 
 logger = get_logger("scoring_system.container")
 
@@ -15,7 +21,7 @@ T = TypeVar("T")
 class ServiceContainer(Generic[T]):
     """Simple service container for dependency injection"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize container"""
         self._services: Dict[str, tuple[Callable, bool]] = {}
         self._singletons: Dict[str, Any] = {}
@@ -26,7 +32,7 @@ class ServiceContainer(Generic[T]):
         name: str,
         factory: Callable,
         singleton: bool = True,
-        aliases: Optional[list] = None,
+        aliases: Optional[list[str]] = None,
     ) -> "ServiceContainer":
         """
         Register a service in the container
@@ -51,7 +57,7 @@ class ServiceContainer(Generic[T]):
 
         return self
 
-    def get(self, name: str, **kwargs) -> Any:
+    def get(self, name: str, **kwargs: object) -> Any:
         """
         Get service instance from container
 
@@ -97,7 +103,12 @@ class ServiceContainer(Generic[T]):
         self._singletons.clear()
         logger.info("Cleared all singleton instances")
 
-    def register_instance(self, name: str, instance: Any, aliases: Optional[list] = None) -> "ServiceContainer":
+    def register_instance(
+        self,
+        name: str,
+        instance: Any,
+        aliases: Optional[list[str]] = None,
+    ) -> "ServiceContainer":
         """
         Register a specific instance as a singleton
 
@@ -126,17 +137,22 @@ class ServiceContainer(Generic[T]):
 class ContainerBuilder:
     """Builder pattern for constructing containers"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize builder"""
-        self.container = ServiceContainer()
+        self.container: ServiceContainer[Any] = ServiceContainer()
 
     def add_configuration(
         self, config_path: Optional[str] = None
     ) -> "ContainerBuilder":
         """Add configuration service"""
-        from modules.configuration_manager import ConfigurationManager
+        if TYPE_CHECKING:
+            from literature_assistant.core.modules.configuration_manager import (
+                ConfigurationManager,
+            )
+        else:
+            from modules.configuration_manager import ConfigurationManager
 
-        def config_factory():
+        def config_factory() -> ConfigurationManager:
             return ConfigurationManager(config_path)
 
         self.container.register(
@@ -149,10 +165,19 @@ class ContainerBuilder:
 
     def add_classifier(self) -> "ContainerBuilder":
         """Add evidence classifier service using registry"""
-        from modules.classifier_registry import ClassifierRegistry
-        import modules.evidence_classifier # Ensure default is registered
+        if TYPE_CHECKING:
+            import literature_assistant.core.modules.evidence_classifier
+            from literature_assistant.core.modules.classifier_interface import (
+                ClassifierInterface,
+            )
+            from literature_assistant.core.modules.classifier_registry import (
+                ClassifierRegistry,
+            )
+        else:
+            from modules.classifier_registry import ClassifierRegistry
+            import modules.evidence_classifier  # Ensure default is registered
 
-        def classifier_factory():
+        def classifier_factory() -> ClassifierInterface:
             config = self.container.get("config")
             # Resolve name from config or default
             name = config.config.get("classifier", "default")
@@ -168,10 +193,15 @@ class ContainerBuilder:
 
     def add_scorer(self) -> "ContainerBuilder":
         """Add scoring engine service using registry"""
-        from modules.scoring_registry import ScoringRegistry
-        import modules.default_scorer # Ensure default is registered
+        if TYPE_CHECKING:
+            import literature_assistant.core.modules.default_scorer
+            from literature_assistant.core.modules.scoring_interface import ScoringInterface
+            from literature_assistant.core.modules.scoring_registry import ScoringRegistry
+        else:
+            from modules.scoring_registry import ScoringRegistry
+            import modules.default_scorer  # Ensure default is registered
 
-        def scorer_factory():
+        def scorer_factory() -> ScoringInterface:
             config = self.container.get("config")
             # Resolve name from config or default
             name = config.config.get("scorer", "default")
@@ -187,9 +217,12 @@ class ContainerBuilder:
 
     def add_processor(self) -> "ContainerBuilder":
         """Add paper processor service"""
-        from modules.paper_processor import PaperProcessor
+        if TYPE_CHECKING:
+            from literature_assistant.core.modules.paper_processor import PaperProcessor
+        else:
+            from modules.paper_processor import PaperProcessor
 
-        def processor_factory():
+        def processor_factory() -> PaperProcessor:
             config = self.container.get("config")
             classifier = self.container.get("classifier")
             scorer = self.container.get("scorer")
@@ -205,9 +238,12 @@ class ContainerBuilder:
 
     def add_batch_manager(self) -> "ContainerBuilder":
         """Add batch manager service"""
-        from modules.batch_manager import BatchManager
+        if TYPE_CHECKING:
+            from literature_assistant.core.modules.batch_manager import BatchManager
+        else:
+            from modules.batch_manager import BatchManager
 
-        def batch_factory():
+        def batch_factory() -> BatchManager:
             config = self.container.get("config")
             return BatchManager(config)
 
@@ -220,9 +256,12 @@ class ContainerBuilder:
 
     def add_exporter(self) -> "ContainerBuilder":
         """Add result exporter service"""
-        from modules.result_exporter import ResultExporter
+        if TYPE_CHECKING:
+            from literature_assistant.core.modules.result_exporter import ResultExporter
+        else:
+            from modules.result_exporter import ResultExporter
 
-        def exporter_factory():
+        def exporter_factory() -> ResultExporter:
             config = self.container.get("config")
             return ResultExporter(config)
 
@@ -236,10 +275,22 @@ class ContainerBuilder:
 
     def add_observer(self) -> "ContainerBuilder":
         """Add pipeline observability service"""
-        from modules.pipeline_observer import PipelineObserver
-        from modules.composite_observer import CompositeObserver, LoggingObserver, MetricsObserver
+        if TYPE_CHECKING:
+            from literature_assistant.core.modules.composite_observer import (
+                CompositeObserver,
+                LoggingObserver,
+                MetricsObserver,
+            )
+            from literature_assistant.core.modules.pipeline_observer import PipelineObserver
+        else:
+            from modules.composite_observer import (
+                CompositeObserver,
+                LoggingObserver,
+                MetricsObserver,
+            )
+            from modules.pipeline_observer import PipelineObserver
 
-        def observer_factory():
+        def observer_factory() -> CompositeObserver:
             return CompositeObserver([
                 LoggingObserver(),
                 MetricsObserver()
@@ -255,9 +306,12 @@ class ContainerBuilder:
 
     def add_cache(self) -> "ContainerBuilder":
         """Add cache service"""
-        from modules.cache_manager import CacheManager
+        if TYPE_CHECKING:
+            from literature_assistant.core.modules.cache_manager import CacheManager
+        else:
+            from modules.cache_manager import CacheManager
 
-        def cache_factory():
+        def cache_factory() -> CacheManager[object]:
             return CacheManager(max_size=10000, ttl_seconds=3600)
 
         self.container.register(

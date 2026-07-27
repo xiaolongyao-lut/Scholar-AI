@@ -433,7 +433,8 @@ def _eval_bounded_resource_overrun(observation: dict[str, Any]) -> list[Finding]
 
 def _eval_unauthorized_external_action(observation: dict[str, Any]) -> list[Finding]:
     blob = _json_blob(observation)
-    if not _UNAUTHORIZED_ACTION_PATTERN.search(blob):
+    action_match = _UNAUTHORIZED_ACTION_PATTERN.search(blob)
+    if action_match is None:
         return []
     return [
         _finding(
@@ -441,7 +442,7 @@ def _eval_unauthorized_external_action(observation: dict[str, Any]) -> list[Find
             "authorization_boundary",
             "block",
             "Output claims or requests external push, publish, release, upload, deployment, Feishu, or Lark action.",
-            evidence=[{"excerpt": _redact_sensitive_text(_UNAUTHORIZED_ACTION_PATTERN.search(blob).group(0))}],
+            evidence=[{"excerpt": _redact_sensitive_text(action_match.group(0))}],
             next_actions=("Keep actions local unless the user explicitly authorizes external publication or integration.",),
         )
     ]

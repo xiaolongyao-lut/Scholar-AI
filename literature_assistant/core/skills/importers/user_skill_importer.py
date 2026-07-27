@@ -19,18 +19,33 @@ import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterator
+from typing import TYPE_CHECKING, Any, Iterator
 
-from skills.user_manifest import (
-    validate_manifest,
-    parse_skill_md_frontmatter,
-    ManifestValidationError,
-    UserSkillManifest,
-    MAX_PACKAGE_FILES,
-    MAX_SINGLE_FILE_BYTES,
-    MAX_PACKAGE_BYTES,
-)
-from skills.persistence import SkillInstallMetadata, write_install_metadata
+if TYPE_CHECKING:
+    from literature_assistant.core.skills.persistence import (
+        SkillInstallMetadata,
+        write_install_metadata,
+    )
+    from literature_assistant.core.skills.user_manifest import (
+        MAX_PACKAGE_BYTES,
+        MAX_PACKAGE_FILES,
+        MAX_SINGLE_FILE_BYTES,
+        ManifestValidationError,
+        UserSkillManifest,
+        parse_skill_md_frontmatter,
+        validate_manifest,
+    )
+else:
+    from skills.persistence import SkillInstallMetadata, write_install_metadata
+    from skills.user_manifest import (
+        MAX_PACKAGE_BYTES,
+        MAX_PACKAGE_FILES,
+        MAX_SINGLE_FILE_BYTES,
+        ManifestValidationError,
+        UserSkillManifest,
+        parse_skill_md_frontmatter,
+        validate_manifest,
+    )
 
 logger = logging.getLogger("UserSkillImporter")
 

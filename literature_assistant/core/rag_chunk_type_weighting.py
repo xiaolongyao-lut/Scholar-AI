@@ -22,7 +22,7 @@ to the reranker score, not to these chunk-type weights.
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping
+from typing import TYPE_CHECKING, Any, Iterable, Mapping
 
 
 __all__ = [
@@ -51,14 +51,18 @@ CHUNK_TYPE_WEIGHTS: dict[str, float] = {
 def is_weighting_enabled() -> bool:
     """Cheap probe — defensive against import-cycle issues in early boot."""
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
+
         return is_enabled("rag_chunk_type_weighting")
     except (ImportError, KeyError):
         return False
 
 
 def apply_chunk_type_weights(
-    candidates: Iterable[Mapping[str, Any]] | list[dict[str, Any]],
+    candidates: Iterable[dict[str, Any]],
     *,
     score_key: str = "score",
     chunk_type_key: str = "chunk_type",

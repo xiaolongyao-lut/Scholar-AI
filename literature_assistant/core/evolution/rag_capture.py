@@ -19,14 +19,22 @@ later slice — they need richer user-feedback signals to gauge relevance.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from models.evolution import (
-    CandidateMemoryType,
-    CandidateRiskLevel,
-    CandidateSourceType,
-)
-from evolution._capture_args import CaptureCandidateArgs
+if TYPE_CHECKING:
+    from literature_assistant.core.evolution._capture_args import CaptureCandidateArgs
+    from literature_assistant.core.models.evolution import (
+        CandidateMemoryType,
+        CandidateRiskLevel,
+        CandidateSourceType,
+    )
+else:
+    from evolution._capture_args import CaptureCandidateArgs
+    from models.evolution import (
+        CandidateMemoryType,
+        CandidateRiskLevel,
+        CandidateSourceType,
+    )
 
 
 def extract_from_rag_result(
@@ -99,18 +107,35 @@ def extract_from_rag_result(
 # --- helpers -----------------------------------------------------------------
 
 def _ref_to_dict(ref: Any) -> Dict[str, Any]:
-    if isinstance(ref, dict):
-        return ref
+    normalized = _string_keyed_dict(ref)
+    if normalized is not None:
+        return normalized
     dump = getattr(ref, "model_dump", None)
     if callable(dump):
         try:
-            return dump()
+            normalized = _string_keyed_dict(dump())
+            if normalized is not None:
+                return normalized
         except Exception:
             pass
     dataclass_dict = getattr(ref, "__dict__", None)
-    if isinstance(dataclass_dict, dict) and dataclass_dict:
-        return {k: v for k, v in dataclass_dict.items() if not k.startswith("_")}
+    normalized = _string_keyed_dict(dataclass_dict)
+    if normalized:
+        return {key: value for key, value in normalized.items() if not key.startswith("_")}
     return {"raw": str(ref)}
+
+
+def _string_keyed_dict(value: Any) -> Optional[Dict[str, Any]]:
+    """Return a typed copy only when every mapping key is a string."""
+
+    if not isinstance(value, dict):
+        return None
+    normalized: Dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            return None
+        normalized[key] = item
+    return normalized
 
 
 def _shorten(text: str, limit: int) -> str:

@@ -74,7 +74,6 @@ PYTEST_FOCUSED_CI_EXEMPTIONS: dict[str, str] = {
     "tests/test_mcp_phase2_tool_loop.py": "phase-2 MCP loop regression outside the current KRT/N33 focused gate",
     "tests/test_metadata_linter_api.py": "metadata linter regression outside the current KRT/N33 focused gate",
     "tests/test_pdf_backend_router.py": "PDF backend router regression outside the current KRT/N33 focused gate",
-    "tests/test_pdf_backends.py": "PDF backend matrix regression outside the current KRT/N33 focused gate",
     "tests/test_provider_endpoint_policy.py": "provider endpoint policy regression outside the current KRT/N33 focused gate",
     "tests/test_provider_endpoint_policy_fake_ip.py": "provider endpoint fake-IP regression outside the current KRT/N33 focused gate",
     "tests/test_provider_endpoint_policy_loopback.py": "provider endpoint loopback regression outside the current KRT/N33 focused gate",
@@ -170,7 +169,7 @@ def _promoted_tests() -> set[str]:
 
 
 def _focused_ci_exemptions() -> set[str]:
-    """Return git-visible tests intentionally deferred from focused CI."""
+    """Return Git-indexed tests intentionally deferred from focused CI."""
     return (
         set(PYTEST_FOCUSED_CI_EXEMPTIONS)
         | set(MCP_FOCUSED_CI_EXEMPTIONS)
@@ -180,7 +179,7 @@ def _focused_ci_exemptions() -> set[str]:
 
 
 def _git_visible_tests() -> set[str]:
-    """Return git-visible test files without pulling in ignored local scratch files."""
+    """Return test files present in the Git index used by a clean checkout."""
     return _git_visible_paths(GIT_VISIBLE_TEST_ROOTS, GIT_VISIBLE_TEST_RE)
 
 
@@ -198,15 +197,13 @@ def _require_git_worktree() -> None:
 
 
 def _git_visible_paths(roots: tuple[str, ...], path_pattern: re.Pattern[str]) -> set[str]:
-    """Return git-visible paths under bounded roots using git's ignore engine."""
+    """Return clean-checkout paths under bounded roots using only the Git index."""
     _require_git_worktree()
     result = subprocess.run(
         [
             "git",
             "ls-files",
             "--cached",
-            "--others",
-            "--exclude-standard",
             "--",
             *roots,
         ],
@@ -301,10 +298,73 @@ def test_focused_ci_paths_exist() -> None:
     assert not missing, "Focused CI references missing test files:\n" + _format_paths(missing)
 
 
+def test_git_visible_paths_excludes_untracked_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Clean-checkout visibility must come from the Git index, not the working tree."""
+
+    repository = tmp_path / "repository"
+    tests_root = repository / "tests"
+    tests_root.mkdir(parents=True)
+    (tests_root / "test_tracked.py").write_text("def test_tracked(): pass\n", encoding="utf-8")
+    (tests_root / "test_untracked.py").write_text("def test_untracked(): pass\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "init", "--quiet"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "add", "--", "tests/test_tracked.py"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    monkeypatch.setitem(globals(), "REPO_ROOT", repository)
+
+    visible = _git_visible_paths(("tests",), re.compile(r"^tests/.*\.py$"))
+
+    assert visible == {"tests/test_tracked.py"}
+
+
+def test_focused_ci_paths_are_tracked() -> None:
+    """Every focused CI target must exist in the Git index used by a clean checkout."""
+
+    missing = _focused_ci_tests() - _git_visible_tests()
+
+    assert not missing, "Focused CI references tests absent from the Git index:\n" + _format_paths(missing)
+
+
+def test_distribution_manifest_is_tracked_for_clean_checkout() -> None:
+    """The package boundary policy must survive a clean Git checkout."""
+
+    _require_git_worktree()
+    result = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", "MANIFEST.in"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, "MANIFEST.in must be present in the Git index"
+
+
 def test_backend_ci_condition_covers_all_python_test_roots() -> None:
     """The backend focused job must not skip MCP tests when root tests are absent."""
     workflow = _read_text(CI_WORKFLOW)
     assert "hashFiles('tests/**/*.py', 'agent_mcp_server/tests/**/*.py')" in workflow
+
+
+def test_backend_ci_runs_the_configured_mypy_gate() -> None:
+    """CI must execute the same repository-configured mypy command as local checks."""
+
+    workflow = _read_text(CI_WORKFLOW)
+
+    assert "python -X utf8 -m mypy" in workflow
 
 
 def test_promoted_tests_are_classified_for_focused_ci() -> None:

@@ -16,45 +16,90 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Callable
+from typing import TYPE_CHECKING, Any, Callable, Mapping, TypeGuard
 from uuid import uuid4
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
-from chunk_size_guard import hard_max_chars, hard_max_tokens, inspect_chunk
-from chunk_hashing import compute_chunk_hashes, compute_chunk_store_version
-from chunk_models import EnrichedChunk
-from material_revision_sync import (
-    build_material_revision_identity,
-    serialize_ocr_revision_report,
-    serialize_parser_provenance,
-    synchronize_material_revision,
-)
-from pdf_backends import PDFParserProvenance
-from pdf_backends.ocr_ingestion import OcrIngestionReport
-from project_paths import output_path, project_data_path
-from retrieval_gateway import retrieve_candidates
-from models import (
-    ProjectPayload,
-    SectionPayload,
-    MaterialPayload,
-    FigureTableCandidatePayload,
-    DraftPayload,
-    RevisionPayload,
-    ProjectExportPayload,
-    WritingAssociationPayload,
-    CreateProjectRequest,
-    CreateSectionRequest,
-    CreateMaterialRequest,
-    CreateDraftRequest,
-    SaveDraftRequest,
-    BuildAssociationRequest,
-    PaginatedResponse,
-    PaginationMeta,
-    paginate,
-    MessageResponse,
-)
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+
+if TYPE_CHECKING:
+    from literature_assistant.core.chunk_hashing import (
+        compute_chunk_hashes,
+        compute_chunk_store_version,
+    )
+    from literature_assistant.core.chunk_models import EnrichedChunk
+    from literature_assistant.core.chunk_size_guard import (
+        hard_max_chars,
+        hard_max_tokens,
+        inspect_chunk,
+    )
+    from literature_assistant.core.material_revision_sync import (
+        build_material_revision_identity,
+        serialize_ocr_revision_report,
+        serialize_parser_provenance,
+        synchronize_material_revision,
+    )
+    from literature_assistant.core.models import (
+        BuildAssociationRequest,
+        CreateDraftRequest,
+        CreateMaterialRequest,
+        CreateProjectRequest,
+        CreateSectionRequest,
+        DraftPayload,
+        FigureTableCandidatePayload,
+        MaterialPayload,
+        MessageResponse,
+        PaginatedResponse,
+        PaginationMeta,
+        ProjectExportPayload,
+        ProjectPayload,
+        RevisionPayload,
+        SaveDraftRequest,
+        SectionPayload,
+        WritingAssociationPayload,
+        paginate,
+    )
+    from literature_assistant.core.pdf_backends import PDFParserProvenance
+    from literature_assistant.core.pdf_backends.ocr_ingestion import OcrIngestionReport
+    from literature_assistant.core.layers.m_layer_mempalace_memory import MempalaceMemoryAdapter
+    from literature_assistant.core.project_paths import output_path, project_data_path
+    from literature_assistant.core.retrieval_gateway import retrieve_candidates
+    from literature_assistant.core.writing_resources import WritingResourceStore
+else:
+    from chunk_hashing import compute_chunk_hashes, compute_chunk_store_version
+    from chunk_models import EnrichedChunk
+    from chunk_size_guard import hard_max_chars, hard_max_tokens, inspect_chunk
+    from material_revision_sync import (
+        build_material_revision_identity,
+        serialize_ocr_revision_report,
+        serialize_parser_provenance,
+        synchronize_material_revision,
+    )
+    from models import (
+        BuildAssociationRequest,
+        CreateDraftRequest,
+        CreateMaterialRequest,
+        CreateProjectRequest,
+        CreateSectionRequest,
+        DraftPayload,
+        FigureTableCandidatePayload,
+        MaterialPayload,
+        MessageResponse,
+        PaginatedResponse,
+        PaginationMeta,
+        ProjectExportPayload,
+        ProjectPayload,
+        RevisionPayload,
+        SaveDraftRequest,
+        SectionPayload,
+        WritingAssociationPayload,
+        paginate,
+    )
+    from pdf_backends import PDFParserProvenance
+    from pdf_backends.ocr_ingestion import OcrIngestionReport
+    from project_paths import output_path, project_data_path
+    from retrieval_gateway import retrieve_candidates
 
 logger = logging.getLogger("ResourcesRouter")
-router = APIRouter(prefix="/resources", tags=["Resources"])
+router: APIRouter = APIRouter(prefix="/resources", tags=["Resources"])
 _ai_adapter_instance: Any | None = None
 _ASYNC_UPLOAD_EXTENSIONS = {".pdf"}
 _DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -209,7 +254,10 @@ def _new_upload_batch_identity() -> tuple[str, str]:
 def _get_project_source_folder(project_id: str) -> str:
     """Return the source_folder stored in the project's metadata (or empty string)."""
     try:
-        from writing_resources import get_writing_resource_store
+        if TYPE_CHECKING:
+            from literature_assistant.core.writing_resources import get_writing_resource_store
+        else:
+            from writing_resources import get_writing_resource_store
         store = get_writing_resource_store()
         project = store.get_project(project_id)
         if project:
@@ -256,7 +304,10 @@ def _project_workspace_dir(project_id: str) -> Path:
     normalized_project_id = str(project_id or "").strip()
     if not normalized_project_id:
         raise ValueError("project_id must be a non-empty string")
-    return project_data_path(normalized_project_id)
+    workspace_dir: object = project_data_path(normalized_project_id)
+    if not isinstance(workspace_dir, Path):
+        raise TypeError("Project data path resolver must return a Path")
+    return workspace_dir
 
 
 def _remove_project_workspace_dir(project_id: str) -> bool:
@@ -368,7 +419,11 @@ from ._export_helpers import (
 )
 
 # Wrapper to inject MAX_CHUNKS_PER_MATERIAL (defined later in this module)
-def _select_diverse_top_chunks(scored_chunks, top_k, max_chunks_per_material=None):
+def _select_diverse_top_chunks(
+    scored_chunks: list[tuple[float, dict[str, object]]],
+    top_k: int,
+    max_chunks_per_material: int | None = None,
+) -> list[tuple[float, dict[str, object]]]:
     if max_chunks_per_material is None:
         max_chunks_per_material = MAX_CHUNKS_PER_MATERIAL
     return _select_diverse_top_chunks_impl(scored_chunks, top_k, max_chunks_per_material)
@@ -467,10 +522,10 @@ def _search_chunks_via_gateway(project_id: str, query: str, top_k: int = 10) -> 
     results: list[dict[str, Any]] = []
     diagnostics = gateway_result.diagnostics.to_dict()
     for candidate in gateway_result.candidates:
-        chunk = chunk_by_key.get((candidate.material_id, candidate.chunk_id))
-        if chunk is None:
+        selected_chunk = chunk_by_key.get((candidate.material_id, candidate.chunk_id))
+        if selected_chunk is None:
             continue
-        enriched = dict(chunk)
+        enriched = dict(selected_chunk)
         enriched["score"] = round(candidate.score, 6)
         enriched["retrieval_sources"] = list(candidate.sources)
         enriched["retrieval_gateway_diagnostics"] = diagnostics
@@ -590,13 +645,18 @@ def _ensure_project_chunks(
     return committed_chunks
 
 
-def get_writing_resource_store():
+def get_writing_resource_store() -> "WritingResourceStore":
     """Import and return the writing resource store."""
-    from writing_resources import get_writing_resource_store as get_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_resources import (
+            get_writing_resource_store as get_store,
+        )
+    else:
+        from writing_resources import get_writing_resource_store as get_store
     return get_store()
 
 
-def _ensure_upload_project(project_id: str) -> Any:
+def _ensure_upload_project(project_id: str) -> "WritingResourceStore":
     """Validate that the target project exists before ingesting uploaded files."""
     store = get_writing_resource_store()
     project = store.get_project(project_id)
@@ -983,6 +1043,23 @@ class _UploadedSourceFile:
     created: bool = True
 
 
+def _validated_ocr_report(
+    value: object,
+) -> OcrIngestionReport | Mapping[str, object] | None:
+    """Validate the extraction payload's intentionally opaque OCR boundary."""
+
+    if value is None or isinstance(value, OcrIngestionReport):
+        return value
+    if not isinstance(value, Mapping):
+        raise TypeError("OCR report must be an OcrIngestionReport or an object")
+    normalized: dict[str, object] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise TypeError("OCR report keys must be strings")
+        normalized[key] = item
+    return normalized
+
+
 def _safe_upload_filename(filename: str) -> str:
     """Return a storage-safe upload filename while preserving display intent."""
 
@@ -1151,6 +1228,9 @@ async def _persist_upload_to_source_file(
                     magic_prefix.extend(chunk[:remaining])
                 tmp.write(chunk)
 
+        if temp_path is None:
+            raise OSError("upload temporary file was not created")
+        staged_path = temp_path
         if total_bytes == 0:
             raise ValueError(f"文件“{safe_filename}”为空")
         _validate_upload_magic(safe_filename, bytes(magic_prefix))
@@ -1188,7 +1268,7 @@ async def _persist_upload_to_source_file(
                     raise FileExistsError(
                         "collision-safe upload destination contains different bytes"
                     )
-            os.replace(temp_path, destination)
+            os.replace(staged_path, destination)
             committed_path = destination
             created = True
             return doc_store, chunk_store
@@ -1501,6 +1581,51 @@ def _write_material_document_content(
     return result
 
 
+def _compensate_failed_pending_material_publication(
+    project_id: str,
+    material_id: str,
+    *,
+    store: Any,
+) -> None:
+    """Best-effort removal of one newly created, unpublished material."""
+
+    try:
+        published_docs = _load_doc_store(project_id)
+    except Exception:  # noqa: BLE001 - preserve the original publication failure
+        logger.exception(
+            "pending_material_compensation_verification_failed: "
+            "project_id=%s material_id=%s",
+            project_id,
+            material_id,
+        )
+        return
+    if material_id in published_docs:
+        logger.warning(
+            "pending_material_compensation_skipped_published: "
+            "project_id=%s material_id=%s",
+            project_id,
+            material_id,
+        )
+        return
+
+    try:
+        deleted = store.delete_material(material_id)
+    except Exception:  # noqa: BLE001 - preserve the original publication failure
+        logger.exception(
+            "pending_material_compensation_failed: project_id=%s material_id=%s",
+            project_id,
+            material_id,
+        )
+        return
+    if deleted is False:
+        logger.error(
+            "pending_material_compensation_failed: "
+            "project_id=%s material_id=%s reason=delete_returned_false",
+            project_id,
+            material_id,
+        )
+
+
 def _create_pending_uploaded_document(
     project_id: str,
     filename: str,
@@ -1528,12 +1653,13 @@ def _create_pending_uploaded_document(
     if source_path.parent != source_root:
         raise ValueError("uploaded source escaped the project source_files directory")
     reservation: dict[str, Any] = {}
+    created_material_id: str | None = None
 
     def _queue_material(
         doc_store: dict[str, dict[str, Any]],
         chunk_store: dict[str, list[dict[str, Any]]],
     ) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
-        nonlocal reservation
+        nonlocal created_material_id, reservation
         if not _uploaded_source_matches(
             source_path,
             fingerprint=normalized_fingerprint,
@@ -1566,6 +1692,7 @@ def _create_pending_uploaded_document(
             summary_en="",
             material_type="reference",
         )
+        created_material_id = str(material.material_id)
         doc_store[material.material_id] = {
             "title": safe_filename,
             "content": "",
@@ -1586,7 +1713,16 @@ def _create_pending_uploaded_document(
         }
         return doc_store, chunk_store
 
-    _update_project_stores_atomic(project_id, _queue_material)
+    try:
+        _update_project_stores_atomic(project_id, _queue_material)
+    except BaseException:
+        if created_material_id:
+            _compensate_failed_pending_material_publication(
+                project_id,
+                created_material_id,
+                store=store,
+            )
+        raise
     if not reservation:
         raise RuntimeError("uploaded PDF fingerprint reservation returned no result")
     return reservation
@@ -1866,7 +2002,9 @@ def _verify_uploaded_document_extraction_source(
         raise ValueError("uploaded PDF source fingerprint changed before extraction")
 
 
-def _is_uploaded_document_extraction_task(task: Mapping[str, Any] | None) -> bool:
+def _is_uploaded_document_extraction_task(
+    task: Mapping[str, Any] | None,
+) -> TypeGuard[Mapping[str, Any]]:
     """Return whether a persisted material task owns the upload executor."""
 
     if not isinstance(task, Mapping):
@@ -1942,7 +2080,7 @@ def _build_uploaded_document_extraction_executor(runtime: Any, job_id: str) -> C
                         markdown_full=payload.markdown_full,
                         parser_provenance=payload.parser_provenance,
                         parser_output_sha256=payload.parser_output_sha256,
-                        ocr_report=payload.ocr_report,
+                        ocr_report=_validated_ocr_report(payload.ocr_report),
                         require_existing_material=True,
                     )
                 )
@@ -2049,8 +2187,12 @@ async def _start_uploaded_document_extraction_job(
     """Start a runtime-visible extraction/indexing job for one uploaded PDF."""
 
     batch_context = _validate_upload_batch_context(batch_context)
-    from harness_protocols import JobKind, SessionMode
-    from writing_runtime import get_writing_runtime
+    if TYPE_CHECKING:
+        from literature_assistant.core.harness_protocols import JobKind, SessionMode
+        from literature_assistant.core.writing_runtime import get_writing_runtime
+    else:
+        from harness_protocols import JobKind, SessionMode
+        from writing_runtime import get_writing_runtime
 
     runtime = get_writing_runtime()
     safe_filename = _safe_upload_filename(filename)
@@ -2113,89 +2255,123 @@ async def _start_uploaded_document_extraction_job(
 
 
 async def recover_uploaded_document_extraction_jobs(runtime: Any | None = None) -> dict[str, int]:
-    """Reattach upload executors for persisted non-terminal material tasks."""
+    """Reattach upload executors for persisted non-terminal material tasks.
+
+    Args:
+        runtime: Runtime owner to scan, or ``None`` to use the shared runtime.
+
+    Returns:
+        Integer recovery counters, including per-job ordinary exceptions in
+        ``errors``. Cancellation is not intercepted.
+    """
 
     if runtime is None:
-        from writing_runtime import get_writing_runtime
+        if TYPE_CHECKING:
+            from literature_assistant.core.writing_runtime import get_writing_runtime
+        else:
+            from writing_runtime import get_writing_runtime
 
         runtime = get_writing_runtime()
-    counts = {"scanned": 0, "recovered": 0, "paused": 0, "skipped": 0}
+    counts = {"scanned": 0, "recovered": 0, "paused": 0, "skipped": 0, "errors": 0}
     for session in runtime.list_sessions(include_archived=True):
         for job in runtime.list_jobs(session.session_id):
-            task = runtime.get_material_processing_task(job.job_id)
-            if not _is_uploaded_document_extraction_task(task):
-                continue
-            counts["scanned"] += 1
-            if runtime.has_active_job_executor(job.job_id):
-                counts["skipped"] += 1
-                continue
-            task_status = str(task.get("status") or "").strip().lower()
-            if task_status in {"completed", "failed", "cancelled"} or job.status.value in {
-                "completed",
-                "failed",
-                "cancelled",
-            }:
-                counts["skipped"] += 1
-                continue
-            if job.status.value == "paused":
+            try:
+                task = runtime.get_material_processing_task(job.job_id)
+                if not _is_uploaded_document_extraction_task(task):
+                    continue
+                counts["scanned"] += 1
+                if runtime.has_active_job_executor(job.job_id):
+                    counts["skipped"] += 1
+                    continue
+                task_status = str(task.get("status") or "").strip().lower()
+                if task_status in {"completed", "failed", "cancelled"} or job.status.value in {
+                    "completed",
+                    "failed",
+                    "cancelled",
+                }:
+                    counts["skipped"] += 1
+                    continue
+                preserve_pause = job.status.value == "paused"
                 runtime.record_material_processing_task_result(
                     job.job_id,
-                    status="paused",
-                    result={"status": "paused", "stage": "recovery"},
+                    status="paused" if preserve_pause else "queued",
+                    result={
+                        "status": "paused" if preserve_pause else "queued",
+                        "stage": "recovery",
+                    },
                     artifacts=list(task.get("artifacts") or []),
                     warnings=list(task.get("warnings") or []),
                     provenance={"source": "resources_router.startup_recovery"},
                 )
-                counts["paused"] += 1
-            else:
-                runtime.record_material_processing_task_result(
+                await runtime.recover_job_executor(
                     job.job_id,
-                    status="queued",
-                    result={"status": "queued", "stage": "recovery"},
-                    artifacts=list(task.get("artifacts") or []),
-                    warnings=list(task.get("warnings") or []),
-                    provenance={"source": "resources_router.startup_recovery"},
+                    _build_uploaded_document_extraction_executor(runtime, job.job_id),
                 )
-                counts["recovered"] += 1
-            await runtime.recover_job_executor(
-                job.job_id,
-                _build_uploaded_document_extraction_executor(runtime, job.job_id),
-            )
+                counts["paused" if preserve_pause else "recovered"] += 1
+            except Exception:  # noqa: BLE001 - one corrupt job must not block later jobs
+                counts["errors"] += 1
+                logger.exception(
+                    "upload_extraction_recovery_job_failed: session_id=%s job_id=%s",
+                    session.session_id,
+                    job.job_id,
+                )
     return counts
 
 
 async def shutdown_uploaded_document_extraction_jobs(runtime: Any | None = None) -> dict[str, int]:
-    """Persist recoverable upload state and stop process-owned executors."""
+    """Persist recoverable upload state and stop process-owned executors.
+
+    Args:
+        runtime: Runtime owner to scan, or ``None`` to use the shared runtime.
+
+    Returns:
+        Integer shutdown counters, including per-job ordinary exceptions in
+        ``errors``. Cancellation is not intercepted.
+    """
 
     if runtime is None:
-        from writing_runtime import get_writing_runtime
+        if TYPE_CHECKING:
+            from literature_assistant.core.writing_runtime import get_writing_runtime
+        else:
+            from writing_runtime import get_writing_runtime
 
         runtime = get_writing_runtime()
-    counts = {"scanned": 0, "interrupted": 0, "completed_commit": 0}
+    counts = {"scanned": 0, "interrupted": 0, "completed_commit": 0, "errors": 0}
     for session in runtime.list_sessions(include_archived=True):
         for job in runtime.list_jobs(session.session_id):
-            task = runtime.get_material_processing_task(job.job_id)
-            if not _is_uploaded_document_extraction_task(task) or not runtime.has_active_job_executor(job.job_id):
-                continue
-            counts["scanned"] += 1
-            if runtime.is_job_commit_in_progress(job.job_id):
+            try:
+                task = runtime.get_material_processing_task(job.job_id)
+                if (
+                    not _is_uploaded_document_extraction_task(task)
+                    or not runtime.has_active_job_executor(job.job_id)
+                ):
+                    continue
+                counts["scanned"] += 1
+                if runtime.is_job_commit_in_progress(job.job_id):
+                    await runtime.interrupt_job_for_shutdown(job.job_id)
+                    counts["completed_commit"] += 1
+                    continue
+                preserve_pause = job.status.value == "paused"
+                runtime.record_material_processing_task_result(
+                    job.job_id,
+                    status="paused" if preserve_pause else "queued",
+                    result={
+                        "status": "paused" if preserve_pause else "queued",
+                        "stage": "shutdown_interrupted",
+                    },
+                    artifacts=list(task.get("artifacts") or []),
+                    warnings=list(task.get("warnings") or []),
+                    provenance={"source": "resources_router.shutdown"},
+                )
                 await runtime.interrupt_job_for_shutdown(job.job_id)
-                counts["completed_commit"] += 1
-                continue
-            preserve_pause = job.status.value == "paused"
-            runtime.record_material_processing_task_result(
-                job.job_id,
-                status="paused" if preserve_pause else "queued",
-                result={
-                    "status": "paused" if preserve_pause else "queued",
-                    "stage": "shutdown_interrupted",
-                },
-                artifacts=list(task.get("artifacts") or []),
-                warnings=list(task.get("warnings") or []),
-                provenance={"source": "resources_router.shutdown"},
-            )
-            await runtime.interrupt_job_for_shutdown(job.job_id)
-            counts["interrupted"] += 1
+                counts["interrupted"] += 1
+            except Exception:  # noqa: BLE001 - one corrupt job must not block later jobs
+                counts["errors"] += 1
+                logger.exception(
+                    "upload_extraction_shutdown_job_failed: session_id=%s job_id=%s",
+                    session.session_id,
+                    job.job_id,
+                )
     return counts
 
 
@@ -2228,7 +2404,10 @@ def _persist_uploaded_document(
     # 智能摘要提取（优先 Abstract 章节）
     if extracted:
         try:
-            from services.abstract_extractor import extract_abstract
+            if TYPE_CHECKING:
+                from literature_assistant.core.services.abstract_extractor import extract_abstract
+            else:
+                from services.abstract_extractor import extract_abstract
             summary = extract_abstract(extracted, max_length=500).strip()
         except Exception:  # noqa: BLE001 - fallback to simple truncate
             summary = extracted[:200].replace("\n", " ").strip()
@@ -2305,8 +2484,15 @@ async def _ingest_uploaded_document(
                 source_fingerprint=content_fingerprint,
                 source_size=uploaded.size,
             )
-        except Exception:
-            _remove_unreferenced_uploaded_source(project_id, uploaded)
+        except BaseException:
+            try:
+                _remove_unreferenced_uploaded_source(project_id, uploaded)
+            except Exception:  # noqa: BLE001 - preserve publication failure/cancellation
+                logger.exception(
+                    "pending_source_compensation_failed: project_id=%s source=%s",
+                    project_id,
+                    uploaded.path.name,
+                )
             raise
         if str(pending.get("status") or "") != "queued":
             _remove_unreferenced_uploaded_source(project_id, uploaded)
@@ -2392,7 +2578,7 @@ async def _ingest_uploaded_document(
         markdown_full=payload.markdown_full,
         parser_provenance=payload.parser_provenance,
         parser_output_sha256=payload.parser_output_sha256,
-        ocr_report=payload.ocr_report,
+        ocr_report=_validated_ocr_report(payload.ocr_report),
     )
     return _with_upload_batch_context(result, batch_context)
 
@@ -2429,7 +2615,10 @@ async def ingest_validated_pdf_path(
     if isinstance(expected_size, bool) or not isinstance(expected_size, int) or expected_size < 4096:
         raise ValueError("expected_size must be an integer of at least 4096 bytes")
 
-    from acquisition.validator import validate_pdf_file
+    if TYPE_CHECKING:
+        from literature_assistant.core.acquisition.validator import validate_pdf_file
+    else:
+        from acquisition.validator import validate_pdf_file
 
     store = _ensure_upload_project(normalized_project_id)
     source_root = project_data_path(normalized_project_id, "source_files").resolve()
@@ -2490,7 +2679,24 @@ def _build_unified_batch_upload_service(filter_engine: Any | None = None) -> Any
         existing monkeypatchable helper boundary used by tests.
     """
 
-    from services.unified_batch_upload_service import UnifiedBatchUploadService
+    if TYPE_CHECKING:
+        from literature_assistant.core.services.unified_batch_upload_service import (
+            UnifiedBatchUploadService,
+            UploadedSourceFile,
+        )
+    else:
+        from services.unified_batch_upload_service import (
+            UnifiedBatchUploadService,
+            UploadedSourceFile,
+        )
+
+    def _cleanup_uploaded_source(
+        project_id: str,
+        uploaded: UploadedSourceFile,
+    ) -> bool:
+        if not isinstance(uploaded, _UploadedSourceFile):
+            raise TypeError("uploaded source must use the resources router contract")
+        return _remove_unreferenced_uploaded_source(project_id, uploaded)
 
     return UnifiedBatchUploadService(
         persist_upload=_persist_upload_to_source_file,
@@ -2501,14 +2707,19 @@ def _build_unified_batch_upload_service(filter_engine: Any | None = None) -> Any
         ensure_extracted_text=_ensure_extracted_text,
         write_material_document_content=_write_material_document_content,
         safe_upload_filename=_safe_upload_filename,
-        cleanup_uploaded_source=_remove_unreferenced_uploaded_source,
+        cleanup_uploaded_source=_cleanup_uploaded_source,
         filter_engine=filter_engine,
     )
 
 
-def get_memory_adapter():
+def get_memory_adapter() -> "MempalaceMemoryAdapter | None":
     """Import and return the shared memory adapter when available."""
-    from python_adapter_server import get_memory_adapter as get_adapter
+    if TYPE_CHECKING:
+        from literature_assistant.core.python_adapter_server import (
+            get_memory_adapter as get_adapter,
+        )
+    else:
+        from python_adapter_server import get_memory_adapter as get_adapter
     return get_adapter()
 
 
@@ -2519,7 +2730,10 @@ def get_ai_adapter() -> Any:
         return _ai_adapter_instance
 
     try:
-        from layers.ai_adapter import AIAdapter
+        if TYPE_CHECKING:
+            from literature_assistant.core.layers.ai_adapter import AIAdapter
+        else:
+            from layers.ai_adapter import AIAdapter
 
         _ai_adapter_instance = AIAdapter(
             api_key=os.environ.get("OPENAI_API_KEY") or os.environ.get("ARK_API_KEY") or os.environ.get("SILICONFLOW_API_KEY"),
@@ -2561,7 +2775,10 @@ def _clone_association_bundle(
     recommended_memory_queries: Any | None = None,
 ) -> Any:
     """Rebuild a bundle while preserving the stable evidence ranking."""
-    from writing_resources import WritingAssociationBundle
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_resources import WritingAssociationBundle
+    else:
+        from writing_resources import WritingAssociationBundle
 
     return WritingAssociationBundle(
         project_id=base_bundle.project_id,
@@ -2591,7 +2808,10 @@ def _clone_association_bundle(
 async def _apply_association_mode(base_bundle: Any, mode: str, angle_limit: int) -> Any:
     """Apply AI or No-AI post-processing without mutating the evidence base."""
     adapter = get_ai_adapter()
-    from writing_resources import apply_association_mode
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_resources import apply_association_mode
+    else:
+        from writing_resources import apply_association_mode
 
     return await asyncio.to_thread(
         apply_association_mode,

@@ -15,10 +15,15 @@ import json
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
-from ai_cost_profile import rerank_telemetry_enabled
-from project_paths import output_path
+if TYPE_CHECKING:
+    from literature_assistant.core.ai_cost_profile import rerank_telemetry_enabled
+    from literature_assistant.core.project_paths import output_path
+    from literature_assistant.core.reranker_client import RerankBudgetGuard
+else:
+    from ai_cost_profile import rerank_telemetry_enabled
+    from project_paths import output_path
 
 _BUDGET_LOCK = threading.Lock()
 _TELEMETRY_LOCK = threading.Lock()
@@ -28,11 +33,18 @@ _BUDGET_FILE = _OUTPUT_DIR / "rerank_budget_state.json"
 _TELEMETRY_FILE = _OUTPUT_DIR / "rerank_cost.jsonl"
 
 
+class _BudgetState(TypedDict):
+    date: str
+    call_count: int
+    token_count: int
+    cost_usd: float
+
+
 def _today_utc() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
-def _read_state() -> dict[str, Any]:
+def _read_state() -> _BudgetState:
     if not _BUDGET_FILE.exists():
         return {"date": _today_utc(), "call_count": 0, "token_count": 0, "cost_usd": 0.0}
     try:
@@ -50,14 +62,27 @@ def _read_state() -> dict[str, Any]:
     }
 
 
-def _make_guard():
-    from reranker_client import RerankBudgetGuard
+def _make_guard() -> RerankBudgetGuard:
+    if TYPE_CHECKING:
+        from literature_assistant.core.reranker_client import (
+            RerankBudgetGuard as RuntimeRerankBudgetGuard,
+        )
+    else:
+        from reranker_client import RerankBudgetGuard as RuntimeRerankBudgetGuard
 
-    return RerankBudgetGuard(state_path=_BUDGET_FILE, telemetry_path=_TELEMETRY_FILE)
+    return RuntimeRerankBudgetGuard(
+        state_path=_BUDGET_FILE,
+        telemetry_path=_TELEMETRY_FILE,
+    )
 
 
 def _daily_call_cap() -> int:
-    from reranker_client import _daily_call_cap as _client_daily_call_cap
+    if TYPE_CHECKING:
+        from literature_assistant.core.reranker_client import (
+            _daily_call_cap as _client_daily_call_cap,
+        )
+    else:
+        from reranker_client import _daily_call_cap as _client_daily_call_cap
 
     return _client_daily_call_cap()
 

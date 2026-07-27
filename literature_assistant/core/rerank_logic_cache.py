@@ -12,16 +12,19 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from project_paths import output_path
+if TYPE_CHECKING:
+    from literature_assistant.core.project_paths import output_path
+else:
+    from project_paths import output_path
 
 logger = logging.getLogger(__name__)
 
 class RerankDurableCache:
     """持久化 Rerank 缓存：基于候选集 ID 序列生成的稳定指纹"""
 
-    def __init__(self, cache_dir: str | Path | None = None):
+    def __init__(self, cache_dir: str | Path | None = None) -> None:
         self.cache_dir = Path(cache_dir) if cache_dir is not None else output_path("rerank_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -41,12 +44,20 @@ class RerankDurableCache:
         if cache_path.exists():
             try:
                 logger.info(f"⚡ Rerank 磁盘缓存命中: {key[:12]}")
-                return json.loads(cache_path.read_text(encoding="utf-8"))
+                payload = json.loads(cache_path.read_text(encoding="utf-8"))
+                if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+                    raise ValueError("cached rerank result must be a list of objects")
+                return [dict(item) for item in payload]
             except Exception as e:
                 logger.warning(f"读取 Rerank 缓存失败: {e}")
         return None
 
-    def update(self, query: str, candidates: List[Dict[str, Any]], results: List[Dict[str, Any]]):
+    def update(
+        self,
+        query: str,
+        candidates: List[Dict[str, Any]],
+        results: List[Dict[str, Any]],
+    ) -> None:
         """保存重排后的结果"""
         key = self._make_key(query, candidates)
         cache_path = self.cache_dir / f"{key}.json"

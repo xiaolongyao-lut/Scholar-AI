@@ -28,11 +28,15 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from _atomic_io import CrossProcessFileLock
-from project_paths import runtime_state_path
+if TYPE_CHECKING:
+    from literature_assistant.core._atomic_io import CrossProcessFileLock
+    from literature_assistant.core.project_paths import runtime_state_path
+else:
+    from _atomic_io import CrossProcessFileLock
+    from project_paths import runtime_state_path
 
 CSL_NAMESPACE = "http://purl.org/net/xbiblio/csl"
 _STYLE_TAG = f"{{{CSL_NAMESPACE}}}style"

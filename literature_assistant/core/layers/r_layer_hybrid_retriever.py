@@ -1,5 +1,7 @@
 # layers/r_layer_hybrid_retriever.py
 
+from __future__ import annotations
+
 import math
 import re
 import asyncio
@@ -7,18 +9,41 @@ import os
 import httpx
 import logging
 from collections import Counter, defaultdict
-from typing import Any, Dict, List, Optional, Tuple
-from layers.adaptive_weight_manager import AdaptiveWeightManager
-from reranker_client import rerank_async, resolve_rerank_config, warm_rerank_live_candidate
-from runtime_env import (
-    build_embedding_failover_pool,
-    build_embedding_request_payload,
-    extract_embedding_vectors,
-    resolve_embedding_config,
-    resolve_embedding_request_url,
-)
-from retrieval_provenance import attach_source_labels, merge_source_labels
-from rerank_logic_cache import get_rerank_cache # 新增
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from literature_assistant.core.key_pool import Credential, KeyPool
+    from literature_assistant.core.layers.adaptive_weight_manager import AdaptiveWeightManager
+    from literature_assistant.core.layers.multi_layer_cache import MultiLayerCacheManager
+    from literature_assistant.core.rerank_logic_cache import get_rerank_cache
+    from literature_assistant.core.reranker_client import (
+        rerank_async,
+        resolve_rerank_config,
+        warm_rerank_live_candidate,
+    )
+    from literature_assistant.core.retrieval_provenance import (
+        attach_source_labels,
+        merge_source_labels,
+    )
+    from literature_assistant.core.runtime_env import (
+        build_embedding_failover_pool,
+        build_embedding_request_payload,
+        extract_embedding_vectors,
+        resolve_embedding_config,
+        resolve_embedding_request_url,
+    )
+else:
+    from layers.adaptive_weight_manager import AdaptiveWeightManager
+    from rerank_logic_cache import get_rerank_cache
+    from reranker_client import rerank_async, resolve_rerank_config, warm_rerank_live_candidate
+    from retrieval_provenance import attach_source_labels, merge_source_labels
+    from runtime_env import (
+        build_embedding_failover_pool,
+        build_embedding_request_payload,
+        extract_embedding_vectors,
+        resolve_embedding_config,
+        resolve_embedding_request_url,
+    )
 
 logger = logging.getLogger("RLayer_HybridRetriever")
 
@@ -58,7 +83,10 @@ def _runtime_rerank_enabled() -> bool:
     if raw is not None and raw.strip():
         return _get_env_bool(RUNTIME_RERANK_ENABLED_ENV, default=False)
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
 
         return bool(is_enabled("local_rerank"))
     except Exception as exc:
@@ -76,7 +104,7 @@ def _rerank_pre_topn(requested_top_k: int) -> int:
         _rerank_pre_topn_hard_cap(),
     )
 
-def _cosine_sim(a: list, b: list) -> float:
+def _cosine_sim(a: list[float], b: list[float]) -> float:
     """Cosine similarity between two vectors (plain Python, no numpy required)."""
     dot = sum(x * y for x, y in zip(a, b))
     norm_a = math.sqrt(sum(x * x for x in a))
@@ -190,7 +218,7 @@ class ContextAwareRetriever:
             default_base_url="https://api.siliconflow.cn/v1",
             default_model="BAAI/bge-m3",
         )
-        self._embedding_pool = build_embedding_failover_pool(
+        self._embedding_pool: KeyPool | None = build_embedding_failover_pool(
             default_base_url="https://api.siliconflow.cn/v1",
             default_model="BAAI/bge-m3",
         )
@@ -234,11 +262,13 @@ class ContextAwareRetriever:
 
     async def _embed_query(self, query: str) -> list[float] | None:
         """Embed query with provider-aware failover. Returns None on failure."""
-        if not self._embed_api_key and self._embedding_pool is None:
+        api_key = self._embed_api_key
+        embedding_pool = self._embedding_pool
+        if not api_key and embedding_pool is None:
             return None
         try:
-            if self._embedding_pool is not None:
-                async def _invoke(cred: Any) -> list[float]:
+            if embedding_pool is not None:
+                async def _invoke(cred: Credential) -> list[float]:
                     return await self._embed_query_once(
                         query,
                         cred.api_key,
@@ -246,15 +276,17 @@ class ContextAwareRetriever:
                         cred.model,
                     )
 
-                return await self._embedding_pool.try_call_async(
+                return await embedding_pool.try_call_async(
                     "embedding",
                     _invoke,
                     cooldown_on=lambda _exc: True,
                 )
 
+            if not api_key:
+                return None
             return await self._embed_query_once(
                 query,
-                self._embed_api_key,
+                api_key,
                 self._embed_base_url,
                 self._embed_model,
             )
@@ -262,7 +294,13 @@ class ContextAwareRetriever:
             logger.debug("Query embedding failed: %s", e)
             return None
 
-    async def hybrid_search(self, raw_extract: Dict[str, Any], query: str, top_k: int = 50, focus_keywords: List[str] = None) -> List[Dict[str, Any]]:
+    async def hybrid_search(
+        self,
+        raw_extract: Dict[str, Any],
+        query: str,
+        top_k: int = 50,
+        focus_keywords: List[str] | None = None,
+    ) -> List[Dict[str, Any]]:
         """
         混合检索：综合信号
         """
@@ -330,20 +368,31 @@ class HybridRetrieverWithRerank:
     P1 WBS 1.3.2: 检索 + 重排 完整流程
     """
     
-    def __init__(self, use_reranker: Optional[bool] = None, cache_manager=None):
+    def __init__(
+        self,
+        use_reranker: Optional[bool] = None,
+        cache_manager: MultiLayerCacheManager | None = None,
+    ) -> None:
         self.base_retriever = ContextAwareRetriever()
         self.use_reranker = _runtime_rerank_enabled() if use_reranker is None else bool(use_reranker)
         self.rerank_api_key, self.rerank_base_url, self.rerank_model = resolve_rerank_config()
         self.cache_manager = cache_manager
         self.durable_cache = get_rerank_cache() # 加固层
 
-    async def search(self, raw_data: Dict[str, Any], query: str, top_k: int = 10, focus_keywords: List[str] = None) -> List[Dict[str, Any]]:
+    async def search(
+        self,
+        raw_data: Dict[str, Any],
+        query: str,
+        top_k: int = 10,
+        focus_keywords: List[str] | None = None,
+    ) -> List[Dict[str, Any]]:
         """
         完整流程: 混合检索 → 重排 → 相关性过滤 (借鉴 RAG-Anything)
         """
         if self.cache_manager:
-            cached = await self.cache_manager.fetch(query, focus=focus_keywords, domain="retrieval")
-            if cached:
+            cached_value = await self.cache_manager.fetch(query, focus=focus_keywords, domain="retrieval")
+            if cached_value:
+                cached = _require_candidate_records(cached_value, source="retrieval cache")
                 logger.info(f"⚡ 检索层缓存命中，直接返回结果: {query[:15]}...")
                 return cached[:top_k]
 
@@ -355,7 +404,12 @@ class HybridRetrieverWithRerank:
         if not candidates:
             return []
 
-        from rag_chunk_type_weighting import prioritize_candidates_for_rerank
+        if TYPE_CHECKING:
+            from literature_assistant.core.rag_chunk_type_weighting import (
+                prioritize_candidates_for_rerank,
+            )
+        else:
+            from rag_chunk_type_weighting import prioritize_candidates_for_rerank
         rerank_candidates = prioritize_candidates_for_rerank(
             candidates,
             score_key="hybrid_score",
@@ -440,5 +494,28 @@ class HybridRetrieverWithRerank:
 
 _retriever_instance = HybridRetrieverWithRerank()
 
-async def hybrid_search(raw_extract: dict[str, Any], query: str, top_k: int = 12, focus_keywords: list[str] = None) -> list[dict[str, Any]]:
+def _require_candidate_records(value: object, *, source: str) -> list[dict[str, Any]]:
+    """Validate candidate records crossing a cache or provider boundary."""
+    if not isinstance(value, list):
+        raise TypeError(f"{source} must return a list of candidate dictionaries")
+
+    records: list[dict[str, Any]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise TypeError(f"{source}[{index}] must be a dictionary")
+        record: dict[str, Any] = {}
+        for key, item_value in item.items():
+            if not isinstance(key, str):
+                raise TypeError(f"{source}[{index}] keys must be strings")
+            record[key] = item_value
+        records.append(record)
+    return records
+
+
+async def hybrid_search(
+    raw_extract: dict[str, Any],
+    query: str,
+    top_k: int = 12,
+    focus_keywords: list[str] | None = None,
+) -> list[dict[str, Any]]:
     return await _retriever_instance.search(raw_data=raw_extract, query=query, top_k=top_k, focus_keywords=focus_keywords)

@@ -104,6 +104,14 @@ def _validate_aware_utc(value: datetime, field_name: str) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _validation_field_name(info: ValidationInfo) -> str:
+    """Return the concrete Pydantic field name required by shared validators."""
+
+    if info.field_name is None:
+        raise ValueError("validator field name is required")
+    return info.field_name
+
+
 def _canonical_sha256(payload: Mapping[str, object]) -> str:
     encoded = json.dumps(
         payload,
@@ -160,7 +168,7 @@ class MaterialComponentRevision(BaseModel):
         value: str | None,
         info: ValidationInfo,
     ) -> str | None:
-        return _validate_optional_sha256(value, info.field_name)
+        return _validate_optional_sha256(value, _validation_field_name(info))
 
     @field_validator("runtime_version")
     @classmethod
@@ -241,7 +249,7 @@ class MaterialRevisionIdentity(BaseModel):
     @field_validator("project_id", "material_id")
     @classmethod
     def _identifiers(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_identifier(value, info.field_name)
+        return _validate_identifier(value, _validation_field_name(info))
 
     @field_validator(
         "raw_source_sha256",
@@ -250,7 +258,7 @@ class MaterialRevisionIdentity(BaseModel):
     )
     @classmethod
     def _content_fingerprints(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_sha256(value, info.field_name)
+        return _validate_sha256(value, _validation_field_name(info))
 
     @field_validator("revision_fingerprint")
     @classmethod
@@ -405,7 +413,7 @@ class MaterialRevisionSyncReceipt(BaseModel):
     @field_validator("receipt_id", "project_id", "material_id")
     @classmethod
     def _identifiers(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_identifier(value, info.field_name)
+        return _validate_identifier(value, _validation_field_name(info))
 
     @field_validator("required_components", mode="before")
     @classmethod
@@ -443,7 +451,7 @@ class MaterialRevisionSyncReceipt(BaseModel):
     ) -> datetime | None:
         if value is None:
             return None
-        return _validate_aware_utc(value, info.field_name)
+        return _validate_aware_utc(value, _validation_field_name(info))
 
     @model_validator(mode="after")
     def _receipt_invariants(self) -> "MaterialRevisionSyncReceipt":
@@ -535,7 +543,7 @@ class MaterialRevisionHead(BaseModel):
     @field_validator("project_id", "material_id", "applied_receipt_id")
     @classmethod
     def _identifiers(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_identifier(value, info.field_name)
+        return _validate_identifier(value, _validation_field_name(info))
 
     @field_validator("applied_at")
     @classmethod

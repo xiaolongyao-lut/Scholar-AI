@@ -3,7 +3,12 @@
 
 from __future__ import annotations
 
-from discussion_bus import AgentRole
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from literature_assistant.core.discussion_bus import AgentRole
+else:
+    from discussion_bus import AgentRole
 
 
 ROLE_SYSTEM_PROMPTS: dict[AgentRole, str] = {
@@ -87,11 +92,11 @@ def format_discussion_context(
     else:
         for msg in history:
             role_label = {
-                AgentRole.PROPONENT: "支持方",
-                AgentRole.OPPONENT: "反对方",
-                AgentRole.REVIEWER: "审稿人",
-                AgentRole.MODERATOR: "主持人",
-            }.get(msg.get("role"), "未知")
+                AgentRole.PROPONENT.value: "支持方",
+                AgentRole.OPPONENT.value: "反对方",
+                AgentRole.REVIEWER.value: "审稿人",
+                AgentRole.MODERATOR.value: "主持人",
+            }.get(msg.get("role", ""), "未知")
             content = msg.get("content", "")
             context_parts.append(f"[{role_label}]: {content}")
             context_parts.append("")

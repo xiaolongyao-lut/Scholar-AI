@@ -7,8 +7,9 @@ import asyncio
 import base64
 import io
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping, Protocol, TypeGuard
 
 import httpx
 
@@ -17,6 +18,95 @@ from . import StructuredBlock
 __all__ = ["MultimodalOcrBackend", "OcrProviderConfig"]
 
 logger = logging.getLogger("MultimodalOcrBackend")
+
+
+class _CloseableDocument(Protocol):
+    """Minimum resource capability required after opening a PDF."""
+
+    def close(self) -> None: ...
+
+
+class _PageIterable(Protocol):
+    """Iterator-style page access retained by compatible PyMuPDF releases."""
+
+    def __iter__(self) -> Iterator[object]: ...
+
+
+class _PageSequence(Protocol):
+    """Sequence-style page access exposed by compatible test doubles."""
+
+    def __len__(self) -> int: ...
+
+    def __getitem__(self, index: int) -> object: ...
+
+
+class _PageCountLoader(Protocol):
+    """Explicit page-loader API exposed by current PyMuPDF releases."""
+
+    @property
+    def page_count(self) -> int: ...
+
+    def load_page(self, index: int) -> object: ...
+
+
+def _call_runtime_method(
+    target: object,
+    method_name: str,
+    *args: object,
+    **kwargs: object,
+) -> object:
+    """Call a checked method on PyMuPDF's partially typed runtime surface."""
+
+    method = getattr(target, method_name, None)
+    if not callable(method):
+        raise TypeError(f"PyMuPDF object must expose callable {method_name}")
+    result: object = method(*args, **kwargs)
+    return result
+
+
+def _is_closeable_document(value: object) -> TypeGuard[_CloseableDocument]:
+    """Narrow an opened value before validating page access."""
+
+    return callable(getattr(value, "close", None))
+
+
+def _has_page_iterator(value: object) -> TypeGuard[_PageIterable]:
+    return callable(getattr(value, "__iter__", None))
+
+
+def _has_page_sequence(value: object) -> TypeGuard[_PageSequence]:
+    return callable(getattr(value, "__len__", None)) and callable(
+        getattr(value, "__getitem__", None)
+    )
+
+
+def _has_page_count_loader(value: object) -> TypeGuard[_PageCountLoader]:
+    """Narrow an opened value to the explicit page-loader API."""
+
+    page_count = getattr(value, "page_count", None)
+    return (
+        isinstance(page_count, int)
+        and not isinstance(page_count, bool)
+        and page_count >= 0
+        and callable(getattr(value, "load_page", None))
+    )
+
+
+def _iter_document_pages(document: object) -> Iterator[object]:
+    """Yield pages from every supported PyMuPDF document surface."""
+
+    if _has_page_count_loader(document):
+        for index in range(document.page_count):
+            yield document.load_page(index)
+        return
+    if _has_page_sequence(document):
+        for index in range(len(document)):
+            yield document[index]
+        return
+    if _has_page_iterator(document):
+        yield from document
+        return
+    raise TypeError("PyMuPDF document does not expose a supported page contract")
 
 
 class OcrProviderConfig:
@@ -101,7 +191,7 @@ class MultimodalOcrBackend:
             )
         return self._client
 
-    async def _close_client(self):
+    async def _close_client(self) -> None:
         """关闭 HTTP 客户端"""
         if self._client is not None:
             await self._client.aclose()
@@ -180,8 +270,13 @@ class MultimodalOcrBackend:
         )
         response.raise_for_status()
 
-        result = response.json()
-        return result.get("text", "")
+        result: object = response.json()
+        if not isinstance(result, Mapping):
+            raise ValueError("MinerU response must be a JSON object")
+        text = result.get("text", "")
+        if not isinstance(text, str):
+            raise ValueError("MinerU response field 'text' must be a string")
+        return text
 
     async def _parse_mistral(self, pdf_path: Path) -> str:
         """Mistral Pixtral 多模态解析"""
@@ -330,15 +425,20 @@ class MultimodalOcrBackend:
                 "Install it with: pip install pymupdf"
             ) from exc
 
-        doc = pymupdf.open(str(pdf_path))
-        images = []
+        opened_document = _call_runtime_method(pymupdf, "open", str(pdf_path))
+        if not _is_closeable_document(opened_document):
+            raise TypeError("PyMuPDF open() must return a closeable document")
+        document = opened_document
+        images: list[bytes] = []
 
         try:
-            for page in doc:
-                pix = page.get_pixmap(dpi=dpi)
-                img_bytes = pix.tobytes("png")
+            for page in _iter_document_pages(document):
+                pix = _call_runtime_method(page, "get_pixmap", dpi=dpi)
+                img_bytes = _call_runtime_method(pix, "tobytes", "png")
+                if not isinstance(img_bytes, bytes):
+                    raise TypeError("PyMuPDF Pixmap.tobytes() must return bytes")
                 images.append(img_bytes)
         finally:
-            doc.close()
+            document.close()
 
         return images

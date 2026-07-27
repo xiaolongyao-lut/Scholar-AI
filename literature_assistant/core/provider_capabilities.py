@@ -8,11 +8,18 @@ import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-from _atomic_io import CrossProcessFileLock, atomic_write_json
-from project_paths import runtime_state_path
+if TYPE_CHECKING:
+    from literature_assistant.core._atomic_io import (
+        CrossProcessFileLock,
+        atomic_write_json,
+    )
+    from literature_assistant.core.project_paths import runtime_state_path
+else:
+    from _atomic_io import CrossProcessFileLock, atomic_write_json
+    from project_paths import runtime_state_path
 
 
 CAPABILITY_STATUS_UNKNOWN = "unknown"

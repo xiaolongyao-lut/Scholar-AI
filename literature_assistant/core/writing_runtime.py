@@ -21,26 +21,51 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlencode
 
-from datetime_utils import utc_now_iso_z
-from terminal_output import progress_bar, project_task_metrics, sanitize_task_value
-from repositories.writing_runtime_repository import WritingRuntimeRepository
-from harness_protocols import (
-    WritingSession,
-    WritingJob,
-    WritingEvent,
-    WritingArtifact,
-    WritingApprovalRequest,
-    SessionMode,
-    JobKind,
-    JobStatus,
-    EventType,
-    ArtifactType,
-    ApprovalStatus,
-)
-from skills.runtime import SkillRunResult
+if TYPE_CHECKING or __package__ == "literature_assistant.core":
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.harness_protocols import (
+        ApprovalStatus,
+        ArtifactType,
+        EventType,
+        JobKind,
+        JobStatus,
+        SessionMode,
+        WritingApprovalRequest,
+        WritingArtifact,
+        WritingEvent,
+        WritingJob,
+        WritingSession,
+    )
+    from literature_assistant.core.repositories.writing_runtime_repository import (
+        WritingRuntimeRepository,
+    )
+    from literature_assistant.core.skills.runtime import SkillRunResult
+    from literature_assistant.core.terminal_output import (
+        progress_bar,
+        project_task_metrics,
+        sanitize_task_value,
+    )
+else:
+    from datetime_utils import utc_now_iso_z
+    from terminal_output import progress_bar, project_task_metrics, sanitize_task_value
+    from repositories.writing_runtime_repository import WritingRuntimeRepository
+    from harness_protocols import (
+        WritingSession,
+        WritingJob,
+        WritingEvent,
+        WritingArtifact,
+        WritingApprovalRequest,
+        SessionMode,
+        JobKind,
+        JobStatus,
+        EventType,
+        ArtifactType,
+        ApprovalStatus,
+    )
+    from skills.runtime import SkillRunResult
 
 logger = logging.getLogger("WritingRuntime")
 
@@ -75,7 +100,7 @@ def _bounded_task_log_value(value: Any, *, limit: int = 320) -> str | None:
     if value is None or isinstance(value, (dict, list, tuple, set)):
         return None
     normalized = sanitize_task_value(value, limit=limit)
-    if normalized == "-":
+    if not isinstance(normalized, str) or normalized == "-":
         return None
     return normalized
 
@@ -83,7 +108,9 @@ def _bounded_task_log_value(value: Any, *, limit: int = 320) -> str | None:
 def _bounded_task_integer(value: Any, *, minimum: int, maximum: int) -> int | None:
     """Return a non-boolean integer inside explicit structured-log bounds."""
 
-    if isinstance(value, bool) or not isinstance(value, int):
+    if not isinstance(value, int):
+        return None
+    if isinstance(value, bool):
         return None
     if value < minimum or value > maximum:
         return None
@@ -1218,7 +1245,8 @@ def _passport_gate_for_stage(stage: dict[str, Any], row: dict[str, Any]) -> dict
     blockers = list(row.get("blockers", []))[:12]
     unresolved = list(row.get("unresolved", []))[:12]
     requires_user_confirmation = bool(row.get("requires_user_confirmation"))
-    diagnostics = row.get("diagnostics") if isinstance(row.get("diagnostics"), dict) else {}
+    diagnostics_value = row.get("diagnostics")
+    diagnostics = diagnostics_value if isinstance(diagnostics_value, dict) else {}
     preflight_receipt_count = int(diagnostics.get("preflight_receipt_count") or 0)
     preflight_blocker_count = int(diagnostics.get("blocker_count") or 0)
     preflight_unresolved_count = int(diagnostics.get("unresolved_count") or 0)
@@ -1400,7 +1428,8 @@ def _record_passport_workflow_state(row: dict[str, Any], job_id: str, workflow_s
     reproducibility = row.get("reproducibility")
     if not isinstance(diagnostics, dict) or not isinstance(reproducibility, dict):
         return
-    readiness = workflow_state.get("readiness") if isinstance(workflow_state.get("readiness"), dict) else {}
+    readiness_value = workflow_state.get("readiness")
+    readiness = readiness_value if isinstance(readiness_value, dict) else {}
     evidence_refs = workflow_state.get("evidence_refs")
     citation_bank = workflow_state.get("citation_bank")
     change_log = workflow_state.get("change_log")
@@ -1432,10 +1461,14 @@ def _record_passport_material_task(row: dict[str, Any], job_id: str, task: dict[
     reproducibility = row.get("reproducibility")
     if not isinstance(diagnostics, dict) or not isinstance(reproducibility, dict):
         return
-    request = task.get("request") if isinstance(task.get("request"), dict) else {}
-    cache = task.get("cache") if isinstance(task.get("cache"), dict) else {}
-    artifacts = task.get("artifacts") if isinstance(task.get("artifacts"), list) else []
-    warnings = task.get("warnings") if isinstance(task.get("warnings"), list) else []
+    request_value = task.get("request")
+    request = request_value if isinstance(request_value, dict) else {}
+    cache_value = task.get("cache")
+    cache = cache_value if isinstance(cache_value, dict) else {}
+    artifacts_value = task.get("artifacts")
+    artifacts = artifacts_value if isinstance(artifacts_value, list) else []
+    warnings_value = task.get("warnings")
+    warnings = warnings_value if isinstance(warnings_value, list) else []
     status = _safe_projection_string(task.get("status")) or "unknown"
     diagnostics["task_count"] = int(diagnostics.get("task_count") or 0) + 1
     diagnostics["artifact_count"] = int(diagnostics.get("artifact_count") or 0) + len(artifacts)
@@ -1469,7 +1502,8 @@ def _record_passport_material_task(row: dict[str, Any], job_id: str, task: dict[
             if not _is_blank_projection_value(value)
         },
     )
-    decision_record = cache.get("decision_record") if isinstance(cache.get("decision_record"), dict) else {}
+    decision_record_value = cache.get("decision_record")
+    decision_record = decision_record_value if isinstance(decision_record_value, dict) else {}
     if decision_record:
         _append_unique_mapping(
             reproducibility["cache_decision_refs"],
@@ -1657,8 +1691,10 @@ def _workflow_stage_drilldown(stage: dict[str, Any], gate: dict[str, Any]) -> di
     """Return stage-level facts from the workflow passport for gate explainability."""
 
     stage_id = _safe_projection_string(stage.get("stage_id")) or "unknown"
-    diagnostics = stage.get("diagnostics") if isinstance(stage.get("diagnostics"), dict) else {}
-    reproducibility = stage.get("reproducibility") if isinstance(stage.get("reproducibility"), dict) else {}
+    diagnostics_value = stage.get("diagnostics")
+    diagnostics = diagnostics_value if isinstance(diagnostics_value, dict) else {}
+    reproducibility_value = stage.get("reproducibility")
+    reproducibility = reproducibility_value if isinstance(reproducibility_value, dict) else {}
     evidence_refs = list(gate.get("evidence") or [])[:12]
     replay_refs: list[dict[str, Any]] = []
     for key in ("preflight_receipts", "replay_probe_refs", "locator_refs", "qrels_refs", "research_action_refs"):
@@ -2011,7 +2047,7 @@ def _blocked_signal_summaries(signals: list[dict[str, Any]], *, statuses: set[st
         signal_id = _safe_projection_string(signal.get("signal_id"))
         if signal_id is None:
             continue
-        row = {
+        row: dict[str, Any] = {
             "signal_id": signal_id,
             "category": _safe_projection_string(signal.get("category")),
             "status": status,
@@ -2032,7 +2068,8 @@ def _blocked_signal_summaries(signals: list[dict[str, Any]], *, statuses: set[st
 def _signal_linked_stage_id(signal: dict[str, Any], drilldown: dict[str, Any]) -> str | None:
     """Return the Workflow Passport stage id linked to one integrity signal."""
 
-    checked_facts = drilldown.get("checked_facts") if isinstance(drilldown.get("checked_facts"), dict) else {}
+    checked_facts_value = drilldown.get("checked_facts")
+    checked_facts = checked_facts_value if isinstance(checked_facts_value, dict) else {}
     stage_id = _safe_projection_string(checked_facts.get("stage_id"))
     if stage_id is not None:
         return stage_id
@@ -2156,11 +2193,20 @@ def _boundary_recovery_drilldowns(
         signal_id = _safe_projection_string(signal.get("signal_id"))
         if signal_id is None:
             continue
-        drilldown = signal.get("drilldown") if isinstance(signal.get("drilldown"), dict) else {}
-        source_ref = drilldown.get("source_ref") if isinstance(drilldown.get("source_ref"), dict) else {}
-        checked_facts = drilldown.get("checked_facts") if isinstance(drilldown.get("checked_facts"), dict) else {}
-        evidence_refs = [item for item in drilldown.get("evidence_refs") or [] if isinstance(item, dict)][:12]
-        replay_refs = [item for item in drilldown.get("replay_refs") or [] if isinstance(item, dict)][:8]
+        drilldown_value = signal.get("drilldown")
+        drilldown = drilldown_value if isinstance(drilldown_value, dict) else {}
+        source_ref_value = drilldown.get("source_ref")
+        source_ref = source_ref_value if isinstance(source_ref_value, dict) else {}
+        checked_facts_value = drilldown.get("checked_facts")
+        checked_facts = checked_facts_value if isinstance(checked_facts_value, dict) else {}
+        evidence_refs_value = drilldown.get("evidence_refs")
+        evidence_refs = [
+            item for item in evidence_refs_value if isinstance(item, dict)
+        ][:12] if isinstance(evidence_refs_value, list) else []
+        replay_refs_value = drilldown.get("replay_refs")
+        replay_refs = [
+            item for item in replay_refs_value if isinstance(item, dict)
+        ][:8] if isinstance(replay_refs_value, list) else []
         linked_stage_id = _signal_linked_stage_id(signal, drilldown)
         recovery_refs: list[dict[str, Any]] = [
             {
@@ -2276,8 +2322,10 @@ def _workflow_blocking_action_boundary(
         raise ValueError("unresolved must be a list")
     if not isinstance(evidence, list):
         raise ValueError("evidence must be a list")
-    gate_scope = gate.get("scope") if isinstance(gate.get("scope"), dict) else {}
-    gate_signals = gate.get("signals") if isinstance(gate.get("signals"), list) else []
+    gate_scope_value = gate.get("scope")
+    gate_scope = gate_scope_value if isinstance(gate_scope_value, dict) else {}
+    gate_signals_value = gate.get("signals")
+    gate_signals = gate_signals_value if isinstance(gate_signals_value, list) else []
     signal_rows = [signal for signal in gate_signals if isinstance(signal, dict)]
     blocked_signal_refs = _blocked_signal_summaries(signal_rows, statuses={"block"}, max_items=8)
     unresolved_signal_refs = _blocked_signal_summaries(signal_rows, statuses={"unresolved"}, max_items=8)
@@ -2393,7 +2441,8 @@ def _workflow_readiness_claims(
     readiness = workflow_state.get("readiness") if isinstance(workflow_state, dict) else {}
     if not isinstance(readiness, dict):
         readiness = {}
-    signals = gate.get("signals") if isinstance(gate.get("signals"), list) else []
+    signals_value = gate.get("signals")
+    signals = signals_value if isinstance(signals_value, list) else []
     signal_rows = [signal for signal in signals if isinstance(signal, dict)]
     claims: list[dict[str, Any]] = []
     for definition in _READINESS_CLAIM_DEFINITIONS:
@@ -2595,10 +2644,14 @@ def _collect_projection_timestamps(
         parsed_state = _parse_iso_datetime(workflow_state.get("updated_at"))
         if parsed_state is not None:
             rows.append(("writing_workflow_state.updated_at", parsed_state))
-    for index, claim in enumerate(readiness_claims.get("claims") if isinstance(readiness_claims.get("claims"), list) else []):
+    claims_value = readiness_claims.get("claims")
+    claims = claims_value if isinstance(claims_value, list) else []
+    for index, claim in enumerate(claims):
         if not isinstance(claim, dict):
             continue
-        for evidence_index, evidence in enumerate(claim.get("evidence") if isinstance(claim.get("evidence"), list) else []):
+        evidence_value = claim.get("evidence")
+        evidence_rows = evidence_value if isinstance(evidence_value, list) else []
+        for evidence_index, evidence in enumerate(evidence_rows):
             if not isinstance(evidence, dict):
                 continue
             for key in ("updated_at", "created_at", "timestamp", "generated_at"):
@@ -2770,7 +2823,8 @@ def _workflow_action_preflight_payload(
     claim_status = str((claim or {}).get("status") or "unresolved").strip() or "unresolved"
     gate_status = str(gate.get("status") or "unresolved").strip() or "unresolved"
     current_stage_id = _safe_projection_string(passport.get("current_stage_id"))
-    stage_summary = passport.get("gate_summary") if isinstance(passport.get("gate_summary"), dict) else {}
+    stage_summary_value = passport.get("gate_summary")
+    stage_summary = stage_summary_value if isinstance(stage_summary_value, dict) else {}
     readiness_ok = claim_status in {"ready", "warning"}
     generated_at = utc_now_iso_z()
     freshness = _action_preflight_freshness(
@@ -3059,6 +3113,8 @@ def _receipt_validation_counts(receipt: dict[str, Any]) -> dict[str, int]:
         value = validation.get(key)
         if isinstance(value, bool):
             return int(value)
+        if not isinstance(value, (str, int, float)):
+            return 0
         try:
             parsed = int(value)
         except (TypeError, ValueError):
@@ -3136,8 +3192,10 @@ def _receipt_delta(latest: dict[str, Any], previous: dict[str, Any] | None) -> d
         "blocker_count": 0,
         "unresolved_count": 0,
     }
-    latest_digests = latest.get("projection_digests") if isinstance(latest.get("projection_digests"), dict) else {}
-    previous_digests = previous.get("projection_digests") if isinstance(previous, dict) and isinstance(previous.get("projection_digests"), dict) else {}
+    latest_digests_value = latest.get("projection_digests")
+    latest_digests = latest_digests_value if isinstance(latest_digests_value, dict) else {}
+    previous_digests_value = previous.get("projection_digests") if isinstance(previous, dict) else None
+    previous_digests = previous_digests_value if isinstance(previous_digests_value, dict) else {}
     changed_digest_keys = sorted(
         {
             str(key)
@@ -3691,9 +3749,12 @@ def _research_action_types_for_job(job: WritingJob) -> list[str]:
     if kind_value == JobKind.RESOURCE_INGEST.value:
         task = metadata.get(_MATERIAL_PROCESSING_TASK_KEY)
         if isinstance(task, dict):
-            cache = task.get("cache") if isinstance(task.get("cache"), dict) else {}
-            request = task.get("request") if isinstance(task.get("request"), dict) else {}
-            request_cache = request.get("cache") if isinstance(request.get("cache"), dict) else {}
+            cache_value = task.get("cache")
+            cache = cache_value if isinstance(cache_value, dict) else {}
+            request_value = task.get("request")
+            request = request_value if isinstance(request_value, dict) else {}
+            request_cache_value = request.get("cache")
+            request_cache = request_cache_value if isinstance(request_cache_value, dict) else {}
             if cache.get("policy") in {"refresh", "bypass"} or request_cache.get("policy") in {"refresh", "bypass"}:
                 return ["batch_material_reprocess"]
         return ["batch_material_reprocess"]
@@ -3921,13 +3982,15 @@ def _research_action_effect_summary(
     """Return compact effect counters and local mutation facts for one action."""
 
     metadata = dict(job.metadata)
-    output_targets = metadata.get("output_targets") if isinstance(metadata.get("output_targets"), dict) else {}
+    output_targets_value = metadata.get("output_targets")
+    output_targets = output_targets_value if isinstance(output_targets_value, dict) else {}
     task = metadata.get(_MATERIAL_PROCESSING_TASK_KEY)
-    cache = task.get("cache") if isinstance(task, dict) and isinstance(task.get("cache"), dict) else {}
+    cache_value = task.get("cache") if isinstance(task, dict) else None
+    cache = cache_value if isinstance(cache_value, dict) else {}
     agent_result_consumers = metadata.get("agent_result_consumers")
     if not isinstance(agent_result_consumers, dict):
         agent_result_consumers = {}
-    summary = {
+    summary: dict[str, Any] = {
         "runtime_status": job.status.value,
         "artifact_count": len(artifacts),
         "approval_count": len(approvals),
@@ -3954,7 +4017,8 @@ def _research_action_effect_summary(
         }
     if action_type == "export_overwrite":
         summary["requires_overwrite_confirmation"] = True
-    return _redacted_projection_copy(summary)
+    redacted_summary = _redacted_projection_copy(summary)
+    return redacted_summary if isinstance(redacted_summary, dict) else {}
 
 
 def _research_action_approval_summary(approvals: list[WritingApprovalRequest]) -> dict[str, Any]:
@@ -4626,7 +4690,8 @@ def _lint_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str,
     """Convert academic-writing lint output into integrity gate signal."""
 
     passed = bool(payload.get("passed"))
-    issues = payload.get("issues") if isinstance(payload.get("issues"), list) else []
+    issues_value = payload.get("issues")
+    issues = issues_value if isinstance(issues_value, list) else []
     issue_severities = [
         str(item.get("severity") or "")
         for item in issues
@@ -4690,13 +4755,15 @@ def _lint_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str,
 def _export_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Convert export manifest facts into readiness signal."""
 
-    review_findings = payload.get("review_findings") if isinstance(payload.get("review_findings"), list) else []
+    review_findings_value = payload.get("review_findings")
+    review_findings = review_findings_value if isinstance(review_findings_value, list) else []
     blocking_findings = [
         item
         for item in review_findings
         if isinstance(item, dict) and str(item.get("severity") or "").lower() in {"error", "block", "critical"}
     ]
-    citation_chain = payload.get("citation_chain") if isinstance(payload.get("citation_chain"), list) else []
+    citation_chain_value = payload.get("citation_chain")
+    citation_chain = citation_chain_value if isinstance(citation_chain_value, list) else []
     if blocking_findings:
         status = "block"
         severity = "block"
@@ -4754,7 +4821,8 @@ def _export_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[st
 def _behavior_eval_integrity_signal(source_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Convert observation-mode behavior evals into blocking gate signals."""
 
-    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    summary_value = payload.get("summary")
+    summary = summary_value if isinstance(summary_value, dict) else {}
     behavior_status = str(summary.get("behavior_status") or "unresolved")
     if behavior_status == "block":
         status = "block"
@@ -4773,12 +4841,16 @@ def _behavior_eval_integrity_signal(source_id: str, payload: dict[str, Any]) -> 
         severity = "warn"
         message = "Behavior Eval Pack observation run is unresolved."
 
-    results = payload.get("results") if isinstance(payload.get("results"), list) else []
+    results_value = payload.get("results")
+    results = results_value if isinstance(results_value, list) else []
     findings: list[dict[str, Any]] = []
     for result in results[:32]:
         if not isinstance(result, dict):
             continue
-        for finding in result.get("findings") or []:
+        result_findings = result.get("findings")
+        if not isinstance(result_findings, list):
+            continue
+        for finding in result_findings:
             if not isinstance(finding, dict):
                 continue
             _append_unique_mapping(
@@ -4796,14 +4868,18 @@ def _behavior_eval_integrity_signal(source_id: str, payload: dict[str, Any]) -> 
                 max_items=12,
             )
 
-    blockers = payload.get("blockers") if isinstance(payload.get("blockers"), list) else []
-    warnings = payload.get("warnings") if isinstance(payload.get("warnings"), list) else []
+    blockers_value = payload.get("blockers")
+    blockers = blockers_value if isinstance(blockers_value, list) else []
+    warnings_value = payload.get("warnings")
+    warnings = warnings_value if isinstance(warnings_value, list) else []
     next_actions = [
         str(action)
         for action in list(payload.get("next_actions") or [])[:8]
         if _safe_projection_string(action) is not None
     ]
-    checked_facts = {
+    run_record_value = payload.get("run_record")
+    run_record = run_record_value if isinstance(run_record_value, dict) else {}
+    checked_facts: dict[str, Any] = {
         "mode": payload.get("mode"),
         "structural_status": summary.get("structural_status"),
         "behavior_status": behavior_status,
@@ -4813,9 +4889,7 @@ def _behavior_eval_integrity_signal(source_id: str, payload: dict[str, Any]) -> 
         "warn_count": summary.get("warn_count"),
         "unresolved_count": summary.get("unresolved_count"),
         "finding_count": len(findings),
-        "record_written": bool((payload.get("run_record") or {}).get("path"))
-        if isinstance(payload.get("run_record"), dict)
-        else False,
+        "record_written": bool(run_record.get("path")),
     }
     evidence_refs = _bounded_signal_evidence(
         "behavior_eval_pack",
@@ -4986,9 +5060,12 @@ def _default_runtime_storage_root() -> Path:
         return Path(configured_root).expanduser().resolve()
 
     try:
-        from project_paths import runtime_state_path
+        if TYPE_CHECKING or __package__ == "literature_assistant.core":
+            from literature_assistant.core.project_paths import runtime_state_path
+        else:
+            from project_paths import runtime_state_path
 
-        return runtime_state_path("writing_runtime")
+        return Path(runtime_state_path("writing_runtime"))
     except Exception:
         return _resolve_workspace_root() / ".modular" / "sessions"
 
@@ -5016,7 +5093,7 @@ class JobExecutionContext:
     pause_event: asyncio.Event = field(default_factory=asyncio.Event)
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize async events if not already set."""
         if not isinstance(self.pause_event, asyncio.Event):
             self.pause_event = asyncio.Event()
@@ -5322,12 +5399,15 @@ class WritingRuntime:
         for source_event in source_lineage:
             new_event_id = f"evt_{os.urandom(8).hex()}"
             event_id_map[source_event["event_id"]] = new_event_id
+            parent_event_id = source_event.get("parent_event_id")
             copied_transcript.append(
                 {
                     **source_event,
                     "event_id": new_event_id,
                     "session_id": forked_session.session_id,
-                    "parent_event_id": event_id_map.get(source_event.get("parent_event_id")),
+                    "parent_event_id": event_id_map.get(parent_event_id)
+                    if isinstance(parent_event_id, str)
+                    else None,
                 }
             )
             source_checkpoint = source_checkpoint_map.get(source_event["event_id"])
@@ -6190,17 +6270,17 @@ class WritingRuntime:
             "lint_report": lint_report,
             "export_manifest": export_manifest,
         }
-        for field_name, value in object_updates.items():
-            if value is not None or field_name not in state:
-                state[field_name] = _require_object(value, field_name=field_name)
+        for field_name, object_value in object_updates.items():
+            if object_value is not None or field_name not in state:
+                state[field_name] = _require_object(object_value, field_name=field_name)
         list_updates = {
             "evidence_refs": evidence_refs,
             "citation_bank": citation_bank,
             "change_log": change_log,
         }
-        for field_name, value in list_updates.items():
-            if value is not None or field_name not in state:
-                state[field_name] = _require_object_list(value, field_name=field_name)
+        for field_name, list_value in list_updates.items():
+            if list_value is not None or field_name not in state:
+                state[field_name] = _require_object_list(list_value, field_name=field_name)
         state["readiness"] = _workflow_readiness(state)
 
         metadata = dict(job.metadata)
@@ -7669,9 +7749,12 @@ class WritingRuntime:
             object_id = _safe_projection_string(item.get("object_id"))
             if object_type is None or object_id is None:
                 continue
-            state = item.get("state") if isinstance(item.get("state"), dict) else {}
-            effects = item.get("effects") if isinstance(item.get("effects"), dict) else {}
-            boundary = item.get("confirmation_boundary") if isinstance(item.get("confirmation_boundary"), dict) else {}
+            state_value = item.get("state")
+            state = state_value if isinstance(state_value, dict) else {}
+            effects_value = item.get("effects")
+            effects = effects_value if isinstance(effects_value, dict) else {}
+            boundary_value = item.get("confirmation_boundary")
+            boundary = boundary_value if isinstance(boundary_value, dict) else {}
             for stage in _WORKFLOW_STAGE_DEFINITIONS:
                 object_types = stage.get("object_types")
                 if not isinstance(object_types, set):
@@ -7745,7 +7828,10 @@ class WritingRuntime:
                     updated_at=task.get("updated_at"),
                 )
                 _record_passport_material_task(ingest_row, selected_job_id, task)
-                task_request = task.get("request") if isinstance(task.get("request"), dict) else {}
+                task_request_value = task.get("request")
+                task_request = task_request_value if isinstance(task_request_value, dict) else {}
+                task_cache_value = task.get("cache")
+                task_cache = task_cache_value if isinstance(task_cache_value, dict) else {}
                 material_id = _safe_projection_string(task_request.get("material_id"))
                 if material_id is not None:
                     _append_unique_text(ingest_row["object_ids"], _research_object_id("research_material", material_id))
@@ -7757,7 +7843,7 @@ class WritingRuntime:
                         "artifact_type": _MATERIAL_PROCESSING_TASK_KEY,
                         "status": task.get("status"),
                         "processing_mode": task_request.get("processing_mode"),
-                        "cache_decision": task.get("cache", {}).get("decision"),
+                        "cache_decision": task_cache.get("decision"),
                         "ref_type": "runtime_job",
                         "ref_id": selected_job_id,
                     },
@@ -7789,29 +7875,29 @@ class WritingRuntime:
                             _append_unique_mapping(read_row["present_artifacts"], artifact_ref)
                     if task.get("status") != "completed":
                         _append_unique_text(read_row["unresolved"], "Material read locators exist but processing is not completed yet.")
-            workflow_state = job.metadata.get(_WRITING_WORKFLOW_STATE_KEY)
-            if isinstance(workflow_state, dict):
+            job_workflow_state = job.metadata.get(_WRITING_WORKFLOW_STATE_KEY)
+            if isinstance(job_workflow_state, dict):
                 for stage in _WORKFLOW_STAGE_DEFINITIONS:
-                    if not _stage_matches_workflow_state(stage, workflow_state):
+                    if not _stage_matches_workflow_state(stage, job_workflow_state):
                         continue
                     row = stage_rows[str(stage["stage_id"])]
                     _append_unique_text(row["object_ids"], _research_object_id("writing_job", job.job_id))
-                    _record_passport_stage_status(row, "complete", updated_at=workflow_state.get("updated_at"))
-                    if workflow_state.get("updated_at") and (
-                        not row.get("updated_at") or str(workflow_state["updated_at"]) > str(row["updated_at"])
+                    _record_passport_stage_status(row, "complete", updated_at=job_workflow_state.get("updated_at"))
+                    if job_workflow_state.get("updated_at") and (
+                        not row.get("updated_at") or str(job_workflow_state["updated_at"]) > str(row["updated_at"])
                     ):
-                        row["updated_at"] = workflow_state["updated_at"]
+                        row["updated_at"] = job_workflow_state["updated_at"]
                     _append_unique_mapping(
                         row["present_artifacts"],
                         {
                             "artifact_type": _WRITING_WORKFLOW_STATE_KEY,
-                            "phase": workflow_state.get("phase"),
+                            "phase": job_workflow_state.get("phase"),
                             "ref_type": "runtime_job",
                             "ref_id": job.job_id,
                         },
                     )
-                    _record_passport_workflow_state(row, job.job_id, workflow_state)
-                    readiness = workflow_state.get("readiness")
+                    _record_passport_workflow_state(row, job.job_id, job_workflow_state)
+                    readiness = job_workflow_state.get("readiness")
                     if isinstance(readiness, dict):
                         missing = [
                             key
@@ -7844,7 +7930,8 @@ class WritingRuntime:
                     _passport_status_from_event(event_type, status),
                     updated_at=event.get("timestamp"),
                 )
-                boundary = event.get("confirmation_boundary") if isinstance(event.get("confirmation_boundary"), dict) else {}
+                boundary_value = event.get("confirmation_boundary")
+                boundary = boundary_value if isinstance(boundary_value, dict) else {}
                 if boundary.get("requires_user_confirmation"):
                     row["requires_user_confirmation"] = True
                     _append_unique_text(row["blockers"], "Pending user confirmation is required.")
@@ -7867,10 +7954,10 @@ class WritingRuntime:
             max_items=32,
         )
         for action_ref in action_refs:
-            stage_id = _safe_projection_string(action_ref.get("stage_id"))
-            if stage_id is None or stage_id not in stage_rows:
+            action_stage_id = _safe_projection_string(action_ref.get("stage_id"))
+            if action_stage_id is None or action_stage_id not in stage_rows:
                 continue
-            row = stage_rows[stage_id]
+            row = stage_rows[action_stage_id]
             diagnostics = row.get("diagnostics")
             reproducibility = row.get("reproducibility")
             if isinstance(diagnostics, dict):
@@ -8029,7 +8116,8 @@ class WritingRuntime:
         for stage in passport.get("stages", []):
             if not isinstance(stage, dict):
                 continue
-            gate = stage.get("gate") if isinstance(stage.get("gate"), dict) else {}
+            gate_value = stage.get("gate")
+            gate = gate_value if isinstance(gate_value, dict) else {}
             gate_status = str(gate.get("status") or "unresolved")
             if gate_status not in {"block", "unresolved", "warn"}:
                 continue
@@ -8219,7 +8307,7 @@ class WritingRuntime:
             if isinstance(job.metadata.get(_WRITING_WORKFLOW_STATE_KEY), dict)
         ]
         primary_workflow_state = workflow_states[0] if workflow_states else None
-        gate_payload = {
+        gate_payload: dict[str, Any] = {
             "schema_version": _EVIDENCE_INTEGRITY_GATE_SCHEMA_VERSION,
             "generated_at": utc_now_iso_z(),
             "scope": dict(passport.get("scope") or {}),
@@ -8256,11 +8344,12 @@ class WritingRuntime:
                 "research_action_lifecycle_schema_version": _RESEARCH_ACTION_LIFECYCLE_SCHEMA_VERSION,
             },
         }
-        gate_payload["enforcement"] = _workflow_readiness_claims(
+        enforcement = _workflow_readiness_claims(
             workflow_state=primary_workflow_state,
             gate=gate_payload,
         )
-        gate_payload["blocking_action_boundary"] = gate_payload["enforcement"].get("blocking_action_boundary")
+        gate_payload["enforcement"] = enforcement
+        gate_payload["blocking_action_boundary"] = enforcement.get("blocking_action_boundary")
         return {
             **gate_payload,
         }
@@ -8680,7 +8769,8 @@ class WritingRuntime:
             limit=500,
         )
         current_stage_id = _safe_projection_string(passport.get("current_stage_id"))
-        stages = passport.get("stages") if isinstance(passport.get("stages"), list) else []
+        stages_value = passport.get("stages")
+        stages = stages_value if isinstance(stages_value, list) else []
         stage_by_id = {
             str(stage.get("stage_id")): stage
             for stage in stages
@@ -9183,7 +9273,10 @@ class WritingRuntime:
         """Fire runtime-job capture off the terminal-state path."""
 
         try:
-            from evolution import run_capture_in_background
+            if TYPE_CHECKING or __package__ == "literature_assistant.core":
+                from literature_assistant.core.evolution import run_capture_in_background
+            else:
+                from evolution import run_capture_in_background
         except Exception as exc:  # pragma: no cover - evolution package missing
             self._logger.debug(
                 "evolution package unavailable; runtime capture skipped: %s", exc
@@ -9212,11 +9305,18 @@ class WritingRuntime:
         """
 
         try:
-            from evolution import (
-                extract_from_job,
-                get_evolution_service,
-                is_candidate_capture_enabled,
-            )
+            if TYPE_CHECKING or __package__ == "literature_assistant.core":
+                from literature_assistant.core.evolution import (
+                    extract_from_job,
+                    get_evolution_service,
+                    is_candidate_capture_enabled,
+                )
+            else:
+                from evolution import (
+                    extract_from_job,
+                    get_evolution_service,
+                    is_candidate_capture_enabled,
+                )
         except Exception as exc:  # pragma: no cover - evolution package missing
             self._logger.debug("evolution package unavailable; runtime capture skipped: %s", exc)
             return
@@ -9262,7 +9362,10 @@ class WritingRuntime:
         """Fire skill capture off the job-completion path."""
 
         try:
-            from evolution import run_capture_in_background
+            if TYPE_CHECKING or __package__ == "literature_assistant.core":
+                from literature_assistant.core.evolution import run_capture_in_background
+            else:
+                from evolution import run_capture_in_background
         except Exception as exc:  # pragma: no cover - evolution package missing
             self._logger.debug(
                 "evolution package unavailable; skill capture skipped: %s", exc
@@ -9290,11 +9393,18 @@ class WritingRuntime:
         """
 
         try:
-            from evolution import (
-                extract_from_skill_run,
-                get_evolution_service,
-                is_candidate_capture_enabled,
-            )
+            if TYPE_CHECKING or __package__ == "literature_assistant.core":
+                from literature_assistant.core.evolution import (
+                    extract_from_skill_run,
+                    get_evolution_service,
+                    is_candidate_capture_enabled,
+                )
+            else:
+                from evolution import (
+                    extract_from_skill_run,
+                    get_evolution_service,
+                    is_candidate_capture_enabled,
+                )
         except Exception as exc:  # pragma: no cover - evolution package missing
             self._logger.debug("evolution package unavailable; skill capture skipped: %s", exc)
             return
@@ -9460,8 +9570,11 @@ class WritingRuntime:
             wing=wing,
             room=room,
         )
-        if hasattr(result, "to_dict"):
-            return result.to_dict()
+        to_dict = getattr(result, "to_dict", None)
+        if callable(to_dict):
+            serialized = to_dict()
+            if isinstance(serialized, dict):
+                return {str(key): value for key, value in serialized.items()}
         if isinstance(result, dict):
             return result
         return {
@@ -9932,13 +10045,24 @@ class WritingRuntime:
             for artifact_payload in artifact_list:
                 if not isinstance(artifact_payload, dict):
                     raise TypeError("artifact payload must be a mapping")
+                artifact_content = artifact_payload.get("content")
+                if isinstance(artifact_content, str):
+                    restored_content: str | dict[str, Any] = artifact_content
+                elif isinstance(artifact_content, dict):
+                    restored_content = {}
+                    for key, value in artifact_content.items():
+                        if not isinstance(key, str):
+                            raise TypeError("artifact content mappings must use string keys")
+                        restored_content[key] = value
+                else:
+                    raise TypeError("artifact content must be a string or mapping")
                 restored_artifacts.append(
                     WritingArtifact(
                         artifact_id=str(artifact_payload["artifact_id"]),
                         job_id=str(artifact_payload["job_id"]),
                         session_id=str(artifact_payload["session_id"]),
                         artifact_type=ArtifactType(str(artifact_payload.get("artifact_type", ArtifactType.METADATA.value))),
-                        content=artifact_payload.get("content"),
+                        content=restored_content,
                         created_at=str(artifact_payload.get("created_at")),
                         created_by=None if artifact_payload.get("created_by") in (None, "") else str(artifact_payload.get("created_by")),
                         metadata=dict(artifact_payload.get("metadata") or {}),
@@ -9999,7 +10123,7 @@ class WritingRuntime:
             return None
 
         self._repository.replace_state(self.export_state())
-        return self._repository.db_path
+        return Path(self._repository.db_path)
 
     def load_from_database(self) -> bool:
         """Load runtime state from SQLite if the repository already has rows."""
@@ -10183,7 +10307,10 @@ class WritingRuntime:
             if event is None:
                 break
             lineage.append(event)
-            current_event_id = event.get("parent_event_id")
+            parent_event_id = event.get("parent_event_id")
+            if not isinstance(parent_event_id, str):
+                break
+            current_event_id = parent_event_id
         lineage.reverse()
         return lineage
 
@@ -10222,10 +10349,16 @@ class WritingRuntime:
 
         self._memory_adapter_resolved = True
         try:
-            from layers.m_layer_mempalace_memory import (
-                MempalaceMemoryAdapter,
-                load_mempalace_settings,
-            )
+            if TYPE_CHECKING or __package__ == "literature_assistant.core":
+                from literature_assistant.core.layers.m_layer_mempalace_memory import (
+                    MempalaceMemoryAdapter,
+                    load_mempalace_settings,
+                )
+            else:
+                from layers.m_layer_mempalace_memory import (
+                    MempalaceMemoryAdapter,
+                    load_mempalace_settings,
+                )
 
             self._memory_adapter = MempalaceMemoryAdapter(load_mempalace_settings())
         except _RUNTIME_RECOVERABLE_EXCEPTIONS as exc:  # pragma: no cover - optional integration path

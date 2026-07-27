@@ -9,16 +9,21 @@ import re
 import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
-from datetime_utils import utc_now_iso_z
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.skills.models import SkillDescriptor
+    from literature_assistant.core.skills.user_manifest import parse_skill_md_frontmatter
+else:
+    from datetime_utils import utc_now_iso_z
 
-try:
-    from skills.models import SkillDescriptor
-    from skills.user_manifest import parse_skill_md_frontmatter
-except ImportError:  # pragma: no cover - package import fallback
-    from .models import SkillDescriptor
-    from .user_manifest import parse_skill_md_frontmatter
+    try:
+        from skills.models import SkillDescriptor
+        from skills.user_manifest import parse_skill_md_frontmatter
+    except ImportError:  # pragma: no cover - package import fallback
+        from .models import SkillDescriptor
+        from .user_manifest import parse_skill_md_frontmatter
 
 
 _SLUG_PART_RE = re.compile(r"[^a-z0-9]+")

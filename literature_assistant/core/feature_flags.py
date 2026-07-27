@@ -22,10 +22,14 @@ import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from _atomic_io import CrossProcessFileLock
-from project_paths import runtime_state_path
+if TYPE_CHECKING or __package__ == "literature_assistant.core":
+    from literature_assistant.core._atomic_io import CrossProcessFileLock
+    from literature_assistant.core.project_paths import runtime_state_path
+else:
+    from _atomic_io import CrossProcessFileLock
+    from project_paths import runtime_state_path
 
 
 _TRUTHY_VALUES: frozenset[str] = frozenset({"1", "true", "yes", "on", "y"})

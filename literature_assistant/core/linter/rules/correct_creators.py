@@ -29,7 +29,7 @@ def normalize_author_format(name: str) -> str:
 class CorrectCreatorsCase(FieldRule):
     """标准化作者名大小写"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-creators-case",
             target_field="authors",
@@ -79,7 +79,7 @@ class CorrectCreatorsCase(FieldRule):
 class CorrectCreatorsPinyin(FieldRule):
     """中文拼音拆分（Zhang Jianbei → Zhang Jian Bei）"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-creators-pinyin",
             target_field="authors",

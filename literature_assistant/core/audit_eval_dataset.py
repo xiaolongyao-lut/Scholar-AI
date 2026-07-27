@@ -84,6 +84,8 @@ def load_chunk_material_ids(chunk_dir: Path) -> set[str]:
     for fp in chunk_dir.glob("*.json"):
         if fp.name == "manifest.json": continue # Skip project manifests at root if any
 
+    return material_ids
+
 
 # ---------------- template detection ----------------
 

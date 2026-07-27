@@ -166,7 +166,10 @@ def search(query: str, chunks: list[dict[str, Any]], weights: dict[str, float] |
 
 
 def dcg(rel_list: list[int]) -> float:
-    return sum((2 ** rel - 1) / math.log2(i + 2) for i, rel in enumerate(rel_list))
+    total = 0.0
+    for index, relevance in enumerate(rel_list):
+        total += (2 ** relevance - 1) / math.log2(index + 2)
+    return total
 
 
 def ndcg(retrieved: list[str], gold: set[str], k: int) -> float:

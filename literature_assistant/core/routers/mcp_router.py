@@ -9,34 +9,59 @@ ordinary display text.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException
+from pydantic import TypeAdapter
 
-from mcp_runtime.client_manager import (
-    McpClientManager,
-    McpClientManagerError,
-    McpServerLaunchError,
-    McpStreamableHttpDisabledError,
-    get_mcp_client_manager,
-)
-from mcp_runtime.server_store import (
-    McpApprovalTransitionError,
-    McpServerNotFoundError,
-    McpServerSchemaError,
-    RuntimeMcpServerStore,
-)
-from mcp_runtime.tool_catalog import McpToolCatalog
-from models.mcp import (
-    McpServerConfigCreate,
-    McpServerConfigPublic,
-    McpServerConfigUpdate,
-    McpToolDescriptor,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.mcp_runtime.client_manager import (
+        McpClientManager,
+        McpClientManagerError,
+        McpServerLaunchError,
+        McpStreamableHttpDisabledError,
+        get_mcp_client_manager,
+    )
+    from literature_assistant.core.mcp_runtime.server_store import (
+        McpApprovalTransitionError,
+        McpServerNotFoundError,
+        McpServerSchemaError,
+        RuntimeMcpServerStore,
+    )
+    from literature_assistant.core.mcp_runtime.tool_catalog import McpToolCatalog
+    from literature_assistant.core.models.mcp import (
+        McpServerConfigCreate,
+        McpServerConfigPublic,
+        McpServerConfigUpdate,
+        McpToolDescriptor,
+    )
+else:
+    from mcp_runtime.client_manager import (
+        McpClientManager,
+        McpClientManagerError,
+        McpServerLaunchError,
+        McpStreamableHttpDisabledError,
+        get_mcp_client_manager,
+    )
+    from mcp_runtime.server_store import (
+        McpApprovalTransitionError,
+        McpServerNotFoundError,
+        McpServerSchemaError,
+        RuntimeMcpServerStore,
+    )
+    from mcp_runtime.tool_catalog import McpToolCatalog
+    from models.mcp import (
+        McpServerConfigCreate,
+        McpServerConfigPublic,
+        McpServerConfigUpdate,
+        McpToolDescriptor,
+    )
 
 
 logger = logging.getLogger("McpRouter")
 router = APIRouter(prefix="/api/mcp", tags=["MCP"])
+_PUBLIC_SERVER_LIST_ADAPTER = TypeAdapter(list[McpServerConfigPublic])
+_TOOL_DESCRIPTOR_LIST_ADAPTER = TypeAdapter(list[McpToolDescriptor])
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +116,10 @@ async def list_servers(
     """List MCP servers with masked env / headers. Optional filter by
     approval state.
     """
-    from models.mcp import McpApprovalState
+    if TYPE_CHECKING:
+        from literature_assistant.core.models.mcp import McpApprovalState
+    else:
+        from models.mcp import McpApprovalState
     store = get_mcp_server_store()
     state_filter = None
     if approval_state:
@@ -102,7 +130,11 @@ async def list_servers(
                 status_code=400, detail=f"unknown approval_state: {approval_state}"
             ) from exc
     try:
-        return store.list_public(approval_state=state_filter)
+        raw_servers: object = store.list_public(approval_state=state_filter)
+        return _PUBLIC_SERVER_LIST_ADAPTER.validate_python(
+            raw_servers,
+            from_attributes=True,
+        )
     except McpServerSchemaError as exc:
         raise HTTPException(
             status_code=500, detail=f"mcp store schema error: {exc}"
@@ -113,7 +145,8 @@ async def list_servers(
 async def create_server(body: McpServerConfigCreate) -> McpServerConfigPublic:
     store = get_mcp_server_store()
     try:
-        return store.create(body)
+        public: McpServerConfigPublic = store.create(body)
+        return public
     except ValueError as exc:
         # Includes duplicate server_slug + transport-block validation errors.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -123,7 +156,8 @@ async def create_server(body: McpServerConfigCreate) -> McpServerConfigPublic:
 async def get_server(server_id: str) -> McpServerConfigPublic:
     store = get_mcp_server_store()
     try:
-        return store.get_public(server_id)
+        public: McpServerConfigPublic = store.get_public(server_id)
+        return public
     except McpServerNotFoundError as exc:
         raise _server_not_found_error() from exc
 
@@ -135,7 +169,7 @@ async def update_server(
     store = get_mcp_server_store()
     catalog = get_mcp_tool_catalog()
     try:
-        public = store.update(server_id, body)
+        public: McpServerConfigPublic = store.update(server_id, body)
     except McpApprovalTransitionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except McpServerNotFoundError as exc:
@@ -156,7 +190,10 @@ async def delete_server(server_id: str) -> dict[str, Any]:
     catalog.invalidate(server_id)
     install_record_deleted = False
     try:
-        from mcp_runtime.template_installer import get_template_installer
+        if TYPE_CHECKING:
+            from literature_assistant.core.mcp_runtime.template_installer import get_template_installer
+        else:
+            from mcp_runtime.template_installer import get_template_installer
 
         install_record_deleted = get_template_installer().cleanup_install_dir(server_id)
     except RuntimeError:
@@ -207,7 +244,10 @@ async def test_server(server_id: str) -> dict[str, Any]:
         }
 
     # On first successful probe, advance approval to catalog_reviewed.
-    from models.mcp import McpApprovalState
+    if TYPE_CHECKING:
+        from literature_assistant.core.models.mcp import McpApprovalState
+    else:
+        from models.mcp import McpApprovalState
     if config.approval_state == McpApprovalState.REGISTERED:
         store.update(
             server_id,
@@ -236,7 +276,11 @@ async def list_server_tools(server_id: str) -> list[McpToolDescriptor]:
         raise _server_not_found_error() from exc
 
     try:
-        return await catalog.get_tools(config)
+        raw_tools: object = await catalog.get_tools(config)
+        return _TOOL_DESCRIPTOR_LIST_ADAPTER.validate_python(
+            raw_tools,
+            from_attributes=True,
+        )
     except McpStreamableHttpDisabledError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except (McpServerLaunchError, McpClientManagerError) as exc:
@@ -253,7 +297,10 @@ async def list_server_tools(server_id: str) -> list[McpToolDescriptor]:
 @router.get("/audit")
 async def list_audit(limit: int = 200) -> dict[str, Any]:
     """Return recent MCP call records with redacted previews."""
-    from mcp_runtime import audit as mcp_audit
+    if TYPE_CHECKING:
+        from literature_assistant.core.mcp_runtime import audit as mcp_audit
+    else:
+        from mcp_runtime import audit as mcp_audit
 
     records = mcp_audit.read_recent(limit=limit)
     records = _attach_server_labels(records)
@@ -300,7 +347,10 @@ def _attach_server_labels(records: list[dict[str, Any]]) -> list[dict[str, Any]]
 @router.delete("/audit", status_code=204)
 async def clear_audit() -> None:
     """Clear the local MCP tool-call audit log without touching server configs."""
-    from mcp_runtime import audit as mcp_audit
+    if TYPE_CHECKING:
+        from literature_assistant.core.mcp_runtime import audit as mcp_audit
+    else:
+        from mcp_runtime import audit as mcp_audit
 
     mcp_audit.clear()
 
@@ -317,7 +367,10 @@ async def list_legacy_env(server_id: str) -> dict[str, Any]:
     The response contains only masked values and field labels needed for the
     migration UI; plaintext values never cross this boundary.
     """
-    from mcp_runtime.legacy_env_migrator import detect_legacy_secrets
+    if TYPE_CHECKING:
+        from literature_assistant.core.mcp_runtime.legacy_env_migrator import detect_legacy_secrets
+    else:
+        from mcp_runtime.legacy_env_migrator import detect_legacy_secrets
 
     store = get_mcp_server_store()
     try:
@@ -357,8 +410,12 @@ async def migrate_env_to_refs(
     Requires explicit confirmation. The operation keeps non-sensitive local
     configuration in place and rebuilds the credential binding index.
     """
-    from routers.credentials_router import get_credential_store
-    from credential_bindings import get_credential_binding_index
+    if TYPE_CHECKING:
+        from literature_assistant.core.credential_bindings import get_credential_binding_index
+        from literature_assistant.core.routers.credentials_router import get_credential_store
+    else:
+        from credential_bindings import get_credential_binding_index
+        from routers.credentials_router import get_credential_store
 
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="请求格式无效，请重试。")
@@ -385,7 +442,10 @@ async def migrate_env_to_refs(
 
     # Validate credentials exist + enabled.
     cred_store = get_credential_store()
-    from credential_store import CredentialNotFoundError
+    if TYPE_CHECKING:
+        from literature_assistant.core.credential_store import CredentialNotFoundError
+    else:
+        from credential_store import CredentialNotFoundError
     for env_key, cred_id in mapping.items():
         if not isinstance(env_key, str) or not env_key.strip():
             raise HTTPException(
@@ -469,10 +529,10 @@ async def migrate_env_to_refs(
             },
         )
 
-    public = store.update(
-        server_id,
-        McpServerConfigUpdate(stdio=new_stdio, http=new_http),
+    update = McpServerConfigUpdate.model_validate(
+        {"stdio": new_stdio, "http": new_http}
     )
+    public = store.update(server_id, update)
 
     # Refresh derived state after credential bindings change.
     catalog = get_mcp_tool_catalog()
@@ -496,10 +556,16 @@ async def migrate_env_to_refs(
 @router.get("/pending-calls")
 async def list_pending_calls() -> list[dict[str, Any]]:
     """Return MCP tool calls currently waiting for user approval."""
-    from mcp_runtime.pending_calls import (
-        PENDING_CALL_TIMEOUT_SECONDS_DEFAULT,
-        get_pending_call_store,
-    )
+    if TYPE_CHECKING:
+        from literature_assistant.core.mcp_runtime.pending_calls import (
+            PENDING_CALL_TIMEOUT_SECONDS_DEFAULT,
+            get_pending_call_store,
+        )
+    else:
+        from mcp_runtime.pending_calls import (
+            PENDING_CALL_TIMEOUT_SECONDS_DEFAULT,
+            get_pending_call_store,
+        )
 
     store = get_pending_call_store()
     # Reap orphaned entries before listing. If a chat request is cancelled
@@ -514,7 +580,10 @@ async def list_pending_calls() -> list[dict[str, Any]]:
 @router.post("/pending-calls/{call_id}/decide", status_code=204)
 async def decide_pending_call(call_id: str, body: dict[str, Any]) -> None:
     """Record the user's decision for a pending MCP tool call."""
-    from mcp_runtime.pending_calls import get_pending_call_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.mcp_runtime.pending_calls import get_pending_call_store
+    else:
+        from mcp_runtime.pending_calls import get_pending_call_store
 
     decision = body.get("decision")
     if decision not in {"approve", "reject"}:

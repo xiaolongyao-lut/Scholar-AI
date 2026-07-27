@@ -27,35 +27,72 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from credential_store import CredentialNotFoundError, RuntimeCredentialStore
-from extension_secret_policy import require_no_plaintext_secret_config
-from models.mcp import (
-    McpApprovalState,
-    McpProvenance,
-    McpServerConfig,
-    McpServerConfigCreate,
-    McpServerConfigPublic,
-    McpServerConfigUpdate,
-    McpStdioConfig,
-    McpStreamableHttpConfig,
-    McpTransport,
-)
-from models.mcp_installation import McpLaunchCandidate, McpPackageScanResult
-
-from mcp_runtime.client_manager import (
-    McpClientManagerError,
-    McpServerLaunchError,
-    McpStreamableHttpDisabledError,
-)
-from credential_bindings import CredentialBindingIndex
-from mcp_runtime.scan_registry import (
-    McpScanRegistry,
-    ScanExpiredError,
-    ScanNotFoundError,
-)
-from mcp_runtime.tool_catalog import McpToolCatalog
+if TYPE_CHECKING or __package__ == "literature_assistant.core.mcp_runtime":
+    from literature_assistant.core.credential_bindings import CredentialBindingIndex
+    from literature_assistant.core.credential_store import (
+        CredentialNotFoundError,
+        RuntimeCredentialStore,
+    )
+    from literature_assistant.core.extension_secret_policy import (
+        require_no_plaintext_secret_config,
+    )
+    from literature_assistant.core.mcp_runtime.client_manager import (
+        McpClientManagerError,
+        McpServerLaunchError,
+        McpStreamableHttpDisabledError,
+    )
+    from literature_assistant.core.mcp_runtime.scan_registry import (
+        McpScanRegistry,
+        ScanExpiredError,
+        ScanNotFoundError,
+    )
+    from literature_assistant.core.mcp_runtime.server_store import RuntimeMcpServerStore
+    from literature_assistant.core.mcp_runtime.tool_catalog import McpToolCatalog
+    from literature_assistant.core.models.mcp import (
+        McpApprovalState,
+        McpProvenance,
+        McpServerConfig,
+        McpServerConfigCreate,
+        McpServerConfigPublic,
+        McpServerConfigUpdate,
+        McpStdioConfig,
+        McpStreamableHttpConfig,
+        McpTransport,
+    )
+    from literature_assistant.core.models.mcp_installation import (
+        McpLaunchCandidate,
+        McpPackageScanResult,
+    )
+else:
+    from credential_bindings import CredentialBindingIndex
+    from credential_store import CredentialNotFoundError, RuntimeCredentialStore
+    from extension_secret_policy import require_no_plaintext_secret_config
+    from mcp_runtime.client_manager import (
+        McpClientManagerError,
+        McpServerLaunchError,
+        McpStreamableHttpDisabledError,
+    )
+    from mcp_runtime.scan_registry import (
+        McpScanRegistry,
+        ScanExpiredError,
+        ScanNotFoundError,
+    )
+    from mcp_runtime.server_store import RuntimeMcpServerStore
+    from mcp_runtime.tool_catalog import McpToolCatalog
+    from models.mcp import (
+        McpApprovalState,
+        McpProvenance,
+        McpServerConfig,
+        McpServerConfigCreate,
+        McpServerConfigPublic,
+        McpServerConfigUpdate,
+        McpStdioConfig,
+        McpStreamableHttpConfig,
+        McpTransport,
+    )
+    from models.mcp_installation import McpLaunchCandidate, McpPackageScanResult
 
 
 logger = logging.getLogger("McpTemplateInstaller")
@@ -156,7 +193,7 @@ class McpTemplateInstaller:
     def __init__(
         self,
         *,
-        server_store,
+        server_store: RuntimeMcpServerStore,
         scan_registry: McpScanRegistry,
         credential_store: RuntimeCredentialStore,
         tool_catalog: McpToolCatalog,
@@ -497,7 +534,10 @@ class McpTemplateInstaller:
         were bound without revealing the saved credential that answered.
         """
         try:
-            from mcp_runtime import audit as mcp_audit
+            if TYPE_CHECKING or __package__ == "literature_assistant.core.mcp_runtime":
+                from literature_assistant.core.mcp_runtime import audit as mcp_audit
+            else:
+                from mcp_runtime import audit as mcp_audit
 
             path = mcp_audit.audit_log_path()
             path.parent.mkdir(parents=True, exist_ok=True)

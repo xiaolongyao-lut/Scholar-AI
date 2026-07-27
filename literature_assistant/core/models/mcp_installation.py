@@ -19,6 +19,7 @@ import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from typing import TypedDict, Unpack
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -163,6 +164,32 @@ class _ConfigFieldBase(BaseModel):
 CONFIG_FIELD_TYPES = frozenset({"text", "select", "number", "boolean"})
 
 
+class _ConfigFieldRequiredData(TypedDict):
+    id: str
+    label: str
+    env: str
+
+
+class _ConfigFieldOptionalData(TypedDict, total=False):
+    required: bool
+    description: str
+
+
+class _McpInstallConfigFieldOptionalData(_ConfigFieldOptionalData, total=False):
+    default: str | None
+    options: list[dict[str, str]] | None
+    min: float | None
+    max: float | None
+    step: float | None
+
+
+class _McpInstallConfigFieldData(
+    _ConfigFieldRequiredData,
+    _McpInstallConfigFieldOptionalData,
+):
+    type: str
+
+
 class McpInstallConfigField(_ConfigFieldBase):
     """Non-sensitive runtime setting generated for the install wizard.
 
@@ -178,8 +205,11 @@ class McpInstallConfigField(_ConfigFieldBase):
     max: float | None = None
     step: float | None = None
 
-    def __init__(self, **data):
-        super().__init__(**data)
+    def __init__(self, /, **data: Unpack[_McpInstallConfigFieldData]) -> None:
+        # This direct call bypasses only _ConfigFieldBase's synthetic immediate-base
+        # signature; Pydantic still validates this concrete subclass. The invariant is
+        # that _ConfigFieldBase must not define custom initialization.
+        BaseModel.__init__(self, **data)
         if self.type not in CONFIG_FIELD_TYPES:
             raise ValueError(
                 f"config field type {self.type!r} not in v1 allowlist "
@@ -189,6 +219,18 @@ class McpInstallConfigField(_ConfigFieldBase):
 
 # v1 credential kind allowlist.
 CREDENTIAL_KINDS = frozenset({"api_key"})
+
+
+class _McpRequiredCredentialOptionalData(_ConfigFieldOptionalData, total=False):
+    kind: str
+    provider_hints: list[str]
+
+
+class _McpRequiredCredentialData(
+    _ConfigFieldRequiredData,
+    _McpRequiredCredentialOptionalData,
+):
+    pass
 
 
 class McpRequiredCredential(_ConfigFieldBase):
@@ -204,8 +246,11 @@ class McpRequiredCredential(_ConfigFieldBase):
     the picker. Strings only — must align with the credentials center
     provider field by convention (no enum coupling in v1)."""
 
-    def __init__(self, **data):
-        super().__init__(**data)
+    def __init__(self, /, **data: Unpack[_McpRequiredCredentialData]) -> None:
+        # This direct call bypasses only _ConfigFieldBase's synthetic immediate-base
+        # signature; Pydantic still validates this concrete subclass. The invariant is
+        # that _ConfigFieldBase must not define custom initialization.
+        BaseModel.__init__(self, **data)
         if self.kind not in CREDENTIAL_KINDS:
             raise ValueError(
                 f"credential kind {self.kind!r} not in v1 allowlist "

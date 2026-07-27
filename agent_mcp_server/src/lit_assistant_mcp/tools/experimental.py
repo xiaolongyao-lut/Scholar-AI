@@ -54,6 +54,46 @@ class ExperimentalRuntime(Protocol):
         """Call backend-managed chat generation."""
 
 
+class _PdfPixmap(Protocol):
+    """Typed subset of a PyMuPDF pixmap used by experimental OCR."""
+
+    def tobytes(self, output: str) -> bytes:
+        """Encode the pixmap in the requested image format."""
+
+
+class _PdfPage(Protocol):
+    """Typed subset of a PyMuPDF page used by experimental OCR."""
+
+    def get_text(self, option: str) -> str:
+        """Extract page text using the selected representation."""
+
+    def get_pixmap(self, *, dpi: int, alpha: bool) -> _PdfPixmap:
+        """Render the page to a pixmap."""
+
+
+class _PdfDocument(Protocol):
+    """Typed subset of a PyMuPDF document used by experimental OCR."""
+
+    def __enter__(self) -> "_PdfDocument":
+        """Enter the document context."""
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> object:
+        """Close the document context."""
+
+    def __len__(self) -> int:
+        """Return the document page count."""
+
+    def __getitem__(self, index: int) -> _PdfPage:
+        """Return one zero-based page."""
+
+
+class _PdfDocumentOpener(Protocol):
+    """Typed PyMuPDF document constructor used at the optional boundary."""
+
+    def __call__(self, *, stream: bytes, filetype: str) -> _PdfDocument:
+        """Open an in-memory document."""
+
+
 class ExperimentalTools:
     """High-risk local tools with a hard explicit-enable boundary."""
 
@@ -402,18 +442,17 @@ class ExperimentalTools:
             import pymupdf
         except ImportError as exc:
             raise ValueError("pymupdf is required for PDF OCR preparation") from exc
+        open_document: _PdfDocumentOpener = pymupdf.open
         try:
             import pytesseract  # type: ignore[import-not-found]
             from PIL import Image
-
-            ocr_available = True
         except ImportError:
-            pytesseract = None
-            Image = None
             ocr_available = False
+        else:
+            ocr_available = True
         pages: list[dict[str, Any]] = []
         artifacts: list[dict[str, Any]] = []
-        with pymupdf.open(stream=raw, filetype="pdf") as doc:
+        with open_document(stream=raw, filetype="pdf") as doc:
             page_count = len(doc)
             if not selected_pages:
                 selected_pages = list(range(1, min(DEFAULT_OCR_PAGES, page_count) + 1))

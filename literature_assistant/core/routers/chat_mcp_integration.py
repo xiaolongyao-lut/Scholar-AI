@@ -19,27 +19,50 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
-from mcp_runtime.client_manager import get_mcp_client_manager
-from mcp_runtime.server_store import McpServerNotFoundError
-from mcp_runtime.tool_use_runner import (
-    McpToolUseRunner,
-    RunCaps,
-    ToolUseRunResult,
-)
-from models.mcp import (
-    McpApprovalState,
-    McpServerConfig,
-    McpToolDescriptor,
-)
-from routers import mcp_router as mcp_router_module
-from routers.local_literature_tool_bridge import (
-    LocalLiteratureToolUseRunner,
-    local_literature_catalog,
-    local_literature_catalog_snapshot,
-    local_literature_server_config,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.mcp_runtime.client_manager import get_mcp_client_manager
+    from literature_assistant.core.mcp_runtime.server_store import McpServerNotFoundError
+    from literature_assistant.core.mcp_runtime.tool_use_runner import (
+        ChatCall,
+        McpToolUseRunner,
+        RunCaps,
+        ToolUseRunResult,
+    )
+    from literature_assistant.core.models.mcp import (
+        McpApprovalState,
+        McpServerConfig,
+        McpToolDescriptor,
+    )
+    from literature_assistant.core.routers import mcp_router as mcp_router_module
+    from literature_assistant.core.routers.local_literature_tool_bridge import (
+        LocalLiteratureToolUseRunner,
+        local_literature_catalog,
+        local_literature_catalog_snapshot,
+        local_literature_server_config,
+    )
+else:
+    from mcp_runtime.client_manager import get_mcp_client_manager
+    from mcp_runtime.server_store import McpServerNotFoundError
+    from mcp_runtime.tool_use_runner import (
+        ChatCall,
+        McpToolUseRunner,
+        RunCaps,
+        ToolUseRunResult,
+    )
+    from models.mcp import (
+        McpApprovalState,
+        McpServerConfig,
+        McpToolDescriptor,
+    )
+    from routers import mcp_router as mcp_router_module
+    from routers.local_literature_tool_bridge import (
+        LocalLiteratureToolUseRunner,
+        local_literature_catalog,
+        local_literature_catalog_snapshot,
+        local_literature_server_config,
+    )
 
 
 logger = logging.getLogger("ChatMcpIntegration")
@@ -171,7 +194,7 @@ def make_chat_call(
     base_payload: dict[str, Any],
     provider_key: str,
     post_fn: ChatPostFn,
-):
+) -> ChatCall:
     """Return a runner-compatible ``chat_call(messages, tools)`` closure.
 
     Mutates a fresh copy of ``base_payload`` per round; never touches the

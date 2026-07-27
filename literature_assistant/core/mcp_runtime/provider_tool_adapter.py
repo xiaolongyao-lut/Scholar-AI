@@ -18,9 +18,12 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from models.mcp import McpServerConfig, McpToolDescriptor
+if TYPE_CHECKING:
+    from literature_assistant.core.models.mcp import McpServerConfig, McpToolDescriptor
+else:
+    from models.mcp import McpServerConfig, McpToolDescriptor
 
 
 NAMESPACE_PREFIX = "mcp__"

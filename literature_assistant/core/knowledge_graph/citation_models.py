@@ -26,8 +26,12 @@ from pydantic import (
 
 from literature_assistant.core.models.evidence import PdfBboxUnit, pdf_bbox_matches_unit
 
-CITATION_MENTION_SCHEMA_VERSION = "scholar-ai-citation-mention/v1"
-CITES_CANDIDATE_SCHEMA_VERSION = "scholar-ai-cites-candidate/v1"
+CITATION_MENTION_SCHEMA_VERSION: Literal["scholar-ai-citation-mention/v1"] = (
+    "scholar-ai-citation-mention/v1"
+)
+CITES_CANDIDATE_SCHEMA_VERSION: Literal["scholar-ai-cites-candidate/v1"] = (
+    "scholar-ai-cites-candidate/v1"
+)
 
 CitationOutcome = Literal["matched", "unmatched", "ambiguous", "over_limit", "failed"]
 CitationMatchMethod = Literal["doi", "normalized_title", "author_year", "none"]
@@ -59,6 +63,13 @@ _PIXEL_PAYLOAD_RE = re.compile(r"\bdata:image/", re.IGNORECASE)
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _validator_field_name(info: ValidationInfo) -> str:
+    field_name = info.field_name
+    if field_name is None:
+        raise RuntimeError("citation field validator requires a field name")
+    return field_name
 
 
 def _validate_identifier(value: str, *, field_name: str) -> str:
@@ -140,7 +151,7 @@ class CitationCaptureReceipt(BaseModel):
     @field_validator("receipt_id", "project_id", "batch_id", "session_id", "turn_id")
     @classmethod
     def _validate_ids(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_identifier(value, field_name=info.field_name)
+        return _validate_identifier(value, field_name=_validator_field_name(info))
 
     @field_validator("capture_sha256")
     @classmethod
@@ -276,7 +287,7 @@ class _CitationRecordFields(BaseModel):
     )
     @classmethod
     def _validate_required_ids(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_identifier(value, field_name=info.field_name)
+        return _validate_identifier(value, field_name=_validator_field_name(info))
 
     @field_validator(
         "selection_id",
@@ -286,7 +297,7 @@ class _CitationRecordFields(BaseModel):
     )
     @classmethod
     def _validate_optional_ids(cls, value: str | None, info: ValidationInfo) -> str | None:
-        return _validate_optional_identifier(value, field_name=info.field_name)
+        return _validate_optional_identifier(value, field_name=_validator_field_name(info))
 
     @field_validator("source_version", "extractor_version", "parser_version", "resolver_version")
     @classmethod
@@ -310,12 +321,12 @@ class _CitationRecordFields(BaseModel):
         value: str | None,
         info: ValidationInfo,
     ) -> str | None:
-        return _validate_fingerprint(value, field_name=info.field_name)
+        return _validate_fingerprint(value, field_name=_validator_field_name(info))
 
     @field_validator("marker", "reference_text")
     @classmethod
     def _validate_durable_text(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_safe_text(value, field_name=info.field_name)
+        return _validate_safe_text(value, field_name=_validator_field_name(info))
 
     @field_validator("reason", "target_material_title")
     @classmethod
@@ -326,7 +337,7 @@ class _CitationRecordFields(BaseModel):
     ) -> str | None:
         if value is None:
             return None
-        normalized = _validate_safe_text(value, field_name=info.field_name)
+        normalized = _validate_safe_text(value, field_name=_validator_field_name(info))
         return normalized or None
 
     @field_validator("source_bbox", "reference_bbox", mode="before")
@@ -336,7 +347,7 @@ class _CitationRecordFields(BaseModel):
         value: object,
         info: ValidationInfo,
     ) -> list[float] | None:
-        return _validate_bbox(value, field_name=info.field_name)
+        return _validate_bbox(value, field_name=_validator_field_name(info))
 
     @field_validator("candidate_material_ids", mode="before")
     @classmethod
@@ -484,7 +495,7 @@ class CitesCandidate(_CitationRecordFields):
     @field_validator("candidate_id", "mention_id")
     @classmethod
     def _validate_candidate_ids(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_identifier(value, field_name=info.field_name)
+        return _validate_identifier(value, field_name=_validator_field_name(info))
 
 
 def cites_candidate_from_mention(

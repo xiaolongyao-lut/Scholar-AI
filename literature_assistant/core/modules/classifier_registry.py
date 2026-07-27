@@ -5,8 +5,14 @@ Provides a runtime registry for evidence classifier implementations.
 """
 
 import logging
-from typing import Dict, Type, Callable, Optional
-from modules.classifier_interface import ClassifierInterface
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, TypeVar
+
+if TYPE_CHECKING:
+    from literature_assistant.core.modules.classifier_interface import ClassifierInterface
+else:
+    from modules.classifier_interface import ClassifierInterface
+
+ClassifierT = TypeVar("ClassifierT", bound=ClassifierInterface)
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +40,7 @@ class ClassifierRegistry:
         return cls._registry.get(name)
     
     @classmethod
-    def create(cls, name: str, **kwargs) -> ClassifierInterface:
+    def create(cls, name: str, **kwargs: object) -> ClassifierInterface:
         """
         Create a classifier instance by name.
         
@@ -59,9 +65,11 @@ class ClassifierRegistry:
         return list(cls._registry.keys())
 
 
-def register_classifier(name: str):
+def register_classifier(
+    name: str,
+) -> Callable[[Type[ClassifierT]], Type[ClassifierT]]:
     """Decorator for registering classifier classes"""
-    def decorator(cls: Type[ClassifierInterface]):
-        ClassifierRegistry.register(name, cls)
-        return cls
+    def decorator(classifier_cls: Type[ClassifierT]) -> Type[ClassifierT]:
+        ClassifierRegistry.register(name, classifier_cls)
+        return classifier_cls
     return decorator

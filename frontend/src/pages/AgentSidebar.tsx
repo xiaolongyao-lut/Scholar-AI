@@ -526,6 +526,7 @@ export function AgentSidebar() {
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
   const [connectionState, setConnectionState] = useState<ConnectionState>('checking');
   const [answerLifecycle, setAnswerLifecycle] = useState<AnswerLifecycle>('idle');
+  const [submissionActive, setSubmissionActive] = useState(false);
   const [receipts, setReceipts] = useState<AgentSidebarReceiptSummary[]>([]);
   const [selectedReceiptId, setSelectedReceiptId] = useState<string | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<AgentSidebarReceiptReadResponse | null>(null);
@@ -545,7 +546,11 @@ export function AgentSidebar() {
   const [visualObservationReason, setVisualObservationReason] = useState('');
   const [visualObservationMutating, setVisualObservationMutating] = useState(false);
   const stopRequestedRef = useRef(false);
+  const submitInFlightRef = useRef(false);
+  const selectedProjectIdRef = useRef(normalizeId(initialProjectId));
   const selectedReceiptIdRef = useRef<string | null>(null);
+  const projectLoadGenerationRef = useRef(0);
+  const receiptRequestGenerationRef = useRef(0);
   const visualObservationRequestRef = useRef(0);
 
   useEffect(() => {
@@ -566,6 +571,10 @@ export function AgentSidebar() {
     [selectedProjectId],
   );
   const conversation = smartRead.getConversation(smartReadScope);
+  const submissionBusy = submissionActive
+    || conversation.pending
+    || answerLifecycle === 'running'
+    || answerLifecycle === 'saving';
   const visualObservationRefs = useMemo(
     () => selectedReceipt?.receipt.visual_observation_refs ?? [],
     [selectedReceipt],
@@ -585,13 +594,65 @@ export function AgentSidebar() {
     setVisualObservationMutating(false);
   }, [selectedReceipt]);
 
-  const loadReceipt = useCallback(async (conversationId: string) => {
+  const isCurrentReceiptRequest = useCallback((projectId: string, generation: number): boolean => (
+    selectedProjectIdRef.current === projectId
+    && receiptRequestGenerationRef.current === generation
+  ), []);
+
+  const isCurrentReceiptSelection = useCallback((
+    projectId: string,
+    conversationId: string,
+    generation: number,
+  ): boolean => (
+    isCurrentReceiptRequest(projectId, generation)
+    && selectedReceiptIdRef.current === conversationId
+  ), [isCurrentReceiptRequest]);
+
+  const advanceReceiptRequestGeneration = useCallback((): number => {
+    const generation = receiptRequestGenerationRef.current + 1;
+    receiptRequestGenerationRef.current = generation;
+    setHandoffCreating(false);
+    return generation;
+  }, []);
+
+  const resetReceiptOwnership = useCallback((projectId: string): void => {
+    const normalized = normalizeId(projectId);
+    selectedProjectIdRef.current = normalized;
+    setSelectedProjectId(normalized);
+    setReceipts([]);
+    setSelectedReceipt(null);
+    selectedReceiptIdRef.current = null;
+    setSelectedReceiptId(null);
+    setRevalidateResult(null);
+    setHandoffRequest(null);
+    setHandoffCopied(false);
+    setHandoffCreating(false);
+    setNotice(null);
+    setErrorMessage(null);
+    setAnswerLifecycle('idle');
+    setReceiptLoading(Boolean(normalized));
+  }, []);
+
+  const loadReceipt = useCallback(async (
+    conversationId: string,
+    projectId = selectedProjectIdRef.current,
+    requestGeneration?: number,
+  ) => {
     const normalized = normalizeId(conversationId);
-    if (!normalized) return null;
+    const normalizedProjectId = normalizeId(projectId);
+    if (!normalized || !normalizedProjectId || selectedProjectIdRef.current !== normalizedProjectId) return null;
+    const generation = requestGeneration ?? advanceReceiptRequestGeneration();
+    if (requestGeneration !== undefined && !isCurrentReceiptRequest(normalizedProjectId, generation)) {
+      return null;
+    }
     setReceiptLoading(true);
     try {
       const read = await readAgentSidebarReceipt(normalized);
+      if (!isCurrentReceiptRequest(normalizedProjectId, generation)) return null;
+      const responseProjectId = normalizeId(read.project_id);
+      if (responseProjectId && responseProjectId !== normalizedProjectId) return null;
       setSelectedReceipt(read);
+      selectedReceiptIdRef.current = read.conversation_id;
       setSelectedReceiptId(read.conversation_id);
       setAnswerLifecycle(lifecycleFromReceipt(read));
       setHandoffRequest(null);
@@ -599,25 +660,36 @@ export function AgentSidebar() {
       setErrorMessage(null);
       return read;
     } catch (error) {
+      if (!isCurrentReceiptRequest(normalizedProjectId, generation)) return null;
       setErrorMessage(formatError(error));
       setAnswerLifecycle('error');
       return null;
     } finally {
-      setReceiptLoading(false);
+      if (isCurrentReceiptRequest(normalizedProjectId, generation)) {
+        setReceiptLoading(false);
+      }
     }
-  }, []);
+  }, [advanceReceiptRequestGeneration, isCurrentReceiptRequest]);
 
   const refreshReceipts = useCallback(async (projectId: string, options: RefreshReceiptOptions = {}) => {
     const normalized = normalizeId(projectId);
     if (!normalized) {
+      advanceReceiptRequestGeneration();
       setReceipts([]);
       setSelectedReceipt(null);
+      selectedReceiptIdRef.current = null;
       setSelectedReceiptId(null);
+      setReceiptLoading(false);
       return [];
     }
+    if (selectedProjectIdRef.current !== normalized) return [];
+    const generation = advanceReceiptRequestGeneration();
     setReceiptLoading(true);
     try {
       const response = await listAgentSidebarReceipts(normalized, 20);
+      if (!isCurrentReceiptRequest(normalized, generation)) return [];
+      const responseProjectId = normalizeId(response.project_id);
+      if (responseProjectId && responseProjectId !== normalized) return [];
       setReceipts(response.receipts);
       const currentReceiptId = options.preserveSelection === false ? null : selectedReceiptIdRef.current;
       const stillSelected = currentReceiptId && response.receipts.some((item) => item.conversation_id === currentReceiptId);
@@ -627,34 +699,48 @@ export function AgentSidebar() {
           ? autoSelectableReceipt(response.receipts)?.conversation_id
           : null;
       if (targetId) {
-        await loadReceipt(targetId);
+        await loadReceipt(targetId, normalized, generation);
       } else if (!stillSelected) {
         setSelectedReceipt(null);
+        selectedReceiptIdRef.current = null;
         setSelectedReceiptId(null);
       }
+      if (!isCurrentReceiptRequest(normalized, generation)) return [];
       setConnectionState('ready');
       setErrorMessage(null);
       return response.receipts;
     } catch (error) {
+      if (!isCurrentReceiptRequest(normalized, generation)) return [];
       setConnectionState('degraded');
       setErrorMessage(formatError(error));
       return [];
     } finally {
-      setReceiptLoading(false);
+      if (isCurrentReceiptRequest(normalized, generation)) {
+        setReceiptLoading(false);
+      }
     }
-  }, [loadReceipt]);
+  }, [advanceReceiptRequestGeneration, isCurrentReceiptRequest, loadReceipt]);
 
   const loadProjects = useCallback(async () => {
+    const generation = projectLoadGenerationRef.current + 1;
+    projectLoadGenerationRef.current = generation;
+    advanceReceiptRequestGeneration();
     setConnectionState('checking');
     try {
       const [healthResult, projectList] = await Promise.all([
         getAgentSidebarHealth().catch(() => null),
         getWritingBackendService().listProjects(),
       ]);
+      if (projectLoadGenerationRef.current !== generation) return;
       const sorted = [...projectList].sort((a, b) => projectTitle(a).localeCompare(projectTitle(b)));
       const preferred = queryProjectId || activeProjectId || sorted[0]?.project_id || '';
       setProjects(sorted);
-      setSelectedProjectId(preferred);
+      if (selectedProjectIdRef.current !== normalizeId(preferred)) {
+        resetReceiptOwnership(preferred);
+      } else {
+        selectedProjectIdRef.current = normalizeId(preferred);
+        setSelectedProjectId(preferred);
+      }
       if (preferred && preferred !== activeProjectId) {
         setActiveProjectId(preferred);
       }
@@ -666,11 +752,19 @@ export function AgentSidebar() {
         setReceiptLoading(false);
       }
     } catch (error) {
+      if (projectLoadGenerationRef.current !== generation) return;
       setConnectionState('offline');
       setReceiptLoading(false);
       setErrorMessage(formatError(error));
     }
-  }, [activeProjectId, queryProjectId, refreshReceipts, setActiveProjectId]);
+  }, [
+    activeProjectId,
+    advanceReceiptRequestGeneration,
+    queryProjectId,
+    refreshReceipts,
+    resetReceiptOwnership,
+    setActiveProjectId,
+  ]);
 
   useEffect(() => {
     void loadProjects();
@@ -678,14 +772,9 @@ export function AgentSidebar() {
 
   const handleProjectChange = useCallback((projectId: string) => {
     const normalized = normalizeId(projectId);
-    setSelectedProjectId(normalized);
-    setSelectedReceipt(null);
-    setSelectedReceiptId(null);
-    setRevalidateResult(null);
-    setHandoffRequest(null);
-    setHandoffCopied(false);
-    setNotice(null);
-    setErrorMessage(null);
+    projectLoadGenerationRef.current += 1;
+    advanceReceiptRequestGeneration();
+    resetReceiptOwnership(normalized);
     setActiveProjectId(normalized);
     const next = new URLSearchParams(searchParams);
     if (normalized) next.set('project_id', normalized);
@@ -693,8 +782,17 @@ export function AgentSidebar() {
     setSearchParams(next, { replace: true });
     if (normalized) {
       void refreshReceipts(normalized, { selectLatest: true });
+    } else {
+      setReceiptLoading(false);
     }
-  }, [refreshReceipts, searchParams, setActiveProjectId, setSearchParams]);
+  }, [
+    advanceReceiptRequestGeneration,
+    refreshReceipts,
+    resetReceiptOwnership,
+    searchParams,
+    setActiveProjectId,
+    setSearchParams,
+  ]);
 
   const handleSubmit = useCallback(async (payload: { text: string }) => {
     const question = payload.text.trim();
@@ -704,6 +802,10 @@ export function AgentSidebar() {
       setAnswerLifecycle('error');
       return;
     }
+    if (submitInFlightRef.current || submissionBusy) return;
+    const submissionProjectId = normalizeId(selectedProjectId);
+    submitInFlightRef.current = true;
+    setSubmissionActive(true);
     stopRequestedRef.current = false;
     setSelectedReceipt(null);
     setSelectedReceiptId(null);
@@ -719,33 +821,39 @@ export function AgentSidebar() {
     const submittedAfterMs = Date.now();
     try {
       await smartRead.sendMessage(smartReadScope, question, {
-        projectId: selectedProjectId,
+        projectId: submissionProjectId,
         answerOrigin: 'internal_smartread',
         generatedIn: 'mcp_sidebar',
         tier: 'medium',
       });
+      if (selectedProjectIdRef.current !== submissionProjectId) return;
       if (stopRequestedRef.current) {
         setAnswerLifecycle('stopped');
         setNotice('已停止后续刷新；已完成的后端步骤不会回滚。');
         return;
       }
       setAnswerLifecycle('saving');
-      const updatedReceipts = await refreshReceipts(selectedProjectId, {
+      const updatedReceipts = await refreshReceipts(submissionProjectId, {
         selectLatest: false,
         preserveSelection: false,
       });
+      if (selectedProjectIdRef.current !== submissionProjectId) return;
       const submittedReceipt = findSubmittedReceipt(updatedReceipts, previousUpdatedAtById, question, submittedAfterMs);
       if (!submittedReceipt) {
         setAnswerLifecycle('error');
         setErrorMessage('本次提问没有生成可保存的 Scholar AI receipt；历史不会自动选中旧记录。');
         return;
       }
-      await loadReceipt(submittedReceipt.conversation_id);
+      await loadReceipt(submittedReceipt.conversation_id, submissionProjectId);
     } catch (error) {
+      if (selectedProjectIdRef.current !== submissionProjectId) return;
       setAnswerLifecycle('error');
       setErrorMessage(formatError(error));
+    } finally {
+      submitInFlightRef.current = false;
+      setSubmissionActive(false);
     }
-  }, [loadReceipt, receipts, refreshReceipts, selectedProjectId, smartRead, smartReadScope]);
+  }, [loadReceipt, receipts, refreshReceipts, selectedProjectId, smartRead, smartReadScope, submissionBusy]);
 
   const handleStop = useCallback(() => {
     stopRequestedRef.current = true;
@@ -755,45 +863,68 @@ export function AgentSidebar() {
   }, [smartRead, smartReadScope]);
 
   const handleRevalidate = useCallback(async (apply: boolean) => {
-    if (!selectedReceiptId) return;
+    const requestProjectId = selectedProjectIdRef.current;
+    const requestReceiptId = normalizeId(selectedReceiptId);
+    const requestGeneration = receiptRequestGenerationRef.current;
+    const requestIsCurrent = (): boolean => isCurrentReceiptSelection(
+      requestProjectId,
+      requestReceiptId,
+      requestGeneration,
+    );
+    if (!requestProjectId || !requestReceiptId || !requestIsCurrent()) return;
     setAnswerLifecycle('revalidating');
     setRevalidateResult(null);
     setNotice(null);
     setErrorMessage(null);
     try {
-      const result = await revalidateAgentSidebarReceipt(selectedReceiptId, { apply, topK: 10 });
+      const result = await revalidateAgentSidebarReceipt(requestReceiptId, { apply, topK: 10 });
+      if (!requestIsCurrent()) return;
       setRevalidateResult(result);
       setNotice(apply ? `复核：${result.status}` : `预检：${result.status}`);
       if (apply) {
-        await loadReceipt(selectedReceiptId);
+        await loadReceipt(requestReceiptId, requestProjectId);
       } else {
         setAnswerLifecycle(selectedReceipt ? lifecycleFromReceipt(selectedReceipt) : 'saved');
       }
     } catch (error) {
+      if (!requestIsCurrent()) return;
       setAnswerLifecycle('error');
       setErrorMessage(formatError(error));
     }
-  }, [loadReceipt, selectedReceipt, selectedReceiptId]);
+  }, [isCurrentReceiptSelection, loadReceipt, selectedReceipt, selectedReceiptId]);
 
   const handleCreateHandoffRequest = useCallback(async () => {
-    if (!selectedReceipt || !selectedProjectId) return;
+    const requestProjectId = selectedProjectIdRef.current;
+    const requestReceipt = selectedReceipt;
+    const requestReceiptId = normalizeId(requestReceipt?.conversation_id);
+    const requestGeneration = receiptRequestGenerationRef.current;
+    const requestIsCurrent = (): boolean => isCurrentReceiptSelection(
+      requestProjectId,
+      requestReceiptId,
+      requestGeneration,
+    );
+    if (!requestReceipt || !requestProjectId || !requestReceiptId || !requestIsCurrent()) return;
     setHandoffCreating(true);
     setHandoffCopied(false);
     setNotice(null);
     setErrorMessage(null);
     try {
-      const request = await createAgentSidebarAnswerRequest(selectedReceipt, {
-        projectId: selectedProjectId,
+      const request = await createAgentSidebarAnswerRequest(requestReceipt, {
+        projectId: requestProjectId,
         agentHost: 'codex',
       });
+      if (!requestIsCurrent()) return;
       setHandoffRequest(request);
       setNotice('已创建待接手任务。');
     } catch (error) {
+      if (!requestIsCurrent()) return;
       setErrorMessage(formatError(error));
     } finally {
-      setHandoffCreating(false);
+      if (requestIsCurrent()) {
+        setHandoffCreating(false);
+      }
     }
-  }, [selectedProjectId, selectedReceipt]);
+  }, [isCurrentReceiptSelection, selectedReceipt]);
 
   const handleCopyHandoffInstruction = useCallback(async () => {
     if (!handoffRequest) return;
@@ -1325,7 +1456,7 @@ export function AgentSidebar() {
             onSubmit={(payload) => void handleSubmit(payload)}
             projectId={selectedProjectId || null}
             placeholder={selectedProjectId ? '基于 Scholar AI 证据提问…' : '先选择项目…'}
-            disabled={!canAsk}
+            disabled={!canAsk || submissionBusy}
             responding={isResponding}
             onStop={handleStop}
             stopLabel="停止后续步骤"

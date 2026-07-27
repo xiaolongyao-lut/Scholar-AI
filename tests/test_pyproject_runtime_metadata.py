@@ -1,14 +1,121 @@
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
+import sys
+import tarfile
 import tomllib
+import zipfile
 from pathlib import Path
 
 import pytest
+from packaging.requirements import Requirement
+from packaging.version import Version
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
+
+
+def _create_minimal_distribution_source(tmp_path: Path) -> Path:
+    """Create a small source tree that exercises the real package metadata."""
+
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    for name in ("pyproject.toml", "README.md", "LICENSE", "MANIFEST.in"):
+        source = REPO_ROOT / name
+        if source.is_file():
+            shutil.copy2(source, source_root / name)
+
+    package_root = source_root / "literature_assistant"
+    for relative_path in (
+        Path("__init__.py"),
+        Path("version.py"),
+        Path("core/__init__.py"),
+        Path("core/skills/__init__.py"),
+    ):
+        source = REPO_ROOT / "literature_assistant" / relative_path
+        destination = package_root / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+    importers_root = package_root / "core/skills/importers"
+    importers_root.mkdir(parents=True, exist_ok=True)
+    (importers_root / "__init__.py").write_text("", encoding="utf-8")
+    (importers_root / "ui_ux_pro_max_wrapper.py").write_text(
+        '"""Public importer wrapper sentinel."""\n',
+        encoding="utf-8",
+    )
+    private_source = (
+        importers_root
+        / "ui-ux-pro-max"
+        / "cli"
+        / "assets"
+        / "scripts"
+        / "private_impl.py"
+    )
+    private_source.parent.mkdir(parents=True)
+    private_source.write_text("PRIVATE_IMPORTER_SENTINEL = True\n", encoding="utf-8")
+
+    test_source = source_root / "tests/test_package_boundary_sentinel.py"
+    test_source.parent.mkdir()
+    test_source.write_text("TEST_SENTINEL = True\n", encoding="utf-8")
+    return source_root
+
+
+def _build_distribution_members(source_root: Path) -> tuple[set[str], set[str]]:
+    """Build wheel and sdist archives and return their normalized members."""
+
+    output_dir = source_root.parent / "dist"
+    completed = subprocess.run(
+        (
+            sys.executable,
+            "-m",
+            "build",
+            "--no-isolation",
+            "--wheel",
+            "--sdist",
+            "--outdir",
+            str(output_dir),
+        ),
+        cwd=source_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+    wheel_path = next(output_dir.glob("*.whl"))
+    sdist_path = next(output_dir.glob("*.tar.gz"))
+    with zipfile.ZipFile(wheel_path) as archive:
+        wheel_members = {name.replace("\\", "/") for name in archive.namelist()}
+    with tarfile.open(sdist_path, mode="r:gz") as archive:
+        sdist_members = {name.replace("\\", "/") for name in archive.getnames()}
+    return wheel_members, sdist_members
+
+
+def test_built_distributions_enforce_the_public_package_boundary(tmp_path: Path) -> None:
+    """Published archives must omit private importer sources and test modules."""
+
+    source_root = _create_minimal_distribution_source(tmp_path)
+    wheel_members, sdist_members = _build_distribution_members(source_root)
+    wrapper_suffix = (
+        "literature_assistant/core/skills/importers/ui_ux_pro_max_wrapper.py"
+    )
+
+    assert any(member.endswith(wrapper_suffix) for member in wheel_members)
+    assert any(member.endswith(wrapper_suffix) for member in sdist_members)
+
+    forbidden_members = sorted(
+        member
+        for member in wheel_members | sdist_members
+        if "/ui-ux-pro-max/" in f"/{member}/"
+        or "/tests/" in f"/{member}/"
+    )
+    assert forbidden_members == []
 
 
 def test_pyproject_declares_python_311_runtime_floor() -> None:
@@ -36,6 +143,133 @@ def test_mypy_excludes_ignored_local_resource_importers() -> None:
     assert any(re.search(pattern, ignored_importer) for pattern in excluded_patterns)
 
 
+def test_mypy_checks_internal_imports_and_resolves_local_mcp_source() -> None:
+    """The configured gate must type-check Scholar AI while narrowing third-party gaps."""
+
+    data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    mypy_config = data["tool"]["mypy"]
+    approved_third_party_modules = {
+        "PyPDF2",
+        "fitz",
+        "graphrag",
+        "graphrag.*",
+        "networkx",
+        "pandas",
+        "pdfplumber",
+        "psutil",
+        "scipy",
+        "scipy.*",
+        "sentence_transformers",
+        "torch",
+        "transformers",
+        "umap",
+    }
+
+    assert mypy_config["ignore_missing_imports"] is False
+    assert mypy_config["disallow_untyped_defs"] is True
+    assert mypy_config["disallow_incomplete_defs"] is True
+    assert mypy_config["disallow_untyped_calls"] is True
+    assert mypy_config["explicit_package_bases"] is True
+    assert "agent_mcp_server/src" in mypy_config["files"]
+    assert "agent_mcp_server/src" in mypy_config["mypy_path"]
+
+    ignored_modules: set[str] = set()
+    for override in mypy_config.get("overrides", []):
+        if override.get("ignore_missing_imports") is True:
+            ignored_modules.update(override["module"])
+    assert ignored_modules
+    assert ignored_modules <= approved_third_party_modules
+
+
+def test_type_check_dependencies_cover_the_local_and_ci_gate() -> None:
+    """Local and CI environments must install mypy and required runtime stubs."""
+
+    data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    dev_dependencies = {
+        re.split(r"[<>=!~\[]", requirement, maxsplit=1)[0].lower()
+        for requirement in data["project"]["optional-dependencies"]["dev"]
+    }
+    ci_dependencies = {
+        line.split("=", 1)[0].strip().lower()
+        for line in (PYPROJECT_PATH.parent / "requirements-ci.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    required_type_packages = {
+        "mypy",
+        "types-pyyaml",
+        "types-requests",
+        "types-python-dateutil",
+    }
+
+    assert required_type_packages <= dev_dependencies
+    assert required_type_packages <= ci_dependencies
+
+
+def test_httpcore_transport_dependency_is_declared_locally_and_in_ci() -> None:
+    """The pinned OCR transport must not rely on an undeclared transitive package."""
+
+    data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    runtime_requirements = {
+        requirement.name.lower(): requirement
+        for raw_requirement in data["project"]["dependencies"]
+        if (requirement := Requirement(raw_requirement))
+    }
+    ci_requirements = {
+        requirement.name.lower(): requirement
+        for line in (REPO_ROOT / "requirements-ci.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+        if (requirement := Requirement(line.strip()))
+    }
+
+    assert "httpcore" in runtime_requirements
+    assert "httpcore" in ci_requirements
+    ci_specifiers = tuple(ci_requirements["httpcore"].specifier)
+    assert len(ci_specifiers) == 1
+    assert ci_specifiers[0].operator == "=="
+    assert Version(ci_specifiers[0].version) in runtime_requirements["httpcore"].specifier
+
+
+def test_no_isolation_build_backend_is_declared_locally_and_in_ci() -> None:
+    """No-isolation builds require CI to preinstall a compatible backend."""
+
+    data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    build_requirements = {
+        requirement.name.lower(): requirement
+        for raw_requirement in data["build-system"]["requires"]
+        if (requirement := Requirement(raw_requirement))
+    }
+    dev_requirements = {
+        requirement.name.lower(): requirement
+        for raw_requirement in data["project"]["optional-dependencies"]["dev"]
+        if (requirement := Requirement(raw_requirement))
+    }
+    ci_requirements = {
+        requirement.name.lower(): requirement
+        for line in (REPO_ROOT / "requirements-ci.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+        if (requirement := Requirement(line.strip()))
+    }
+
+    assert "setuptools" in build_requirements
+    assert "setuptools" in dev_requirements
+    assert "setuptools" in ci_requirements
+
+    ci_specifiers = tuple(ci_requirements["setuptools"].specifier)
+    assert len(ci_specifiers) == 1
+    assert ci_specifiers[0].operator == "=="
+    assert not ci_specifiers[0].version.endswith(".*")
+
+    ci_version = Version(ci_specifiers[0].version)
+    assert ci_version in build_requirements["setuptools"].specifier
+    assert ci_version in dev_requirements["setuptools"].specifier
+
+
 def test_pyproject_reads_product_version_from_runtime_source() -> None:
     """Build metadata must resolve the product version from one module attribute."""
 
@@ -53,7 +287,19 @@ def test_package_exposes_current_four_part_product_version() -> None:
 
     from literature_assistant import __version__
 
-    assert __version__ == "0.1.9.0"
+    assert __version__ == "0.1.9.1"
+
+
+@pytest.mark.asyncio
+async def test_public_api_surfaces_share_product_version() -> None:
+    """OpenAPI and health metadata must use the canonical product version."""
+
+    from literature_assistant import __version__
+    from literature_assistant.core.python_adapter_server import app, health_check
+
+    assert app.version == __version__
+    assert app.openapi()["info"]["version"] == __version__
+    assert (await health_check())["version"] == __version__
 
 
 def test_parse_version_returns_four_numeric_parts() -> None:
@@ -119,7 +365,7 @@ def test_acquisition_clients_share_product_version_user_agent() -> None:
     from literature_assistant.core.acquisition.sources import arxiv
     from literature_assistant.version import SCHOLAR_AI_USER_AGENT
 
-    expected = "ScholarAI/0.1.9.0 compliant-open-access-client"
+    expected = "ScholarAI/0.1.9.1 compliant-open-access-client"
     assert SCHOLAR_AI_USER_AGENT == expected
     assert downloader.SCHOLAR_AI_USER_AGENT == expected
     assert arxiv.SCHOLAR_AI_USER_AGENT == expected
@@ -162,7 +408,7 @@ async def test_default_downloader_client_sends_product_version_user_agent(
         )
 
     assert captured["headers"] == {
-        "User-Agent": "ScholarAI/0.1.9.0 compliant-open-access-client"
+        "User-Agent": "ScholarAI/0.1.9.1 compliant-open-access-client"
     }
 
 
@@ -205,5 +451,5 @@ async def test_default_arxiv_client_sends_product_version_user_agent(
 
     assert candidates == ()
     assert captured["headers"] == {
-        "User-Agent": "ScholarAI/0.1.9.0 compliant-open-access-client"
+        "User-Agent": "ScholarAI/0.1.9.1 compliant-open-access-client"
     }

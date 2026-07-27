@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { StrictMode } from 'react';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sendMessage = vi.hoisted(() => vi.fn(async () => undefined));
@@ -15,6 +16,16 @@ const createAgentSidebarAnswerRequest = vi.hoisted(() => vi.fn());
 const openAgentSidebarDesktop = vi.hoisted(() => vi.fn());
 const readVisualObservationDetail = vi.hoisted(() => vi.fn());
 const transitionVisualObservation = vi.hoisted(() => vi.fn());
+
+function deferred<T>() {
+  let resolvePromise!: (value: T) => void;
+  let rejectPromise!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return { promise, reject: rejectPromise, resolve: resolvePromise };
+}
 
 vi.mock('@/contexts/SmartReadContext', () => ({
   smartReadDialogScope: (projectId: string) => `dialog-${projectId}`,
@@ -214,6 +225,83 @@ function renderSidebar() {
   );
 }
 
+function renderSidebarInStrictMode() {
+  render(
+    <StrictMode>
+      <MemoryRouter initialEntries={['/agent-sidebar?project_id=project-a']}>
+        <AgentSidebar />
+      </MemoryRouter>
+    </StrictMode>,
+  );
+}
+
+function SidebarWithProjectNavigation() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => navigate('/agent-sidebar?project_id=project-b')}
+      >
+        导航到项目 B
+      </button>
+      <AgentSidebar />
+    </>
+  );
+}
+
+function renderSidebarWithProjectNavigation() {
+  render(
+    <MemoryRouter initialEntries={['/agent-sidebar?project_id=project-a']}>
+      <SidebarWithProjectNavigation />
+    </MemoryRouter>,
+  );
+}
+
+function mockTwoProjectReceiptLoads(
+  projectARead: typeof receiptRead,
+  projectBRead: typeof receiptRead,
+): void {
+  listProjects.mockResolvedValue([
+    {
+      project_id: 'project-a',
+      title: 'Project A',
+      description: '',
+      status: 'active',
+      created_at: '2026-07-07T00:00:00Z',
+      updated_at: '2026-07-07T00:00:00Z',
+    },
+    {
+      project_id: 'project-b',
+      title: 'Project B',
+      description: '',
+      status: 'active',
+      created_at: '2026-07-07T00:00:00Z',
+      updated_at: '2026-07-07T00:00:00Z',
+    },
+  ]);
+  listAgentSidebarReceipts.mockImplementation(async (projectId: string) => {
+    const read = projectId === 'project-b' ? projectBRead : projectARead;
+    return {
+      project_id: projectId,
+      receipts: [{
+        conversation_id: read.conversation_id,
+        project_id: projectId,
+        title: '',
+        mode: 'literature_qa',
+        created_at: '2026-07-07T00:00:00Z',
+        updated_at: '2026-07-07T00:00:01Z',
+        lifecycle_state: read.receipt.lifecycle_state,
+        staleness_status: read.receipt.staleness_status,
+        receipt: read.receipt,
+      }],
+    };
+  });
+  readAgentSidebarReceipt.mockImplementation(async (conversationId: string) => (
+    conversationId === projectBRead.conversation_id ? projectBRead : projectARead
+  ));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   Object.defineProperty(navigator, 'clipboard', {
@@ -233,7 +321,7 @@ beforeEach(() => {
       updated_at: '2026-07-07T00:00:00Z',
     },
   ]);
-  getAgentSidebarHealth.mockResolvedValue({ status: 'ok', version: '1.3.0', raw: {} });
+  getAgentSidebarHealth.mockResolvedValue({ status: 'ok', version: '0.1.9.1', raw: {} });
   listAgentSidebarReceipts.mockResolvedValue({
     project_id: 'project-a',
     receipts: [
@@ -365,12 +453,291 @@ describe('AgentSidebar', () => {
     expect(screen.queryByText('正在读取历史…')).not.toBeInTheDocument();
   });
 
+  it('keeps a selected project from the newest StrictMode load when an older success finishes last', async () => {
+    const olderProjectLoad = deferred<Awaited<ReturnType<typeof listProjects>>>();
+    const projectA = {
+      project_id: 'project-a',
+      title: 'Project A',
+      description: '',
+      status: 'active',
+      created_at: '2026-07-07T00:00:00Z',
+      updated_at: '2026-07-07T00:00:00Z',
+    };
+    const projectB = {
+      ...projectA,
+      project_id: 'project-b',
+      title: 'Project B',
+    };
+    let projectLoadCount = 0;
+    listProjects.mockReset();
+    listProjects.mockImplementation(() => {
+      projectLoadCount += 1;
+      return projectLoadCount === 1
+        ? olderProjectLoad.promise
+        : Promise.resolve([projectA, projectB]);
+    });
+    listAgentSidebarReceipts.mockImplementation(async (projectId: string) => ({
+      project_id: projectId,
+      receipts: [],
+    }));
+
+    renderSidebarInStrictMode();
+
+    await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(2));
+    const projectSelect = await screen.findByLabelText('Scholar AI 项目');
+    await screen.findByRole('option', { name: 'Project B' });
+    fireEvent.change(projectSelect, { target: { value: 'project-b' } });
+    await waitFor(() => expect(projectSelect).toHaveValue('project-b'));
+
+    await act(async () => {
+      olderProjectLoad.resolve([projectA]);
+    });
+
+    await waitFor(() => {
+      expect(projectSelect).toHaveValue('project-b');
+      expect(projectSelect.querySelector('option[value="project-b"]')).toBeInTheDocument();
+    });
+  });
+
+  it('keeps the newest offline state when an older StrictMode project load succeeds late', async () => {
+    const olderProjectLoad = deferred<Awaited<ReturnType<typeof listProjects>>>();
+    const newerProjectLoad = deferred<Awaited<ReturnType<typeof listProjects>>>();
+    const projectA = {
+      project_id: 'project-a',
+      title: 'Project A',
+      description: '',
+      status: 'active',
+      created_at: '2026-07-07T00:00:00Z',
+      updated_at: '2026-07-07T00:00:00Z',
+    };
+    listProjects.mockReset();
+    listProjects
+      .mockReturnValueOnce(olderProjectLoad.promise)
+      .mockReturnValueOnce(newerProjectLoad.promise);
+
+    renderSidebarInStrictMode();
+
+    await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      newerProjectLoad.reject(new Error('Newest project load is offline.'));
+    });
+    const textarea = await screen.findByLabelText('侧栏提问');
+    expect(await screen.findByText('Newest project load is offline.')).toBeInTheDocument();
+    expect(textarea).toBeDisabled();
+
+    await act(async () => {
+      olderProjectLoad.resolve([projectA]);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Newest project load is offline.')).toBeInTheDocument();
+      expect(textarea).toBeDisabled();
+      expect(listAgentSidebarReceipts).not.toHaveBeenCalled();
+    });
+  });
+
+  it('ignores an older StrictMode project-load failure after the newest load succeeds', async () => {
+    const olderProjectLoad = deferred<Awaited<ReturnType<typeof listProjects>>>();
+    const newerProjectLoad = deferred<Awaited<ReturnType<typeof listProjects>>>();
+    const projectA = {
+      project_id: 'project-a',
+      title: 'Project A',
+      description: '',
+      status: 'active',
+      created_at: '2026-07-07T00:00:00Z',
+      updated_at: '2026-07-07T00:00:00Z',
+    };
+    listProjects.mockReset();
+    listProjects
+      .mockReturnValueOnce(olderProjectLoad.promise)
+      .mockReturnValueOnce(newerProjectLoad.promise);
+
+    renderSidebarInStrictMode();
+
+    await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      newerProjectLoad.resolve([projectA]);
+    });
+    expect(await screen.findByText('Saved answer from the shared receipt.')).toBeInTheDocument();
+    const textarea = screen.getByLabelText('侧栏提问');
+    expect(textarea).not.toBeDisabled();
+
+    await act(async () => {
+      olderProjectLoad.reject(new Error('Stale project load failed.'));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Stale project load failed.')).not.toBeInTheDocument();
+      expect(textarea).not.toBeDisabled();
+      expect(screen.getByText('Saved answer from the shared receipt.')).toBeInTheDocument();
+    });
+  });
+
+  it('ignores a delayed receipt list from the previous project after switching projects', async () => {
+    const projectAList = deferred<Awaited<ReturnType<typeof listAgentSidebarReceipts>>>();
+    const projectARead = {
+      ...receiptRead,
+      answer: 'Stale Project A answer.',
+    };
+    const projectBRead = {
+      ...receiptRead,
+      conversation_id: 'session-project-b',
+      project_id: 'project-b',
+      answer: 'Current Project B answer.',
+      receipt: {
+        ...receiptRead.receipt,
+        question: 'Project B question',
+      },
+    };
+    listProjects.mockResolvedValue([
+      {
+        project_id: 'project-a',
+        title: 'Project A',
+        description: '',
+        status: 'active',
+        created_at: '2026-07-07T00:00:00Z',
+        updated_at: '2026-07-07T00:00:00Z',
+      },
+      {
+        project_id: 'project-b',
+        title: 'Project B',
+        description: '',
+        status: 'active',
+        created_at: '2026-07-07T00:00:00Z',
+        updated_at: '2026-07-07T00:00:00Z',
+      },
+    ]);
+    listAgentSidebarReceipts.mockImplementation((projectId: string) => {
+      if (projectId === 'project-a') return projectAList.promise;
+      return Promise.resolve({
+        project_id: 'project-b',
+        receipts: [{
+          conversation_id: 'session-project-b',
+          project_id: 'project-b',
+          title: '',
+          mode: 'literature_qa',
+          created_at: '2026-07-07T00:00:00Z',
+          updated_at: '2026-07-07T00:00:01Z',
+          lifecycle_state: 'saved',
+          staleness_status: 'saved',
+          receipt: projectBRead.receipt,
+        }],
+      });
+    });
+    readAgentSidebarReceipt.mockImplementation(async (conversationId: string) => (
+      conversationId === 'session-project-b' ? projectBRead : projectARead
+    ));
+
+    renderSidebar();
+
+    const projectSelect = await screen.findByLabelText('Scholar AI 项目');
+    await screen.findByRole('option', { name: 'Project B' });
+    fireEvent.change(projectSelect, { target: { value: 'project-b' } });
+    expect(await screen.findByText('Current Project B answer.')).toBeInTheDocument();
+
+    await act(async () => {
+      projectAList.resolve({
+        project_id: 'project-a',
+        receipts: [{
+          conversation_id: 'session-sidebar-1',
+          project_id: 'project-a',
+          title: '',
+          mode: 'literature_qa',
+          created_at: '2026-07-07T00:00:00Z',
+          updated_at: '2026-07-07T00:00:01Z',
+          lifecycle_state: 'saved',
+          staleness_status: 'saved',
+          receipt: projectARead.receipt,
+        }],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Current Project B answer.')).toBeInTheDocument();
+      expect(screen.queryByText('Stale Project A answer.')).not.toBeInTheDocument();
+    });
+  });
+
+  it('ignores a delayed receipt read from the previous project after switching projects', async () => {
+    const projectARead = deferred<Awaited<ReturnType<typeof readAgentSidebarReceipt>>>();
+    const staleProjectARead = {
+      ...receiptRead,
+      answer: 'Delayed Project A receipt read.',
+    };
+    const projectBRead = {
+      ...receiptRead,
+      conversation_id: 'session-project-b',
+      project_id: 'project-b',
+      answer: 'Selected Project B receipt read.',
+      receipt: {
+        ...receiptRead.receipt,
+        question: 'Project B question',
+      },
+    };
+    listProjects.mockResolvedValue([
+      {
+        project_id: 'project-a',
+        title: 'Project A',
+        description: '',
+        status: 'active',
+        created_at: '2026-07-07T00:00:00Z',
+        updated_at: '2026-07-07T00:00:00Z',
+      },
+      {
+        project_id: 'project-b',
+        title: 'Project B',
+        description: '',
+        status: 'active',
+        created_at: '2026-07-07T00:00:00Z',
+        updated_at: '2026-07-07T00:00:00Z',
+      },
+    ]);
+    listAgentSidebarReceipts.mockImplementation(async (projectId: string) => ({
+      project_id: projectId,
+      receipts: [{
+        conversation_id: projectId === 'project-a' ? 'session-sidebar-1' : 'session-project-b',
+        project_id: projectId,
+        title: '',
+        mode: 'literature_qa',
+        created_at: '2026-07-07T00:00:00Z',
+        updated_at: '2026-07-07T00:00:01Z',
+        lifecycle_state: 'saved',
+        staleness_status: 'saved',
+        receipt: projectId === 'project-a' ? staleProjectARead.receipt : projectBRead.receipt,
+      }],
+    }));
+    readAgentSidebarReceipt.mockImplementation((conversationId: string) => (
+      conversationId === 'session-sidebar-1'
+        ? projectARead.promise
+        : Promise.resolve(projectBRead)
+    ));
+
+    renderSidebar();
+
+    await waitFor(() => {
+      expect(readAgentSidebarReceipt).toHaveBeenCalledWith('session-sidebar-1');
+    });
+    const projectSelect = await screen.findByLabelText('Scholar AI 项目');
+    await screen.findByRole('option', { name: 'Project B' });
+    fireEvent.change(projectSelect, { target: { value: 'project-b' } });
+    expect(await screen.findByText('Selected Project B receipt read.')).toBeInTheDocument();
+
+    await act(async () => {
+      projectARead.resolve(staleProjectARead);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Selected Project B receipt read.')).toBeInTheDocument();
+      expect(screen.queryByText('Delayed Project A receipt read.')).not.toBeInTheDocument();
+    });
+  });
+
   it('renders saved receipt evidence status from the shared receipt APIs', async () => {
     renderSidebar();
 
     expect(await screen.findByLabelText('Scholar AI 项目')).toHaveValue('project-a');
     expect(screen.queryByText('Scholar AI 文献桥')).not.toBeInTheDocument();
-    expect(screen.queryByText('就绪 1.3.0')).not.toBeInTheDocument();
+    expect(screen.queryByText('就绪 0.1.9.1')).not.toBeInTheDocument();
     expect(await screen.findByText('已绑定证据')).toBeInTheDocument();
     expect(screen.getByText('codex-host')).toBeInTheDocument();
     expect(screen.queryByText('Scholar AI')).not.toBeInTheDocument();
@@ -850,6 +1217,99 @@ describe('AgentSidebar', () => {
     });
   });
 
+  it('rejects a same-tick duplicate Enter submit before responding state renders', async () => {
+    const activeSend = deferred<undefined>();
+    listAgentSidebarReceipts.mockResolvedValue({ project_id: 'project-a', receipts: [] });
+    sendMessage.mockReturnValueOnce(activeSend.promise);
+    renderSidebar();
+
+    const textarea = await screen.findByLabelText('侧栏提问');
+    fireEvent.change(textarea, { target: { value: 'Submit this question only once.' } });
+    act(() => {
+      fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+      fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+    });
+    const sendCallsBeforeCompletion = sendMessage.mock.calls.length;
+
+    await act(async () => {
+      activeSend.resolve(undefined);
+    });
+
+    expect(sendCallsBeforeCompletion).toBe(1);
+  });
+
+  it('keeps the composer disabled and rejects another submit while saving the receipt', async () => {
+    const savingReceiptList = deferred<Awaited<ReturnType<typeof listAgentSidebarReceipts>>>();
+    let receiptListCallCount = 0;
+    listAgentSidebarReceipts.mockImplementation(() => {
+      receiptListCallCount += 1;
+      if (receiptListCallCount === 2) return savingReceiptList.promise;
+      return Promise.resolve({ project_id: 'project-a', receipts: [] });
+    });
+    renderSidebar();
+
+    const textarea = await screen.findByLabelText('侧栏提问');
+    fireEvent.change(textarea, { target: { value: 'Wait for this receipt to save.' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+
+    expect(await screen.findByText('保存中')).toBeInTheDocument();
+    const disabledDuringSave = textarea.hasAttribute('disabled');
+    fireEvent.change(textarea, { target: { value: 'Do not submit while saving.' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+    const sendCallsDuringSave = sendMessage.mock.calls.length;
+
+    await act(async () => {
+      savingReceiptList.resolve({ project_id: 'project-a', receipts: [] });
+    });
+
+    expect(disabledDuringSave).toBe(true);
+    expect(sendCallsDuringSave).toBe(1);
+  });
+
+  it('releases the new project composer after a previous-project send finishes', async () => {
+    const activeProjectASend = deferred<undefined>();
+    listProjects.mockResolvedValue([
+      {
+        project_id: 'project-a',
+        title: 'Project A',
+        description: '',
+        status: 'active',
+        created_at: '2026-07-07T00:00:00Z',
+        updated_at: '2026-07-07T00:00:00Z',
+      },
+      {
+        project_id: 'project-b',
+        title: 'Project B',
+        description: '',
+        status: 'active',
+        created_at: '2026-07-07T00:00:00Z',
+        updated_at: '2026-07-07T00:00:00Z',
+      },
+    ]);
+    listAgentSidebarReceipts.mockImplementation(async (projectId: string) => ({
+      project_id: projectId,
+      receipts: [],
+    }));
+    sendMessage.mockReturnValueOnce(activeProjectASend.promise);
+    renderSidebar();
+
+    const textarea = await screen.findByLabelText('侧栏提问');
+    await screen.findByRole('option', { name: 'Project B' });
+    fireEvent.change(textarea, { target: { value: 'Finish only for Project A.' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+    expect(textarea).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Scholar AI 项目'), { target: { value: 'project-b' } });
+    await act(async () => {
+      activeProjectASend.resolve(undefined);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Scholar AI 项目')).toHaveValue('project-b');
+      expect(screen.getByLabelText('侧栏提问')).not.toBeDisabled();
+    });
+  });
+
   it('loads only the receipt created by the current sidebar ask', async () => {
     const question = 'How does the current ask save a fresh receipt?';
     const savedAt = new Date().toISOString();
@@ -937,6 +1397,212 @@ describe('AgentSidebar', () => {
     expect(stopMessage).toHaveBeenCalledWith('dialog-project-a');
     expect(await screen.findByText('已停止')).toBeInTheDocument();
     expect(screen.getByText('停止只影响前端流和后续步骤；已完成的工具或保存不会撤销。')).toBeInTheDocument();
+  });
+
+  it('ignores a delayed revalidation completion after switching to another project', async () => {
+    const delayedRevalidation = deferred<Awaited<ReturnType<typeof revalidateAgentSidebarReceipt>>>();
+    const projectARead = {
+      ...receiptWith({ staleStatus: 'stale' }),
+      answer: 'Project A receipt awaiting revalidation.',
+    };
+    const projectBRead = {
+      ...receiptRead,
+      conversation_id: 'session-project-b',
+      project_id: 'project-b',
+      answer: 'Project B receipt remains selected.',
+      receipt: {
+        ...receiptRead.receipt,
+        question: 'Project B question',
+      },
+    };
+    mockTwoProjectReceiptLoads(projectARead, projectBRead);
+    revalidateAgentSidebarReceipt.mockReturnValueOnce(delayedRevalidation.promise);
+    renderSidebar();
+
+    expect(await screen.findByText('Project A receipt awaiting revalidation.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '显示侧栏工具' }));
+    fireEvent.click(screen.getByText('操作'));
+    fireEvent.click(screen.getByRole('button', { name: '复核' }));
+    await waitFor(() => {
+      expect(revalidateAgentSidebarReceipt).toHaveBeenCalledWith(
+        'session-sidebar-1',
+        { apply: false, topK: 10 },
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText('Scholar AI 项目'), { target: { value: 'project-b' } });
+    expect(await screen.findByText('Project B receipt remains selected.')).toBeInTheDocument();
+
+    await act(async () => {
+      delayedRevalidation.resolve({
+        conversation_id: 'session-sidebar-1',
+        project_id: 'project-a',
+        applied: false,
+        apply_allowed: true,
+        status: 'stale',
+        previous_staleness: projectARead.staleness,
+        revalidated_staleness: projectARead.staleness,
+        top_ref_delta: { changed: false },
+        receipt: projectARead.receipt,
+        evidence_pack: {},
+        gate: { status: 'passed' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Project B receipt remains selected.')).toBeInTheDocument();
+      expect(screen.queryByText('预检：stale')).not.toBeInTheDocument();
+      expect(screen.queryByText('结果需要更新。')).not.toBeInTheDocument();
+      expect(screen.queryByText('需复核')).not.toBeInTheDocument();
+      expect(screen.getByText('已保存')).toBeInTheDocument();
+    });
+  });
+
+  it('ignores a delayed handoff completion after switching to another project', async () => {
+    const delayedHandoff = deferred<Awaited<ReturnType<typeof createAgentSidebarAnswerRequest>>>();
+    const projectARead = {
+      ...receiptRead,
+      answer: 'Project A receipt for handoff.',
+    };
+    const projectBRead = {
+      ...receiptRead,
+      conversation_id: 'session-project-b',
+      project_id: 'project-b',
+      answer: 'Project B receipt without a handoff.',
+      receipt: {
+        ...receiptRead.receipt,
+        question: 'Project B question',
+      },
+    };
+    mockTwoProjectReceiptLoads(projectARead, projectBRead);
+    createAgentSidebarAnswerRequest.mockReturnValueOnce(delayedHandoff.promise);
+    renderSidebar();
+
+    expect(await screen.findByText('Project A receipt for handoff.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '显示侧栏工具' }));
+    fireEvent.click(screen.getByText('交接'));
+    fireEvent.click(screen.getByRole('button', { name: '创建接手任务' }));
+    await waitFor(() => {
+      expect(createAgentSidebarAnswerRequest).toHaveBeenCalledWith(
+        projectARead,
+        { projectId: 'project-a', agentHost: 'codex' },
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText('Scholar AI 项目'), { target: { value: 'project-b' } });
+    expect(await screen.findByText('Project B receipt without a handoff.')).toBeInTheDocument();
+
+    await act(async () => {
+      delayedHandoff.resolve({
+        request_id: 'agentreq_project_a',
+        job: {
+          job_id: 'job-project-a',
+          status: 'in_progress',
+          metadata: {},
+        },
+        poll: { job: '/runtime/job/job-project-a' },
+        envelope: {
+          intent: 'sidebar_answer',
+          project_id: 'project-a',
+          user_text: 'Project A receipt for handoff.',
+          resource_refs: [],
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Project B receipt without a handoff.')).toBeInTheDocument();
+      expect(screen.queryByText('已创建待接手任务。')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('待主栏接手')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '创建接手任务' })).toBeEnabled();
+    });
+  });
+
+  it('clears the previous receipt before a URL-selected project loads receipts', async () => {
+    const projectBReceipts = deferred<Awaited<ReturnType<typeof listAgentSidebarReceipts>>>();
+    const projectBRead = {
+      ...receiptRead,
+      conversation_id: 'session-project-b',
+      project_id: 'project-b',
+      answer: 'Project B receipt.',
+    };
+    mockTwoProjectReceiptLoads(receiptRead, projectBRead);
+    listAgentSidebarReceipts.mockImplementation((projectId: string) => {
+      if (projectId === 'project-b') return projectBReceipts.promise;
+      return Promise.resolve({
+        project_id: 'project-a',
+        receipts: [{
+          conversation_id: receiptRead.conversation_id,
+          project_id: 'project-a',
+          title: '',
+          mode: 'literature_qa',
+          created_at: '2026-07-07T00:00:00Z',
+          updated_at: '2026-07-07T00:00:01Z',
+          lifecycle_state: receiptRead.receipt.lifecycle_state,
+          staleness_status: receiptRead.receipt.staleness_status,
+          receipt: receiptRead.receipt,
+        }],
+      });
+    });
+    renderSidebarWithProjectNavigation();
+
+    expect(await screen.findByText('Saved answer from the shared receipt.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '显示侧栏工具' }));
+    fireEvent.click(screen.getByText('交接'));
+    fireEvent.click(screen.getByRole('button', { name: '导航到项目 B' }));
+    await waitFor(() => {
+      expect(screen.getByLabelText('Scholar AI 项目')).toHaveValue('project-b');
+    });
+
+    const staleHandoffButton = screen.queryByRole('button', { name: '创建接手任务' });
+    if (staleHandoffButton) fireEvent.click(staleHandoffButton);
+    expect(screen.queryByText('Saved answer from the shared receipt.')).not.toBeInTheDocument();
+    expect(createAgentSidebarAnswerRequest).not.toHaveBeenCalled();
+
+    await act(async () => {
+      projectBReceipts.resolve({ project_id: 'project-b', receipts: [] });
+    });
+  });
+
+  it('releases handoff busy state when a same-project refresh supersedes it', async () => {
+    const delayedHandoff = deferred<Awaited<ReturnType<typeof createAgentSidebarAnswerRequest>>>();
+    createAgentSidebarAnswerRequest.mockReturnValueOnce(delayedHandoff.promise);
+    renderSidebar();
+
+    expect(await screen.findByText('Saved answer from the shared receipt.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '显示侧栏工具' }));
+    fireEvent.click(screen.getByText('操作'));
+    fireEvent.click(screen.getByText('交接'));
+    fireEvent.click(screen.getByRole('button', { name: '创建接手任务' }));
+    await waitFor(() => {
+      expect(createAgentSidebarAnswerRequest).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    await waitFor(() => {
+      expect(listAgentSidebarReceipts).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => {
+      delayedHandoff.resolve({
+        request_id: 'agentreq_stale_refresh',
+        job: {
+          job_id: 'job-stale-refresh',
+          status: 'in_progress',
+          metadata: {},
+        },
+        poll: { job: '/runtime/job/job-stale-refresh' },
+        envelope: {
+          intent: 'sidebar_answer',
+          project_id: 'project-a',
+          user_text: 'What does the evidence say?',
+          resource_refs: [],
+        },
+      });
+    });
+
+    expect(screen.queryByLabelText('待主栏接手')).not.toBeInTheDocument();
+    expect(screen.queryByText('创建中…')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '创建接手任务' })).toBeEnabled();
   });
 
   it('creates compact main-column handoff status from a saved receipt', async () => {

@@ -7,10 +7,13 @@ import json
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict, Unpack
 from uuid import uuid4
 
-from datetime_utils import utc_now_iso_z
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+else:
+    from datetime_utils import utc_now_iso_z
 
 
 class AuditEventType(str, Enum):
@@ -26,6 +29,25 @@ class AuditEventType(str, Enum):
     EXECUTION_FAILED = "execution_failed"
     ARTIFACT_GENERATED = "artifact_generated"
     ERROR_OCCURRED = "error_occurred"
+
+
+class _AuditEventKwargs(TypedDict, total=False):
+    """Optional fields accepted when recording an audit event."""
+
+    event_id: str
+    timestamp: str
+    job_id: str | None
+    capability_id: str | None
+    user_id: str | None
+    session_id: str | None
+    description: str
+    status: str
+    severity: str
+    context: dict[str, Any]
+    previous_state: dict[str, Any] | None
+    new_state: dict[str, Any] | None
+    error_code: str | None
+    error_message: str | None
 
 
 @dataclass(frozen=True)
@@ -112,16 +134,32 @@ class AuditLog:
         if self._jsonl_path is not None:
             self._load_jsonl_events(self._jsonl_path)
     
-    def log_event(self, event_type: str, **kwargs) -> AuditEvent:
+    def log_event(self, event_type: str, **kwargs: Unpack[_AuditEventKwargs]) -> AuditEvent:
         """Log an audit event."""
-        event_id = kwargs.get('event_id', f"evt_{uuid4().hex[:12]}")
+        unknown_fields = set(kwargs).difference(_AuditEventKwargs.__annotations__)
+        if unknown_fields:
+            field_name = sorted(unknown_fields)[0]
+            raise TypeError(f"unexpected audit event field: {field_name}")
+
         event = AuditEvent(
-            event_id=event_id,
+            event_id=kwargs.get("event_id", f"evt_{uuid4().hex[:12]}"),
             event_type=event_type,
-            **{k: v for k, v in kwargs.items() if k != 'event_id'}
+            timestamp=kwargs.get("timestamp", utc_now_iso_z()),
+            job_id=kwargs.get("job_id"),
+            capability_id=kwargs.get("capability_id"),
+            user_id=kwargs.get("user_id"),
+            session_id=kwargs.get("session_id"),
+            description=kwargs.get("description", ""),
+            status=kwargs.get("status", "logged"),
+            severity=kwargs.get("severity", "info"),
+            context=kwargs.get("context", {}),
+            previous_state=kwargs.get("previous_state"),
+            new_state=kwargs.get("new_state"),
+            error_code=kwargs.get("error_code"),
+            error_message=kwargs.get("error_message"),
         )
-        self._events[event_id] = event
-        self._event_sequence.append(event_id)
+        self._events[event.event_id] = event
+        self._event_sequence.append(event.event_id)
         self._append_jsonl_event(event)
         return event
     

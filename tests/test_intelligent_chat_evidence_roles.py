@@ -243,6 +243,111 @@ def test_durable_resume_keeps_quote_and_summary_out_of_missing_text() -> None:
     assert refs[0].quote == "Exact durable source sentence."
 
 
+def test_durable_resume_sanitizes_untrusted_selection_metadata() -> None:
+    payload = router._durable_message_to_resume_payload(
+        {
+            "role": "assistant",
+            "node_id": "node-durable-1",
+            "conversation_id": "conversation-durable-1",
+            "created_at": "2026-07-25T12:00:00Z",
+            "content_text": "Durable answer.",
+            "raw": {
+                "research_selections": [
+                    {
+                        "schema_version": "scholar-ai-research-selection/v1",
+                        "selection_id": "selection-1",
+                        "turn_id": "turn-1",
+                        "group_id": "turn-1",
+                        "order": 0,
+                        "material_id": "material-1",
+                        "kind": "text",
+                        "page": 2,
+                        "text": "Selected source sentence.",
+                    },
+                    {"kind": "text", "page": "not-an-integer"},
+                    "not-a-selection",
+                ],
+                "visual_observation_refs": [
+                    {
+                        "schema_version": "scholar-ai-visual-observation-ref/v1",
+                        "candidate_id": "candidate-1",
+                        "turn_id": "turn-1",
+                        "route": "direct_model",
+                        "generation_status": "failed",
+                        "review_status": "candidate",
+                        "selection_ids": ["selection-1"],
+                        "cache_status": "unavailable",
+                        "read_endpoint": "/api/chat/visual-observations/candidate-1",
+                    },
+                    {"candidate_id": "candidate-invalid"},
+                    42,
+                ],
+                "answer_origin": "host_agent",
+                "answer_model_origin": "host_agent",
+                "generated_in": "mcp_sidebar",
+            },
+        }
+    )
+
+    assert payload is not None
+    assert [selection.selection_id for selection in payload.research_selections] == [
+        "selection-1"
+    ]
+    assert [ref.candidate_id for ref in payload.visual_observation_refs] == [
+        "candidate-1"
+    ]
+    assert payload.visual_observation_refs[0].read_endpoint == (
+        "/api/chat/visual-observations/candidate-1"
+    )
+    assert payload.answer_origin == "external_agent"
+    assert payload.answer_model_origin == "external_agent"
+    assert payload.generated_in == "mcp_sidebar"
+
+
+@pytest.mark.parametrize("endpoint", ["/api/chat", "/api/chat/stream"])
+def test_chat_mode_conflict_returns_structured_409(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    endpoint: str,
+) -> None:
+    monkeypatch.setattr(router, "_SESSION_STORE_PATH", tmp_path / "sessions.json")
+    router._save_session_store(
+        {
+            "sessions": {
+                "session-mode-conflict": {
+                    "session_id": "session-mode-conflict",
+                    "mode": "literature_qa",
+                    "messages": [
+                        {
+                            "id": "message-1",
+                            "role": "user",
+                            "content": "Existing question.",
+                            "timestamp": "2026-07-25T12:00:00Z",
+                        }
+                    ],
+                }
+            }
+        }
+    )
+
+    response = TestClient(app).post(
+        endpoint,
+        json={
+            "query": "Continue in the incompatible legacy mode.",
+            "session_id": "session-mode-conflict",
+            "mode": "direct",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "ok": False,
+        "error": "session_mode_conflict",
+        "current_mode": "literature_qa",
+        "requested_mode": "direct",
+    }
+
+
 def test_internal_pdf_context_cannot_reconstruct_missing_bbox_unit() -> None:
     """Internal model bypasses must still degrade an untyped bbox to page-only."""
 

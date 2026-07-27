@@ -4,12 +4,17 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-import routers.resources_router as _rr
+if TYPE_CHECKING:
+    from literature_assistant.core.routers import resources_router as _rr
+    _router: APIRouter
+else:
+    import routers.resources_router as _rr
+    _router = _rr.router
 
 
 class CreateMergedProjectRequest(BaseModel):
@@ -35,7 +40,7 @@ class MultiProjectSearchRequest(BaseModel):
     top_k: int = Field(default=10, ge=1, le=50)
 
 
-def _normalize_project_ids(values: Sequence[str], *, field_name: str) -> list[str]:
+def _normalize_project_ids(values: object, *, field_name: str) -> list[str]:
     """Normalize project id lists while preserving caller order."""
 
     if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
@@ -124,7 +129,14 @@ def _expand_project_ids(
 def _merged_project_payload(project: Any) -> dict[str, Any]:
     """Return a public payload for merged-project endpoints."""
 
-    data = project.to_dict()
+    raw_data: object = project.to_dict()
+    if not isinstance(raw_data, dict):
+        raise HTTPException(status_code=500, detail="Project payload must be an object")
+    data: dict[str, Any] = {}
+    for key, value in raw_data.items():
+        if not isinstance(key, str):
+            raise HTTPException(status_code=500, detail="Project payload keys must be strings")
+        data[key] = value
     metadata = _project_metadata(project)
     source_projects = _normalize_project_ids(
         metadata.get("source_projects") if isinstance(metadata.get("source_projects"), list) else [],
@@ -148,7 +160,7 @@ def _sources_payload(store: Any, project_id: str) -> dict[str, Any]:
     }
 
 
-@_rr.router.post("/projects/merged")
+@_router.post("/projects/merged")
 async def create_merged_project(request: CreateMergedProjectRequest) -> dict[str, Any]:
     """Create a project that references existing literature projects."""
 
@@ -170,7 +182,7 @@ async def create_merged_project(request: CreateMergedProjectRequest) -> dict[str
     return _merged_project_payload(project)
 
 
-@_rr.router.get("/projects/{project_id}/sources")
+@_router.get("/projects/{project_id}/sources")
 async def get_project_sources(project_id: str) -> dict[str, Any]:
     """Return direct and expanded source projects for one project."""
 
@@ -180,7 +192,7 @@ async def get_project_sources(project_id: str) -> dict[str, Any]:
     return _sources_payload(store, project_id.strip())
 
 
-@_rr.router.put("/projects/{project_id}/sources")
+@_router.put("/projects/{project_id}/sources")
 async def update_project_sources(
     project_id: str,
     request: UpdateMergedProjectSourcesRequest,
@@ -206,7 +218,7 @@ async def update_project_sources(
     return _sources_payload(store, normalized_project_id)
 
 
-@_rr.router.post("/search/multi")
+@_router.post("/search/multi")
 async def search_multi_projects(request: MultiProjectSearchRequest) -> dict[str, Any]:
     """Search across standard projects and merged-project sources."""
 

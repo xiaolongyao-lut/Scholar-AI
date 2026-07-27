@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import threading
 import time
 from typing import Any, Callable, Mapping
@@ -125,6 +126,39 @@ def _assert_router_read_only_probe_returns_http_success(
     assert "_card" not in path
     response = client.get(path)
     assert response.status_code == 200, path
+
+
+def _create_uploaded_document_loop_jobs(
+    runtime: WritingRuntime,
+    *,
+    count: int,
+) -> tuple[str, list[str]]:
+    """Create recoverable uploaded-document jobs for lifecycle loop contracts."""
+
+    session = runtime.create_session(mode=SessionMode.PROMPT)
+    job_ids: list[str] = []
+    for index in range(count):
+        label = f"loop-isolation-{index}"
+        job = runtime.create_job(
+            session_id=session.session_id,
+            kind=JobKind.PIPELINE_RUN,
+            input_text=f"recover {label}.pdf",
+            metadata={"project_id": "project-loop-isolation", "material_id": label},
+        )
+        runtime.update_material_processing_task(
+            job.job_id,
+            request=resources_router_module._build_uploaded_document_processing_request(
+                project_id="project-loop-isolation",
+                material_id=label,
+                filename=f"{label}.pdf",
+                source_fingerprint=f"sha256:{hashlib.sha256(label.encode('utf-8')).hexdigest()}",
+                source_size=len(label),
+            ),
+            status="running",
+            provenance={"source": "pytest.loop_isolation"},
+        )
+        job_ids.append(job.job_id)
+    return session.session_id, job_ids
 
 
 @pytest.mark.persistence_smoke
@@ -821,6 +855,117 @@ def test_uploaded_pdf_extraction_job_records_material_processing_contract(monkey
     assert any(event.data.get("material_processing_status") == "completed" for event in events)
 
 
+def test_uploaded_document_recovery_isolates_job_failures(monkeypatch, caplog) -> None:
+    """Startup recovery must continue after one uploaded-document job fails."""
+
+    runtime = WritingRuntime()
+    session_id, job_ids = _create_uploaded_document_loop_jobs(runtime, count=2)
+    recovery_attempts: list[str] = []
+
+    async def _recover_job_executor(job_id: str, _executor: object) -> None:
+        recovery_attempts.append(job_id)
+        if job_id == job_ids[0]:
+            raise RuntimeError("synthetic recovery failure")
+
+    monkeypatch.setattr(runtime, "recover_job_executor", _recover_job_executor)
+
+    with caplog.at_level(logging.ERROR, logger=resources_router_module.logger.name):
+        counts = asyncio.run(
+            resources_router_module.recover_uploaded_document_extraction_jobs(runtime)
+        )
+
+    assert counts == {
+        "scanned": 2,
+        "recovered": 1,
+        "paused": 0,
+        "skipped": 0,
+        "errors": 1,
+    }
+    assert recovery_attempts == job_ids
+    failure_records = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.ERROR and job_ids[0] in record.getMessage()
+    ]
+    assert len(failure_records) == 1
+    assert session_id in failure_records[0].getMessage()
+    assert failure_records[0].exc_info is not None
+    assert failure_records[0].exc_info[0] is RuntimeError
+
+
+def test_uploaded_document_shutdown_isolates_job_failures(monkeypatch, caplog) -> None:
+    """Process shutdown must continue after one uploaded-document job fails."""
+
+    runtime = WritingRuntime()
+    session_id, job_ids = _create_uploaded_document_loop_jobs(runtime, count=2)
+    shutdown_attempts: list[str] = []
+
+    monkeypatch.setattr(runtime, "has_active_job_executor", lambda _job_id: True)
+    monkeypatch.setattr(runtime, "is_job_commit_in_progress", lambda _job_id: False)
+
+    async def _interrupt_job_for_shutdown(job_id: str) -> None:
+        shutdown_attempts.append(job_id)
+        if job_id == job_ids[0]:
+            raise RuntimeError("synthetic shutdown failure")
+
+    monkeypatch.setattr(runtime, "interrupt_job_for_shutdown", _interrupt_job_for_shutdown)
+
+    with caplog.at_level(logging.ERROR, logger=resources_router_module.logger.name):
+        counts = asyncio.run(
+            resources_router_module.shutdown_uploaded_document_extraction_jobs(runtime)
+        )
+
+    assert counts == {
+        "scanned": 2,
+        "interrupted": 1,
+        "completed_commit": 0,
+        "errors": 1,
+    }
+    assert shutdown_attempts == job_ids
+    failure_records = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.ERROR and job_ids[0] in record.getMessage()
+    ]
+    assert len(failure_records) == 1
+    assert session_id in failure_records[0].getMessage()
+    assert failure_records[0].exc_info is not None
+    assert failure_records[0].exc_info[0] is RuntimeError
+
+
+@pytest.mark.parametrize("operation", ["recovery", "shutdown"])
+def test_uploaded_document_job_loops_propagate_cancellation(
+    monkeypatch,
+    caplog,
+    operation: str,
+) -> None:
+    """Lifecycle job isolation must not consume task cancellation."""
+
+    runtime = WritingRuntime()
+    _session_id, _job_ids = _create_uploaded_document_loop_jobs(runtime, count=1)
+
+    async def _cancel_recovery(_job_id: str, _executor: object) -> None:
+        raise asyncio.CancelledError
+
+    async def _cancel_shutdown(_job_id: str) -> None:
+        raise asyncio.CancelledError
+
+    if operation == "recovery":
+        monkeypatch.setattr(runtime, "recover_job_executor", _cancel_recovery)
+        lifecycle_operation = resources_router_module.recover_uploaded_document_extraction_jobs
+    else:
+        monkeypatch.setattr(runtime, "has_active_job_executor", lambda _job_id: True)
+        monkeypatch.setattr(runtime, "is_job_commit_in_progress", lambda _job_id: False)
+        monkeypatch.setattr(runtime, "interrupt_job_for_shutdown", _cancel_shutdown)
+        lifecycle_operation = resources_router_module.shutdown_uploaded_document_extraction_jobs
+
+    with caplog.at_level(logging.ERROR, logger=resources_router_module.logger.name):
+        with pytest.raises(asyncio.CancelledError):
+            asyncio.run(lifecycle_operation(runtime))
+
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+
+
 @pytest.mark.persistence_smoke
 def test_uploaded_pdf_executor_recovers_after_shutdown_and_sqlite_reopen(monkeypatch, tmp_path) -> None:
     """Shutdown must requeue extraction and a new runtime must execute it once."""
@@ -899,7 +1044,7 @@ def test_uploaded_pdf_executor_recovers_after_shutdown_and_sqlite_reopen(monkeyp
         shutdown = await resources_router_module.shutdown_uploaded_document_extraction_jobs(first_runtime)
         release_first_extract.set()
         await asyncio.sleep(0.05)
-        assert shutdown == {"scanned": 1, "interrupted": 1, "completed_commit": 0}
+        assert shutdown == {"scanned": 1, "interrupted": 1, "completed_commit": 0, "errors": 0}
         interrupted_job = first_runtime.get_job(job_id)
         interrupted_task = first_runtime.get_material_processing_task(job_id)
         assert interrupted_job is not None and interrupted_job.status.value == "queued"
@@ -1228,7 +1373,7 @@ def test_uploaded_pdf_commit_boundary_rejects_cancel_and_finishes_on_shutdown(mo
         await handle
         completed = runtime.get_job(job_id)
         task = runtime.get_material_processing_task(job_id)
-        assert shutdown == {"scanned": 1, "interrupted": 0, "completed_commit": 1}
+        assert shutdown == {"scanned": 1, "interrupted": 0, "completed_commit": 1, "errors": 0}
         assert completed is not None and completed.status.value == "completed"
         assert task is not None and task["status"] == "completed"
         assert writes == [material_id]

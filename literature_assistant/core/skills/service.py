@@ -3,15 +3,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 import dataclasses
 import re
 import shutil
 
-from datetime_utils import utc_now_iso_z
-from project_paths import WORKSPACE_ARTIFACTS_ROOT
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+else:
+    from datetime_utils import utc_now_iso_z
+from literature_assistant.core.project_paths import WORKSPACE_ARTIFACTS_ROOT
 
 from .models import (
     SkillDescriptor,
@@ -45,6 +49,9 @@ from .user_manifest import UserSkillManifest
 
 
 _SAFE_SKILL_EXPORT_ARCHIVE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.zip$")
+_SKILL_REGISTRY_FACTORY: Callable[[], SkillRegistry] = SkillRegistry
+_APPROVAL_STORE_FACTORY: Callable[[str | Path | None], ApprovalStore] = ApprovalStore
+_AUDIT_LOG_FACTORY: Callable[[str | Path | None], AuditLog] = AuditLog
 
 
 def _safe_skill_export_stem(value: str, fallback: str = "skill") -> str:
@@ -102,19 +109,39 @@ def _resolve_skill_export_path(skill_id: str, output_path: str | Path | None) ->
 class WritingSkillService:
     """Unified capability service for builtin skills, imported skills, and actions."""
 
-    def __init__(self, external_roots=None, approval_store=None, audit_log=None, managed_root=None):
-        """Initialize the service."""
-        from project_paths import REPO_ROOT
-        self._registry = SkillRegistry()
-        self._managed_root = (
+    def __init__(
+        self,
+        external_roots: Sequence[str | Path] | None = None,
+        approval_store: ApprovalStore | None = None,
+        audit_log: AuditLog | None = None,
+        managed_root: str | Path | None = None,
+    ) -> None:
+        """Initialize the service.
+
+        Args:
+            external_roots: Optional legacy Skill roots loaded in addition to
+                the managed user-Skill directory.
+            approval_store: Optional approval store, primarily for isolated
+                runtime or test ownership.
+            audit_log: Optional audit log paired with ``approval_store``.
+            managed_root: Optional managed user-Skill directory override.
+        """
+        if TYPE_CHECKING:
+            from literature_assistant.core.project_paths import REPO_ROOT
+        else:
+            from project_paths import REPO_ROOT
+        self._registry: SkillRegistry = _SKILL_REGISTRY_FACTORY()
+        self._managed_root: Path = (
             Path(managed_root).expanduser().resolve() if managed_root
             else (REPO_ROOT / "skills" / "imported" / "user").resolve()
         )
-        self._approval_store = approval_store or ApprovalStore(get_approval_sqlite_path(self._managed_root))
-        self._audit_log = audit_log or AuditLog(get_audit_jsonl_path(self._managed_root))
-        self._warnings = []
-        self._last_results_by_job = {}
-        self._request_params_by_job = {}
+        self._approval_store: ApprovalStore = approval_store or _APPROVAL_STORE_FACTORY(
+            get_approval_sqlite_path(self._managed_root)
+        )
+        self._audit_log: AuditLog = audit_log or _AUDIT_LOG_FACTORY(get_audit_jsonl_path(self._managed_root))
+        self._warnings: list[str] = []
+        self._last_results_by_job: dict[str, SkillRunResult] = {}
+        self._request_params_by_job: dict[str, dict[str, str]] = {}
 
         self._load_builtin_skills()
         self._load_managed_user_skills()
@@ -124,7 +151,7 @@ class WritingSkillService:
         
         self._setup_default_approval_policies()
     
-    def _load_builtin_skills(self):
+    def _load_builtin_skills(self) -> None:
         """Load builtin prompt-backed skills."""
         try:
             from .loaders.prompt_builtin_loader import load_builtin_prompt_skills
@@ -146,12 +173,13 @@ class WritingSkillService:
                 severity="warning",
             )
     
-    def _load_imported_skills(self, root_paths):
+    def _load_imported_skills(self, root_paths: Sequence[str | Path]) -> None:
         """Load imported third-party skills."""
         try:
             from .importers import import_external_skill_dirs
-            
-            result = import_external_skill_dirs(root_paths, auto_disable=True)
+
+            normalized_roots = [Path(root_path) for root_path in root_paths]
+            result = import_external_skill_dirs(normalized_roots, auto_disable=True)
             self._registry.register_many(result.descriptors)
             self._warnings.extend(result.warnings)
             
@@ -225,7 +253,7 @@ class WritingSkillService:
                 context={"skill_count": loaded_count, "source": "managed_user", "managed_root": str(self._managed_root)},
             )
     
-    def _setup_default_approval_policies(self):
+    def _setup_default_approval_policies(self) -> None:
         """Set up default approval policies."""
         for skill in self._registry.list_by_source("builtin"):
             profile = CapabilityApprovalProfile(
@@ -258,7 +286,12 @@ class WritingSkillService:
             )
             self._approval_store.register_profile(profile)
     
-    def list_skills(self, ui_mode=None, kind=None, source=None):
+    def list_skills(
+        self,
+        ui_mode: str | None = None,
+        kind: str | None = None,
+        source: str | None = None,
+    ) -> list[dict[str, Any]]:
         """List available skills filtered by criteria."""
         if source:
             skills = self._registry.list_all()
@@ -274,7 +307,7 @@ class WritingSkillService:
         
         return [s.to_dict() for s in skills if not (s.disabled_reason and source != "imported")]
     
-    def get_skill(self, skill_id):
+    def get_skill(self, skill_id: str) -> dict[str, Any] | None:
         """Get a single skill descriptor by ID."""
         skill = self._registry.get(skill_id)
         return skill.to_dict() if skill else None
@@ -314,9 +347,9 @@ class WritingSkillService:
             "applied": result.is_success(),
         }
     
-    def list_skill_packs(self, ui_mode=None):
+    def list_skill_packs(self, ui_mode: str | None = None) -> list[dict[str, str | list[str]]]:
         """List skill packs for UI grouping."""
-        packs = {}
+        packs: dict[str, dict[str, str | list[str]]] = {}
         skills = self._registry.list_by_ui_mode(ui_mode) if ui_mode else self._registry.list_all()
         
         for skill in skills:
@@ -328,13 +361,16 @@ class WritingSkillService:
                     "description": f"Skills in {group} group",
                     "skillIds": [],
                 }
-            packs[group]["skillIds"].append(skill.id)
+            skill_ids = packs[group]["skillIds"]
+            if not isinstance(skill_ids, list):
+                raise RuntimeError("skill pack skillIds must remain a list")
+            skill_ids.append(skill.id)
         
         return list(packs.values())
     
-    def list_capabilities(self):
+    def list_capabilities(self) -> list[dict[str, str]]:
         """List stable capabilities."""
-        capabilities = []
+        capabilities: list[dict[str, str]] = []
         for skill in self._registry.list_all():
             if skill.disabled_reason and skill.source == SkillSource.IMPORTED:
                 continue
@@ -349,7 +385,7 @@ class WritingSkillService:
         
         return capabilities
     
-    def list_legacy_actions(self):
+    def list_legacy_actions(self) -> list[dict[str, Any]]:
         """List legacy-compatible actions."""
         try:
             from .loaders.prompt_builtin_loader import get_builtin_action_descriptors
@@ -386,7 +422,13 @@ class WritingSkillService:
 
         return base_actions
     
-    def run_legacy_action(self, action_id, input_text, scope=None, output_mode=None):
+    def run_legacy_action(
+        self,
+        action_id: str,
+        input_text: str,
+        scope: str | None = None,
+        output_mode: str | None = None,
+    ) -> dict[str, str]:
         """Run a legacy action."""
         actions = self.list_legacy_actions()
         action = next((a for a in actions if a["id"] == action_id), None)
@@ -395,7 +437,7 @@ class WritingSkillService:
             raise ValueError(f"Action not found: {action_id}")
         
         skill_id = action.get("skillId")
-        if not skill_id or not self._registry.has(skill_id):
+        if not isinstance(skill_id, str) or not skill_id or not self._registry.has(skill_id):
             raise ValueError(f"Skill not found for action: {action_id}")
 
         result = self.run_skill(skill_id=skill_id, input_text=input_text, scope=scope, output_mode=output_mode)
@@ -411,7 +453,13 @@ class WritingSkillService:
             "message": "accepted" if result.is_success() else "failed",
         }
 
-    def run_skill(self, skill_id, input_text, scope=None, output_mode=None):
+    def run_skill(
+        self,
+        skill_id: str,
+        input_text: str,
+        scope: str | None = None,
+        output_mode: str | None = None,
+    ) -> SkillRunResult:
         """Run a skill directly by skill ID."""
         return self._run_skill(skill_id=skill_id, input_text=input_text, scope=scope, output_mode=output_mode)
 
@@ -700,7 +748,10 @@ class WritingSkillService:
             ValueError: If skill not found or is builtin.
         """
         import zipfile
-        from datetime_utils import utc_now_iso_z
+        if TYPE_CHECKING:
+            from literature_assistant.core.datetime_utils import utc_now_iso_z
+        else:
+            from datetime_utils import utc_now_iso_z
 
         skill = self._registry.get(skill_id)
         if skill is None:
@@ -1181,7 +1232,13 @@ class WritingSkillService:
             evidence_refs=evidence_refs,
         )
     
-    def _run_skill(self, skill_id, input_text, scope=None, output_mode=None):
+    def _run_skill(
+        self,
+        skill_id: str,
+        input_text: str,
+        scope: str | None = None,
+        output_mode: str | None = None,
+    ) -> SkillRunResult:
         """Execute a skill with approval and audit logging."""
         job_id = f"job_{uuid4().hex[:12]}"
         skill = self._registry.get(skill_id)
@@ -1391,23 +1448,25 @@ class WritingSkillService:
         self._last_results_by_job[job_id] = result
         return result
     
-    def get_warnings(self):
+    def get_warnings(self) -> list[str]:
         """Return warnings from initialization."""
         return self._warnings.copy()
     
-    def get_audit_log(self):
+    def get_audit_log(self) -> AuditLog:
         """Get the audit log."""
         return self._audit_log
     
-    def get_approval_store(self):
+    def get_approval_store(self) -> ApprovalStore:
         """Get the approval store."""
         return self._approval_store
 
 
-_service_instance = None
+_service_instance: WritingSkillService | None = None
 
 
-def get_writing_skill_service(external_roots=None):
+def get_writing_skill_service(
+    external_roots: Sequence[str | Path] | None = None,
+) -> WritingSkillService:
     """Get or create global WritingSkillService."""
     global _service_instance
     if _service_instance is None:
@@ -1415,7 +1474,7 @@ def get_writing_skill_service(external_roots=None):
     return _service_instance
 
 
-def reset_writing_skill_service():
+def reset_writing_skill_service() -> None:
     """Reset service (for testing)."""
     global _service_instance
     _service_instance = None

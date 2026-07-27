@@ -15,7 +15,7 @@ class RequireLanguage(ItemRule):
     - 韩文
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="require-language",
             name="自动检测语言",
@@ -72,7 +72,7 @@ class CorrectLanguageCode(ItemRule):
         "korean": "ko-KR",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-language-code",
             name="语言代码标准化",

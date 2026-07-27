@@ -15,18 +15,28 @@ import json
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
-from _atomic_io import atomic_write_json
-from project_paths import runtime_state_path
-
-from models.mcp import (
-    McpApprovalState,
-    McpServerConfig,
-    McpServerConfigCreate,
-    McpServerConfigPublic,
-    McpServerConfigUpdate,
-)
+if TYPE_CHECKING or __package__ == "literature_assistant.core.mcp_runtime":
+    from literature_assistant.core._atomic_io import atomic_write_json
+    from literature_assistant.core.models.mcp import (
+        McpApprovalState,
+        McpServerConfig,
+        McpServerConfigCreate,
+        McpServerConfigPublic,
+        McpServerConfigUpdate,
+    )
+    from literature_assistant.core.project_paths import runtime_state_path
+else:
+    from _atomic_io import atomic_write_json
+    from models.mcp import (
+        McpApprovalState,
+        McpServerConfig,
+        McpServerConfigCreate,
+        McpServerConfigPublic,
+        McpServerConfigUpdate,
+    )
+    from project_paths import runtime_state_path
 
 
 SCHEMA_VERSION = 1

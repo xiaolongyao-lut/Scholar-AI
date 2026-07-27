@@ -61,8 +61,10 @@ import ipaddress
 import logging
 import os
 import socket
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING, TypedDict, Unpack
 from urllib.parse import urlsplit
 
 
@@ -143,15 +145,36 @@ class PolicyDecision:
         }
 
 
-def _allow(reason: str, trust_source: str, **kw) -> PolicyDecision:
+class _PolicyDecisionKwargs(TypedDict, total=False):
+    scheme: str
+    host: str
+    port: int | None
+    path: str
+    resolved_ips: tuple[str, ...]
+    rejected_ips: tuple[str, ...]
+
+
+def _allow(
+    reason: str,
+    trust_source: str,
+    **kw: Unpack[_PolicyDecisionKwargs],
+) -> PolicyDecision:
     return PolicyDecision(allowed=True, reason=reason, trust_source=trust_source, **kw)
 
 
-def _reject(reason: str, trust_source: str, **kw) -> PolicyDecision:
+def _reject(
+    reason: str,
+    trust_source: str,
+    **kw: Unpack[_PolicyDecisionKwargs],
+) -> PolicyDecision:
     return PolicyDecision(allowed=False, reason=reason, trust_source=trust_source, **kw)
 
 
-def _skip(reason: str, trust_source: str, **kw) -> PolicyDecision:
+def _skip(
+    reason: str,
+    trust_source: str,
+    **kw: Unpack[_PolicyDecisionKwargs],
+) -> PolicyDecision:
     return PolicyDecision(
         allowed=False, reason=reason, trust_source=trust_source,
         skipped_network=True, **kw,
@@ -210,10 +233,11 @@ def _resolve_via_stdlib(host: str) -> list[str]:
         raise DNSResolutionError(f"getaddrinfo failed: {exc}") from exc
     out: list[str] = []
     for family, _stype, _proto, _canon, sockaddr in infos:
-        if family == socket.AF_INET:
-            out.append(sockaddr[0])
-        elif family == socket.AF_INET6:
-            out.append(sockaddr[0])
+        if family not in {socket.AF_INET, socket.AF_INET6}:
+            continue
+        address = sockaddr[0]
+        if isinstance(address, str):
+            out.append(address)
     if not out:
         raise DNSResolutionError(f"no addresses for {host}")
     return out
@@ -401,12 +425,23 @@ def classify_ip(ip_str: str) -> str | None:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
         return f"invalid_ip:{ip_str}"
-    try:
-        from ip_guard import classify_unsafe_ip
-    except ImportError:
-        classify_unsafe_ip = None  # type: ignore[assignment]
-    if classify_unsafe_ip is not None:
-        unsafe, reason = classify_unsafe_ip(ip)
+    classifier: Callable[
+        [ipaddress.IPv4Address | ipaddress.IPv6Address],
+        tuple[bool, str | None],
+    ] | None
+    if TYPE_CHECKING or __package__ == "literature_assistant.core":
+        from literature_assistant.core.ip_guard import classify_unsafe_ip as _classifier
+
+        classifier = _classifier
+    else:
+        try:
+            from ip_guard import classify_unsafe_ip as _classifier
+        except ImportError:
+            classifier = None
+        else:
+            classifier = _classifier
+    if classifier is not None:
+        unsafe, reason = classifier(ip)
         if unsafe:
             return reason or "unsafe_ip"
         return None

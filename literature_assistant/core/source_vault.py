@@ -15,14 +15,18 @@ from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, TypeAlias, cast
+from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 
-try:  # pragma: no cover - exercised by package imports outside flat test path.
-    import project_paths as _project_paths
-    from db import open_sqlite_connection
-except ImportError:  # pragma: no cover
-    from . import project_paths as _project_paths
-    from .db import open_sqlite_connection
+if TYPE_CHECKING:
+    import literature_assistant.core.project_paths as _project_paths
+    from literature_assistant.core.db import open_sqlite_connection
+else:
+    try:  # pragma: no cover - exercised by package imports outside flat test path.
+        import project_paths as _project_paths
+        from db import open_sqlite_connection
+    except ImportError:  # pragma: no cover
+        from . import project_paths as _project_paths
+        from .db import open_sqlite_connection
 
 
 JsonScalar: TypeAlias = str | int | float | bool | None
@@ -173,7 +177,7 @@ def utc_now_iso() -> str:
 def default_source_vault_root() -> Path:
     """Return the canonical local source-vault root under workspace artifacts."""
 
-    return (_project_paths.WORKSPACE_ARTIFACTS_ROOT / "source_vault").resolve()
+    return (Path(_project_paths.WORKSPACE_ARTIFACTS_ROOT) / "source_vault").resolve()
 
 
 def default_source_vault_db_path() -> Path:

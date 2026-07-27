@@ -33,14 +33,22 @@ This module is import-safe and has no I/O.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from models.evolution import (
-    CandidateMemoryType,
-    CandidateRiskLevel,
-    CandidateSourceType,
-)
-from evolution._capture_args import CaptureCandidateArgs
+if TYPE_CHECKING:
+    from literature_assistant.core.evolution._capture_args import CaptureCandidateArgs
+    from literature_assistant.core.models.evolution import (
+        CandidateMemoryType,
+        CandidateRiskLevel,
+        CandidateSourceType,
+    )
+else:
+    from evolution._capture_args import CaptureCandidateArgs
+    from models.evolution import (
+        CandidateMemoryType,
+        CandidateRiskLevel,
+        CandidateSourceType,
+    )
 
 
 _MEMORY_TYPE_BY_SPARK_TYPE: Dict[str, CandidateMemoryType] = {
@@ -153,15 +161,31 @@ def extract_from_sparks(
 def _ref_to_dict(ref: Any) -> Dict[str, Any]:
     """Normalize evidence_ref to a JSON-safe dict."""
 
-    if isinstance(ref, dict):
-        return ref
+    normalized = _string_keyed_dict(ref)
+    if normalized is not None:
+        return normalized
     dump = getattr(ref, "model_dump", None)
     if callable(dump):
         try:
-            return dump()
+            normalized = _string_keyed_dict(dump())
+            if normalized is not None:
+                return normalized
         except Exception:
             pass
     return {"raw": str(ref)}
+
+
+def _string_keyed_dict(value: Any) -> Optional[Dict[str, Any]]:
+    """Return a typed copy only when every mapping key is a string."""
+
+    if not isinstance(value, dict):
+        return None
+    normalized: Dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            return None
+        normalized[key] = item
+    return normalized
 
 
 def _shorten(text: str, limit: int) -> str:

@@ -4,13 +4,15 @@
 from __future__ import annotations
 
 import re
-from typing import Any, TYPE_CHECKING
-
-from chunk_models import EnrichedChunk
-from chunk_size_guard import inspect_text
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from pdf_backends import StructuredBlock
+    from literature_assistant.core.chunk_models import EnrichedChunk
+    from literature_assistant.core.chunk_size_guard import inspect_text
+    from literature_assistant.core.pdf_backends import StructuredBlock
+else:
+    from chunk_models import EnrichedChunk
+    from chunk_size_guard import inspect_text
 
 
 __all__ = [

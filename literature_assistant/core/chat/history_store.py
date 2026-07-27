@@ -11,17 +11,26 @@ import math
 import os
 import re
 import sqlite3
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
-from db import json_dumps, json_loads, open_sqlite_connection
-from project_paths import runtime_state_path
+if TYPE_CHECKING:
+    from literature_assistant.core.db import json_dumps, json_loads, open_sqlite_connection
+    from literature_assistant.core.project_paths import runtime_state_path
+else:
+    from db import json_dumps, json_loads, open_sqlite_connection
+    from project_paths import runtime_state_path
+
 from .visual_observation import (
     VisualObservationCandidate,
+    VisualObservationFreshnessStatus,
+    VisualObservationLifecycleAxis,
     VisualObservationLifecycleEvent,
     VisualObservationLifecycleReceipt,
     VisualObservationLifecycleRequest,
+    VisualObservationLifecycleStatus,
     VisualObservationMutationResult,
+    VisualObservationReviewStatus,
     VisualObservationSourceRevisionApplyReceipt,
     VisualObservationSourceRevisionApplyRequest,
     VisualObservationSourceRevisionIdentity,
@@ -226,7 +235,7 @@ def sanitize_research_selections(value: object) -> list[dict[str, Any]]:
 def default_chat_history_db_path() -> Path:
     """Return the canonical local SQLite path for SmartRead history."""
 
-    return runtime_state_path("chat_history", "chat_history.db")
+    return Path(runtime_state_path("chat_history", "chat_history.db"))
 
 
 class ChatHistoryStore:
@@ -748,9 +757,10 @@ class ChatHistoryStore:
 
         generated_in = str(message.get("generated_in") or session.get("generated_in") or "").strip()
         evidence_pack_ref = str(message.get("evidence_pack_ref") or "").strip()
+        raw_retrieval_diagnostics = message.get("retrieval_diagnostics")
         retrieval_diagnostics = (
-            dict(message.get("retrieval_diagnostics"))
-            if isinstance(message.get("retrieval_diagnostics"), Mapping)
+            dict(raw_retrieval_diagnostics)
+            if isinstance(raw_retrieval_diagnostics, Mapping)
             else {}
         )
         if not generated_in and not evidence_pack_ref:
@@ -759,18 +769,18 @@ class ChatHistoryStore:
             return None
         if not generated_in:
             generated_in = "mcp_sidebar" if evidence_pack_ref else "smart_read"
-        qrels_status = (
-            dict(retrieval_diagnostics.get("qrels_status"))
-            if isinstance(retrieval_diagnostics.get("qrels_status"), Mapping)
-            else (
-                dict(message.get("qrels_status"))
-                if isinstance(message.get("qrels_status"), Mapping)
-                else {}
-            )
-        )
+        raw_qrels_status = retrieval_diagnostics.get("qrels_status")
+        message_qrels_status = message.get("qrels_status")
+        if isinstance(raw_qrels_status, Mapping):
+            qrels_status = dict(raw_qrels_status)
+        elif isinstance(message_qrels_status, Mapping):
+            qrels_status = dict(message_qrels_status)
+        else:
+            qrels_status = {}
+        raw_gate_status = message.get("evidence_gate_status")
         gate_status = (
-            dict(message.get("evidence_gate_status"))
-            if isinstance(message.get("evidence_gate_status"), Mapping)
+            dict(raw_gate_status)
+            if isinstance(raw_gate_status, Mapping)
             else {}
         )
         raw_top_evidence_refs = message.get("top_evidence_refs")
@@ -1831,7 +1841,8 @@ class ChatHistoryStore:
                 (1 if archived else 0, next_archived_at, normalized_id),
             )
             conn.commit()
-            updated = cursor.rowcount > 0
+            rowcount = cursor.rowcount
+            updated = isinstance(rowcount, int) and rowcount > 0
         finally:
             conn.close()
         if updated:
@@ -2497,6 +2508,11 @@ class ChatHistoryStore:
                     "visual observation lifecycle state changed after it was read"
                 )
 
+            axis: VisualObservationLifecycleAxis
+            from_status: VisualObservationLifecycleStatus
+            to_status: VisualObservationLifecycleStatus
+            next_review_status: VisualObservationReviewStatus
+            next_freshness_status: VisualObservationFreshnessStatus
             if request.target_review_status is not None:
                 verdict = evaluate_visual_observation_transition(
                     generation_status=current.generation_status,
@@ -2930,7 +2946,9 @@ class ChatHistoryStore:
                 requested=occurred_at,
             )
             timestamp = _visual_timestamp(transition_time)
-            target_freshness = "stale" if request.operation == "mark_stale" else "fresh"
+            target_freshness: VisualObservationFreshnessStatus = (
+                "stale" if request.operation == "mark_stale" else "fresh"
+            )
             receipt_id = f"visual-source-receipt-{uuid4().hex}"
             events: list[VisualObservationLifecycleEvent] = []
             for impact in preflight.impacts:

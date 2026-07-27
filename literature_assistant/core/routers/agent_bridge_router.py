@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import subprocess
@@ -14,15 +15,53 @@ import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from datetime_utils import utc_now_iso_z
-from harness_protocols import ArtifactType, JobKind, JobStatus
-from models import ArtifactPayload, JobPayload, SessionPayload, ToolAttempt, ToolNextAction, ToolOutcome
+if TYPE_CHECKING:
+    from literature_assistant.core.chat.history_store import (
+        ChatHistoryStore,
+        default_chat_history_db_path,
+    )
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.harness_protocols import ArtifactType, JobKind, JobStatus, SessionMode
+    from literature_assistant.core.models import (
+        ArtifactPayload,
+        JobPayload,
+        SessionPayload,
+        ToolAttempt,
+        ToolNextAction,
+        ToolOutcome,
+    )
+    from literature_assistant.core.wiki.models import WikiSourceRef
+    from literature_assistant.core.writing_resources import WritingResourceStore
+    from literature_assistant.core.writing_runtime import WritingRuntime
+
+    class _AgentBridgeWikiSourceRef(WikiSourceRef):
+        """Wiki source reference with legacy agent-bridge aliases."""
+
+        ref_id: NotRequired[str]
+        summary: NotRequired[str]
+else:
+    from chat.history_store import ChatHistoryStore, default_chat_history_db_path
+    from datetime_utils import utc_now_iso_z
+    from harness_protocols import ArtifactType, JobKind, JobStatus
+    from models import ArtifactPayload, JobPayload, SessionPayload, ToolAttempt, ToolNextAction, ToolOutcome
+
+    class _AgentBridgeWikiSourceRef(TypedDict):
+        """Runtime constructor for the statically extended Wiki source ref."""
+
+        chunk_id: str
+        material_id: str
+        text: str
+        compressed_text: str
+        quote: str
+        label: str
+        ref_id: NotRequired[str]
+        summary: NotRequired[str]
 from literature_assistant.core.academic_english_resources import read_academic_english_resource
 from literature_assistant.core.config_knowledge import read_scoring_rules_resource
 from literature_assistant.core.product_docs_knowledge import read_product_docs_resource
@@ -38,10 +77,10 @@ from literature_assistant.core.skill_package_knowledge import read_skill_package
 from literature_assistant.core.project_paths import REPO_ROOT, desktop_runtime_file_path, runtime_state_path, wiki_generated_root
 from literature_assistant.core.wiki.page_store import AUTO_END, AUTO_START, WikiPageStore
 from literature_assistant.core.wiki.source_registry import derive_chunk_id
-from chat.history_store import ChatHistoryStore, default_chat_history_db_path
 
 
-router = APIRouter(prefix="/api/agent-bridge", tags=["Agent Bridge"])
+router: APIRouter = APIRouter(prefix="/api/agent-bridge", tags=["Agent Bridge"])
+logger = logging.getLogger(__name__)
 
 MAX_USER_TEXT_CHARS = 8000
 MAX_PROGRESS_MESSAGE_CHARS = 500
@@ -49,8 +88,12 @@ MAX_RESULT_TEXT_CHARS = 120000
 MAX_RESOURCE_CHARS = 20000
 DEFAULT_RESOURCE_CHARS = 6000
 MAX_WIKI_CAPTURE_BODY_CHARS = 40000
-SINGLE_PAPER_TASK_SCHEMA_VERSION = "scholar-ai-single-paper-task/v1"
-SINGLE_PAPER_COMPLETION_SCHEMA_VERSION = "scholar-ai-single-paper-completion-check/v1"
+SINGLE_PAPER_TASK_SCHEMA_VERSION: Literal["scholar-ai-single-paper-task/v1"] = (
+    "scholar-ai-single-paper-task/v1"
+)
+SINGLE_PAPER_COMPLETION_SCHEMA_VERSION: Literal[
+    "scholar-ai-single-paper-completion-check/v1"
+] = "scholar-ai-single-paper-completion-check/v1"
 SINGLE_PAPER_TASK_SENTINEL = "待补充"
 DESKTOP_OPEN_SCHEMA_VERSION = "scholar-ai-agent-sidebar-desktop-open/v1"
 CODEX_HANDOFF_LATEST_SCHEMA_VERSION = "scholar-ai-codex-handoff-latest/v1"
@@ -679,18 +722,24 @@ class SinglePaperCompletionCheckPayload(BaseModel):
     outcome: ToolOutcome
 
 
-def get_runtime():
+def get_runtime() -> tuple[WritingRuntime, type[SessionMode]]:
     """Import and return the writing runtime service."""
 
-    from writing_runtime import SessionMode, get_writing_runtime
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_runtime import SessionMode, get_writing_runtime
+    else:
+        from writing_runtime import SessionMode, get_writing_runtime
 
     return get_writing_runtime(), SessionMode
 
 
-def get_resource_store():
+def get_resource_store() -> WritingResourceStore:
     """Import and return the writing resource store."""
 
-    from writing_resources import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_resources import get_writing_resource_store
+    else:
+        from writing_resources import get_writing_resource_store
 
     return get_writing_resource_store()
 
@@ -1634,7 +1683,10 @@ def _single_paper_chunks(*, project_id: str, material_id: str, limit: int) -> li
     if limit < 1 or limit > 50:
         raise ValueError("limit must be between 1 and 50")
     try:
-        import routers.resources_router as resources_router
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers import resources_router
+        else:
+            import routers.resources_router as resources_router
 
         chunk_store = resources_router._load_chunk_store(project_id)
     except (ImportError, AttributeError, OSError, ValueError):
@@ -1924,6 +1976,8 @@ def _single_paper_outcome(
             metadata={"request_id": request_id},
         ),
     ]
+    status: Literal["blocked", "partial", "success"]
+    quality: Literal["metadata_only", "partial", "full"]
     if chunk_count <= 0:
         next_action = ToolNextAction(
             kind="scan_folder",
@@ -2479,16 +2533,36 @@ def _create_wiki_candidate_from_agent_result(
     """Create a draft wiki page plus review item for an agent result."""
 
     try:
-        import routers.wiki_router as wiki_router
-        from wiki.models import WikiPageKind, WikiPageStatus
-        from wiki.permissions import DEFAULT_WIKI_OWNER, WikiPagePermissions, WikiPageVisibility, set_permissions
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers import wiki_router
+            from literature_assistant.core.wiki.models import (
+                WikiPageKind,
+                WikiPageStatus,
+                from_evidence_reference,
+            )
+            from literature_assistant.core.wiki.permissions import (
+                DEFAULT_WIKI_OWNER,
+                WikiPagePermissions,
+                WikiPageVisibility,
+                set_permissions,
+            )
+            from literature_assistant.core.wiki.service import get_wiki_service
+        else:
+            import routers.wiki_router as wiki_router
+            from wiki.models import WikiPageKind, WikiPageStatus, from_evidence_reference
+            from wiki.permissions import (
+                DEFAULT_WIKI_OWNER,
+                WikiPagePermissions,
+                WikiPageVisibility,
+                set_permissions,
+            )
+            from wiki.service import get_wiki_service
         from literature_assistant.core.wiki.review_queue import (
             ReviewItemKind,
             ReviewQueue,
             make_review_item,
             make_wiki_page_revision_review_target,
         )
-        from wiki.service import get_wiki_service
     except ImportError as exc:
         return {"status": "unavailable", "error": _bounded_text(str(exc), 300)}
 
@@ -2523,7 +2597,14 @@ def _create_wiki_candidate_from_agent_result(
             kind=WikiPageKind.synthesis.value,
             body=body,
             status=WikiPageStatus.draft.value,
-            evidence_refs=[dict(item) for item in routing_metadata.get("evidence_refs", []) if isinstance(item, dict)],
+            evidence_refs=[
+                _preserve_agent_wiki_reference_aliases(
+                    reference=item,
+                    converted=from_evidence_reference(_normalize_wiki_evidence_reference(item)),
+                )
+                for item in routing_metadata.get("evidence_refs", [])
+                if isinstance(item, dict)
+            ],
             source_hashes=[],
             extra=extra,
         )
@@ -2580,6 +2661,62 @@ def _create_wiki_candidate_from_agent_result(
         "page_path": page_relative_path,
         "review_item_id": candidate_id,
     }
+
+
+def _normalize_wiki_evidence_reference(reference: dict[str, Any]) -> dict[str, Any]:
+    """Expand legacy agent refs into the Wiki evidence-reference contract."""
+
+    normalized = dict(reference)
+    ref_id = str(normalized.get("ref_id") or "").strip()
+    summary = str(normalized.get("summary") or "").strip()
+    text = str(normalized.get("text") or summary).strip()
+    normalized.update(
+        {
+            "chunk_id": str(normalized.get("chunk_id") or ref_id).strip(),
+            "material_id": str(normalized.get("material_id") or "").strip(),
+            "text": text,
+            "compressed_text": str(normalized.get("compressed_text") or text).strip(),
+            "quote": str(normalized.get("quote") or summary).strip(),
+            "label": str(normalized.get("label") or ref_id).strip(),
+        }
+    )
+    return normalized
+
+
+def _preserve_agent_wiki_reference_aliases(
+    *,
+    reference: dict[str, Any],
+    converted: WikiSourceRef,
+) -> WikiSourceRef:
+    """Retain compatibility aliases after strict Wiki conversion."""
+
+    result = _AgentBridgeWikiSourceRef(
+        chunk_id=converted["chunk_id"],
+        material_id=converted["material_id"],
+        text=converted["text"],
+        compressed_text=converted["compressed_text"],
+        quote=converted["quote"],
+        label=converted["label"],
+    )
+    for optional in (
+        "score",
+        "page",
+        "source",
+        "source_label",
+        "source_labels",
+        "source_hint",
+        "rank",
+        "query_overlap_tokens",
+        "citation_target",
+        "page_store_path",
+    ):
+        if optional in converted:
+            result[optional] = converted[optional]
+    if "ref_id" in reference:
+        result["ref_id"] = str(reference["ref_id"])
+    if "summary" in reference:
+        result["summary"] = str(reference["summary"])
+    return result
 
 
 def _wiki_review_queue_path(wiki_router_module: Any) -> Path:
@@ -2736,11 +2873,18 @@ def _material_resource(material_id: str) -> dict[str, Any]:
 def _chunk_resource(chunk_id: str, *, project_id: str | None) -> dict[str, Any]:
     if not project_id:
         raise HTTPException(status_code=400, detail="project_id is required for chunk refs")
-    import routers.resources_router as resources_router
-    from routers.resources_router.endpoints_search_upload import (
-        _chunk_figure_candidate_detail,
-        _chunk_image_paths,
-    )
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers import resources_router
+        from literature_assistant.core.routers.resources_router.endpoints_search_upload import (
+            _chunk_figure_candidate_detail,
+            _chunk_image_paths,
+        )
+    else:
+        import routers.resources_router as resources_router
+        from routers.resources_router.endpoints_search_upload import (
+            _chunk_figure_candidate_detail,
+            _chunk_image_paths,
+        )
 
     # ``search-refs`` returns refs from the persisted chunk store. Read that
     # store first so the bounded reader does not prune refs that are already

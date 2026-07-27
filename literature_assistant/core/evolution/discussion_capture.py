@@ -25,14 +25,22 @@ not surface in a clean form.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Set
 
-from models.evolution import (
-    CandidateMemoryType,
-    CandidateRiskLevel,
-    CandidateSourceType,
-)
-from evolution._capture_args import CaptureCandidateArgs
+if TYPE_CHECKING:
+    from literature_assistant.core.evolution._capture_args import CaptureCandidateArgs
+    from literature_assistant.core.models.evolution import (
+        CandidateMemoryType,
+        CandidateRiskLevel,
+        CandidateSourceType,
+    )
+else:
+    from evolution._capture_args import CaptureCandidateArgs
+    from models.evolution import (
+        CandidateMemoryType,
+        CandidateRiskLevel,
+        CandidateSourceType,
+    )
 
 
 def extract_from_discussion_result(

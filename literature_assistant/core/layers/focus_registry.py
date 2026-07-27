@@ -500,7 +500,12 @@ class FocusRegistry:
 
         return mention_id
 
-    def update_doc_map(self, doc_id: str, doc_title: str, source_path: str = ""):
+    def update_doc_map(
+        self,
+        doc_id: str,
+        doc_title: str,
+        source_path: str = "",
+    ) -> None:
         """
         更新或创建文献级映射
 
@@ -750,7 +755,7 @@ class FocusRegistry:
 # 测试和演示
 # ============================================================================
 
-def demo():
+def demo() -> None:
     """演示 FocusRegistry 的基本功能"""
 
     print("=" * 60)

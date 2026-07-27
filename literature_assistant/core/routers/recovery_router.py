@@ -2,29 +2,50 @@
 """Recovery API Router - Final version with complete recommendations alignment."""
 
 import logging
-from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Query
-from models import (
-    RecoveryEventPayload,
-    EventTimelinePayload,
-    MemoryFactPayload,
-    MemorySnapshotPayload,
-    InvalidFactRequest,
-    FactInvalidationPayload,
-    RecommendationsResponsePayload,
-    RecoveryRecommendationPayload,
-    RecommendationEvidencePayload,
-)
-from recovery_console import InspectionContext
-from datetime_utils import to_iso_z
+from typing import TYPE_CHECKING, List, Optional
+from fastapi import APIRouter, HTTPException, Query, Response
+
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import to_iso_z
+    from literature_assistant.core.models import (
+        EventTimelinePayload,
+        FactInvalidationPayload,
+        InvalidFactRequest,
+        MemoryFactPayload,
+        MemorySnapshotPayload,
+        RecommendationEvidencePayload,
+        RecommendationsResponsePayload,
+        RecoveryEventPayload,
+        RecoveryRecommendationPayload,
+    )
+    from literature_assistant.core.recovery_console import InspectionContext
+    from literature_assistant.core.recovery_console import RecoveryConsole
+    from literature_assistant.core.recovery_recommendation_engine import RecoveryRecommendation
+else:
+    from datetime_utils import to_iso_z
+    from models import (
+        EventTimelinePayload,
+        FactInvalidationPayload,
+        InvalidFactRequest,
+        MemoryFactPayload,
+        MemorySnapshotPayload,
+        RecommendationEvidencePayload,
+        RecommendationsResponsePayload,
+        RecoveryEventPayload,
+        RecoveryRecommendationPayload,
+    )
+    from recovery_console import InspectionContext
 
 logger = logging.getLogger("RecoveryRouter")
 router = APIRouter(prefix="/recovery", tags=["Recovery"])
 
 
-def get_console():
+def get_console() -> "RecoveryConsole":
     """Import and return the shared recovery console."""
-    from python_adapter_server import get_recovery_console
+    if TYPE_CHECKING:
+        from literature_assistant.core.python_adapter_server import get_recovery_console
+    else:
+        from python_adapter_server import get_recovery_console
     return get_recovery_console()
 
 
@@ -38,7 +59,7 @@ async def get_recovery_events(
     try:
         console = get_console()
         context = InspectionContext(
-            session_id=session_id,
+            session_id=session_id or "inspection",
             job_id=job_id,
         )
         timeline = console.inspect_event_timeline(context)
@@ -102,7 +123,6 @@ async def get_recovery_memory(
             fact_count=snapshot.fact_count,
             namespaces=list(snapshot.namespaces),
             last_updated=snapshot.timestamp.isoformat() if hasattr(snapshot.timestamp, 'isoformat') else str(snapshot.timestamp),
-            session_filter=session_id or "inspection",
         )
     except Exception as exc:
         logger.error("Failed to fetch memory snapshot: %s", exc, exc_info=True)
@@ -117,8 +137,8 @@ async def invalidate_fact(request: InvalidFactRequest) -> FactInvalidationPayloa
         invalidation = console.invalidate_fact(
             fact_id=request.fact_id,
             namespace=request.namespace,
-            reason=request.reason,
-            invalidated_by=request.invalidated_by,
+            reason=request.reason or "",
+            invalidated_by=request.invalidated_by or "",
         )
         return FactInvalidationPayload(
             fact_id=invalidation.fact_id,
@@ -136,7 +156,9 @@ async def invalidate_fact(request: InvalidFactRequest) -> FactInvalidationPayloa
         raise HTTPException(status_code=500, detail="Failed to invalidate fact")
 
 
-def _to_recommendation_payload(rec) -> RecoveryRecommendationPayload:
+def _to_recommendation_payload(
+    rec: "RecoveryRecommendation",
+) -> RecoveryRecommendationPayload:
     """Helper to convert a recommendation object to its payload."""
     return RecoveryRecommendationPayload(
         recommendation_id=rec.recommendation_id,
@@ -175,12 +197,28 @@ async def get_recovery_recommendations(
 ) -> RecommendationsResponsePayload:
     """Get recovery recommendations for a job."""
     try:
-        from python_adapter_server import get_event_store, get_fact_store, get_memory_adapter
+        if TYPE_CHECKING:
+            from literature_assistant.core.python_adapter_server import (
+                get_event_store,
+                get_fact_store,
+                get_memory_adapter,
+            )
+        else:
+            from python_adapter_server import get_event_store, get_fact_store, get_memory_adapter
         event_store = get_event_store()
         fact_store = get_fact_store()
         memory_adapter = get_memory_adapter()
         
-        from recovery_recommendation_engine import RecoveryRecommendationEngine, RecommendationRequest
+        if TYPE_CHECKING:
+            from literature_assistant.core.recovery_recommendation_engine import (
+                RecommendationRequest,
+                RecoveryRecommendationEngine,
+            )
+        else:
+            from recovery_recommendation_engine import (
+                RecommendationRequest,
+                RecoveryRecommendationEngine,
+            )
         engine = RecoveryRecommendationEngine(event_store, fact_store, memory_adapter=memory_adapter)
         
         request = RecommendationRequest(
@@ -210,13 +248,19 @@ async def get_recovery_recommendations(
 
 
 @router.get("/health")
-async def recovery_health_check():
+async def recovery_health_check() -> dict[str, object]:
     """Consistency-enforced recovery stack health check."""
-    from python_adapter_server import get_event_store, get_fact_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.python_adapter_server import get_event_store, get_fact_store
+    else:
+        from python_adapter_server import get_event_store, get_fact_store
     try:
         event_store = get_event_store()
         fact_store = get_fact_store()
-        from datetime_utils import utc_now_iso_z
+        if TYPE_CHECKING:
+            from literature_assistant.core.datetime_utils import utc_now_iso_z
+        else:
+            from datetime_utils import utc_now_iso_z
         return {
             "status": "healthy",
             "components": {
@@ -230,9 +274,11 @@ async def recovery_health_check():
         logger.error("Recovery health check failed: %s", str(e))
         raise HTTPException(status_code=503, detail=str(e))
 @router.get("/metrics")
-async def get_recovery_metrics():
+async def get_recovery_metrics() -> Response:
     """Expose recovery observability metrics in Prometheus format."""
-    from recovery_metrics_exporter import get_recovery_metrics_collector
+    if TYPE_CHECKING:
+        from literature_assistant.core.recovery_metrics_exporter import get_recovery_metrics_collector
+    else:
+        from recovery_metrics_exporter import get_recovery_metrics_collector
     collector = get_recovery_metrics_collector()
-    from fastapi import Response
     return Response(content=collector.render_prometheus_text(), media_type="text/plain")

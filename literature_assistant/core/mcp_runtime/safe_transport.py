@@ -26,10 +26,24 @@ from __future__ import annotations
 
 import os
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 import httpx
 
-from ip_guard import classify_resolved_ips, resolve_host_to_ips, parse_ip, classify_unsafe_ip
+if TYPE_CHECKING:
+    from literature_assistant.core.ip_guard import (
+        classify_resolved_ips,
+        classify_unsafe_ip,
+        parse_ip,
+        resolve_host_to_ips,
+    )
+else:
+    from ip_guard import (
+        classify_resolved_ips,
+        classify_unsafe_ip,
+        parse_ip,
+        resolve_host_to_ips,
+    )
 
 
 class McpSsrfBlocked(httpx.TransportError):

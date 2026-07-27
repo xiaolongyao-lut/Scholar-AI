@@ -7,7 +7,7 @@ from literature_assistant.core.linter.rule_base import ItemRule, ApplyContext, R
 class NoEmptyFields(ItemRule):
     """删除空字段"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="no-empty-fields",
             name="删除空字段",
@@ -37,7 +37,7 @@ class NoEmptyFields(ItemRule):
 class CorrectFieldWhitespace(ItemRule):
     """清理所有字段空格"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-field-whitespace",
             name="清理字段空格",

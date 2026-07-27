@@ -15,61 +15,128 @@ Slices 3+ add capture from inspiration / discussion / runtime / skill paths,
 the review UI, promotion to MemPalace + skill drafts, and the curator.
 """
 
-from evolution._capture_args import CaptureCandidateArgs
-from evolution.background import run_capture_in_background
-from evolution.config import (
-    is_candidate_capture_enabled,
-    is_curator_enabled,
-    is_curator_llm_judge_enabled,
-    is_promotion_enabled,
-    is_recall_enabled,
-    is_review_ui_enabled,
-    load_evolution_config,
-)
-from evolution.curator import CuratorRunResult, EvolutionCurator
-from evolution.curator_llm_judge import (
-    JudgeVerdict,
-    MAX_CLAIMS_PER_BUCKET,
-    call_curator_llm_judge,
-)
-from evolution.discussion_capture import extract_from_discussion_result
-from evolution.inspiration_capture import (
-    extract_from_spark,
-    extract_from_sparks,
-)
-from evolution.promotion import EvolutionPromoter, PromotionResult
-from evolution.rag_capture import extract_from_rag_result
-from evolution.runtime_capture import extract_from_job
-from evolution.scheduler import (
-    CuratorSchedulerStatus,
-    EvolutionCuratorScheduler,
-    get_curator_scheduler,
-)
-from evolution.skill_capture import extract_from_skill_run
-from evolution.service import (
-    EvolutionService,
-    PromotionOutcome,
-    compute_dedupe_hash,
-    get_evolution_service,
-    reset_evolution_service_for_tests,
-)
-from evolution.state_machine import (
-    TERMINAL_STATES,
-    TransitionResult,
-    evaluate_transition,
-    is_terminal,
-)
-from evolution.store import (
-    DEFAULT_DB_FILENAME,
-    EvolutionCandidateStore,
-    StoreWriteResult,
-    default_db_path,
-)
-from evolution.secret_scan import (
-    SecretScanVerdict,
-    fields_to_scan,
-    scan_candidate_fields,
-)
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from literature_assistant.core.evolution._capture_args import CaptureCandidateArgs
+    from literature_assistant.core.evolution.background import run_capture_in_background
+    from literature_assistant.core.evolution.config import (
+        is_candidate_capture_enabled,
+        is_curator_enabled,
+        is_curator_llm_judge_enabled,
+        is_promotion_enabled,
+        is_recall_enabled,
+        is_review_ui_enabled,
+        load_evolution_config,
+    )
+    from literature_assistant.core.evolution.curator import (
+        CuratorRunResult,
+        EvolutionCurator,
+    )
+    from literature_assistant.core.evolution.curator_llm_judge import (
+        MAX_CLAIMS_PER_BUCKET,
+        JudgeVerdict,
+        call_curator_llm_judge,
+    )
+    from literature_assistant.core.evolution.discussion_capture import (
+        extract_from_discussion_result,
+    )
+    from literature_assistant.core.evolution.inspiration_capture import (
+        extract_from_spark,
+        extract_from_sparks,
+    )
+    from literature_assistant.core.evolution.promotion import (
+        EvolutionPromoter,
+        PromotionResult,
+    )
+    from literature_assistant.core.evolution.rag_capture import extract_from_rag_result
+    from literature_assistant.core.evolution.runtime_capture import extract_from_job
+    from literature_assistant.core.evolution.scheduler import (
+        CuratorSchedulerStatus,
+        EvolutionCuratorScheduler,
+        get_curator_scheduler,
+    )
+    from literature_assistant.core.evolution.secret_scan import (
+        SecretScanVerdict,
+        fields_to_scan,
+        scan_candidate_fields,
+    )
+    from literature_assistant.core.evolution.service import (
+        EvolutionService,
+        PromotionOutcome,
+        compute_dedupe_hash,
+        get_evolution_service,
+        reset_evolution_service_for_tests,
+    )
+    from literature_assistant.core.evolution.skill_capture import extract_from_skill_run
+    from literature_assistant.core.evolution.state_machine import (
+        TERMINAL_STATES,
+        TransitionResult,
+        evaluate_transition,
+        is_terminal,
+    )
+    from literature_assistant.core.evolution.store import (
+        DEFAULT_DB_FILENAME,
+        EvolutionCandidateStore,
+        StoreWriteResult,
+        default_db_path,
+    )
+else:
+    from evolution._capture_args import CaptureCandidateArgs
+    from evolution.background import run_capture_in_background
+    from evolution.config import (
+        is_candidate_capture_enabled,
+        is_curator_enabled,
+        is_curator_llm_judge_enabled,
+        is_promotion_enabled,
+        is_recall_enabled,
+        is_review_ui_enabled,
+        load_evolution_config,
+    )
+    from evolution.curator import CuratorRunResult, EvolutionCurator
+    from evolution.curator_llm_judge import (
+        JudgeVerdict,
+        MAX_CLAIMS_PER_BUCKET,
+        call_curator_llm_judge,
+    )
+    from evolution.discussion_capture import extract_from_discussion_result
+    from evolution.inspiration_capture import (
+        extract_from_spark,
+        extract_from_sparks,
+    )
+    from evolution.promotion import EvolutionPromoter, PromotionResult
+    from evolution.rag_capture import extract_from_rag_result
+    from evolution.runtime_capture import extract_from_job
+    from evolution.scheduler import (
+        CuratorSchedulerStatus,
+        EvolutionCuratorScheduler,
+        get_curator_scheduler,
+    )
+    from evolution.skill_capture import extract_from_skill_run
+    from evolution.service import (
+        EvolutionService,
+        PromotionOutcome,
+        compute_dedupe_hash,
+        get_evolution_service,
+        reset_evolution_service_for_tests,
+    )
+    from evolution.state_machine import (
+        TERMINAL_STATES,
+        TransitionResult,
+        evaluate_transition,
+        is_terminal,
+    )
+    from evolution.store import (
+        DEFAULT_DB_FILENAME,
+        EvolutionCandidateStore,
+        StoreWriteResult,
+        default_db_path,
+    )
+    from evolution.secret_scan import (
+        SecretScanVerdict,
+        fields_to_scan,
+        scan_candidate_fields,
+    )
 
 __all__ = [
     "EvolutionService",

@@ -13,7 +13,13 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
-from literature_assistant.core.wiki.models import WikiPage, WikiPageKind, WikiPageStatus, make_stable_slug
+from literature_assistant.core.wiki.models import (
+    WikiPage,
+    WikiPageKind,
+    WikiPageStatus,
+    WikiSourceRef,
+    make_stable_slug,
+)
 from literature_assistant.core.wiki.page_store import (
     PageRevisionConflictError,
     WikiPageStore,
@@ -120,7 +126,7 @@ class WikiService:
         if not lines or not lines[0].startswith("---"):
             return {}, content
 
-        frontmatter_lines = []
+        frontmatter_lines: list[str] = []
         for index, line in enumerate(lines[1:], start=1):
             if line.startswith("---"):
                 # Parse frontmatter
@@ -196,7 +202,7 @@ class WikiService:
         title: str | None = None,
         body: str | None = None,
         status: str | None = None,
-        evidence_refs: list[dict[str, Any]] | None = None,
+        evidence_refs: list[WikiSourceRef] | None = None,
         source_hashes: list[str] | None = None,
         extra: dict[str, Any] | None = None,
         action: str = "graph_review_update",
@@ -558,7 +564,7 @@ class WikiService:
         kind: str,
         body: str,
         status: str = "draft",
-        evidence_refs: list[dict[str, Any]] | None = None,
+        evidence_refs: list[WikiSourceRef] | None = None,
         source_hashes: list[str] | None = None,
         extra: dict[str, Any] | None = None,
     ) -> WikiPage:
@@ -618,7 +624,7 @@ class WikiService:
         title: str | None = None,
         body: str | None = None,
         status: str | None = None,
-        evidence_refs: list[dict[str, Any]] | None = None,
+        evidence_refs: list[WikiSourceRef] | None = None,
         source_hashes: list[str] | None = None,
         extra: dict[str, Any] | None = None,
     ) -> WikiPage:
@@ -678,7 +684,14 @@ class WikiService:
         retention = page.extra.get(WIKI_RETENTION_METADATA_KEY)
         if not isinstance(retention, dict):
             return None
-        payload = json.loads(json.dumps(retention, ensure_ascii=False))
+        raw_payload: object = json.loads(json.dumps(retention, ensure_ascii=False))
+        if not isinstance(raw_payload, dict):
+            return None
+        payload: dict[str, Any] = {}
+        for key, value in raw_payload.items():
+            if not isinstance(key, str):
+                return None
+            payload[key] = value
         payload["current_content_hash"] = self._hash_text(str(content))
         payload["page_path"] = relative_path.as_posix()
         return payload

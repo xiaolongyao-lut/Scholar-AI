@@ -14,17 +14,28 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping, Sequence
 from uuid import uuid4
 
-from datetime_utils import utc_now_iso_z
-from project_paths import CORE_ROOT, EXTERNAL_REFERENCES_ROOT, REPO_ROOT, output_path
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.harness_protocols import (
+        WritingArtifact,
+        WritingEvent,
+        WritingJob,
+        WritingSession,
+    )
+    from literature_assistant.core.project_paths import (
+        CORE_ROOT,
+        EXTERNAL_REFERENCES_ROOT,
+        REPO_ROOT,
+        output_path,
+    )
+else:
+    from datetime_utils import utc_now_iso_z
+    from project_paths import CORE_ROOT, EXTERNAL_REFERENCES_ROOT, REPO_ROOT, output_path
 
 try:
     import yaml
 except Exception:  # pragma: no cover - optional import guard
     yaml = None  # type: ignore[assignment]
-
-if TYPE_CHECKING:
-    from harness_protocols import WritingArtifact, WritingEvent, WritingJob, WritingSession
-
 
 PROJECT_ROOT = REPO_ROOT
 DEFAULT_CONFIG_PATH = CORE_ROOT / "config" / "rag_integration_config.yaml"
@@ -71,7 +82,7 @@ def _resolve_path(value: Any, default: Path) -> Path:
 
 def _iso_utc_now() -> str:
     """Return a UTC ISO-8601 timestamp."""
-    return utc_now_iso_z()
+    return str(utc_now_iso_z())
 
 
 @dataclass(frozen=True)

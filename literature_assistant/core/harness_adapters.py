@@ -9,17 +9,32 @@ ensuring backward compatibility while gradually migrating to protocol-first desi
 from __future__ import annotations
 
 from typing import Any
-from harness_protocols import (
-    SessionMode,
-    JobKind,
-    WritingSession,
-    WritingJob,
-    WritingEvent,
-    WritingArtifact,
-    EventType,
-    ArtifactType,
-)
-from skills.runtime import SkillRunResult, ExecutionStatus
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from literature_assistant.core.harness_protocols import (
+        ArtifactType,
+        EventType,
+        JobKind,
+        SessionMode,
+        WritingArtifact,
+        WritingEvent,
+        WritingJob,
+        WritingSession,
+    )
+    from literature_assistant.core.skills.runtime import ExecutionStatus, SkillRunResult
+else:
+    from harness_protocols import (
+        ArtifactType,
+        EventType,
+        JobKind,
+        SessionMode,
+        WritingArtifact,
+        WritingEvent,
+        WritingJob,
+        WritingSession,
+    )
+    from skills.runtime import ExecutionStatus, SkillRunResult
 
 
 class LegacyActionAdapter:
@@ -193,7 +208,7 @@ class SessionContextAdapter:
     Manages session context for dual-track architecture.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize session context adapter."""
         self._sessions: dict[str, WritingSession] = {}
         self._default_session: WritingSession | None = None

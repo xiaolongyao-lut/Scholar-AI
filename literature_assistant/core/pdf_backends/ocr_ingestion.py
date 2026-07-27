@@ -10,7 +10,15 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol, Sequence
+from typing import (
+    Any,
+    Callable,
+    Mapping,
+    Protocol,
+    Sequence,
+    TypeGuard,
+    runtime_checkable,
+)
 
 from .ocr_classifier import OCRNeedClassifier, PDFClassificationResult
 from .ocr_engine import OcrImageResult
@@ -67,14 +75,159 @@ class OcrIngestionReport:
 RenderPageFn = Callable[[Path, int], bytes]
 
 
+@runtime_checkable
 class ExtractionPayloadLike(Protocol):
-    """Minimal payload shape accepted by the OCR post-processor."""
+    """Legacy three-field payload shape accepted by the OCR post-processor."""
 
-    content: str
-    blocks: Any
-    markdown_full: str | None
-    parser_provenance: Any
-    parser_output_sha256: str | None
+    @property
+    def content(self) -> str:
+        """Return extracted document text."""
+        ...
+
+    @property
+    def blocks(self) -> object:
+        """Return optional structured document blocks."""
+        ...
+
+    @property
+    def markdown_full(self) -> str | None:
+        """Return optional full-document markdown."""
+        ...
+
+
+@runtime_checkable
+class _ExtractionPayloadWithProvenance(ExtractionPayloadLike, Protocol):
+    """Optional parser provenance carried by current extraction payloads."""
+
+    @property
+    def parser_provenance(self) -> object:
+        """Return parser provenance when the payload supports it."""
+        ...
+
+    @property
+    def parser_output_sha256(self) -> str | None:
+        """Return the optional parser-output fingerprint."""
+        ...
+
+
+class _CloseableDocument(Protocol):
+    """Minimum resource capability required after opening a PDF."""
+
+    def close(self) -> None: ...
+
+
+class _PageSequenceDocument(_CloseableDocument, Protocol):
+    """PyMuPDF document capabilities used by one-page rendering."""
+
+    def __len__(self) -> int: ...
+
+    def __getitem__(self, index: int) -> object: ...
+
+
+def _is_page_sequence_document(value: object) -> TypeGuard[_PageSequenceDocument]:
+    """Narrow an opened value to the page sequence consumed below."""
+
+    return (
+        callable(getattr(value, "__len__", None))
+        and callable(getattr(value, "__getitem__", None))
+        and callable(getattr(value, "close", None))
+    )
+
+
+def _is_closeable_document(value: object) -> TypeGuard[_CloseableDocument]:
+    """Narrow an opened value before validating page access."""
+
+    return callable(getattr(value, "close", None))
+
+
+def _call_runtime_method(
+    target: object,
+    method_name: str,
+    *args: object,
+    **kwargs: object,
+) -> object:
+    """Call one method exposed by PyMuPDF's partially typed runtime surface."""
+
+    method = getattr(target, method_name, None)
+    if not callable(method):
+        raise TypeError(f"PyMuPDF object must expose callable {method_name}")
+    result: object = method(*args, **kwargs)
+    return result
+
+
+def _validate_reconstructed_payload(
+    value: object,
+    *,
+    require_provenance: bool,
+) -> ExtractionPayloadLike:
+    """Validate a dynamically reconstructed compatibility payload."""
+
+    if not isinstance(value, ExtractionPayloadLike):
+        raise TypeError("reconstructed OCR payload does not expose required fields")
+    if not isinstance(value.content, str):
+        raise TypeError("reconstructed OCR payload content must be a string")
+    if value.markdown_full is not None and not isinstance(value.markdown_full, str):
+        raise TypeError("reconstructed OCR payload markdown_full must be a string or None")
+    if not isinstance(value, _ExtractionPayloadWithProvenance):
+        if require_provenance:
+            raise TypeError("reconstructed OCR payload lost parser provenance")
+        return value
+    if value.parser_output_sha256 is not None and not isinstance(
+        value.parser_output_sha256,
+        str,
+    ):
+        raise TypeError(
+            "reconstructed OCR payload parser_output_sha256 must be a string or None"
+        )
+    return value
+
+
+def _construct_payload(
+    payload: ExtractionPayloadLike,
+    fields: Mapping[str, object],
+    *,
+    require_provenance: bool,
+) -> ExtractionPayloadLike:
+    """Reconstruct one payload through its checked dynamic class boundary."""
+
+    constructor: object = type(payload)
+    if not callable(constructor):
+        raise TypeError("payload type must be callable")
+    reconstructed: object = constructor(**dict(fields))
+    return _validate_reconstructed_payload(
+        reconstructed,
+        require_provenance=require_provenance,
+    )
+
+
+def _select_payload_constructor_fields(
+    payload: ExtractionPayloadLike,
+    candidates: Sequence[Mapping[str, object]],
+) -> Mapping[str, object]:
+    """Select compatible constructor fields without invoking the constructor."""
+
+    constructor: object = type(payload)
+    if not callable(constructor):
+        raise TypeError("payload type must be callable")
+    try:
+        signature = inspect.signature(constructor)
+    except (TypeError, ValueError) as exc:
+        raise TypeError(
+            "payload constructor must expose an inspectable signature"
+        ) from exc
+
+    last_binding_error: TypeError | None = None
+    for fields in candidates:
+        try:
+            signature.bind(**dict(fields))
+        except TypeError as exc:
+            last_binding_error = exc
+            continue
+        return fields
+
+    if last_binding_error is not None:
+        raise last_binding_error
+    raise TypeError("no payload constructor field candidates were provided")
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -279,15 +432,30 @@ def _render_pdf_page_png(source_path: Path, page_index: int) -> bytes:
 
     import pymupdf
 
-    doc = pymupdf.open(str(source_path))
+    opened_document = _call_runtime_method(pymupdf, "open", str(source_path))
+    if not _is_closeable_document(opened_document):
+        raise TypeError("PyMuPDF open() must return a closeable document")
+    document = opened_document
     try:
-        if page_index >= len(doc):
+        if not _is_page_sequence_document(document):
+            raise TypeError(
+                "PyMuPDF open() must return a closeable page-sequence document"
+            )
+        if page_index >= len(document):
             raise ValueError(f"page_index out of range: {page_index}")
-        page = doc[page_index]
-        pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
-        return pixmap.tobytes("png")
+        page = document[page_index]
+        pixmap = _call_runtime_method(
+            page,
+            "get_pixmap",
+            matrix=_call_runtime_method(pymupdf, "Matrix", 2, 2),
+            alpha=False,
+        )
+        image_bytes = _call_runtime_method(pixmap, "tobytes", "png")
+        if not isinstance(image_bytes, bytes):
+            raise TypeError("PyMuPDF Pixmap.tobytes() must return bytes")
+        return image_bytes
     finally:
-        doc.close()
+        document.close()
 
 
 def _format_ocr_warning(
@@ -419,30 +587,44 @@ def _copy_payload_with_content_and_report(
     *,
     blocks: Any | None = None,
 ) -> ExtractionPayloadLike:
-    payload_type = type(payload)
     copied_blocks = payload.blocks if blocks is None else blocks
-    kwargs = {
+    base_fields: dict[str, object] = {
         "content": content,
         "blocks": copied_blocks,
         "markdown_full": payload.markdown_full,
-        "parser_provenance": getattr(payload, "parser_provenance", None),
-        "parser_output_sha256": getattr(payload, "parser_output_sha256", None),
     }
-    try:
-        return payload_type(**kwargs, ocr_report=report)
-    except TypeError:
-        try:
-            return payload_type(**kwargs)
-        except TypeError:
-            legacy_kwargs = {
-                "content": content,
-                "blocks": copied_blocks,
-                "markdown_full": payload.markdown_full,
+    provenance_payload: _ExtractionPayloadWithProvenance | None = None
+    if isinstance(payload, _ExtractionPayloadWithProvenance):
+        provenance_payload = payload
+    require_provenance = provenance_payload is not None
+    preferred_fields = dict(base_fields)
+    if provenance_payload is not None:
+        preferred_fields.update(
+            {
+                "parser_provenance": provenance_payload.parser_provenance,
+                "parser_output_sha256": provenance_payload.parser_output_sha256,
             }
-            try:
-                return payload_type(**legacy_kwargs, ocr_report=report)
-            except TypeError:
-                return payload_type(**legacy_kwargs)
+        )
+    preferred_with_report = dict(preferred_fields)
+    preferred_with_report["ocr_report"] = report
+    base_with_report = dict(base_fields)
+    base_with_report["ocr_report"] = report
+    candidates: list[Mapping[str, object]]
+    if provenance_payload is not None:
+        candidates = [
+            preferred_with_report,
+            preferred_fields,
+            base_with_report,
+            base_fields,
+        ]
+    else:
+        candidates = [base_with_report, base_fields]
+    selected_fields = _select_payload_constructor_fields(payload, candidates)
+    return _construct_payload(
+        payload,
+        selected_fields,
+        require_provenance=require_provenance,
+    )
 
 
 def _copy_payload_with_ocr_report(

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { isPdfBboxUnit, readPdfBbox } from '@/lib/pdfAnchor';
 import { useI18n } from '@/contexts/I18nContext';
 import { PageHeader } from '@/components/common/PageHeader';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -28,6 +29,7 @@ import { artifactContentRecord, findLatestArtifact, startBackgroundJob } from '@
 import { getWritingRuntimeClient } from '@/services/runtimeClient';
 import { buildFigureAssetFileUrl, getWritingBackendService } from '@/services/writingBackend';
 import type { JobStatusDetail, WritingArtifact, WritingJob } from '@/types/runtime';
+import type { PdfBbox, PdfBboxUnit } from '@/lib/pdfAnchor';
 import type {
   CreateFigureAssetRequest,
   FigureAssetResource,
@@ -37,6 +39,11 @@ import type {
 
 type FigureKind = 'figure' | 'table';
 type FigureRecordState = 'asset' | 'candidate' | 'manual';
+
+interface FigureBboxAnchor {
+  bbox: PdfBbox;
+  bboxUnit: PdfBboxUnit;
+}
 
 interface FigureRecord {
   id: string;
@@ -51,7 +58,7 @@ interface FigureRecord {
   sourcePage?: number | null;
   chunkId?: string | null;
   chunkIndex?: number | null;
-  bbox?: number[] | null;
+  bboxAnchor: FigureBboxAnchor | null;
   assetPath?: string | null;
   width?: number | null;
   height?: number | null;
@@ -252,6 +259,7 @@ export function FiguresTables() {
         displayCaption: file.name,
         captionStatus: 'caption',
         sourceTitle: '手动添加',
+        bboxAnchor: null,
         assetPath: URL.createObjectURL(file),
         width: null,
         height: null,
@@ -272,6 +280,12 @@ export function FiguresTables() {
       return;
     }
     try {
+      const bboxAnchorRequest = item.bboxAnchor
+        ? {
+            bbox: [...item.bboxAnchor.bbox],
+            bbox_unit: item.bboxAnchor.bboxUnit,
+          }
+        : {};
       const request: CreateFigureAssetRequest = {
         project_id: activeProjectId,
         kind: item.kind,
@@ -279,7 +293,7 @@ export function FiguresTables() {
         numbering: item.numbering,
         material_id: item.materialId ?? undefined,
         source_page: item.sourcePage ?? undefined,
-        bbox: item.bbox ?? undefined,
+        ...bboxAnchorRequest,
         asset_path: item.assetPath,
         width: item.width ?? undefined,
         height: item.height ?? undefined,
@@ -1042,7 +1056,7 @@ function toAssetRecord(asset: FigureAssetResource): FigureRecord {
     sourceTitle: asset.material_id || '项目图表库',
     materialId: asset.material_id ?? null,
     sourcePage: asset.source_page ?? null,
-    bbox: asset.bbox ?? null,
+    bboxAnchor: readFigureBboxAnchor(asset),
     assetPath: asset.asset_path,
     width: asset.width ?? null,
     height: asset.height ?? null,
@@ -1069,7 +1083,7 @@ function toCandidateRecord(candidate: FigureTableCandidateResource): FigureRecor
     sourcePage: candidate.page ?? null,
     chunkId: candidate.chunk_id,
     chunkIndex: candidate.chunk_index ?? null,
-    bbox: candidate.bbox ?? null,
+    bboxAnchor: readFigureBboxAnchor(candidate),
     assetPath: candidate.asset_path ?? null,
     source: candidate.source ?? 'chunk_text',
   };
@@ -1106,7 +1120,14 @@ function truncateCaption(value: string): string {
 }
 
 function hasLocator(item: FigureRecord): boolean {
-  return Boolean(item.materialId && (item.sourcePage || item.chunkId || item.bbox?.length));
+  return Boolean(item.materialId && (item.sourcePage || item.chunkId || item.bboxAnchor));
+}
+
+function readFigureBboxAnchor(value: unknown): FigureBboxAnchor | null {
+  if (!isRecord(value)) return null;
+  const bboxUnit = isPdfBboxUnit(value.bbox_unit) ? value.bbox_unit : null;
+  const bbox = bboxUnit ? readPdfBbox(value.bbox) : null;
+  return bbox && bboxUnit ? { bbox, bboxUnit } : null;
 }
 
 function escapeMarkdownAlt(value: string): string {

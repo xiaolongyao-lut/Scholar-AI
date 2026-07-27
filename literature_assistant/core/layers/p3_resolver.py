@@ -1,7 +1,11 @@
 import logging
-from typing import List, Dict, Any, Optional
-from models.p2_logic_models import Claim, ClassifiedConflict
+from typing import TYPE_CHECKING, List, Dict, Any, Optional
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from literature_assistant.core.models.p2_logic_models import Claim, ClassifiedConflict
+else:
+    from models.p2_logic_models import Claim, ClassifiedConflict
 
 logger = logging.getLogger("P3_ConflictResolver")
 

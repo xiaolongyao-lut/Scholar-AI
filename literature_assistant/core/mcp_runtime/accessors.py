@@ -17,11 +17,14 @@ approval handshake.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from models.mcp import McpApprovalState, McpServerConfig
-
-from mcp_runtime.server_store import RuntimeMcpServerStore
+if TYPE_CHECKING:
+    from literature_assistant.core.mcp_runtime.server_store import RuntimeMcpServerStore
+    from literature_assistant.core.models.mcp import McpApprovalState, McpServerConfig
+else:
+    from mcp_runtime.server_store import RuntimeMcpServerStore
+    from models.mcp import McpApprovalState, McpServerConfig
 
 
 def _resolve_server(
@@ -39,7 +42,12 @@ def _resolve_server(
         return None
     active_store = store or RuntimeMcpServerStore()
     for server in active_store.list_internal():
-        if server.server_slug == slug:
+        # Canonical and legacy imports can give the same model distinct identities.
+        server_slug = getattr(server, "server_slug", None)
+        approval_state = getattr(server, "approval_state", None)
+        if not isinstance(server_slug, str) or approval_state is None:
+            continue
+        if server_slug == slug:
             return server
     return None
 

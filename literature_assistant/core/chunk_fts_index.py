@@ -11,13 +11,20 @@ import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from chunk_hashing import (
-    CHUNK_HASH_VERSION,
-    SUPPORTED_CHUNK_HASH_VERSIONS,
-    compute_chunk_hashes,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.chunk_hashing import (
+        CHUNK_HASH_VERSION,
+        SUPPORTED_CHUNK_HASH_VERSIONS,
+        compute_chunk_hashes,
+    )
+else:
+    from chunk_hashing import (
+        CHUNK_HASH_VERSION,
+        SUPPORTED_CHUNK_HASH_VERSIONS,
+        compute_chunk_hashes,
+    )
 
 
 CHUNK_FTS_INDEX_SCHEMA_VERSION = "scholar-ai-chunk-fts5-index/v1"
@@ -162,8 +169,10 @@ def _bounded_text(value: object, *, max_chars: int = 5000) -> str:
 def _coerce_page(value: object) -> int | None:
     if isinstance(value, bool):
         return None
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        return None
     try:
-        page = int(value)  # type: ignore[arg-type]
+        page = int(value)
     except (TypeError, ValueError):
         return None
     return page if page > 0 else None
@@ -549,13 +558,13 @@ def inspect_chunk_fts_index(
 
     expected_by_key: dict[tuple[str, str], tuple[Any, ...]] = {}
     for expected_row in expected_rows:
-        key = (str(expected_row[0]), str(expected_row[1]))
-        if key in expected_by_key:
+        row_key = (str(expected_row[0]), str(expected_row[1]))
+        if row_key in expected_by_key:
             raise ChunkFtsIntegrityError(
                 "fts_expected_row_duplicate",
                 "Chunk-store snapshot contains duplicate material/chunk identifiers",
             )
-        expected_by_key[key] = expected_row
+        expected_by_key[row_key] = expected_row
     material_indexed_count = sum(
         1 for row in expected_rows if str(row[0]) == normalized_material_id
     )
@@ -593,14 +602,14 @@ def inspect_chunk_fts_index(
                 )
 
             count_values: dict[str, int] = {}
-            for key in ("indexed_count", "skipped_count"):
-                raw_value = meta.get(key, "")
+            for meta_key in ("indexed_count", "skipped_count"):
+                raw_value = meta.get(meta_key, "")
                 if not re.fullmatch(r"0|[1-9][0-9]*", raw_value):
                     raise ChunkFtsIntegrityError(
                         "fts_index_metadata_invalid",
-                        f"Chunk FTS metadata field {key} is invalid",
+                        f"Chunk FTS metadata field {meta_key} is invalid",
                     )
-                count_values[key] = int(raw_value)
+                count_values[meta_key] = int(raw_value)
             if (
                 count_values["indexed_count"] != len(expected_rows)
                 or count_values["skipped_count"] != expected_skipped_count

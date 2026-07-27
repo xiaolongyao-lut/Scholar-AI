@@ -6,11 +6,14 @@ RAG-aware multi-agent discussion request/trace/synthesis types.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from models.analysis_chain import AnalysisChainPayload
+if TYPE_CHECKING:
+    from literature_assistant.core.models.analysis_chain import AnalysisChainPayload
+else:
+    from models.analysis_chain import AnalysisChainPayload
 
 DISCUSSION_MAX_TURNS_LIMIT = 20
 

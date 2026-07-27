@@ -13,7 +13,7 @@ class CorrectPublicationTitleCase(FieldRule):
     - nature methods → Nature Methods
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-publication-title-case",
             target_field="journal",
@@ -69,7 +69,7 @@ class CorrectPublicationTitleAlias(FieldRule):
         "Acc. Chem. Res.": "Accounts of Chemical Research",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-publication-title-alias",
             target_field="journal",

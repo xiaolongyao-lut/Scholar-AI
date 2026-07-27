@@ -49,6 +49,10 @@ jobs:
         run: |
           python -X utf8 -m compileall -q literature_assistant run_literature_assistant.py sitecustomize.py
 
+      - name: Type Check Workspace
+        run: |
+          python -X utf8 -m mypy
+
       - name: Run Focused Contract Tests
         if: ${{ hashFiles('tests/**/*.py', 'agent_mcp_server/tests/**/*.py') != '' }}
         run: |
@@ -60,6 +64,13 @@ jobs:
             tests/test_evidence_pack_build_contract.py \
             tests/test_formula_candidates.py \
             tests/test_intelligent_chat_evidence_roles.py \
+            tests/test_runtime_boundary_contracts.py \
+            tests/test_claim_cache_contracts.py \
+            tests/test_g_layer_async_contracts.py \
+            tests/test_pipeline_task_contracts.py \
+            tests/test_writing_projects_api.py \
+            tests/test_writing_resource_persistence.py \
+            tests/test_pdf_backends.py \
             tests/test_knowledge_router.py \
             tests/test_live_api_chat_knowledge_context_receipt_smoke_harness.py \
             tests/test_agent_bridge_router.py \
@@ -75,6 +86,7 @@ jobs:
             tests/test_pyproject_runtime_metadata.py \
             tests/test_ci_visibility_contract.py \
             tests/test_wiki_crud.py \
+            tests/test_wiki_bbox_unit_contract.py \
             tests/wiki/test_query.py \
             tests/wiki/test_wiki_router.py \
             tests/wiki/test_doctor.py \
@@ -123,6 +135,7 @@ jobs:
             src/components/wiki/WikiPagePreviewPanel.test.tsx \
             src/contexts/SmartReadContext.test.tsx \
             src/lib/pdfQuoteAnchor.test.ts \
+            src/layouts/MainLayout.test.tsx \
             src/services/agentWorkspaceApi.test.ts \
             src/services/acquisitionApi.test.ts \
             src/services/agentSidebarApi.test.ts \
@@ -140,5 +153,7 @@ jobs:
             src/pages/Dialog.test.tsx \
             src/pages/KnowledgeBase.test.tsx \
             src/pages/LiteratureAcquisition.test.tsx \
+            src/pages/Projects.test.tsx \
             src/pages/UploadBatchSummary.test.tsx \
+            src/pages/writing/FiguresTables.test.tsx \
             src/pages/WikiWorkbench.test.tsx

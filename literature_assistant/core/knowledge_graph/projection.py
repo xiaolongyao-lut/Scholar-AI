@@ -15,10 +15,12 @@ from literature_assistant.core.knowledge_graph.citation_models import CitesCandi
 from literature_assistant.core.knowledge_graph.models import (
     EvidenceGraphEdge,
     EvidenceGraphNode,
+    EvidenceGraphNodeType,
     EvidenceGraphPayload,
     EvidenceGraphProvenanceRef,
     EvidenceGraphRelation,
     EvidenceGraphScope,
+    EvidenceGraphStatus,
     default_evidence_graph_direction,
 )
 from literature_assistant.core.wiki.graph import (
@@ -29,7 +31,7 @@ from literature_assistant.core.wiki.graph import (
 )
 
 
-_NODE_KIND_MAP: dict[str, str] = {
+_NODE_KIND_MAP: dict[str, EvidenceGraphNodeType] = {
     "source": "source",
     "material": "source",
     "paper": "paper",
@@ -181,7 +183,7 @@ def build_evidence_graph_from_smart_read_session(
         raw_refs = message.get("evidence_refs")
         if not isinstance(raw_refs, list):
             continue
-        question_id = latest_question_id
+        answer_question_id = latest_question_id
         for ref_index, raw_ref in enumerate(raw_refs):
             if not isinstance(raw_ref, Mapping):
                 continue
@@ -234,12 +236,12 @@ def build_evidence_graph_from_smart_read_session(
                     metadata={"source_store": "smart_read_session"},
                 ),
             )
-            if question_id is not None and question_id in nodes_by_id:
+            if answer_question_id is not None and answer_question_id in nodes_by_id:
                 _put_edge(
                     edges_by_id,
                     EvidenceGraphEdge(
-                        id=f"edge:{_stable_token(question_id + ':derived_from:' + chunk_node_id)}",
-                        source=question_id,
+                        id=f"edge:{_stable_token(answer_question_id + ':derived_from:' + chunk_node_id)}",
+                        source=answer_question_id,
                         target=chunk_node_id,
                         relation="derived_from",
                         direction="directed",
@@ -574,7 +576,13 @@ def _shape_answer_argument_graph(
                 label=_compact_label(label, fallback="Paper"),
                 type="paper",
                 status="trusted",
-                provenance_refs=[EvidenceGraphProvenanceRef(material_id=material_id)],
+                provenance_refs=[
+                    EvidenceGraphProvenanceRef(
+                        material_id=material_id,
+                        bbox=None,
+                        bbox_unit=None,
+                    )
+                ],
                 metadata={
                     "source_store": "citation_candidate_store",
                     "projection_scope": "answer_turn",
@@ -638,10 +646,12 @@ def _edge_from_wiki(edge: WikiGraphEdge) -> EvidenceGraphEdge:
     metadata.setdefault("source_store", "wiki")
     metadata.setdefault("wiki_edge_type", edge.edge_type.value)
     provenance_refs = _provenance_refs_from_adapted(adapted.source_ref, adapted.evidence_refs, metadata)
-    status = "trusted" if provenance_refs else "candidate"
+    status: EvidenceGraphStatus = "trusted" if provenance_refs else "candidate"
     if not provenance_refs:
         metadata.setdefault("trust_reason", "missing_provenance")
     relation = _RELATION_MAP.get(adapted.relation, "related")
+    raw_updated_at = edge.metadata.get("updated_at")
+    updated_at = raw_updated_at if isinstance(raw_updated_at, str) else utc_now_iso()
     return EvidenceGraphEdge(
         id=edge.edge_id,
         source=edge.source_id,
@@ -652,20 +662,19 @@ def _edge_from_wiki(edge: WikiGraphEdge) -> EvidenceGraphEdge:
         confidence=adapted.confidence,
         provenance_refs=provenance_refs,
         created_by="wiki_graph",
-        updated_at=edge.metadata.get("updated_at") if isinstance(edge.metadata.get("updated_at"), str) else utc_now_iso(),
+        updated_at=updated_at,
         metadata=metadata,
     )
 
 
-def _node_type_from_kind(kind: str, adapted_type: str) -> str:
+def _node_type_from_kind(kind: str, adapted_type: str) -> EvidenceGraphNodeType:
     normalized = (kind or adapted_type or "").strip().lower()
     mapped = _NODE_KIND_MAP.get(normalized)
-    if mapped:
+    if mapped is not None:
         return mapped
-    if adapted_type == "material":
-        return "source"
-    if adapted_type in _NODE_KIND_MAP:
-        return adapted_type
+    adapted_mapped = _NODE_KIND_MAP.get(adapted_type)
+    if adapted_mapped is not None:
+        return adapted_mapped
     return "concept"
 
 

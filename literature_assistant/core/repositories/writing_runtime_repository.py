@@ -8,19 +8,32 @@ import json
 import os
 from pathlib import Path
 import sqlite3
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
-from db import (
-    backup_sqlite_database,
-    checkpoint_sqlite_wal,
-    collect_sqlite_health_report,
-    get_sqlite_database_stats,
-    json_dumps,
-    json_loads,
-    open_sqlite_connection,
-    restore_sqlite_database,
-    vacuum_sqlite_database,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.db import (
+        backup_sqlite_database,
+        checkpoint_sqlite_wal,
+        collect_sqlite_health_report,
+        get_sqlite_database_stats,
+        json_dumps,
+        json_loads,
+        open_sqlite_connection,
+        restore_sqlite_database,
+        vacuum_sqlite_database,
+    )
+else:
+    from db import (
+        backup_sqlite_database,
+        checkpoint_sqlite_wal,
+        collect_sqlite_health_report,
+        get_sqlite_database_stats,
+        json_dumps,
+        json_loads,
+        open_sqlite_connection,
+        restore_sqlite_database,
+        vacuum_sqlite_database,
+    )
 
 
 class WritingRuntimeRepository:
@@ -626,7 +639,7 @@ class WritingRuntimeRepository:
             os.fsync(handle.fileno())
         return prepared
 
-    def replace_transcript(self, session_id: str, events: list[Mapping[str, Any]]) -> None:
+    def replace_transcript(self, session_id: str, events: Sequence[Mapping[str, Any]]) -> None:
         transcript_path = self._transcript_path(session_id)
         transcript_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = transcript_path.with_suffix(".jsonl.tmp")

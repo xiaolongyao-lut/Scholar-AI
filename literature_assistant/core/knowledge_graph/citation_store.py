@@ -38,6 +38,7 @@ from literature_assistant.core.knowledge_graph.citation_lifecycle import (
     CitationSourceRevisionMismatch,
     CitationSourceRevisionOperation,
     CitationSourceRevisionPreflight,
+    CitationSourceRevisionRole,
     citation_source_revision_impact_fingerprint,
     make_lifecycle_event,
     require_freshness_transition,
@@ -358,7 +359,7 @@ class CitationCandidateStore:
                 """,
                 (
                     completed.status,
-                    _timestamp(completed.completed_at),
+                    _capture_completion_timestamp(completed),
                     completed.model_dump_json(exclude_none=False),
                     completed.receipt_id,
                 ),
@@ -411,7 +412,7 @@ class CitationCandidateStore:
                 """,
                 (
                     completed.status,
-                    _timestamp(completed.completed_at),
+                    _capture_completion_timestamp(completed),
                     completed.model_dump_json(exclude_none=False),
                     completed.receipt_id,
                 ),
@@ -480,7 +481,7 @@ class CitationCandidateStore:
                 """,
                 (
                     failed.status,
-                    _timestamp(failed.completed_at),
+                    _capture_completion_timestamp(failed),
                     failed.model_dump_json(exclude_none=False),
                     failed.receipt_id,
                 ),
@@ -1038,6 +1039,11 @@ class CitationCandidateStore:
             candidate = _row_to_candidate(row)
             if candidate.project_id != project_id:
                 raise CitationStoreCorruptionError("citation candidate project identity drifted")
+            role: CitationSourceRevisionRole
+            comparisons: tuple[
+                tuple[CitationSourceRevisionMismatch, str, str],
+                ...,
+            ]
             if candidate.source_material_id == current_identity.material_id:
                 role = "source"
                 effective_identity = self._latest_revalidated_identity(
@@ -1092,7 +1098,7 @@ class CitationCandidateStore:
                     ),
                 )
             mismatches = tuple(
-                cast(CitationSourceRevisionMismatch, field_name)
+                field_name
                 for field_name, stored, current in comparisons
                 if stored != current
             )
@@ -1381,24 +1387,24 @@ class CitationCandidateStore:
             (created_mentions if created else reused_mentions).append(canonical.mention_id)
 
         for candidate in candidates:
-            mention = mention_by_input_id.get(candidate.mention_id)
-            if mention is None:
+            stored_mention = mention_by_input_id.get(candidate.mention_id)
+            if stored_mention is None:
                 row = connection.execute(
                     "SELECT raw_json FROM citation_mentions WHERE mention_id = ?",
                     (candidate.mention_id,),
                 ).fetchone()
                 if row is not None:
-                    mention = _row_to_mention(row)
-            if mention is None:
+                    stored_mention = _row_to_mention(row)
+            if stored_mention is None:
                 raise CitationStoreConflictError(
                     "cites candidate references a citation mention that is not stored"
                 )
             canonical_candidate = candidate
-            if candidate.mention_id != mention.mention_id:
+            if candidate.mention_id != stored_mention.mention_id:
                 canonical_candidate = candidate.model_copy(
-                    update={"mention_id": mention.mention_id}
+                    update={"mention_id": stored_mention.mention_id}
                 )
-            _require_candidate_matches_mention(canonical_candidate, mention)
+            _require_candidate_matches_mention(canonical_candidate, stored_mention)
             stored, created = self._store_candidate(
                 connection,
                 canonical_candidate,
@@ -1953,6 +1959,15 @@ def _pagination(limit: int, offset: int) -> tuple[int, int]:
 
 def _timestamp(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def _capture_completion_timestamp(receipt: CitationCaptureReceipt) -> str:
+    completed_at = receipt.completed_at
+    if completed_at is None:
+        raise CitationStoreCorruptionError(
+            "terminal citation capture receipt is missing completed_at"
+        )
+    return _timestamp(completed_at)
 
 
 def _transition_timestamp(

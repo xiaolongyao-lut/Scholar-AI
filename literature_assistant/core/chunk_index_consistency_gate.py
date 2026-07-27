@@ -5,9 +5,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from chunk_hashing import CHUNK_HASH_VERSION, SUPPORTED_CHUNK_HASH_VERSIONS, compute_chunk_hashes
+if TYPE_CHECKING:
+    from literature_assistant.core.chunk_hashing import (
+        CHUNK_HASH_VERSION,
+        SUPPORTED_CHUNK_HASH_VERSIONS,
+        compute_chunk_hashes,
+    )
+else:
+    from chunk_hashing import CHUNK_HASH_VERSION, SUPPORTED_CHUNK_HASH_VERSIONS, compute_chunk_hashes
 
 
 IndexConsistencyStatus = Literal[

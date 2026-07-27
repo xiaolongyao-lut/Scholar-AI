@@ -17,15 +17,34 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from recovery_autopilot_policy import AutopilotPolicy, AutopilotStatus, PolicyApprovalGate
-from recovery_recommendation_engine import RecoveryRecommendation, RecoveryActionType
-from recovery_execution_engine import RecoveryExecutionEngine, ExecutionResult
-from recovery_console import RecoveryConsole, InspectionContext
-from datetime_utils import utc_now_iso_z
-from canonical_event_store import CanonicalEventStore
-from memory_fact_store import MemoryFactStore
+if TYPE_CHECKING:
+    from literature_assistant.core.canonical_event_store import CanonicalEventStore
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.memory_fact_store import MemoryFactStore
+    from literature_assistant.core.recovery_autopilot_policy import (
+        AutopilotPolicy,
+        AutopilotStatus,
+        PolicyApprovalGate,
+    )
+    from literature_assistant.core.recovery_console import InspectionContext, RecoveryConsole
+    from literature_assistant.core.recovery_execution_engine import (
+        ExecutionResult,
+        RecoveryExecutionEngine,
+    )
+    from literature_assistant.core.recovery_recommendation_engine import (
+        RecoveryActionType,
+        RecoveryRecommendation,
+    )
+else:
+    from canonical_event_store import CanonicalEventStore
+    from datetime_utils import utc_now_iso_z
+    from memory_fact_store import MemoryFactStore
+    from recovery_autopilot_policy import AutopilotPolicy, AutopilotStatus, PolicyApprovalGate
+    from recovery_console import InspectionContext, RecoveryConsole
+    from recovery_execution_engine import ExecutionResult, RecoveryExecutionEngine
+    from recovery_recommendation_engine import RecoveryActionType, RecoveryRecommendation
 
 logger = logging.getLogger(__name__)
 
@@ -250,8 +269,10 @@ class AutopilotExecutor:
         
         try:
             # Create execution context
-            context = self.console.create_inspection_context(
+            context = InspectionContext(
+                session_id=recommendation.session_id,
                 job_id=recommendation.job_id,
+                aggregate_id=recommendation.job_id,
                 correlation_id=f"autopilot-{execution_id}",
             )
             
@@ -437,6 +458,9 @@ class AutopilotExecutor:
         Returns:
             Dictionary with status information
         """
+        last_completed_at = (
+            self.completed_executions[-1].completed_at if self.completed_executions else None
+        )
         return {
             "policy_id": self.policy.policy_id,
             "policy_name": self.policy.policy_name,
@@ -447,8 +471,6 @@ class AutopilotExecutor:
             "failed_executions": sum(1 for e in self.completed_executions if not e.success),
             "active_executions": len(self.active_executions),
             "last_execution_timestamp": (
-                self.completed_executions[-1].completed_at.isoformat()
-                if self.completed_executions
-                else None
+                last_completed_at.isoformat() if last_completed_at is not None else None
             ),
         }

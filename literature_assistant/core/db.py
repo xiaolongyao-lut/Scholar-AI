@@ -10,7 +10,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-from project_paths import generated_path
+from literature_assistant.core.project_paths import generated_path
 
 
 def resolve_sqlite_path(env_var: str, default_filename: str, base_dir: Path | None = None) -> Path:
@@ -50,7 +50,7 @@ def json_loads(value: Any, default: Any = None) -> Any:
     return json.loads(value)
 
 
-def closing_sqlite(db_path: str | Path):
+def closing_sqlite(db_path: str | Path) -> closing[sqlite3.Connection]:
     """Open a SQLite connection inside a closing() wrapper."""
     return closing(open_sqlite_connection(db_path))
 

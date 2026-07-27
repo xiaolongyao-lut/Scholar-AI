@@ -29,14 +29,18 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from project_paths import runtime_state_path
-from evolution.state_machine import evaluate_transition
-from models.evolution import (
-    CandidateStatus,
-    ExperienceCandidate,
-)
+from literature_assistant.core.project_paths import runtime_state_path
+if TYPE_CHECKING:
+    from literature_assistant.core.evolution.state_machine import evaluate_transition
+    from literature_assistant.core.models.evolution import (
+        CandidateStatus,
+        ExperienceCandidate,
+    )
+else:
+    from evolution.state_machine import evaluate_transition
+    from models.evolution import CandidateStatus, ExperienceCandidate
 
 DEFAULT_DB_FILENAME = "evolution_candidates.sqlite3"
 

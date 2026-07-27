@@ -15,24 +15,42 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-try:
-    from pdf_backends import (
+from ._pymupdf_dynamic import (
+    new_pymupdf_matrix,
+    new_pymupdf_rect,
+    open_pymupdf_document,
+    pymupdf_rect_area,
+    transform_pymupdf_rect,
+)
+
+if TYPE_CHECKING:
+    from literature_assistant.core.pdf_backends import (
         PDFParserProvenance,
         StructuredBlock,
         get_pdf_backend,
         parse_pdf_with_provenance,
     )
-    from pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed
-    from pdf_backends.pymupdf_backend import PyMuPDFBackend
-except ImportError:  # pragma: no cover — only triggered in misconfigured envs
-    StructuredBlock = None  # type: ignore[assignment]
-    PDFParserProvenance = None  # type: ignore[assignment]
-    get_pdf_backend = None  # type: ignore[assignment]
-    parse_pdf_with_provenance = None  # type: ignore[assignment]
-    apply_pdf_ocr_if_needed = None  # type: ignore[assignment]
-    PyMuPDFBackend = None  # type: ignore[assignment]
+    from literature_assistant.core.pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed
+    from literature_assistant.core.pdf_backends.pymupdf_backend import PyMuPDFBackend
+else:
+    try:
+        from pdf_backends import (
+            PDFParserProvenance,
+            StructuredBlock,
+            get_pdf_backend,
+            parse_pdf_with_provenance,
+        )
+        from pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed
+        from pdf_backends.pymupdf_backend import PyMuPDFBackend
+    except ImportError:  # pragma: no cover — only triggered in misconfigured envs
+        StructuredBlock = None  # type: ignore[assignment]
+        PDFParserProvenance = None  # type: ignore[assignment]
+        get_pdf_backend = None  # type: ignore[assignment]
+        parse_pdf_with_provenance = None  # type: ignore[assignment]
+        apply_pdf_ocr_if_needed = None  # type: ignore[assignment]
+        PyMuPDFBackend = None  # type: ignore[assignment]
 
 
 __all__ = [
@@ -1090,21 +1108,26 @@ def _normalized_formula_display_bbox(
     try:
         import pymupdf
 
-        page_rect = pymupdf.Rect(page.rect)
-        display_rect = pymupdf.Rect(raw_rect) * page.rotation_matrix
-        page_width = float(page_rect.width)
-        page_height = float(page_rect.height)
+        page_rect = new_pymupdf_rect(pymupdf, page.rect)
+        display_rect = transform_pymupdf_rect(
+            new_pymupdf_rect(pymupdf, raw_rect),
+            page.rotation_matrix,
+        )
+        page_width = float(getattr(page_rect, "width"))
+        page_height = float(getattr(page_rect, "height"))
         if page_width <= 0.0 or page_height <= 0.0:
             return None
-        left = max(float(page_rect.x0), float(display_rect.x0) - 3.0)
-        top = max(float(page_rect.y0), float(display_rect.y0) - 2.0)
-        right = min(float(page_rect.x1), float(display_rect.x1) + 3.0)
-        bottom = min(float(page_rect.y1), float(display_rect.y1) + 2.0)
+        page_x0 = float(getattr(page_rect, "x0"))
+        page_y0 = float(getattr(page_rect, "y0"))
+        left = max(page_x0, float(getattr(display_rect, "x0")) - 3.0)
+        top = max(page_y0, float(getattr(display_rect, "y0")) - 2.0)
+        right = min(float(getattr(page_rect, "x1")), float(getattr(display_rect, "x1")) + 3.0)
+        bottom = min(float(getattr(page_rect, "y1")), float(getattr(display_rect, "y1")) + 2.0)
         if right <= left or bottom <= top:
             return None
         normalized = (
-            round((left - float(page_rect.x0)) / page_width, 6),
-            round((top - float(page_rect.y0)) / page_height, 6),
+            round((left - page_x0) / page_width, 6),
+            round((top - page_y0) / page_height, 6),
             round((right - left) / page_width, 6),
             round((bottom - top) / page_height, 6),
         )
@@ -1248,7 +1271,7 @@ def _scan_pymupdf_formula_candidates(source_path: Path) -> tuple[PdfFormulaCandi
 
     candidates: list[PdfFormulaCandidate] = []
     try:
-        with pymupdf.open(str(source_path)) as document:
+        with open_pymupdf_document(pymupdf, str(source_path)) as document:
             text_flags = int(getattr(pymupdf, "TEXTFLAGS_DICT", 0))
             image_flag = int(getattr(pymupdf, "TEXT_PRESERVE_IMAGES", 4))
             text_flags &= ~image_flag
@@ -1532,7 +1555,7 @@ def formula_candidates_from_chunks(
             continue
         raw_unit = chunk.get("bbox_unit")
         unit = str(getattr(raw_unit, "value", raw_unit) or "").strip().casefold()
-        if unit not in {"", "normalized_ratio"}:
+        if unit != "normalized_ratio":
             continue
         bbox = _coerce_normalized_formula_bbox(chunk.get("bbox"))
         if bbox is None:
@@ -1564,7 +1587,7 @@ def _formula_chunk_bbox(chunk: Mapping[str, Any]) -> tuple[float, float, float, 
 
     raw_unit = chunk.get("bbox_unit")
     unit = str(getattr(raw_unit, "value", raw_unit) or "").strip().casefold()
-    if unit not in {"", "normalized_ratio"}:
+    if unit != "normalized_ratio":
         return None
     return _coerce_normalized_formula_bbox(chunk.get("bbox"))
 
@@ -2081,8 +2104,14 @@ def _rect_from_normalized_bbox(page: Any, bbox: list[float]) -> Any | None:
         if width <= 0.0 or height <= 0.0:
             return None
         x, y, w, h = bbox
-        rect = pymupdf.Rect(x * width, y * height, (x + w) * width, (y + h) * height)
-        if rect.get_area() <= 0:
+        rect = new_pymupdf_rect(
+            pymupdf,
+            x * width,
+            y * height,
+            (x + w) * width,
+            (y + h) * height,
+        )
+        if pymupdf_rect_area(rect) <= 0:
             return None
         return rect
     except (ImportError, TypeError, ValueError, AttributeError):
@@ -2163,7 +2192,11 @@ def _render_caption_crop_asset(
     try:
         import pymupdf
 
-        pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False, clip=clip)
+        pixmap = page.get_pixmap(
+            matrix=new_pymupdf_matrix(pymupdf, 2, 2),
+            alpha=False,
+            clip=clip,
+        )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         pixmap.save(str(output_path))
         return output_path.is_file()
@@ -2244,7 +2277,10 @@ def _extract_pymupdf_visual_blocks(
 
     if project_data_root is None:
         try:
-            from project_paths import project_data_path
+            if TYPE_CHECKING:
+                from literature_assistant.core.project_paths import project_data_path
+            else:
+                from project_paths import project_data_path
 
             project_data_root = project_data_path(str(project_id))
         except (OSError, RuntimeError, ValueError) as exc:
@@ -2257,7 +2293,7 @@ def _extract_pymupdf_visual_blocks(
     blocks: list[StructuredBlock] = []
 
     try:
-        with pymupdf.open(str(source_path)) as doc:
+        with open_pymupdf_document(pymupdf, str(source_path)) as doc:
             for page_index, page in enumerate(doc, start=1):
                 page_dict = page.get_text("dict", sort=True)
                 raw_blocks = page_dict.get("blocks") if isinstance(page_dict, dict) else None
@@ -2282,6 +2318,8 @@ def _extract_pymupdf_visual_blocks(
                             page_raster_bboxes.append(bbox)
                     if block_type == 1 and bbox is not None and _is_plausible_visual_block(bbox, page.rect):
                         image_bytes = raw_block.get("image")
+                        if not isinstance(image_bytes, (bytes, bytearray)):
+                            continue
                         asset = _browser_image_asset(image_bytes, raw_block.get("ext"))
                         if asset is None:
                             continue
@@ -2514,12 +2552,13 @@ def _extract_document_content(filename: str, raw: bytes) -> str:
             import io
             try:
                 import pymupdf  # PyMuPDF (fitz)
-                doc = pymupdf.open(stream=raw, filetype="pdf")
-                pages = []
-                for page in doc:
-                    pages.append(page.get_text())
-                content = "\n\n".join(pages)
-                doc.close()
+                with open_pymupdf_document(
+                    pymupdf,
+                    stream=raw,
+                    filetype="pdf",
+                ) as pdf_document:
+                    pages = [page.get_text() for page in pdf_document.pages()]
+                    content = "\n\n".join(pages)
             except ImportError:
                 try:
                     from PyPDF2 import PdfReader
@@ -2534,8 +2573,12 @@ def _extract_document_content(filename: str, raw: bytes) -> str:
         try:
             import io
             from docx import Document as DocxDocument
-            doc = DocxDocument(io.BytesIO(raw))
-            content = "\n".join(para.text for para in doc.paragraphs if para.text.strip())
+            docx_document = DocxDocument(io.BytesIO(raw))
+            content = "\n".join(
+                paragraph.text
+                for paragraph in docx_document.paragraphs
+                if paragraph.text.strip()
+            )
         except ImportError:
             content = f"[DOCX 文件: {filename}，需安装 python-docx 才能提取文本]"
         except (OSError, RuntimeError, TypeError, ValueError) as exc:

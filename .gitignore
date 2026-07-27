@@ -138,6 +138,11 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Root Python distribution build outputs.
+/build/
+/dist/
+/*.egg-info/
+
 # JavaScript/frontend outputs.
 /package-lock.json
 /frontend/node_modules/
@@ -156,7 +161,10 @@ htmlcov/
 !/frontend/src/components/chat/relatedFigures.test.ts
 !/frontend/src/components/DiscussionPanel/DiscussionPanel.evidencePills.test.tsx
 !/frontend/src/components/evidence/EvidencePill.test.tsx
+!/frontend/src/layouts/MainLayout.test.tsx
+!/frontend/src/pages/Projects.test.tsx
 !/frontend/src/pages/UploadBatchSummary.test.tsx
+!/frontend/src/pages/writing/FiguresTables.test.tsx
 !/frontend/src/components/graph/DimensionGraphViewer.test.tsx
 !/frontend/src/components/graph/GraphPayloadViewer.test.tsx
 !/frontend/src/components/graph/semanticReviewSpec.test.ts
@@ -261,6 +269,7 @@ htmlcov/
 !/tests/test_start_launchers_security.py
 !/tests/test_tolf_rag_fusion.py
 !/tests/test_wiki_crud.py
+!/tests/test_wiki_bbox_unit_contract.py
 !/tests/test_ci_visibility_contract.py
 !/tests/test_wiki_export.py
 !/tests/test_wiki_permissions.py
@@ -293,6 +302,12 @@ htmlcov/
 !/tests/test_agent_bridge_router.py
 !/tests/test_agent_workspace_router.py
 !/tests/test_agent_workspace_mcp_contract.py
+!/tests/test_claim_cache_contracts.py
+!/tests/test_g_layer_async_contracts.py
+!/tests/test_pipeline_task_contracts.py
+!/tests/test_runtime_boundary_contracts.py
+!/tests/test_writing_projects_api.py
+!/tests/test_writing_resource_persistence.py
 !/tests/test_writing_runtime_persistence.py
 !/tests/test_export_docx_contract.py
 !/tests/test_writing_submission_export.py

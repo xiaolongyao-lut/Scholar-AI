@@ -8,12 +8,23 @@ import os
 import time
 import logging
 import concurrent.futures
-from typing import List, Dict, Any, Optional, Callable
+from typing import TYPE_CHECKING, List, Dict, Any, Optional, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from modules.paper_processor import PaperProcessor, PaperProcessReport
-from modules.configuration_manager import get_configuration, set_configuration_path
+if TYPE_CHECKING:
+    from literature_assistant.core.modules.configuration_manager import (
+        ConfigurationManager,
+        get_configuration,
+        set_configuration_path,
+    )
+    from literature_assistant.core.modules.paper_processor import (
+        PaperProcessReport,
+        PaperProcessor,
+    )
+else:
+    from modules.configuration_manager import get_configuration, set_configuration_path
+    from modules.paper_processor import PaperProcessReport, PaperProcessor
 
 logger = logging.getLogger("scoring_system.parallel")
 
@@ -31,7 +42,11 @@ class ParallelBatchResult:
     num_workers: int = 1
 
 
-def _worker_process_paper(file_path: str, paper_id: str, config_path: Optional[str] = None) -> Any:
+def _worker_process_paper(
+    file_path: str,
+    paper_id: str,
+    config_path: Optional[str] = None,
+) -> PaperProcessReport | Dict[str, str]:
     """
     Module-level worker function for ProcessPoolExecutor compatibility.
     Re-initializes the environment in child processes.
@@ -42,7 +57,10 @@ def _worker_process_paper(file_path: str, paper_id: str, config_path: Optional[s
             set_configuration_path(config_path)
         
         # Ensure classifiers are registered in new process context
-        import modules.evidence_classifier # Non-top-level import to avoid circular dependencies
+        if TYPE_CHECKING:
+            import literature_assistant.core.modules.evidence_classifier
+        else:
+            import modules.evidence_classifier  # Non-top-level import to avoid circular dependencies
         
         config = get_configuration()
         processor = PaperProcessor(config)
@@ -55,7 +73,7 @@ def _worker_process_paper(file_path: str, paper_id: str, config_path: Optional[s
 class ParallelPaperProcessor:
     """Orchestrates parallel paper processing with determinism and error isolation"""
 
-    def __init__(self, config=None):
+    def __init__(self, config: "ConfigurationManager | None" = None) -> None:
         """Initialize parallel processor"""
         self.config = config or get_configuration()
         self.config_path = self.config.config_path
@@ -135,7 +153,7 @@ class ParallelPaperProcessor:
                 }
                 
                 # Pre-allocate results list for determinism
-                results_indexed: List[Optional[Any]] = [None] * total_tasks
+                results_indexed: List[Optional[PaperProcessReport | Dict[str, str]]] = [None] * total_tasks
                 completed_count = 0
                 
                 for future in concurrent.futures.as_completed(future_to_task):
@@ -178,7 +196,12 @@ class ParallelPaperProcessor:
             num_workers=actual_workers
         )
 
-    def _handle_result(self, result: Any, reports: List[PaperProcessReport], failed_items: List[Dict[str, Any]]):
+    def _handle_result(
+        self,
+        result: object,
+        reports: List[PaperProcessReport],
+        failed_items: List[Dict[str, Any]],
+    ) -> None:
         """Helper to separate success from failure results"""
         if isinstance(result, dict) and "error" in result:
             failed_items.append(result)

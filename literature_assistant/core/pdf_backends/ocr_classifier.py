@@ -6,13 +6,91 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol, TypeGuard
 
 __all__ = ["OCRNeedClassifier", "PDFClassificationResult", "PDFStrategy"]
 
 logger = logging.getLogger("OCRNeedClassifier")
 
 PDFStrategy = Literal["text_only", "ocr_only", "hybrid"]
+
+
+class _CloseableDocument(Protocol):
+    """Minimum resource capability required after opening a PDF."""
+
+    def close(self) -> None: ...
+
+
+class _PageSequenceDocument(_CloseableDocument, Protocol):
+    """PyMuPDF document capabilities consumed by classification."""
+
+    def __len__(self) -> int: ...
+
+    def __getitem__(self, index: int) -> object: ...
+
+
+def _is_page_sequence_document(value: object) -> TypeGuard[_PageSequenceDocument]:
+    """Narrow an opened value to the sequence API consumed below."""
+
+    return (
+        callable(getattr(value, "__len__", None))
+        and callable(getattr(value, "__getitem__", None))
+        and callable(getattr(value, "close", None))
+    )
+
+
+def _is_closeable_document(value: object) -> TypeGuard[_CloseableDocument]:
+    """Narrow an opened value before any later capability validation."""
+
+    return callable(getattr(value, "close", None))
+
+
+def _call_runtime_method(
+    target: object,
+    method_name: str,
+    *args: object,
+    **kwargs: object,
+) -> object:
+    """Call one method exposed by PyMuPDF's partially typed runtime surface."""
+
+    method = getattr(target, method_name, None)
+    if not callable(method):
+        raise TypeError(f"PyMuPDF object must expose callable {method_name}")
+    result: object = method(*args, **kwargs)
+    return result
+
+
+def _require_sequence(value: object, *, label: str) -> list[object] | tuple[object, ...]:
+    """Validate a PyMuPDF sequence before indexing or iterating over it."""
+
+    if not isinstance(value, (list, tuple)):
+        raise TypeError(f"PyMuPDF {label} must be a list or tuple")
+    return value
+
+
+def _require_number(value: object, *, label: str) -> float:
+    """Validate and normalize one PyMuPDF geometry value."""
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"PyMuPDF {label} must be numeric")
+    return float(value)
+
+
+def _geometry_value(target: object, attribute: str) -> float:
+    """Read one validated numeric attribute from a PyMuPDF rectangle."""
+
+    return _require_number(
+        getattr(target, attribute, None),
+        label=f"rectangle {attribute}",
+    )
+
+
+def _optional_dimension(value: object) -> float:
+    """Return a non-negative image dimension, or zero for malformed metadata."""
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0.0
+    return max(0.0, float(value))
 
 
 @dataclass(frozen=True)
@@ -107,42 +185,67 @@ class OCRNeedClassifier:
                 "Install it with: pip install pymupdf"
             ) from exc
 
-        doc = pymupdf.open(str(pdf_path))
+        opened_document = _call_runtime_method(pymupdf, "open", str(pdf_path))
+        if not _is_closeable_document(opened_document):
+            raise TypeError("PyMuPDF open() must return a closeable document")
+        document = opened_document
         text_pages = []
         ocr_pages = []
         mixed_pages = []
         total_text_chars = 0
 
         try:
-            for page_num in range(len(doc)):
-                page = doc[page_num]
+            if not _is_page_sequence_document(document):
+                raise TypeError(
+                    "PyMuPDF open() must return a closeable page-sequence document"
+                )
+            for page_num in range(len(document)):
+                page = document[page_num]
 
                 # 1. 提取文本
-                text = page.get_text().strip()
+                raw_text = _call_runtime_method(page, "get_text")
+                if not isinstance(raw_text, str):
+                    raise TypeError("PyMuPDF Page.get_text() must return a string")
+                text = raw_text.strip()
                 text_len = len(text)
                 total_text_chars += text_len
 
                 # 2. 分析图片
-                images = page.get_images(full=True)
-                page_rect = page.rect
-                page_area = page_rect.width * page_rect.height
+                images = _require_sequence(
+                    _call_runtime_method(page, "get_images", full=True),
+                    label="Page.get_images() result",
+                )
+                page_rect = getattr(page, "rect", None)
+                page_area = _geometry_value(page_rect, "width") * _geometry_value(
+                    page_rect,
+                    "height",
+                )
 
                 # 计算图片占比
                 image_area = 0.0
                 if images and page_area > 0:
-                    for img in images:
+                    for raw_image in images:
+                        image = _require_sequence(raw_image, label="image metadata")
+                        if not image:
+                            continue
                         # img 格式：(xref, smask, width, height, bpc, colorspace, ...)
                         try:
                             # 尝试获取图片在页面上的实际矩形
-                            img_rects = page.get_image_rects(img[0])
+                            img_rects = _require_sequence(
+                                _call_runtime_method(page, "get_image_rects", image[0]),
+                                label="Page.get_image_rects() result",
+                            )
                             if img_rects:
                                 for rect in img_rects:
-                                    image_area += abs(rect.width * rect.height)
+                                    image_area += abs(
+                                        _geometry_value(rect, "width")
+                                        * _geometry_value(rect, "height")
+                                    )
                         except Exception:
                             # Fallback：使用图片原始尺寸估算
-                            if len(img) >= 4:
-                                img_width = img[2] if img[2] else 0
-                                img_height = img[3] if img[3] else 0
+                            if len(image) >= 4:
+                                img_width = _optional_dimension(image[2])
+                                img_height = _optional_dimension(image[3])
                                 image_area += img_width * img_height * 0.5  # 保守估计
 
                 image_ratio = image_area / page_area if page_area > 0 else 0.0
@@ -161,10 +264,11 @@ class OCRNeedClassifier:
                     # 中等文本密度 + 小图片 → 文本型
                     text_pages.append(page_num)
         finally:
-            doc.close()
+            document.close()
 
         # 4. 确定整体策略
         total_pages = len(text_pages) + len(ocr_pages) + len(mixed_pages)
+        strategy: PDFStrategy
         if not ocr_pages and not mixed_pages:
             strategy = "text_only"
         elif not text_pages and not mixed_pages:

@@ -7584,6 +7584,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -9525,6 +9527,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -10548,6 +10552,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -11065,6 +11071,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -11185,13 +11193,27 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
                 "type": "null"
               }
             ],
+            "description": "Four-number PDF region interpreted only by its explicit bbox_unit.",
             "title": "Bbox"
+          },
+          "bbox_unit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PdfBboxUnit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit coordinate unit for bbox; missing or unknown units remove the bbox."
           },
           "caption": {
             "title": "Caption",
@@ -11911,6 +11933,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -13947,6 +13971,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -15200,6 +15226,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -15280,6 +15308,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -15448,6 +15478,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -16429,13 +16461,27 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
                 "type": "null"
               }
             ],
+            "description": "Four-number PDF region interpreted only by its explicit bbox_unit.",
             "title": "Bbox"
+          },
+          "bbox_unit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PdfBboxUnit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit coordinate unit for bbox; missing or unknown units remove the bbox."
           },
           "caption": {
             "title": "Caption",
@@ -16553,6 +16599,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -23783,6 +23831,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -25127,12 +25177,15 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
                 "type": "null"
               }
             ],
+            "description": "Four-number PDF region interpreted only by its explicit bbox_unit.",
             "title": "Bbox"
           },
           "bbox_unit": {
@@ -25143,7 +25196,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Explicit coordinate unit for bbox; missing or unknown units remove the bbox."
           },
           "caption": {
             "title": "Caption",
@@ -25505,6 +25559,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -26974,6 +27030,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -31395,6 +31453,8 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
@@ -32515,13 +32575,27 @@
                 "items": {
                   "type": "number"
                 },
+                "maxItems": 4,
+                "minItems": 4,
                 "type": "array"
               },
               {
                 "type": "null"
               }
             ],
+            "description": "Four-number PDF region interpreted only by its explicit bbox_unit.",
             "title": "Bbox"
+          },
+          "bbox_unit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PdfBboxUnit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit coordinate unit for bbox; missing or unknown units remove the bbox."
           },
           "caption": {
             "anyOf": [
@@ -38204,7 +38278,7 @@
   "info": {
     "description": "学术研究智能体 — 论文分析、知识管理与智能写作辅助平台",
     "title": "Scholar AI API",
-    "version": "1.3.0"
+    "version": "0.1.9.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -38284,7 +38358,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Agent Tools",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -39662,7 +39740,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Api Annotations Material Id",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -39700,7 +39782,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Api Annotations Material Id",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -39748,7 +39834,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Annotations Material Id",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -39797,7 +39887,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Api Annotations Material Id",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -39889,7 +39983,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Annotations Material Id Last Page",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -39938,7 +40036,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Api Annotations Material Id Last Page",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -39988,7 +40090,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Api Annotations Material Id Notes",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -40102,7 +40208,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Api Annotations Material Id Notes Note Id",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -40159,7 +40269,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Api Annotations Material Id Notes Note Id",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -45101,9 +45215,16 @@
             "name": "project_id",
             "required": false,
             "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "description": "Filter by project",
-              "title": "Project Id",
-              "type": "string"
+              "title": "Project Id"
             }
           },
           {
@@ -45112,9 +45233,16 @@
             "name": "material_id",
             "required": false,
             "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "description": "Filter by material",
-              "title": "Material Id",
-              "type": "string"
+              "title": "Material Id"
             }
           },
           {
@@ -53709,7 +53837,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Post Inspiration Reload",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -54528,7 +54662,7 @@
     },
     "/pipeline/task/{task_id}/cancel": {
       "post": {
-        "description": "Mark a queued/running pipeline task as cancelled and stop its async wrapper.",
+        "description": "Cancel queued work immediately or request cancellation of active work.",
         "operationId": "post_pipeline_task_task_id_cancel",
         "parameters": [
           {
@@ -54577,9 +54711,16 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "title": "Req",
-                "type": "object"
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Req"
               }
             }
           }
@@ -54623,9 +54764,16 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "title": "Req",
-                "type": "object"
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Req"
               }
             }
           }
@@ -54978,7 +55126,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Recovery Health",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"

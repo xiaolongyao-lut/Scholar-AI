@@ -18,12 +18,25 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
-from _atomic_io import atomic_write_json
-from chunk_hashing import CHUNK_HASH_VERSION, compute_chunk_hashes, compute_chunk_store_version
-from project_paths import generated_path
-from rag_structured_sibling_inclusion import DEFAULT_STRUCTURED_TYPES, select_structured_siblings
+if TYPE_CHECKING:
+    from literature_assistant.core._atomic_io import atomic_write_json
+    from literature_assistant.core.chunk_hashing import (
+        CHUNK_HASH_VERSION,
+        compute_chunk_hashes,
+        compute_chunk_store_version,
+    )
+    from literature_assistant.core.project_paths import generated_path
+    from literature_assistant.core.rag_structured_sibling_inclusion import (
+        DEFAULT_STRUCTURED_TYPES,
+        select_structured_siblings,
+    )
+else:
+    from _atomic_io import atomic_write_json
+    from chunk_hashing import CHUNK_HASH_VERSION, compute_chunk_hashes, compute_chunk_store_version
+    from project_paths import generated_path
+    from rag_structured_sibling_inclusion import DEFAULT_STRUCTURED_TYPES, select_structured_siblings
 
 
 EXTRACTOR_CONTRACT_VERSION = "scholar-ai-extractor-contract/v1"
@@ -389,9 +402,12 @@ def is_evidence_window_shadow_enabled() -> bool:
     """
 
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
 
-        return is_enabled("rag_evidence_window_shadow")
+        return bool(is_enabled("rag_evidence_window_shadow"))
     except (ImportError, KeyError):
         raw = os.getenv("RAG_EVIDENCE_WINDOW_SHADOW_ENABLED", "")
         return str(raw).strip().lower() in {"1", "true", "yes", "on", "y", "shadow"}
@@ -1213,7 +1229,13 @@ def _chunk_hash(chunk: Mapping[str, Any], *, material_id_hint: str | None = None
     existing = str(chunk.get("chunk_hash") or "").strip()
     if len(existing) == 64:
         return existing
-    return compute_chunk_hashes(chunk, material_id_hint=material_id_hint)["chunk_hash"]
+    hashes: object = compute_chunk_hashes(chunk, material_id_hint=material_id_hint)
+    if not isinstance(hashes, Mapping):
+        raise TypeError("chunk hash provider must return a mapping")
+    chunk_hash = hashes.get("chunk_hash")
+    if not isinstance(chunk_hash, str) or len(chunk_hash) != 64:
+        raise ValueError("chunk hash provider returned an invalid chunk_hash")
+    return chunk_hash
 
 
 def _chunk_by_id(chunks: Sequence[Mapping[str, Any]]) -> dict[str, Mapping[str, Any]]:

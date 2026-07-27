@@ -26,7 +26,7 @@ class SemanticCache:
         cache_dir: str | Path = "output/semantic_cache",
         threshold: float = 0.985,
         dimension: int = 1024
-    ):
+    ) -> None:
         self.cache_dir = Path(cache_dir)
         self.threshold = threshold
         self.dimension = dimension
@@ -40,7 +40,7 @@ class SemanticCache:
         self._responses: list[dict[str, Any]] = []
         self._load()
 
-    def _load(self):
+    def _load(self) -> None:
         """同步加载缓存到内存"""
         if self.vec_file.exists() and self.data_file.exists():
             try:
@@ -52,7 +52,7 @@ class SemanticCache:
                 logger.warning(f"语义缓存加载失败，将重建: {e}")
                 self._reset()
 
-    def _reset(self):
+    def _reset(self) -> None:
         self._vectors = np.zeros((0, self.dimension), dtype=np.float32)
         self._responses = []
 
@@ -92,7 +92,7 @@ class SemanticCache:
         response: str,
         corpus_hash: str,
         model_id: str
-    ):
+    ) -> None:
         """原子化更新缓存记录"""
         new_entry = {
             "query": query_text,

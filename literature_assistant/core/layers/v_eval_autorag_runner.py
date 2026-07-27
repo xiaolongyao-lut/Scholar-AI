@@ -269,7 +269,21 @@ class AutoRAGRunner:
         # ── 模式 3: material_pack ──
         elif material_pack and isinstance(material_pack, dict):
             source_mode = "material_pack"
-            materials = material_pack.get("materials", material_pack.get("chunks", []))
+            raw_materials: object = material_pack.get(
+                "materials", material_pack.get("chunks", [])
+            )
+            if not isinstance(raw_materials, list):
+                raise ValueError("material_pack materials/chunks must be a list")
+            materials: List[Dict[str, Any]] = []
+            for item_index, raw_item in enumerate(raw_materials):
+                if not isinstance(raw_item, dict):
+                    raise ValueError(
+                        "material_pack items must be objects "
+                        f"(invalid item at index {item_index})"
+                    )
+                materials.append(
+                    {str(key): value for key, value in raw_item.items()}
+                )
             logger.info("Generating eval set from material_pack (%d items)", len(materials))
             for idx, item in enumerate(materials):
                 text = item.get("text", item.get("content", ""))

@@ -20,9 +20,17 @@ Caller (``mcp_runtime.client_manager``) bubbles these up as
 
 from __future__ import annotations
 
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
 
-from credential_store import CredentialNotFoundError, RuntimeCredentialStore
+if TYPE_CHECKING or __package__ == "literature_assistant.core.mcp_runtime":
+    from literature_assistant.core.credential_store import (
+        CredentialNotFoundError,
+        RuntimeCredentialStore,
+    )
+    from literature_assistant.core.models.credentials import RuntimeCredential
+else:
+    from credential_store import CredentialNotFoundError, RuntimeCredentialStore
+    from models.credentials import RuntimeCredential
 
 
 class CredentialRefError(RuntimeError):
@@ -97,7 +105,12 @@ class McpCredentialEnvResolver:
 
     # ------------------------------------------------------------------ helpers
 
-    def _fetch_enabled(self, credential_id: str, *, target: str):
+    def _fetch_enabled(
+        self,
+        credential_id: str,
+        *,
+        target: str,
+    ) -> RuntimeCredential:
         try:
             cred = self._store.get_internal(credential_id)
         except CredentialNotFoundError as exc:

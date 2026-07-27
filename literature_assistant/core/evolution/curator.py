@@ -30,14 +30,22 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from models.evolution import CandidateStatus, ExperienceCandidate
-from evolution.config import is_curator_llm_judge_enabled
-from evolution.curator_llm_judge import (
-    JudgeVerdict,
-    call_curator_llm_judge,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.evolution.config import is_curator_llm_judge_enabled
+    from literature_assistant.core.evolution.curator_llm_judge import (
+        JudgeVerdict,
+        call_curator_llm_judge,
+    )
+    from literature_assistant.core.models.evolution import (
+        CandidateStatus,
+        ExperienceCandidate,
+    )
+else:
+    from evolution.config import is_curator_llm_judge_enabled
+    from evolution.curator_llm_judge import JudgeVerdict, call_curator_llm_judge
+    from models.evolution import CandidateStatus, ExperienceCandidate
 
 
 def _utc_now_iso() -> str:

@@ -3,21 +3,35 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
-from db import (
-    backup_sqlite_database,
-    checkpoint_sqlite_wal,
-    collect_sqlite_health_report,
-    get_sqlite_database_stats,
-    json_dumps,
-    json_loads,
-    open_sqlite_connection,
-    restore_sqlite_database,
-    vacuum_sqlite_database,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.db import (
+        backup_sqlite_database,
+        checkpoint_sqlite_wal,
+        collect_sqlite_health_report,
+        get_sqlite_database_stats,
+        json_dumps,
+        json_loads,
+        open_sqlite_connection,
+        restore_sqlite_database,
+        vacuum_sqlite_database,
+    )
+else:
+    from db import (
+        backup_sqlite_database,
+        checkpoint_sqlite_wal,
+        collect_sqlite_health_report,
+        get_sqlite_database_stats,
+        json_dumps,
+        json_loads,
+        open_sqlite_connection,
+        restore_sqlite_database,
+        vacuum_sqlite_database,
+    )
 
 
 RESOURCE_STATE_KEYS = (
@@ -263,6 +277,7 @@ class WritingResourceRepository:
                     material_id TEXT,
                     source_page INTEGER,
                     bbox TEXT,
+                    bbox_unit TEXT,
                     asset_path TEXT NOT NULL,
                     width INTEGER,
                     height INTEGER,
@@ -273,6 +288,7 @@ class WritingResourceRepository:
                 )
                 """
             )
+            self._ensure_figure_assets_bbox_unit_column(conn)
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS drafts (
@@ -331,6 +347,17 @@ class WritingResourceRepository:
             conn.commit()
         finally:
             conn.close()
+
+    @staticmethod
+    def _ensure_figure_assets_bbox_unit_column(conn: sqlite3.Connection) -> None:
+        """Add explicit bbox provenance storage to databases created before v0.1.9.1."""
+
+        columns = {
+            str(row["name"])
+            for row in conn.execute("PRAGMA table_info(figure_assets)").fetchall()
+        }
+        if "bbox_unit" not in columns:
+            conn.execute("ALTER TABLE figure_assets ADD COLUMN bbox_unit TEXT")
 
     def has_data(self) -> bool:
         """Return True when any project rows already exist."""
@@ -470,9 +497,9 @@ class WritingResourceRepository:
                 """
                 INSERT INTO figure_assets (
                     asset_id, project_id, kind, caption, numbering, material_id,
-                    source_page, bbox, asset_path, width, height, format,
+                    source_page, bbox, bbox_unit, asset_path, width, height, format,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -484,6 +511,7 @@ class WritingResourceRepository:
                         None if payload.get("material_id") in (None, "") else str(payload.get("material_id")),
                         payload.get("source_page"),
                         json_dumps(payload.get("bbox")) if payload.get("bbox") is not None else None,
+                        None if payload.get("bbox_unit") in (None, "") else str(payload.get("bbox_unit")),
                         str(payload.get("asset_path")),
                         payload.get("width"),
                         payload.get("height"),
@@ -624,6 +652,7 @@ class WritingResourceRepository:
                     "material_id": row["material_id"],
                     "source_page": row["source_page"],
                     "bbox": json_loads(row["bbox"], default=None) if row["bbox"] is not None else None,
+                    "bbox_unit": row["bbox_unit"],
                     "asset_path": row["asset_path"],
                     "width": row["width"],
                     "height": row["height"],

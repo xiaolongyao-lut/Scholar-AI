@@ -38,9 +38,12 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from project_paths import runtime_state_path
+if TYPE_CHECKING:
+    from literature_assistant.core.project_paths import runtime_state_path
+else:
+    from project_paths import runtime_state_path
 
 # Defaults can be overridden via env if needed; conservative for desktop use.
 DEFAULT_TTL_SECONDS = 24 * 60 * 60  # 24h
@@ -291,11 +294,13 @@ class DiscussionTaskStore:
             raise ValueError("limit must be between 1 and 500")
         summaries: list[dict[str, Any]] = []
         for snapshot in self.list_runs(include_archived=include_archived):
-            config = snapshot.get("config") if isinstance(snapshot.get("config"), dict) else {}
+            raw_config = snapshot.get("config")
+            config = raw_config if isinstance(raw_config, dict) else {}
             if str(config.get("project_id") or "").strip() != normalized_project_id:
                 continue
             agents = config.get("agents") or config.get("agent_configs")
             live_traces = snapshot.get("live_traces")
+            evidence_top_k = config.get("evidence_top_k")
             summary = {
                 "run_id": str(snapshot.get("run_id") or ""),
                 "project_id": normalized_project_id,
@@ -307,7 +312,7 @@ class DiscussionTaskStore:
                 "updated_at_epoch": float(snapshot.get("updated_at") or 0.0),
                 "agent_count": len(agents) if isinstance(agents, list) else 0,
                 "evidence_mode": str(config.get("evidence_mode") or ""),
-                "evidence_top_k": int(config.get("evidence_top_k") or 0) if isinstance(config.get("evidence_top_k"), int) else 0,
+                "evidence_top_k": int(evidence_top_k or 0) if isinstance(evidence_top_k, int) else 0,
                 "live_trace_count": len(live_traces) if isinstance(live_traces, list) else 0,
                 "event_log_length": int(snapshot.get("event_log_length") or 0),
                 "event_log_start_index": int(snapshot.get("event_log_start_index") or 0),
@@ -520,23 +525,36 @@ class DiscussionTaskStore:
             return None
         if not isinstance(created_at, (int, float)) or not isinstance(updated_at, (int, float)):
             return None
-        config = raw_entry.get("config") if isinstance(raw_entry.get("config"), dict) else None
-        live_traces = raw_entry.get("live_traces") if isinstance(raw_entry.get("live_traces"), list) else []
-        event_log = raw_entry.get("event_log") if isinstance(raw_entry.get("event_log"), list) else []
+        raw_config = raw_entry.get("config")
+        config = raw_config if isinstance(raw_config, dict) else None
+        raw_live_traces = raw_entry.get("live_traces")
+        live_traces = raw_live_traces if isinstance(raw_live_traces, list) else []
+        raw_event_log = raw_entry.get("event_log")
+        event_log = raw_event_log if isinstance(raw_event_log, list) else []
+        raw_current_stage = raw_entry.get("current_stage")
+        raw_current_turn_index = raw_entry.get("current_turn_index")
+        raw_synthesis = raw_entry.get("synthesis")
+        raw_final_result = raw_entry.get("final_result")
+        raw_error = raw_entry.get("error")
+        raw_event_log_start_index = raw_entry.get("event_log_start_index")
         return _StoreEntry(
             run_id=run_id,
             state=state,
             created_at=float(created_at),
             updated_at=float(updated_at),
             config=config,
-            current_stage=raw_entry.get("current_stage") if isinstance(raw_entry.get("current_stage"), str) else None,
-            current_turn_index=raw_entry.get("current_turn_index") if isinstance(raw_entry.get("current_turn_index"), int) else 0,
+            current_stage=raw_current_stage if isinstance(raw_current_stage, str) else None,
+            current_turn_index=raw_current_turn_index if isinstance(raw_current_turn_index, int) else 0,
             live_traces=[item for item in live_traces if isinstance(item, dict)],
-            synthesis=raw_entry.get("synthesis") if isinstance(raw_entry.get("synthesis"), dict) else None,
-            final_result=raw_entry.get("final_result") if isinstance(raw_entry.get("final_result"), dict) else None,
-            error=raw_entry.get("error") if isinstance(raw_entry.get("error"), str) else None,
+            synthesis=raw_synthesis if isinstance(raw_synthesis, dict) else None,
+            final_result=raw_final_result if isinstance(raw_final_result, dict) else None,
+            error=raw_error if isinstance(raw_error, str) else None,
             event_log=[item for item in event_log if isinstance(item, dict)],
-            event_log_start_index=raw_entry.get("event_log_start_index") if isinstance(raw_entry.get("event_log_start_index"), int) else 0,
+            event_log_start_index=(
+                raw_event_log_start_index
+                if isinstance(raw_event_log_start_index, int)
+                else 0
+            ),
         )
 
     def _snapshot(self, entry: _StoreEntry) -> dict[str, Any]:
@@ -570,7 +588,7 @@ _singleton_lock = threading.Lock()
 
 def discussion_task_store_path() -> Path:
     """Return the D17 durable task-store path under runtime state."""
-    return runtime_state_path("discussion", "task_store.json")
+    return Path(runtime_state_path("discussion", "task_store.json"))
 
 
 def get_discussion_task_store() -> DiscussionTaskStore:

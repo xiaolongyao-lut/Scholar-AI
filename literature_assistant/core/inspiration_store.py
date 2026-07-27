@@ -8,9 +8,12 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, List
 
-from project_paths import runtime_state_path
+if TYPE_CHECKING:
+    from literature_assistant.core.project_paths import runtime_state_path
+else:
+    from project_paths import runtime_state_path
 
 
 DEFAULT_DB_FILENAME = "inspiration_store.sqlite3"
@@ -107,7 +110,7 @@ class InspirationStore:
         query: str = "",
         notes: str = "",
         source: str = "generated",
-        tags: list[str] | tuple[str, ...] | None = None,
+        tags: List[str] | tuple[str, ...] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> SavedInspirationRecord:
         """Persist one spark and return the stored record.
@@ -224,7 +227,7 @@ class InspirationStore:
         query: str | None = None,
         notes: str | None = None,
         source: str | None = None,
-        tags: list[str] | tuple[str, ...] | None = None,
+        tags: List[str] | tuple[str, ...] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> SavedInspirationRecord | None:
         """Update an existing saved spark and return the fresh record."""

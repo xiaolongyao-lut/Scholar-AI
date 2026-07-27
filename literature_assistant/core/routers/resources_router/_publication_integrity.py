@@ -9,25 +9,46 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from acquisition.models import ImportPublicationEvidence
-from chunk_fts_index import (
-    CHUNK_FTS_INDEX_SCHEMA_VERSION,
-    ChunkFtsIntegrityError,
-    ChunkFtsIntegrityReport,
-    inspect_chunk_fts_index,
-)
-from chunk_hashing import (
-    CHUNK_HASH_VERSION,
-    SUPPORTED_CHUNK_HASH_VERSIONS,
-    compute_chunk_hashes,
-    compute_chunk_store_version,
-)
-from material_revision import MaterialRevisionStore, MaterialRevisionStoreError
-from material_revision_sync import material_revision_db_path
+if TYPE_CHECKING:
+    from literature_assistant.core.acquisition.models import ImportPublicationEvidence
+    from literature_assistant.core.chunk_fts_index import (
+        CHUNK_FTS_INDEX_SCHEMA_VERSION,
+        ChunkFtsIntegrityError,
+        ChunkFtsIntegrityReport,
+        inspect_chunk_fts_index,
+    )
+    from literature_assistant.core.chunk_hashing import (
+        CHUNK_HASH_VERSION,
+        SUPPORTED_CHUNK_HASH_VERSIONS,
+        compute_chunk_hashes,
+        compute_chunk_store_version,
+    )
+    from literature_assistant.core.material_revision import (
+        MaterialRevisionStore,
+        MaterialRevisionStoreError,
+    )
+    from literature_assistant.core.material_revision_sync import material_revision_db_path
+    from literature_assistant.core.routers import resources_router as _rr
+else:
+    from acquisition.models import ImportPublicationEvidence
+    from chunk_fts_index import (
+        CHUNK_FTS_INDEX_SCHEMA_VERSION,
+        ChunkFtsIntegrityError,
+        ChunkFtsIntegrityReport,
+        inspect_chunk_fts_index,
+    )
+    from chunk_hashing import (
+        CHUNK_HASH_VERSION,
+        SUPPORTED_CHUNK_HASH_VERSIONS,
+        compute_chunk_hashes,
+        compute_chunk_store_version,
+    )
+    from material_revision import MaterialRevisionStore, MaterialRevisionStoreError
+    from material_revision_sync import material_revision_db_path
 
-import routers.resources_router as _rr
+    import routers.resources_router as _rr
 
 
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,255}$")

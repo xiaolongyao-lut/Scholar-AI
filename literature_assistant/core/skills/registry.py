@@ -14,7 +14,7 @@ class SkillRegistry:
     and safe concurrent access patterns.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize empty registry."""
         self._skills: dict[str, SkillDescriptor] = {}
 

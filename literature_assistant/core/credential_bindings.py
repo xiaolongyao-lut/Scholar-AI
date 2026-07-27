@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import Iterable, Literal
+from typing import TYPE_CHECKING, Iterable, Literal
 
 
 OwnerKind = Literal["mcp_server", "skill"]
@@ -67,7 +67,10 @@ class CredentialBindingIndex:
         McpServerConfig (credential-reference maps accessible), never the
         public masked shape.
         """
-        from models.mcp import McpTransport
+        if TYPE_CHECKING:
+            from literature_assistant.core.models.mcp import McpTransport
+        else:
+            from models.mcp import McpTransport
 
         new_mcp: list[CredentialBinding] = []
         for cfg in mcp_configs:

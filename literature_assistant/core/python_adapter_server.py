@@ -12,79 +12,125 @@ import sys
 import time
 import re
 import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from literature_assistant.bootstrap import configure_runtime_paths
+from literature_assistant.version import __version__
 
 mimetypes.add_type("text/javascript", ".mjs")
 mimetypes.add_type("text/javascript", ".js")
 
 configure_runtime_paths()
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from starlette.routing import Match
+from starlette.responses import Response
 try:
     import uvicorn
 except ImportError:
     pass
 
-from project_paths import (
-    FRONTEND_ROOT,
-    runtime_state_path,
-    ensure_directory,
-    api_port_file_path,
-    desktop_runtime_file_path,
-)
-from runtime_descriptor import delete_desktop_runtime_descriptor, refresh_desktop_runtime_descriptor
-from terminal_output import install_color_console_formatter, terminal_print
-
-# Import configuration and models
-from datetime_utils import to_iso_z
-from models import *
-from models.common import ErrorCode, ErrorDetail, ErrorResponse
+if TYPE_CHECKING:
+    from literature_assistant.core.canonical_event_store import CanonicalEventStore
+    from literature_assistant.core.datetime_utils import to_iso_z
+    from literature_assistant.core.layers.m_layer_mempalace_memory import (
+        MempalaceMemoryAdapter,
+        load_mempalace_settings,
+    )
+    from literature_assistant.core.memory_fact_store import MemoryFactStore
+    from literature_assistant.core.models import *
+    from literature_assistant.core.models.common import ErrorCode, ErrorDetail, ErrorResponse
+    from literature_assistant.core.project_paths import (
+        FRONTEND_ROOT,
+        api_port_file_path,
+        desktop_runtime_file_path,
+        ensure_directory,
+        runtime_state_path,
+    )
+    from literature_assistant.core.recovery_console import RecoveryConsole
+    from literature_assistant.core.recovery_metrics_exporter import get_recovery_metrics_collector
+    from literature_assistant.core.recovery_telemetry import get_recovery_telemetry
+    from literature_assistant.core.runtime_descriptor import (
+        delete_desktop_runtime_descriptor,
+        refresh_desktop_runtime_descriptor,
+    )
+    from literature_assistant.core.terminal_output import (
+        install_color_console_formatter,
+        terminal_print,
+    )
+else:
+    from canonical_event_store import CanonicalEventStore
+    from datetime_utils import to_iso_z
+    from memory_fact_store import MemoryFactStore
+    from models import *
+    from models.common import ErrorCode, ErrorDetail, ErrorResponse
+    from project_paths import (
+        FRONTEND_ROOT,
+        api_port_file_path,
+        desktop_runtime_file_path,
+        ensure_directory,
+        runtime_state_path,
+    )
+    from recovery_console import RecoveryConsole
+    from recovery_metrics_exporter import get_recovery_metrics_collector
+    from recovery_telemetry import get_recovery_telemetry
+    from runtime_descriptor import (
+        delete_desktop_runtime_descriptor,
+        refresh_desktop_runtime_descriptor,
+    )
+    from terminal_output import install_color_console_formatter, terminal_print
 
 # Module availability flags
-try:
-    from integrated_pipeline import run_pipeline
+if TYPE_CHECKING:
+    from literature_assistant.core.integrated_pipeline import run_pipeline
+    from literature_assistant.core.skills.service import get_writing_skill_service
+    from literature_assistant.core.writing_resources import get_writing_resource_store
+    from literature_assistant.core.writing_runtime import get_writing_runtime
+
     HAS_PIPELINE = True
-except ImportError:
-    HAS_PIPELINE = False
-
-try:
-    from skills.service import get_writing_skill_service
     HAS_SKILLS = True
-except ImportError:
-    HAS_SKILLS = False
-
-try:
-    from writing_runtime import get_writing_runtime
     HAS_RUNTIME = True
-except ImportError:
-    HAS_RUNTIME = False
-
-try:
-    from writing_resources import get_writing_resource_store
     HAS_RESOURCES = True
-except ImportError:
-    HAS_RESOURCES = False
-
-try:
-    from layers.m_layer_mempalace_memory import MempalaceMemoryAdapter, load_mempalace_settings
     HAS_MEMPALACE = True
-except ImportError:
-    HAS_MEMPALACE = False
+else:
+    try:
+        from integrated_pipeline import run_pipeline
+        HAS_PIPELINE = True
+    except ImportError:
+        HAS_PIPELINE = False
 
-# Core recovery components
-from recovery_console import RecoveryConsole
-from memory_fact_store import MemoryFactStore
-from canonical_event_store import CanonicalEventStore
-from recovery_metrics_exporter import get_recovery_metrics_collector
-from recovery_telemetry import get_recovery_telemetry
+    try:
+        from skills.service import get_writing_skill_service
+        HAS_SKILLS = True
+    except ImportError:
+        HAS_SKILLS = False
+
+    try:
+        from writing_runtime import get_writing_runtime
+        HAS_RUNTIME = True
+    except ImportError:
+        HAS_RUNTIME = False
+
+    try:
+        from writing_resources import get_writing_resource_store
+        HAS_RESOURCES = True
+    except ImportError:
+        HAS_RESOURCES = False
+
+    try:
+        from layers.m_layer_mempalace_memory import (
+            MempalaceMemoryAdapter,
+            load_mempalace_settings,
+        )
+        HAS_MEMPALACE = True
+    except ImportError:
+        HAS_MEMPALACE = False
 
 # Logger setup
 # Stdout + rotating file. Disk log so 4xx/5xx survives after the terminal
@@ -208,7 +254,12 @@ def _resolve_local_api_capability_file() -> Path:
     explicit_path = os.environ.get(_CAPABILITY_FILE_ENV, "").strip()
     if explicit_path:
         return Path(explicit_path).expanduser().resolve()
-    return runtime_state_path("api-capability.json")
+    runtime_path: object = runtime_state_path("api-capability.json")
+    if isinstance(runtime_path, Path):
+        return runtime_path
+    if isinstance(runtime_path, (str, os.PathLike)):
+        return Path(runtime_path)
+    raise TypeError("runtime_state_path returned an invalid path")
 
 
 _LOCAL_API_CAPABILITY_FILE = _resolve_local_api_capability_file()
@@ -424,6 +475,8 @@ def _capability_error_response() -> JSONResponse:
             error=ErrorDetail(
                 code="LOCAL_API_CAPABILITY_REQUIRED",
                 message="缺少本地 API capability token",
+                field=None,
+                trace_id=None,
             )
         ).model_dump(),
     )
@@ -462,7 +515,7 @@ OPENAPI_TAGS = [
 ]
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI):
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Audit fix 2026-05-19 (S4): three routers share the /api/discussion prefix
     # (discussion_router, discussion_advanced_router, model_config_router's
     # inner discussion_router). Today their paths don't overlap, but FastAPI
@@ -530,11 +583,19 @@ async def _lifespan(app: FastAPI):
                 _keyring_exc
             )
 
-    from evolution.scheduler import get_curator_scheduler
+    if TYPE_CHECKING:
+        from literature_assistant.core.evolution.scheduler import get_curator_scheduler
+    else:
+        from evolution.scheduler import get_curator_scheduler
     curator_scheduler = get_curator_scheduler()
     curator_scheduler.start()
     try:
-        from routers.resources_router import recover_uploaded_document_extraction_jobs
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.resources_router import (
+                recover_uploaded_document_extraction_jobs,
+            )
+        else:
+            from routers.resources_router import recover_uploaded_document_extraction_jobs
 
         upload_recovery = await recover_uploaded_document_extraction_jobs()
         if upload_recovery.get("recovered") or upload_recovery.get("paused"):
@@ -546,7 +607,12 @@ async def _lifespan(app: FastAPI):
         yield
     finally:
         try:
-            from routers.resources_router import shutdown_uploaded_document_extraction_jobs
+            if TYPE_CHECKING:
+                from literature_assistant.core.routers.resources_router import (
+                    shutdown_uploaded_document_extraction_jobs,
+                )
+            else:
+                from routers.resources_router import shutdown_uploaded_document_extraction_jobs
 
             upload_shutdown = await shutdown_uploaded_document_extraction_jobs()
             if upload_shutdown.get("interrupted") or upload_shutdown.get("completed_commit"):
@@ -647,7 +713,7 @@ def write_api_port_file(port: int) -> None:
 app = FastAPI(
     title="Scholar AI API",
     description="学术研究智能体 — 论文分析、知识管理与智能写作辅助平台",
-    version="1.3.0",
+    version=__version__,
     generate_unique_id_function=_stable_operation_id,
     openapi_tags=OPENAPI_TAGS,
     separate_input_output_schemas=False,
@@ -672,7 +738,10 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 @app.middleware("http")
-async def local_api_capability_middleware(request: Request, call_next):
+async def local_api_capability_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     """Require a process-local token for backend API routes.
 
     Why:
@@ -697,7 +766,10 @@ async def local_api_capability_middleware(request: Request, call_next):
 
 
 @app.middleware("http")
-async def request_tracing_middleware(request: Request, call_next):
+async def request_tracing_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     """Inject trace ID and processing time into every response."""
     trace_id = request.headers.get("X-Request-Id", uuid.uuid4().hex[:16])
     request.state.trace_id = trace_id
@@ -714,7 +786,10 @@ async def request_tracing_middleware(request: Request, call_next):
 # ---------------------------------------------------------------------------
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+async def validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
     """Return structured error for Pydantic validation failures."""
     first = exc.errors()[0] if exc.errors() else {}
     field = " -> ".join(str(l) for l in first.get("loc", [])) if first else None
@@ -737,7 +812,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 @app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """Wrap FastAPI HTTPException into unified ErrorResponse."""
     code_map = {
         400: ErrorCode.BAD_REQUEST,
@@ -761,6 +836,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             error=ErrorDetail(
                 code=code_map.get(exc.status_code, ErrorCode.INTERNAL_ERROR),
                 message=str(exc.detail),
+                field=None,
                 trace_id=trace_id,
             )
         ).model_dump(),
@@ -768,7 +844,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 
 @app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Catch-all for unhandled exceptions — never leak stack traces."""
     logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
     return JSONResponse(
@@ -777,6 +853,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
             error=ErrorDetail(
                 code=ErrorCode.INTERNAL_ERROR,
                 message="服务器内部错误，请稍后重试",
+                field=None,
                 trace_id=getattr(request.state, "trace_id", None),
             )
         ).model_dump(),
@@ -821,7 +898,10 @@ async def report_client_error(request: Request) -> dict[str, Any]:
     return {"ok": True, "trace_id": trace_id}
 
 @app.middleware("http")
-async def recovery_observability_middleware(request: Request, call_next):
+async def recovery_observability_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     """Record real HTTP metrics for all recovery endpoints."""
     if not request.url.path.startswith("/recovery/"):
         return await call_next(request)
@@ -872,7 +952,7 @@ async def recovery_observability_middleware(request: Request, call_next):
         return response
 
 
-FRONTEND_DIST_DIR = FRONTEND_ROOT / "dist"
+FRONTEND_DIST_DIR: Path = FRONTEND_ROOT / "dist"
 FRONTEND_INDEX_FILE = FRONTEND_DIST_DIR / "index.html"
 FRONTEND_ASSETS_DIR = FRONTEND_DIST_DIR / "assets"
 _API_ROUTE_PREFIXES = (
@@ -920,7 +1000,7 @@ def _resolve_frontend_file(path: str) -> Path | None:
     if not normalized:
         return FRONTEND_INDEX_FILE if FRONTEND_INDEX_FILE.is_file() else None
 
-    candidate = (FRONTEND_DIST_DIR / normalized).resolve()
+    candidate: Path = (FRONTEND_DIST_DIR / normalized).resolve()
     try:
         candidate.relative_to(FRONTEND_DIST_DIR.resolve())
     except ValueError:
@@ -1006,9 +1086,9 @@ def _render_frontend_index_response() -> HTMLResponse:
 # Shared Service Providers
 # ===
 
-_memory_adapter_instance = None
+_memory_adapter_instance: MempalaceMemoryAdapter | None = None
 
-def get_memory_adapter() -> Any:
+def get_memory_adapter() -> MempalaceMemoryAdapter | None:
     """Return shared MemPalace adapter."""
     if not HAS_MEMPALACE: return None
     global _memory_adapter_instance
@@ -1045,7 +1125,10 @@ def get_pipeline_observer() -> Any:
     """Return shared pipeline observer (Logging + Metrics)."""
     global _observer_instance
     if _observer_instance is None:
-        from modules.container import create_default_container
+        if TYPE_CHECKING:
+            from literature_assistant.core.modules.container import create_default_container
+        else:
+            from modules.container import create_default_container
         container = create_default_container()
         _observer_instance = container.get("observer")
     return _observer_instance
@@ -1068,7 +1151,7 @@ async def health_check() -> dict[str, Any]:
     """Return adapter server system health state."""
     return {
         "status": "ok",
-        "version": "1.3.0",
+        "version": __version__,
         "timestamp": time.time(),
         "api_version": "v1",
         "modules": {
@@ -1096,11 +1179,6 @@ async def health_check() -> dict[str, Any]:
 # ===
 # Mount Modular Routers
 # ===
-from routers.pipeline_router import router as pipeline_router
-from routers.skills_router import router as skills_router
-from routers.resources_router import router as resources_router
-from routers.memory_router import compat_router as memory_compat_router
-from routers.memory_router import router as memory_router
 # NOTE (2026-05-12): `from routers.semantic_causal_router import router as semantic_causal_router`
 # removed — the referenced module was never committed (lived only as untracked
 # working-tree file; moved to stash@{?: integration-working-tree-hold-20260512}
@@ -1110,44 +1188,101 @@ from routers.memory_router import router as memory_router
 # (https://docs.python.org/3/reference/import.html). The semantic-causal feature
 # is intentionally out of alpha scope; restore this import together with the
 # router file in a future feature commit.
-from routers.runtime_router import router as runtime_router
-from routers.recovery_router import router as recovery_router
-from recovery_autopilot_router import router as autopilot_router
-from routers.inspiration_router import router as inspiration_router
-from routers.agent_router import router as agent_router
-from routers.chat_router import router as chat_router
-from routers.intelligent_chat_router import router as intelligent_chat_router
-from routers.acquisition_router import router as acquisition_router
-from routers.rerank_config_router import router as rerank_config_router
-from routers.diagnostics_router import router as diagnostics_router
-from routers.model_config_router import router as model_config_router
-from routers.llm_cost_router import router as llm_cost_router
-from routers.sampling_router import router as sampling_router
-from routers.volume_router import router as volume_router
-from routers.wiki_router import router as wiki_router
-from routers.export_router import router as export_router
-from routers.annotation_router import router as annotation_router
-from routers.discussion_router import router as discussion_router
-from routers.credentials_router import router as credentials_router
-from routers.settings_router import router as settings_router
-from routers.csl_styles_router import router as csl_styles_router
-from routers.discussion_advanced_router import router as discussion_advanced_router
-from routers.mcp_router import router as mcp_router
-from routers.mcp_installer_router import router as mcp_installer_router
-from routers.knowledge_router import router as knowledge_router
-from routers.graph_router import kg_router as kg_graph_router
-from routers.graph_router import router as graph_router
-from routers.evolution_router import router as evolution_router
-from routers.feature_flags_router import router as feature_flags_router
-from routers.pdf_backend_router import router as pdf_backend_router
-from routers.writing_router import router as writing_router
-from routers.evidence_router import router as evidence_router
-from routers.linter_router import router as linter_router
-from routers.agent_workspace_router import router as agent_workspace_router
-from routers.health_check_router import router as health_check_router
-from routers.zotero_health_router import router as zotero_health_router
-from routers.agent_bridge_router import router as agent_bridge_router
-from routers.reviewed_knowledge_router import router as reviewed_knowledge_router
+if TYPE_CHECKING:
+    from literature_assistant.core.routers.pipeline_router import router as pipeline_router
+    from literature_assistant.core.routers.skills_router import router as skills_router
+    from literature_assistant.core.routers.resources_router import router as resources_router
+    from literature_assistant.core.routers.memory_router import compat_router as memory_compat_router
+    from literature_assistant.core.routers.memory_router import router as memory_router
+    from literature_assistant.core.routers.runtime_router import router as runtime_router
+    # recovery_router imports this module for dependency accessors while type checking.
+    recovery_router: APIRouter
+    from literature_assistant.core.recovery_autopilot_router import router as autopilot_router
+    from literature_assistant.core.routers.inspiration_router import router as inspiration_router
+    from literature_assistant.core.routers.agent_router import router as agent_router
+    from literature_assistant.core.routers.chat_router import router as chat_router
+    from literature_assistant.core.routers.intelligent_chat_router import (
+        router as intelligent_chat_router,
+    )
+    from literature_assistant.core.routers.acquisition_router import router as acquisition_router
+    from literature_assistant.core.routers.rerank_config_router import router as rerank_config_router
+    from literature_assistant.core.routers.diagnostics_router import router as diagnostics_router
+    from literature_assistant.core.routers.model_config_router import router as model_config_router
+    from literature_assistant.core.routers.llm_cost_router import router as llm_cost_router
+    from literature_assistant.core.routers.sampling_router import router as sampling_router
+    from literature_assistant.core.routers.volume_router import router as volume_router
+    from literature_assistant.core.routers.wiki_router import router as wiki_router
+    from literature_assistant.core.routers.export_router import router as export_router
+    from literature_assistant.core.routers.annotation_router import router as annotation_router
+    from literature_assistant.core.routers.discussion_router import router as discussion_router
+    from literature_assistant.core.routers.credentials_router import router as credentials_router
+    from literature_assistant.core.routers.settings_router import router as settings_router
+    from literature_assistant.core.routers.csl_styles_router import router as csl_styles_router
+    from literature_assistant.core.routers.discussion_advanced_router import (
+        router as discussion_advanced_router,
+    )
+    from literature_assistant.core.routers.mcp_router import router as mcp_router
+    from literature_assistant.core.routers.mcp_installer_router import router as mcp_installer_router
+    from literature_assistant.core.routers.knowledge_router import router as knowledge_router
+    from literature_assistant.core.routers.graph_router import kg_router as kg_graph_router
+    from literature_assistant.core.routers.graph_router import router as graph_router
+    from literature_assistant.core.routers.evolution_router import router as evolution_router
+    from literature_assistant.core.routers.feature_flags_router import router as feature_flags_router
+    from literature_assistant.core.routers.pdf_backend_router import router as pdf_backend_router
+    from literature_assistant.core.routers.writing_router import router as writing_router
+    from literature_assistant.core.routers.evidence_router import router as evidence_router
+    from literature_assistant.core.routers.linter_router import router as linter_router
+    from literature_assistant.core.routers.agent_workspace_router import router as agent_workspace_router
+    from literature_assistant.core.routers.health_check_router import router as health_check_router
+    from literature_assistant.core.routers.zotero_health_router import router as zotero_health_router
+    from literature_assistant.core.routers.agent_bridge_router import router as agent_bridge_router
+    from literature_assistant.core.routers.reviewed_knowledge_router import (
+        router as reviewed_knowledge_router,
+    )
+else:
+    from routers.pipeline_router import router as pipeline_router
+    from routers.skills_router import router as skills_router
+    from routers.resources_router import router as resources_router
+    from routers.memory_router import compat_router as memory_compat_router
+    from routers.memory_router import router as memory_router
+    from routers.runtime_router import router as runtime_router
+    from routers.recovery_router import router as recovery_router
+    from recovery_autopilot_router import router as autopilot_router
+    from routers.inspiration_router import router as inspiration_router
+    from routers.agent_router import router as agent_router
+    from routers.chat_router import router as chat_router
+    from routers.intelligent_chat_router import router as intelligent_chat_router
+    from routers.acquisition_router import router as acquisition_router
+    from routers.rerank_config_router import router as rerank_config_router
+    from routers.diagnostics_router import router as diagnostics_router
+    from routers.model_config_router import router as model_config_router
+    from routers.llm_cost_router import router as llm_cost_router
+    from routers.sampling_router import router as sampling_router
+    from routers.volume_router import router as volume_router
+    from routers.wiki_router import router as wiki_router
+    from routers.export_router import router as export_router
+    from routers.annotation_router import router as annotation_router
+    from routers.discussion_router import router as discussion_router
+    from routers.credentials_router import router as credentials_router
+    from routers.settings_router import router as settings_router
+    from routers.csl_styles_router import router as csl_styles_router
+    from routers.discussion_advanced_router import router as discussion_advanced_router
+    from routers.mcp_router import router as mcp_router
+    from routers.mcp_installer_router import router as mcp_installer_router
+    from routers.knowledge_router import router as knowledge_router
+    from routers.graph_router import kg_router as kg_graph_router
+    from routers.graph_router import router as graph_router
+    from routers.evolution_router import router as evolution_router
+    from routers.feature_flags_router import router as feature_flags_router
+    from routers.pdf_backend_router import router as pdf_backend_router
+    from routers.writing_router import router as writing_router
+    from routers.evidence_router import router as evidence_router
+    from routers.linter_router import router as linter_router
+    from routers.agent_workspace_router import router as agent_workspace_router
+    from routers.health_check_router import router as health_check_router
+    from routers.zotero_health_router import router as zotero_health_router
+    from routers.agent_bridge_router import router as agent_bridge_router
+    from routers.reviewed_knowledge_router import router as reviewed_knowledge_router
 
 
 def _initialize_mcp_installer_runtime() -> None:
@@ -1157,15 +1292,29 @@ def _initialize_mcp_installer_runtime() -> None:
     remain in ignored runtime storage. The installer persists credential
     references, not sensitive plaintext values.
     """
-    from credential_bindings import get_credential_binding_index
-    from mcp_runtime.scan_registry import get_scan_registry
-    from mcp_runtime.template_installer import (
-        McpTemplateInstaller,
-        set_template_installer,
-    )
-    from project_paths import runtime_state_path
-    from routers.credentials_router import get_credential_store
-    from routers.mcp_router import get_mcp_server_store, get_mcp_tool_catalog
+    if TYPE_CHECKING:
+        from literature_assistant.core.credential_bindings import get_credential_binding_index
+        from literature_assistant.core.mcp_runtime.scan_registry import get_scan_registry
+        from literature_assistant.core.mcp_runtime.template_installer import (
+            McpTemplateInstaller,
+            set_template_installer,
+        )
+        from literature_assistant.core.project_paths import runtime_state_path
+        from literature_assistant.core.routers.credentials_router import get_credential_store
+        from literature_assistant.core.routers.mcp_router import (
+            get_mcp_server_store,
+            get_mcp_tool_catalog,
+        )
+    else:
+        from credential_bindings import get_credential_binding_index
+        from mcp_runtime.scan_registry import get_scan_registry
+        from mcp_runtime.template_installer import (
+            McpTemplateInstaller,
+            set_template_installer,
+        )
+        from project_paths import runtime_state_path
+        from routers.credentials_router import get_credential_store
+        from routers.mcp_router import get_mcp_server_store, get_mcp_tool_catalog
 
     install_root = runtime_state_path("mcp_installs")
     install_root.mkdir(parents=True, exist_ok=True)
@@ -1244,12 +1393,12 @@ async def serve_openapi_schema_when_enabled() -> JSONResponse:
 
 
 @app.get("/", include_in_schema=False)
-async def serve_frontend_root():
+async def serve_frontend_root() -> HTMLResponse:
     return _render_frontend_index_response()
 
 
 @app.get("/{full_path:path}", include_in_schema=False)
-async def serve_frontend_spa(full_path: str) -> FileResponse:
+async def serve_frontend_spa(full_path: str) -> Response:
     if _is_api_or_docs_path(full_path):
         raise HTTPException(status_code=404, detail=f"Route not found: /{full_path}")
 

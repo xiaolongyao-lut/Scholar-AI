@@ -6,12 +6,12 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any, Literal, Self
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
-try:  # pragma: no cover - package import path used by the running app.
+if TYPE_CHECKING:
     from literature_assistant.core.academic_english_resources import (
         academic_english_status,
         search_academic_english,
@@ -37,32 +37,59 @@ try:  # pragma: no cover - package import path used by the running app.
     from literature_assistant.core.provider_capabilities import ProviderCapabilityRecord
     from literature_assistant.core.routers import agent_bridge_router as _agent_bridge_router
     from literature_assistant.core.routers import wiki_router as _wiki_router
-except ImportError:  # pragma: no cover - flat import path used by legacy tests.
-    from academic_english_resources import (
-        academic_english_status,
-        search_academic_english,
-    )
-    from tolf_bridge_lexicon_store import (
-        get_bridge_lexicon_status,
-        load_bridge_lexicon_store,
-        search_bridge_lexicon,
-    )
-    from source_vault import (
-        SourceAssetRecord,
-        SourceChunkSearchResult,
-        SourceVault,
-        bounded_text,
-        build_source_vault_search_metadata,
-        build_source_vault_chunk_read_endpoint,
-        build_source_vault_chunk_ref_id,
-    )
-    import config_knowledge
-    import product_docs_knowledge
-    import skill_package_knowledge
-    from project_paths import output_path, runtime_state_path
-    from provider_capabilities import ProviderCapabilityRecord
-    import agent_bridge_router as _agent_bridge_router
-    import wiki_router as _wiki_router
+else:
+    try:  # pragma: no cover - package import path used by the running app.
+        from literature_assistant.core.academic_english_resources import (
+            academic_english_status,
+            search_academic_english,
+        )
+        from literature_assistant.core.tolf_bridge_lexicon_store import (
+            get_bridge_lexicon_status,
+            load_bridge_lexicon_store,
+            search_bridge_lexicon,
+        )
+        from literature_assistant.core.source_vault import (
+            SourceAssetRecord,
+            SourceChunkSearchResult,
+            SourceVault,
+            bounded_text,
+            build_source_vault_search_metadata,
+            build_source_vault_chunk_read_endpoint,
+            build_source_vault_chunk_ref_id,
+        )
+        from literature_assistant.core import config_knowledge
+        from literature_assistant.core import product_docs_knowledge
+        from literature_assistant.core import skill_package_knowledge
+        from literature_assistant.core.project_paths import output_path, runtime_state_path
+        from literature_assistant.core.provider_capabilities import ProviderCapabilityRecord
+        from literature_assistant.core.routers import agent_bridge_router as _agent_bridge_router
+        from literature_assistant.core.routers import wiki_router as _wiki_router
+    except ImportError:  # pragma: no cover - flat import path used by legacy tests.
+        from academic_english_resources import (
+            academic_english_status,
+            search_academic_english,
+        )
+        from tolf_bridge_lexicon_store import (
+            get_bridge_lexicon_status,
+            load_bridge_lexicon_store,
+            search_bridge_lexicon,
+        )
+        from source_vault import (
+            SourceAssetRecord,
+            SourceChunkSearchResult,
+            SourceVault,
+            bounded_text,
+            build_source_vault_search_metadata,
+            build_source_vault_chunk_read_endpoint,
+            build_source_vault_chunk_ref_id,
+        )
+        import config_knowledge
+        import product_docs_knowledge
+        import skill_package_knowledge
+        from project_paths import output_path, runtime_state_path
+        from provider_capabilities import ProviderCapabilityRecord
+        import agent_bridge_router as _agent_bridge_router
+        import wiki_router as _wiki_router
 
 
 router = APIRouter(prefix="/api/knowledge", tags=["Knowledge Workbench"])
@@ -112,6 +139,21 @@ _PROVIDER_PREFLIGHT_SCOPE = [
     "workspace_artifacts/runtime_state/provider-capabilities.json",
     "OpenAI-compatible forced tool_choice preflight",
 ]
+
+
+def _package_load_status(value: object) -> PackageLoadStatus:
+    """Normalize an external package status to the public response contract."""
+
+    normalized = str(value or "unknown").strip().lower()
+    if normalized == "loaded":
+        return "loaded"
+    if normalized == "missing":
+        return "missing"
+    if normalized == "disabled":
+        return "disabled"
+    if normalized == "stale":
+        return "stale"
+    return "unknown"
 _ACTUAL_LOADING_REQUIRED_CHECKS = [
     "artifact.schema.valid",
     "artifact.generated_at.utc_aware",
@@ -1091,7 +1133,7 @@ def _academic_english_package_projection() -> KnowledgePackageProjectionResponse
         kind="academic_english",
         title="Academic English",
         source_label="generated discourse habits and phrase resources",
-        status=load_status if load_status in {"loaded", "missing", "stale", "disabled", "unknown"} else "unknown",
+        status=_package_load_status(load_status),
         available=bool(status.get("available")) if isinstance(status, dict) else False,
         loaded=loaded,
         manifest_loaded=manifest_loaded,
@@ -2157,7 +2199,7 @@ def _provider_preflight_gate() -> KnowledgeRuntimeProviderPreflightResponse:
     try:
         payload = json.loads(artifact.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        validation_errors = [f"provider_preflight.json.readable: {exc.__class__.__name__}"]
+        read_validation_errors = [f"provider_preflight.json.readable: {exc.__class__.__name__}"]
         return KnowledgeRuntimeProviderPreflightResponse(
             status="blocked",
             evidence_level="contract_evidence",
@@ -2168,8 +2210,8 @@ def _provider_preflight_gate() -> KnowledgeRuntimeProviderPreflightResponse:
             record_count=0,
             evidence_scope=list(_PROVIDER_PREFLIGHT_SCOPE),
             evidence=[_PROVIDER_CAPABILITIES_ARTIFACT_REF],
-            missing=validation_errors,
-            validation_errors=validation_errors,
+            missing=read_validation_errors,
+            validation_errors=read_validation_errors,
             next_safe_local_actions=_next_safe_local_actions(_PROVIDER_PREFLIGHT_SCHEMA_ACTIONS),
             claim_boundary="Provider capability state exists, but cannot be parsed as JSON.",
         )

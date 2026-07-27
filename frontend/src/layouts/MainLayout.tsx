@@ -495,7 +495,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
   const _handleDeleteProject = useCallback(async () => {
     if (!selectedProjectId) return;
     const project = headerProjects.find(p => p.id === selectedProjectId);
-    if (!project || !window.confirm(`确定要删除项目「${project.title}」吗？删除后无法恢复。`)) return;
+    if (!project || !window.confirm(`确定要归档项目「${project.title}」吗？归档后项目资源会保留，之后可以恢复。`)) return;
     try {
       const svc = getWritingBackendService();
       await svc.deleteProject(selectedProjectId);

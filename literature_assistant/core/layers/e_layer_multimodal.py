@@ -9,10 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import fitz
-try:
-    from PIL import Image
-except Exception:  # pragma: no cover
-    Image = None
 
 
 logger = logging.getLogger("E_Layer_Multimodal")
@@ -33,7 +29,7 @@ def rect_to_list(rect: fitz.Rect | tuple[float, float, float, float] | list[floa
 def x_overlap_ratio(a: fitz.Rect, b: fitz.Rect) -> float:
     inter = max(0.0, min(a.x1, b.x1) - max(a.x0, b.x0))
     denom = max(1.0, min(a.width, b.width))
-    return inter / denom
+    return float(inter / denom)
 
 
 def bbox_score(img_rect: fitz.Rect, caption_rect: fitz.Rect, page_rect: fitz.Rect) -> float:
@@ -54,7 +50,7 @@ def bbox_score(img_rect: fitz.Rect, caption_rect: fitz.Rect, page_rect: fitz.Rec
     area_bonus = min(area_ratio * 8.0, 2.0)
     center_dist = abs(img_rect.tl.y + img_rect.height / 2 - caption_rect.y0)
     center_bonus = max(0.0, 1.1 - min(center_dist, 300.0) / 220.0)
-    return round(vertical + overlap + area_bonus + center_bonus, 4)
+    return float(round(vertical + overlap + area_bonus + center_bonus, 4))
 
 
 def extract_raw_image(doc: fitz.Document, xref: int, out_path: Path) -> dict[str, Any]:
@@ -68,8 +64,10 @@ def extract_raw_image(doc: fitz.Document, xref: int, out_path: Path) -> dict[str
 
 
 def render_page_crop(page: fitz.Page, rect: fitz.Rect, dpi: int, out_path: Path) -> dict[str, Any]:
-    if Image is None:
-        raise RuntimeError("Pillow is required for page crop rendering.")
+    try:
+        from PIL import Image
+    except (ImportError, OSError) as exc:
+        raise RuntimeError("Pillow is required for page crop rendering.") from exc
     zoom = dpi / 72.0
     matrix = fitz.Matrix(zoom, zoom)
     pix = page.get_pixmap(matrix=matrix, alpha=False)
@@ -252,9 +250,11 @@ def attach_nearby_chunks(items: list[dict[str, Any]], chunks: list[dict[str, Any
 
 def full_extract(pdf_path: str) -> dict[str, Any]:
     """E-Layer entry point: Extracts text and images with full metadata."""
-    pdf_path = Path(pdf_path)
-    doc = fitz.open(str(pdf_path))
-    chunks, figures, tables = [], [], []
+    source_pdf_path = Path(pdf_path)
+    doc = fitz.open(str(source_pdf_path))
+    chunks: list[dict[str, Any]] = []
+    figures: list[dict[str, Any]] = []
+    tables: list[dict[str, Any]] = []
     all_blocks = [parse_blocks(doc[i]) for i in range(len(doc))]
 
     # Pre-compute body font size: median non-zero font size across all blocks
@@ -307,7 +307,7 @@ def full_extract(pdf_path: str) -> dict[str, Any]:
     attach_nearby_chunks(tables, chunks, 'table')
 
     return {
-        "source_pdf": str(pdf_path.resolve()),
+        "source_pdf": str(source_pdf_path.resolve()),
         "chunks": chunks,
         "figures": figures,
         "tables": tables,

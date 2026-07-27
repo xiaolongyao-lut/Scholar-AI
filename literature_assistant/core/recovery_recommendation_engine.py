@@ -13,14 +13,27 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Optional, List
+from typing import TYPE_CHECKING, Any, Optional
 
-from datetime_utils import ensure_utc, utc_now
-from canonical_event_store import CanonicalEventStore, CanonicalEvent
-from memory_fact_store import MemoryFactStore, TemporalFact
-from models.recovery import RecoveryActionType
-from recovery_metrics_exporter import get_recovery_metrics_collector
-from recovery_telemetry import get_recovery_telemetry
+if TYPE_CHECKING:
+    from literature_assistant.core.canonical_event_store import (
+        CanonicalEvent,
+        CanonicalEventStore,
+    )
+    from literature_assistant.core.datetime_utils import ensure_utc, utc_now
+    from literature_assistant.core.memory_fact_store import MemoryFactStore
+    from literature_assistant.core.models.recovery import RecoveryActionType
+    from literature_assistant.core.recovery_metrics_exporter import (
+        get_recovery_metrics_collector,
+    )
+    from literature_assistant.core.recovery_telemetry import get_recovery_telemetry
+else:
+    from canonical_event_store import CanonicalEvent, CanonicalEventStore
+    from datetime_utils import ensure_utc, utc_now
+    from memory_fact_store import MemoryFactStore
+    from models.recovery import RecoveryActionType
+    from recovery_metrics_exporter import get_recovery_metrics_collector
+    from recovery_telemetry import get_recovery_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +79,52 @@ class RecommendationRequest:
     max_recommendations: int = 5
     include_alternatives: bool = True
 
+
+@dataclass(frozen=True)
+class _RuleEventEvidence:
+    """Validated event fields consumed by recommendation rules."""
+
+    event_id: str
+    event_type: str
+    severity: str
+
+
+@dataclass(frozen=True)
+class _RuleFactEvidence:
+    """Validated temporal fact fields consumed by recommendation rules."""
+
+    fact_id: str
+    predicate: str
+    object: str
+
+
+def resolve_recovery_session_id(
+    event_store: CanonicalEventStore,
+    job_id: str,
+) -> str:
+    """Resolve a recovery session from the latest event for a job.
+
+    Args:
+        event_store: Canonical event source used by recovery analysis.
+        job_id: Non-empty job identifier.
+
+    Returns:
+        The latest non-empty event session ID. Legacy jobs without a recorded
+        session fall back to their job ID, matching the recovery HTTP contract.
+
+    Raises:
+        ValueError: If ``job_id`` is empty.
+    """
+    normalized_job_id = job_id.strip()
+    if not normalized_job_id:
+        raise ValueError("job_id must not be empty")
+
+    for event in reversed(event_store.get_job_timeline(normalized_job_id)):
+        session_id = event.session_id
+        if isinstance(session_id, str) and session_id.strip():
+            return session_id.strip()
+    return normalized_job_id
+
 @dataclass(frozen=True)
 class RecommendationsResult:
     request_id: str
@@ -82,9 +141,20 @@ class RecommendationsResult:
 
 class RecommendationRule(ABC):
     @abstractmethod
-    def can_apply(self, job_id: str, events: list[CanonicalEvent], facts: list[TemporalFact]) -> bool: ...
+    def can_apply(
+        self,
+        job_id: str,
+        events: list[_RuleEventEvidence],
+        facts: list[_RuleFactEvidence],
+    ) -> bool: ...
     @abstractmethod
-    def generate(self, job_id: str, session_id: str, events: list[CanonicalEvent], facts: list[TemporalFact]) -> RecoveryRecommendation: ...
+    def generate(
+        self,
+        job_id: str,
+        session_id: str,
+        events: list[_RuleEventEvidence],
+        facts: list[_RuleFactEvidence],
+    ) -> RecoveryRecommendation: ...
     @property
     @abstractmethod
     def priority(self) -> int: ...
@@ -92,7 +162,12 @@ class RecommendationRule(ABC):
 class JobReplayRule(RecommendationRule):
     @property
     def priority(self) -> int: return 4
-    def can_apply(self, job_id: str, events: list[CanonicalEvent], facts: list[TemporalFact]) -> bool:
+    def can_apply(
+        self,
+        job_id: str,
+        events: list[_RuleEventEvidence],
+        facts: list[_RuleFactEvidence],
+    ) -> bool:
         # Improved failure detection for broader test compatibility
         error_keywords = {'failed', 'error', 'critical', 'failure', 'abort'}
         failure_events = [
@@ -101,7 +176,13 @@ class JobReplayRule(RecommendationRule):
             or e.severity.lower() in {'error', 'critical'}
         ]
         return len(failure_events) > 0
-    def generate(self, job_id: str, session_id: str, events: list[CanonicalEvent], facts: list[TemporalFact]) -> RecoveryRecommendation:
+    def generate(
+        self,
+        job_id: str,
+        session_id: str,
+        events: list[_RuleEventEvidence],
+        facts: list[_RuleFactEvidence],
+    ) -> RecoveryRecommendation:
         return RecoveryRecommendation(
             recommendation_id=str(uuid.uuid4()), job_id=job_id, session_id=session_id, created_at=utc_now(),
             action_type=RecoveryActionType.REPLAY_JOB, rationale="Retry transient failure based on historical analysis", confidence=0.75,
@@ -113,10 +194,21 @@ class JobReplayRule(RecommendationRule):
 class StateRehydrationRule(RecommendationRule):
     @property
     def priority(self) -> int: return 3
-    def can_apply(self, job_id: str, events: list[CanonicalEvent], facts: list[TemporalFact]) -> bool:
+    def can_apply(
+        self,
+        job_id: str,
+        events: list[_RuleEventEvidence],
+        facts: list[_RuleFactEvidence],
+    ) -> bool:
         # Check if there is a failed execution status fact
         return any(f.predicate == 'status' and f.object == 'failed' for f in facts)
-    def generate(self, job_id: str, session_id: str, events: list[CanonicalEvent], facts: list[TemporalFact]) -> RecoveryRecommendation:
+    def generate(
+        self,
+        job_id: str,
+        session_id: str,
+        events: list[_RuleEventEvidence],
+        facts: list[_RuleFactEvidence],
+    ) -> RecoveryRecommendation:
         return RecoveryRecommendation(
             recommendation_id=str(uuid.uuid4()), job_id=job_id, session_id=session_id, created_at=utc_now(),
             action_type=RecoveryActionType.REHYDRATE_RUNTIME, rationale="State drift detected: rehydrating from last known good snapshot", confidence=0.65,
@@ -216,17 +308,61 @@ class RecoveryRecommendationEngine:
         self._emit_recommendation_audit(result, request)
         return result
 
-    def _load_events(self, job_id: str) -> List[CanonicalEvent]:
-        return self.event_store.get_job_timeline(job_id)
+    def _load_events(self, job_id: str) -> list[_RuleEventEvidence]:
+        raw_events = self.event_store.get_job_timeline(job_id)
+        if not isinstance(raw_events, list):
+            raise TypeError("event store timeline must be a list")
+        events: list[_RuleEventEvidence] = []
+        for index, event in enumerate(raw_events):
+            event_id = getattr(event, "event_id", None)
+            event_type = getattr(event, "event_type", None)
+            severity = getattr(event, "severity", "info")
+            if not isinstance(event_id, str) or not event_id.strip():
+                raise TypeError(f"event store entry {index} must have a non-empty event_id")
+            if not isinstance(event_type, str) or not event_type.strip():
+                raise TypeError(f"event store entry {index} must have a non-empty event_type")
+            if not isinstance(severity, str) or not severity.strip():
+                raise TypeError(f"event store entry {index} must have a non-empty severity")
+            events.append(
+                _RuleEventEvidence(
+                    event_id=event_id.strip(),
+                    event_type=event_type.strip(),
+                    severity=severity.strip(),
+                )
+            )
+        return events
 
-    def _load_facts(self, job_id: str) -> List[TemporalFact]:
-        return self.fact_store.get_current_facts("execution", subject=job_id)
+    def _load_facts(self, job_id: str) -> list[_RuleFactEvidence]:
+        raw_facts = self.fact_store.get_current_facts("execution", subject=job_id)
+        if not isinstance(raw_facts, list):
+            raise TypeError("fact store result must be a list")
+        facts: list[_RuleFactEvidence] = []
+        for index, fact in enumerate(raw_facts):
+            fact_id = getattr(fact, "fact_id", None)
+            predicate = getattr(fact, "predicate", None)
+            object_value = getattr(fact, "object", None)
+            if not isinstance(fact_id, str) or not fact_id.strip():
+                raise TypeError(f"fact store entry {index} must have a non-empty fact_id")
+            if not isinstance(predicate, str) or not predicate.strip():
+                raise TypeError(f"fact store entry {index} must have a non-empty predicate")
+            if not isinstance(object_value, str):
+                raise TypeError(f"fact store entry {index} must have a string object")
+            facts.append(
+                _RuleFactEvidence(
+                    fact_id=fact_id.strip(),
+                    predicate=predicate.strip(),
+                    object=object_value,
+                )
+            )
+        return facts
 
     def _emit_recommendation_audit(self, result: RecommendationsResult, request: RecommendationRequest) -> None:
         try:
             audit_event = CanonicalEvent(
                 event_id=f"rec_audit_{result.request_id}", correlation_id=request.job_id,
-                timestamp=result.generated_at, session_id=request.session_id, job_id=request.job_id,
+                timestamp=ensure_utc(result.generated_at).isoformat(),
+                session_id=request.session_id,
+                job_id=request.job_id,
                 aggregate_type="recovery", aggregate_id=request.job_id, event_type="recommendation.generated",
                 payload={
                     "has_primary_recommendation": result.primary_recommendation is not None,

@@ -10,11 +10,26 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 
-from datetime_utils import utc_now_iso_z
-from extension_secret_policy import require_no_plaintext_secret_config
-from skills.user_manifest import UserSkillManifest, parse_skill_md_frontmatter, validate_manifest
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.extension_secret_policy import (
+        require_no_plaintext_secret_config,
+    )
+    from literature_assistant.core.skills.user_manifest import (
+        UserSkillManifest,
+        parse_skill_md_frontmatter,
+        validate_manifest,
+    )
+else:
+    from datetime_utils import utc_now_iso_z
+    from extension_secret_policy import require_no_plaintext_secret_config
+    from skills.user_manifest import (
+        UserSkillManifest,
+        parse_skill_md_frontmatter,
+        validate_manifest,
+    )
 
 
 INSTALL_METADATA_FILENAME = ".install_meta.json"

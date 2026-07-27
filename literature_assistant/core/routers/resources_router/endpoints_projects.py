@@ -11,39 +11,72 @@ import inspect
 from collections import Counter
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 import os
 import threading
 
-from fastapi import HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
-from datetime_utils import utc_now_iso_z
-from models import (
-    ProjectPayload,
-    ProjectReasoningBiasOptimizeRequest,
-    ProjectReasoningBiasOptimizeResponse,
-    ProjectReasoningBiasOptimizeScope,
-    ProjectReasoningBiasPayload,
-    ProjectReasoningBiasUpdateRequest,
-    SectionPayload,
-    CreateProjectRequest,
-    CreateSectionRequest,
-    SourceFolderRefPayload,
-)
-from prompts.reasoning_bias_optimizer import (
-    build_reasoning_bias_optimizer_prompt,
-    deterministic_reasoning_bias_optimization,
-    parse_reasoning_bias_optimizer_response,
-    resolve_optimizer_language,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.models import (
+        CreateProjectRequest,
+        CreateSectionRequest,
+        ProjectPayload,
+        ProjectReasoningBiasOptimizeRequest,
+        ProjectReasoningBiasOptimizeResponse,
+        ProjectReasoningBiasOptimizeScope,
+        ProjectReasoningBiasPayload,
+        ProjectReasoningBiasUpdateRequest,
+        SectionPayload,
+        SourceFolderRefPayload,
+    )
+    from literature_assistant.core.prompts.reasoning_bias_optimizer import (
+        build_reasoning_bias_optimizer_prompt,
+        deterministic_reasoning_bias_optimization,
+        parse_reasoning_bias_optimizer_response,
+        resolve_optimizer_language,
+    )
+    from literature_assistant.core.routers import resources_router as _rr
+    from literature_assistant.core.routers.resources_router.path_guard import (
+        assert_bound_source_folder,
+        assert_safe_source_folder,
+        build_binding,
+        binding_ref_payload,
+    )
 
-import routers.resources_router as _rr
-from routers.resources_router.path_guard import (
-    assert_bound_source_folder,
-    assert_safe_source_folder,
-    build_binding,
-    binding_ref_payload,
-)
+    _router: APIRouter
+else:
+    from datetime_utils import utc_now_iso_z
+    from models import (
+        CreateProjectRequest,
+        CreateSectionRequest,
+        ProjectPayload,
+        ProjectReasoningBiasOptimizeRequest,
+        ProjectReasoningBiasOptimizeResponse,
+        ProjectReasoningBiasOptimizeScope,
+        ProjectReasoningBiasPayload,
+        ProjectReasoningBiasUpdateRequest,
+        SectionPayload,
+        SourceFolderRefPayload,
+    )
+    from prompts.reasoning_bias_optimizer import (
+        build_reasoning_bias_optimizer_prompt,
+        deterministic_reasoning_bias_optimization,
+        parse_reasoning_bias_optimizer_response,
+        resolve_optimizer_language,
+    )
+    from routers.resources_router.path_guard import (
+        assert_bound_source_folder,
+        assert_safe_source_folder,
+        build_binding,
+        binding_ref_payload,
+    )
+
+    import routers.resources_router as _rr
+
+    _router = _rr.router
 
 
 _SCAN_DECISION_LABELS = {
@@ -273,10 +306,13 @@ async def _generate_reasoning_bias_optimization_text(adapter: Any, prompt: str) 
     return ""
 
 
-@_rr.router.post("/project", response_model=ProjectPayload)
+@_router.post("/project", response_model=ProjectPayload)
 async def create_project(request: CreateProjectRequest) -> ProjectPayload:
     """Create a new writing project."""
-    from writing_resources import ContentType
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_resources import ContentType
+    else:
+        from writing_resources import ContentType
     store = _rr.get_writing_resource_store()
     try:
         content_type = ContentType(request.content_type)
@@ -308,7 +344,7 @@ async def create_project(request: CreateProjectRequest) -> ProjectPayload:
     return _project_payload_from_resource(project)
 
 
-@_rr.router.get("/project/{project_id}", response_model=ProjectPayload)
+@_router.get("/project/{project_id}", response_model=ProjectPayload)
 async def get_project(project_id: str) -> ProjectPayload:
     """Get a project by ID, including an archived tombstone."""
     store = _rr.get_writing_resource_store()
@@ -318,7 +354,7 @@ async def get_project(project_id: str) -> ProjectPayload:
     return _project_payload_from_resource(project)
 
 
-@_rr.router.get("/project/{project_id}/retention")
+@_router.get("/project/{project_id}/retention")
 async def get_project_retention(project_id: str) -> dict[str, Any]:
     """Read the persisted project archive/restore receipt after a restart."""
 
@@ -329,10 +365,17 @@ async def get_project_retention(project_id: str) -> dict[str, Any]:
     retention = store.get_project_retention(project_id)
     if retention is None:
         raise HTTPException(status_code=404, detail=f"Project has no retention receipt: {project_id}")
-    return retention
+    if not isinstance(retention, dict):
+        raise HTTPException(status_code=500, detail="Project retention receipt must be an object")
+    payload: dict[str, Any] = {}
+    for key, value in retention.items():
+        if not isinstance(key, str):
+            raise HTTPException(status_code=500, detail="Project retention receipt keys must be strings")
+        payload[key] = value
+    return payload
 
 
-@_rr.router.post("/project/{project_id}/restore", response_model=ProjectPayload)
+@_router.post("/project/{project_id}/restore", response_model=ProjectPayload)
 async def restore_project(
     project_id: str,
     archive_receipt_id: str = Query(..., min_length=1),
@@ -341,7 +384,10 @@ async def restore_project(
 ) -> ProjectPayload:
     """Restore an archived project using its exact persisted archive receipt."""
 
-    from writing_resources import ProjectRevisionConflictError
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_resources import ProjectRevisionConflictError
+    else:
+        from writing_resources import ProjectRevisionConflictError
 
     store = _rr.get_writing_resource_store()
     try:
@@ -360,7 +406,7 @@ async def restore_project(
     return _project_payload_from_resource(restored)
 
 
-@_rr.router.get("/projects", response_model=list[ProjectPayload])
+@_router.get("/projects", response_model=list[ProjectPayload])
 async def list_projects(
     user_id: str | None = Query(None),
     include_archived: bool = Query(False),
@@ -376,13 +422,16 @@ async def list_projects(
     return all_payloads
 
 
-@_rr.router.put("/project/{project_id}/status")
+@_router.put("/project/{project_id}/status")
 async def update_project_status(
     project_id: str,
     status: str = Query(..., description="New status"),
 ) -> ProjectPayload:
     """Update project status."""
-    from writing_resources import ProjectStatus
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_resources import ProjectStatus
+    else:
+        from writing_resources import ProjectStatus
     store = _rr.get_writing_resource_store()
     try:
         project_status = ProjectStatus(status)
@@ -395,7 +444,7 @@ async def update_project_status(
     return _project_payload_from_resource(project)
 
 
-@_rr.router.put("/project/{project_id}/source-folder")
+@_router.put("/project/{project_id}/source-folder")
 async def update_project_source_folder(
     project_id: str,
     source_folder: str = Query(..., description="绝对路径，留空则恢复默认存储位置"),
@@ -427,7 +476,7 @@ async def update_project_source_folder(
     return _project_payload_from_resource(updated)
 
 
-@_rr.router.get("/project/{project_id}/reasoning-bias", response_model=ProjectReasoningBiasPayload)
+@_router.get("/project/{project_id}/reasoning-bias", response_model=ProjectReasoningBiasPayload)
 async def get_project_reasoning_bias(project_id: str) -> ProjectReasoningBiasPayload:
     """Return the project-level user reasoning bias or the empty default."""
     store = _rr.get_writing_resource_store()
@@ -445,7 +494,7 @@ async def get_project_reasoning_bias(project_id: str) -> ProjectReasoningBiasPay
     return ProjectReasoningBiasPayload.model_validate(raw_bias)
 
 
-@_rr.router.put("/project/{project_id}/reasoning-bias", response_model=ProjectReasoningBiasPayload)
+@_router.put("/project/{project_id}/reasoning-bias", response_model=ProjectReasoningBiasPayload)
 async def update_project_reasoning_bias(
     project_id: str,
     request: ProjectReasoningBiasUpdateRequest,
@@ -473,7 +522,7 @@ async def update_project_reasoning_bias(
     return payload
 
 
-@_rr.router.post("/project/{project_id}/reasoning-bias/optimize", response_model=ProjectReasoningBiasOptimizeResponse)
+@_router.post("/project/{project_id}/reasoning-bias/optimize", response_model=ProjectReasoningBiasOptimizeResponse)
 async def optimize_project_reasoning_bias(
     project_id: str,
     request: ProjectReasoningBiasOptimizeRequest,
@@ -520,7 +569,7 @@ async def optimize_project_reasoning_bias(
     )
 
 
-@_rr.router.delete("/project/{project_id}")
+@_router.delete("/project/{project_id}")
 async def delete_project(
     project_id: str,
     expected_updated_at: str | None = Query(None),
@@ -528,7 +577,10 @@ async def delete_project(
 ) -> dict[str, str]:
     """Archive a project without deleting its resources or workspace files."""
 
-    from writing_resources import ProjectRevisionConflictError
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_resources import ProjectRevisionConflictError
+    else:
+        from writing_resources import ProjectRevisionConflictError
 
     store = _rr.get_writing_resource_store()
     project = store.get_project(project_id, include_archived=True)
@@ -707,8 +759,12 @@ async def _start_scan_folder_runtime_job(
 ) -> dict[str, Any]:
     """Create and start a runtime-visible resource-ingest job for scan-folder."""
 
-    from harness_protocols import JobKind, SessionMode
-    from writing_runtime import get_writing_runtime
+    if TYPE_CHECKING:
+        from literature_assistant.core.harness_protocols import JobKind, SessionMode
+        from literature_assistant.core.writing_runtime import get_writing_runtime
+    else:
+        from harness_protocols import JobKind, SessionMode
+        from writing_runtime import get_writing_runtime
 
     normalized_project_id = str(project_id or "").strip()
     if not normalized_project_id:
@@ -822,7 +878,7 @@ async def _start_scan_folder_runtime_job(
     }
 
 
-@_rr.router.post("/project/{project_id}/scan-folder")
+@_router.post("/project/{project_id}/scan-folder")
 async def scan_project_folder(
     project_id: str,
     scan_mode: str = Query(
@@ -870,7 +926,7 @@ async def scan_project_folder(
 # Section CRUD
 # =========================================================================
 
-@_rr.router.post("/section", response_model=SectionPayload)
+@_router.post("/section", response_model=SectionPayload)
 async def create_section(request: CreateSectionRequest) -> SectionPayload:
     """Create a section within a project."""
     store = _rr.get_writing_resource_store()
@@ -887,7 +943,7 @@ async def create_section(request: CreateSectionRequest) -> SectionPayload:
     return SectionPayload(**section.to_dict())
 
 
-@_rr.router.get("/section/{section_id}", response_model=SectionPayload)
+@_router.get("/section/{section_id}", response_model=SectionPayload)
 async def get_section(section_id: str) -> SectionPayload:
     """Get a section by ID."""
     store = _rr.get_writing_resource_store()
@@ -897,7 +953,7 @@ async def get_section(section_id: str) -> SectionPayload:
     return SectionPayload(**section.to_dict())
 
 
-@_rr.router.get("/sections", response_model=list[SectionPayload])
+@_router.get("/sections", response_model=list[SectionPayload])
 async def list_sections(project_id: str = Query(...)) -> list[SectionPayload]:
     """List all sections in a project."""
     store = _rr.get_writing_resource_store()
@@ -905,7 +961,7 @@ async def list_sections(project_id: str = Query(...)) -> list[SectionPayload]:
     return [SectionPayload(**s.to_dict()) for s in sections]
 
 
-@_rr.router.delete("/section/{section_id}", tags=["Resources"])
+@_router.delete("/section/{section_id}", tags=["Resources"])
 async def delete_section(section_id: str) -> dict[str, str]:
     """Delete a section by ID."""
     store = _rr.get_writing_resource_store()
@@ -920,13 +976,13 @@ async def delete_section(section_id: str) -> dict[str, str]:
 # Section / Project Update Endpoints (RESTful completeness)
 # =========================================================================
 
-class UpdateSectionRequest(__import__("pydantic").BaseModel):
+class UpdateSectionRequest(BaseModel):
     title: str | None = None
     description: str | None = None
     order: int | None = None
 
 
-@_rr.router.put("/section/{section_id}", tags=["Resources"])
+@_router.put("/section/{section_id}", tags=["Resources"])
 async def update_section(section_id: str, request: UpdateSectionRequest) -> SectionPayload:
     """Update section title, description, or order."""
     store = _rr.get_writing_resource_store()
@@ -950,13 +1006,13 @@ async def update_section(section_id: str, request: UpdateSectionRequest) -> Sect
     return SectionPayload(**section.to_dict())
 
 
-class UpdateProjectRequest(__import__("pydantic").BaseModel):
+class UpdateProjectRequest(BaseModel):
     title: str | None = None
     description: str | None = None
     tags: list[str] | None = None
 
 
-@_rr.router.put("/project/{project_id}", tags=["Resources"])
+@_router.put("/project/{project_id}", tags=["Resources"])
 async def update_project(project_id: str, request: UpdateProjectRequest) -> ProjectPayload:
     """Update project title, description, or tags."""
     store = _rr.get_writing_resource_store()
@@ -984,7 +1040,7 @@ async def update_project(project_id: str, request: UpdateProjectRequest) -> Proj
 # Project Stats
 # =========================================================================
 
-@_rr.router.get("/project/{project_id}/stats", tags=["Statistics"])
+@_router.get("/project/{project_id}/stats", tags=["Statistics"])
 async def get_project_stats(project_id: str) -> dict[str, Any]:
     """Get comprehensive statistics for a project."""
     store = _rr.get_writing_resource_store()

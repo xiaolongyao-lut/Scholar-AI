@@ -5,23 +5,37 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from literature_assistant.bootstrap import configure_runtime_paths
 
 
 configure_runtime_paths()
 
-from project_paths import (  # noqa: E402
-    CORE_ROOT,
-    EXTERNAL_REFERENCES_ROOT,
-    FRONTEND_ROOT,
-    REPO_ROOT,
-    WORKSPACE_ARTIFACTS_ROOT,
-    WORKSPACE_GENERATED_ROOT,
-    WORKSPACE_OUTPUT_ROOT,
-    WORKSPACE_REFERENCES_ROOT,
-    WORKSPACE_RUNTIME_STATE_ROOT,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.project_paths import (
+        CORE_ROOT,
+        EXTERNAL_REFERENCES_ROOT,
+        FRONTEND_ROOT,
+        REPO_ROOT,
+        WORKSPACE_ARTIFACTS_ROOT,
+        WORKSPACE_GENERATED_ROOT,
+        WORKSPACE_OUTPUT_ROOT,
+        WORKSPACE_REFERENCES_ROOT,
+        WORKSPACE_RUNTIME_STATE_ROOT,
+    )
+else:
+    from project_paths import (  # noqa: E402
+        CORE_ROOT,
+        EXTERNAL_REFERENCES_ROOT,
+        FRONTEND_ROOT,
+        REPO_ROOT,
+        WORKSPACE_ARTIFACTS_ROOT,
+        WORKSPACE_GENERATED_ROOT,
+        WORKSPACE_OUTPUT_ROOT,
+        WORKSPACE_REFERENCES_ROOT,
+        WORKSPACE_RUNTIME_STATE_ROOT,
+    )
 
 
 def _path_report() -> dict[str, str]:

@@ -15,11 +15,20 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
+
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.m_layer_mempalace_memory import (
+        MempalaceMemoryAdapter,
+    )
+    from literature_assistant.core.layers.w_layer_cross_paper_analysis import (
+        ConflictDetector,
+    )
 
 logger = logging.getLogger("InspirationEngine")
 _MMR_POOL_SIZE = 20
 _MMR_DEFAULT_LAMBDA = 0.7
+_T = TypeVar("_T")
 
 
 @dataclass
@@ -111,7 +120,11 @@ def _spark_id(content: str) -> str:
     return "spark_" + hashlib.sha1(content.encode("utf-8")).hexdigest()[:12]
 
 
-def _diversify_by_source(items, key, max_per_source: int = 1):
+def _diversify_by_source(
+    items: list[_T],
+    key: Callable[[_T], str | None],
+    max_per_source: int = 1,
+) -> list[_T]:
     """Round-robin reorder ``items`` so each ``key(item)`` value contributes
     at most ``max_per_source`` slots before any source repeats.
 
@@ -121,9 +134,9 @@ def _diversify_by_source(items, key, max_per_source: int = 1):
     """
     if not items:
         return items
-    buckets: dict[str, list] = {}
+    buckets: dict[str, list[_T]] = {}
     order: list[str] = []
-    tail: list = []
+    tail: list[_T] = []
     for it in items:
         try:
             k = key(it)
@@ -137,7 +150,7 @@ def _diversify_by_source(items, key, max_per_source: int = 1):
             order.append(k)
         buckets[k].append(it)
 
-    out: list = []
+    out: list[_T] = []
     while any(buckets[k] for k in order):
         for k in order:
             if buckets[k]:
@@ -262,8 +275,12 @@ def _mmr_select(
 class InspirationEngine:
     """记忆联想引擎：跨论文知识碰撞产生启发点"""
 
-    def __init__(self, mempalace=None, causal_dags: list[dict] | None = None,
-                 conflict_detector=None):
+    def __init__(
+        self,
+        mempalace: Optional["MempalaceMemoryAdapter"] = None,
+        causal_dags: list[dict[str, Any]] | None = None,
+        conflict_detector: Optional["ConflictDetector"] = None,
+    ) -> None:
         """
         Args:
             mempalace: MempalaceMemoryAdapter 实例（可选；无则只使用本地 DAG）

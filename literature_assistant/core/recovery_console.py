@@ -22,10 +22,19 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
+from typing import TYPE_CHECKING
 
-from canonical_event_store import CanonicalEventStore, CanonicalEvent
-from memory_fact_store import MemoryFactStore, TemporalFact
-from models.recovery import RecoveryActionType
+if TYPE_CHECKING:
+    from literature_assistant.core.canonical_event_store import (
+        CanonicalEvent,
+        CanonicalEventStore,
+    )
+    from literature_assistant.core.memory_fact_store import MemoryFactStore, TemporalFact
+    from literature_assistant.core.models.recovery import RecoveryActionType
+else:
+    from canonical_event_store import CanonicalEvent, CanonicalEventStore
+    from memory_fact_store import MemoryFactStore, TemporalFact
+    from models.recovery import RecoveryActionType
 
 
 class EventFilter(str, Enum):
@@ -187,7 +196,7 @@ class RecoveryConsole:
                 event_types=[],
             )
 
-        def _to_dt(t):
+        def _to_dt(t: str | datetime) -> datetime:
             return t if isinstance(t, datetime) else datetime.fromisoformat(t)
 
         earliest = _to_dt(events[0].timestamp)
@@ -310,8 +319,8 @@ class RecoveryConsole:
     def get_fact_history(
         self,
         namespace: str,
-        subject: Optional[str] = None,
-        predicate: Optional[str] = None,
+        subject: str | None = None,
+        predicate: str | None = None,
     ) -> list[TemporalFact]:
         """Get complete history of a fact (including invalidated versions).
 

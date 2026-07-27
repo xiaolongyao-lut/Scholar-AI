@@ -3,12 +3,18 @@
 import json
 import asyncio
 import logging
+import math
 import numpy as np
 import sys
 import os
 from pathlib import Path
 from dataclasses import dataclass, asdict
-from typing import Any, List, Dict, Tuple
+from typing import TYPE_CHECKING, Any, List, Dict, Tuple
+
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.r_layer_hybrid_retriever import (
+        HybridRetrieverWithRerank,
+    )
 
 # 动态添加路径以处理导入
 sys.path.append(os.getcwd())
@@ -31,14 +37,19 @@ class FusionWeightCalibrator:
     
     def __init__(self, 
                  eval_queries_path: str = "eval_queries_v1.0.jsonl",
-                 retriever: Any = None):
+                 retriever: "HybridRetrieverWithRerank | None" = None) -> None:
         self.eval_queries_path = Path(eval_queries_path)
         self.retriever = retriever or self._create_default_retriever()
         self.eval_queries = self._load_queries()
 
-    def _create_default_retriever(self) -> Any:
+    def _create_default_retriever(self) -> "HybridRetrieverWithRerank":
         """Resolve the retriever lazily to avoid circular imports during startup."""
-        from layers.r_layer_hybrid_retriever import HybridRetrieverWithRerank
+        if TYPE_CHECKING:
+            from literature_assistant.core.layers.r_layer_hybrid_retriever import (
+                HybridRetrieverWithRerank,
+            )
+        else:
+            from layers.r_layer_hybrid_retriever import HybridRetrieverWithRerank
 
         return HybridRetrieverWithRerank(use_reranker=False)
 
@@ -60,8 +71,10 @@ class FusionWeightCalibrator:
 
     async def calibrate_grid(self, step: float = 0.2) -> CalibrationResult:
         """网格搜索最优权重"""
+        if not math.isfinite(step) or step <= 0.0:
+            raise ValueError("step must be a finite positive number")
         best_score = -1.0
-        best_result = None
+        best_result: CalibrationResult | None = None
         
         # 准备模拟数据源 (用于测试管道)
         mock_raw_data = {
@@ -88,9 +101,17 @@ class FusionWeightCalibrator:
                         combined_score=round(score, 4)
                     )
                     
+        if best_result is None:
+            raise RuntimeError("calibration grid produced no candidates")
         return best_result
 
-    async def _evaluate(self, bw, vw, cw, raw_data) -> Tuple[float, Dict]:
+    async def _evaluate(
+        self,
+        bw: float,
+        vw: float,
+        cw: float,
+        raw_data: Dict[str, List[Dict[str, str]]],
+    ) -> Tuple[float, Dict[str, float]]:
         """评估单组权重"""
         self.retriever.base_retriever.weights = {
             "bm25": bw, "vector": vw, "context": cw
@@ -115,7 +136,7 @@ class FusionWeightCalibrator:
         combined = 0.7 * metrics['recall_at_3'] + 0.3 * metrics['mrr']
         return combined, metrics
 
-async def main():
+async def main() -> None:
     calibrator = FusionWeightCalibrator()
     print("Starting Calibration...")
     best = await calibrator.calibrate_grid(step=0.2)

@@ -23,58 +23,108 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 
-from evidence_pack import (
-    EvidencePack,
-    EvidencePackError,
-    build_evidence_pack,
-)
-from discussion_convergence import (
-    EmbedFn,
-    EmbeddingFailure,
-    JudgeFailure,
-    JudgeParseFailure,
-    cosine_similarity,
-    embed_turn_texts,
-    format_turn_text,
-    judge_convergence,
-)
-from discussion_evidence_trace import (
-    CITATION_CONTRACT_SUFFIX,
-    build_evidence_ids,
-    parse_cited_evidence_ids,
-)
-from model_dispatcher import (
-    DispatchCandidate,
-    DispatchResult,
-    DispatcherError,
-    arun_parallel_round,
-)
-from models.discussion import (
-    AgentThoughtTracePayload,
-    AgentThoughtTraceStep,
-    DiscussionAgentConfig,
-    DiscussionAgentTrace,
-    DiscussionConvergenceJudgeCall,
-    DiscussionConvergenceJudgeError,
-    DiscussionConvergenceTrace,
-    DiscussionEvidenceMode,
-    DiscussionEvidencePackPayload,
-    DiscussionRunConfig,
-    DiscussionRunResult,
-    DiscussionSynthesis,
-    DiscussionSynthesisStrategy,
-    DiscussionTurnTrace,
-)
-from prompts.identity_renderer import render_identity_header  # 2026-05-18 identity injection plan
-from prompts.project_reasoning_bias import (
-    ProjectReasoningBiasContext,
-    apply_project_reasoning_bias,
-    load_project_reasoning_bias,
-    render_project_reasoning_bias_block,
-    should_apply_project_reasoning_bias,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.discussion_convergence import (
+        EmbedFn,
+        EmbeddingFailure,
+        JudgeFailure,
+        JudgeParseFailure,
+        cosine_similarity,
+        embed_turn_texts,
+        format_turn_text,
+        judge_convergence,
+    )
+    from literature_assistant.core.discussion_evidence_trace import (
+        CITATION_CONTRACT_SUFFIX,
+        build_evidence_ids,
+        parse_cited_evidence_ids,
+    )
+    from literature_assistant.core.evidence_pack import (
+        EvidencePack,
+        EvidencePackError,
+        build_evidence_pack,
+    )
+    from literature_assistant.core.model_dispatcher import (
+        DispatchCandidate,
+        DispatchResult,
+        DispatcherError,
+        arun_parallel_round,
+    )
+    from literature_assistant.core.models.analysis_chain import AnalysisChainPayload
+    from literature_assistant.core.models.discussion import (
+        AgentThoughtTracePayload,
+        AgentThoughtTraceStep,
+        DiscussionAgentConfig,
+        DiscussionAgentTrace,
+        DiscussionConvergenceJudgeCall,
+        DiscussionConvergenceJudgeError,
+        DiscussionConvergenceTrace,
+        DiscussionEvidenceMode,
+        DiscussionEvidencePackPayload,
+        DiscussionRunConfig,
+        DiscussionRunResult,
+        DiscussionSynthesis,
+        DiscussionSynthesisStrategy,
+        DiscussionTurnTrace,
+    )
+    from literature_assistant.core.prompts.identity_renderer import render_identity_header
+    from literature_assistant.core.prompts.project_reasoning_bias import (
+        ProjectReasoningBiasContext,
+        apply_project_reasoning_bias,
+        load_project_reasoning_bias,
+        render_project_reasoning_bias_block,
+        should_apply_project_reasoning_bias,
+    )
+else:
+    from discussion_convergence import (
+        EmbedFn,
+        EmbeddingFailure,
+        JudgeFailure,
+        JudgeParseFailure,
+        cosine_similarity,
+        embed_turn_texts,
+        format_turn_text,
+        judge_convergence,
+    )
+    from discussion_evidence_trace import (
+        CITATION_CONTRACT_SUFFIX,
+        build_evidence_ids,
+        parse_cited_evidence_ids,
+    )
+    from evidence_pack import EvidencePack, EvidencePackError, build_evidence_pack
+    from model_dispatcher import (
+        DispatchCandidate,
+        DispatchResult,
+        DispatcherError,
+        arun_parallel_round,
+    )
+    from models.analysis_chain import AnalysisChainPayload
+    from models.discussion import (
+        AgentThoughtTracePayload,
+        AgentThoughtTraceStep,
+        DiscussionAgentConfig,
+        DiscussionAgentTrace,
+        DiscussionConvergenceJudgeCall,
+        DiscussionConvergenceJudgeError,
+        DiscussionConvergenceTrace,
+        DiscussionEvidenceMode,
+        DiscussionEvidencePackPayload,
+        DiscussionRunConfig,
+        DiscussionRunResult,
+        DiscussionSynthesis,
+        DiscussionSynthesisStrategy,
+        DiscussionTurnTrace,
+    )
+    from prompts.identity_renderer import render_identity_header
+    from prompts.project_reasoning_bias import (
+        ProjectReasoningBiasContext,
+        apply_project_reasoning_bias,
+        load_project_reasoning_bias,
+        render_project_reasoning_bias_block,
+        should_apply_project_reasoning_bias,
+    )
 
 
 logger = logging.getLogger("DiscussionOrchestrator")
@@ -151,10 +201,16 @@ def _default_credential_resolver(credential_id: str) -> dict[str, Any]:
 
     Returns a dict with provider/model/base_url/api_key/protocol fields.
     """
-    from credential_store import (
-        CredentialNotFoundError,
-        RuntimeCredentialStore,
-    )
+    if TYPE_CHECKING:
+        from literature_assistant.core.credential_store import (
+            CredentialNotFoundError,
+            RuntimeCredentialStore,
+        )
+    else:
+        from credential_store import (
+            CredentialNotFoundError,
+            RuntimeCredentialStore,
+        )
     store = RuntimeCredentialStore()
     try:
         cred = store.get_internal(credential_id)
@@ -202,8 +258,15 @@ def _resolve_agent_endpoint(
     if agent.strategy_hint:
         # D1: Dynamic credential sampling by strategy_hint + category
         # Reuses same logic as /api/credentials/sample endpoint
-        from credential_store import RuntimeCredentialStore
-        from models.credentials import CredentialCategory, normalize_strategy_hint
+        if TYPE_CHECKING:
+            from literature_assistant.core.credential_store import RuntimeCredentialStore
+            from literature_assistant.core.models.credentials import (
+                CredentialCategory,
+                normalize_strategy_hint,
+            )
+        else:
+            from credential_store import RuntimeCredentialStore
+            from models.credentials import CredentialCategory, normalize_strategy_hint
 
         store = RuntimeCredentialStore()
         category = CredentialCategory(agent.category) if agent.category else CredentialCategory.GENERATION
@@ -240,8 +303,12 @@ def _resolve_agent_endpoint(
         }
     # Fallback: use default chat config from runtime override + env
     try:
-        from model_config_store import chat_store
-        from runtime_env import env_value
+        if TYPE_CHECKING:
+            from literature_assistant.core.model_config_store import chat_store
+            from literature_assistant.core.runtime_env import env_value
+        else:
+            from model_config_store import chat_store
+            from runtime_env import env_value
         api_key = chat_store.get_resolved_field("api_key") or env_value("CHAT_API_KEY", "OPENAI_API_KEY_CHAT", "OPENAI_API_KEY", "ARK_API_KEY") or ""
         base_url = chat_store.get_resolved_field("base_url") or env_value("CHAT_BASE_URL", "OPENAI_BASE_URL", "ARK_BASE_URL") or ""
         model = chat_store.get_resolved_field("model") or env_value("CHAT_MODEL", "OPENAI_MODEL", "ARK_MODEL") or ""
@@ -373,7 +440,7 @@ def _format_history(
 
 def _format_evidence(evidence: EvidencePack | None, manual: list[str]) -> str:
     if evidence is not None and evidence.snippets:
-        return evidence.to_prompt_block()
+        return str(evidence.to_prompt_block())
     if manual:
         joined = "\n\n".join(f"[manual {i+1}] {s}" for i, s in enumerate(manual))
         return joined
@@ -421,9 +488,12 @@ def _format_evidence_with_ids(
 def _chat_query_envelope_limit() -> int:
     # Local import keeps chat_router as the single source of truth without
     # creating a module-load dependency from orchestrator -> router.
-    from routers.chat_router import MAX_CHAT_QUERY_LENGTH
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.chat_router import MAX_CHAT_QUERY_LENGTH
+    else:
+        from routers.chat_router import MAX_CHAT_QUERY_LENGTH
 
-    return MAX_CHAT_QUERY_LENGTH
+    return int(MAX_CHAT_QUERY_LENGTH)
 
 
 def _chat_router_system_text_chars(context_items: list[str]) -> int:
@@ -440,7 +510,11 @@ def _chat_router_system_text_chars(context_items: list[str]) -> int:
     # env-fallback branch the chat_ask handler takes. Returning 0 for an
     # empty payload still requires running the resolver, because env may
     # contribute system_text even with empty context_items.
-    from routers.chat_router import compose_provider_system_text
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.chat_router import compose_provider_system_text
+    else:
+        from routers.chat_router import compose_provider_system_text
+
     return len(compose_provider_system_text(None, context_items))
 
 
@@ -910,9 +984,14 @@ async def run_discussion(
 
     evidence_pack: EvidencePack | None = None
     if config.evidence_mode == DiscussionEvidenceMode.FROM_PROJECT:
+        project_id = config.project_id
+        if not project_id:
+            raise DiscussionOrchestratorError(
+                "project_id is required when evidence_mode=from_project"
+            )
         try:
             evidence_pack = build_evidence_pack(
-                config.project_id,
+                project_id,
                 config.query,
                 top_k=config.evidence_top_k,
                 retriever=retriever,
@@ -942,9 +1021,14 @@ async def run_discussion(
     if context_items:
         # Local import avoids a circular dep (router imports orchestrator
         # at module load; orchestrator only needs the validator at runtime).
-        from routers.discussion_advanced_router import (
-            validate_discussion_context_items,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.discussion_advanced_router import (
+                validate_discussion_context_items,
+            )
+        else:
+            from routers.discussion_advanced_router import (
+                validate_discussion_context_items,
+            )
         validate_discussion_context_items(context_items)
         prompt_evidence_text = (
             "(evidence provided via API context channel; "
@@ -972,7 +1056,7 @@ async def run_discussion(
     judge_errors: list[DiscussionConvergenceJudgeError] = []
     decision_turn_index: int | None = None
     stopped_early = False
-    stop_reason: str = "max_turns"
+    stop_reason: Literal["max_turns", "converged", "error"] = "max_turns"
     prev_embedding: list[float] | None = None
     judge_cand: DispatchCandidate | None = None
     if config.auto_stop:
@@ -982,7 +1066,12 @@ async def run_discussion(
         )
         judge_cand = _build_candidate(judge_agent, endpoints[judge_id])
         if embed_fn is None:
-            from chunk_vector_store import batch_embed_texts as _real_embed
+            if TYPE_CHECKING:
+                from literature_assistant.core.chunk_vector_store import (
+                    batch_embed_texts as _real_embed,
+                )
+            else:
+                from chunk_vector_store import batch_embed_texts as _real_embed
 
             embed_fn = _real_embed
 
@@ -1039,7 +1128,12 @@ async def run_discussion(
                 prompt_for[agent.agent_id] = base_prompt
 
         async def _wrapped(c: DispatchCandidate) -> str:
-            return await invoke_agent(c, prompt_for[c.agent_id])
+            agent_id = c.agent_id
+            if not agent_id or agent_id not in prompt_for:
+                raise DiscussionOrchestratorError(
+                    "dispatcher candidate is missing a configured agent_id"
+                )
+            return await invoke_agent(c, prompt_for[agent_id])
 
         try:
             batch = await arun_parallel_round(
@@ -1148,6 +1242,10 @@ async def run_discussion(
         current_text = format_turn_text(turn_messages)
         current_emb: list[float] | None = None
         if current_text:
+            if embed_fn is None:
+                raise DiscussionOrchestratorError(
+                    "auto-stop embedding function was not resolved"
+                )
             try:
                 embedded = await embed_turn_texts(
                     [current_text], embed_fn=embed_fn
@@ -1340,17 +1438,24 @@ def _maybe_render_carryover(prior_chains: list[dict[str, Any]]) -> str:
     if not prior_chains:
         return ""
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
     except ImportError:
         return ""
     if not is_enabled("analysis_chain_carryover"):
         return ""
     try:
-        from prompts.analysis_chain_helpers import render_carryover_block
+        if TYPE_CHECKING:
+            from literature_assistant.core.prompts.analysis_chain_helpers import render_carryover_block
+        else:
+            from prompts.analysis_chain_helpers import render_carryover_block
     except ImportError:
         return ""
     try:
-        return render_carryover_block(prior_chains)
+        rendered: object = render_carryover_block(prior_chains)
+        return rendered if isinstance(rendered, str) else ""
     except Exception:  # noqa: BLE001 — carry-over rendering must never block orchestrator
         logger.exception("analysis_chain_carryover render failed")
         return ""
@@ -1362,7 +1467,7 @@ def _maybe_build_agent_chain(
     answer: str,
     evidence_text: str,
     project_reasoning_bias: Any | None = None,
-) -> "AnalysisChainPayload | None":
+) -> AnalysisChainPayload | None:
     """Optionally attach a reasoning chain per agent trace.
 
     Returns None when ``analysis_chain_discussion`` feature flag is off so
@@ -1371,14 +1476,20 @@ def _maybe_build_agent_chain(
     """
 
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
     except ImportError:
         return None
     if not is_enabled("analysis_chain_discussion"):
         return None
     snippets = [evidence_text] if evidence_text else []
     try:
-        from analysis_chain_rag_builder import build_analysis_chain
+        if TYPE_CHECKING:
+            from literature_assistant.core.analysis_chain_rag_builder import build_analysis_chain
+        else:
+            from analysis_chain_rag_builder import build_analysis_chain
 
         return build_analysis_chain(
             query=query,

@@ -14,41 +14,68 @@ import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence, TypedDict
+from typing import TYPE_CHECKING, Any, Mapping, Sequence, TypedDict
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 
-from models import (
-    ProjectPayload,
-    CreateProjectRequest,
-    OutlineItemPayload,
-    OutlinePayload,
-    GenerateOutlineRequest,
-    CitationSourcePayload,
-    CitationSourceUpdate,
-    CitationSuggestionPayload,
-    SuggestCitationsRequest,
-    FigureAssetPayload,
-    CreateFigureAssetRequest,
-    UpdateFigureAssetRequest,
-    GenerateFigureAssetsRequest,
-    GenerateFigureAssetsResponse,
-    FigureTableCandidatePayload,
-    SubmitForReviewRequest,
-    SubmissionResponsePayload,
-    ExportProjectRequest,
-    ProjectExportPayload,
-)
-
-# Import resources router to reuse logic
-import routers.resources_router as resources_router
-from harness_protocols import ArtifactType, JobKind, SessionMode
-from writing_runtime import get_writing_runtime
-from writing_resources import WritingMaterial
+if TYPE_CHECKING:
+    from literature_assistant.core import models
+    from literature_assistant.core.harness_protocols import ArtifactType, JobKind, SessionMode
+    from literature_assistant.core.models import (
+        CitationSourcePayload,
+        CitationSourceUpdate,
+        CitationSuggestionPayload,
+        CreateFigureAssetRequest,
+        CreateProjectRequest,
+        ExportProjectRequest,
+        FigureAssetPayload,
+        FigureTableCandidatePayload,
+        GenerateFigureAssetsRequest,
+        GenerateFigureAssetsResponse,
+        GenerateOutlineRequest,
+        OutlineItemPayload,
+        OutlinePayload,
+        ProjectExportPayload,
+        ProjectPayload,
+        SubmissionResponsePayload,
+        SubmitForReviewRequest,
+        SuggestCitationsRequest,
+        UpdateFigureAssetRequest,
+    )
+    from literature_assistant.core.routers import resources_router
+    from literature_assistant.core.writing_resources import WritingMaterial
+    from literature_assistant.core.writing_runtime import get_writing_runtime
+else:
+    import models
+    import routers.resources_router as resources_router
+    from harness_protocols import ArtifactType, JobKind, SessionMode
+    from models import (
+        CitationSourcePayload,
+        CitationSourceUpdate,
+        CitationSuggestionPayload,
+        CreateFigureAssetRequest,
+        CreateProjectRequest,
+        ExportProjectRequest,
+        FigureAssetPayload,
+        FigureTableCandidatePayload,
+        GenerateFigureAssetsRequest,
+        GenerateFigureAssetsResponse,
+        GenerateOutlineRequest,
+        OutlineItemPayload,
+        OutlinePayload,
+        ProjectExportPayload,
+        ProjectPayload,
+        SubmissionResponsePayload,
+        SubmitForReviewRequest,
+        SuggestCitationsRequest,
+        UpdateFigureAssetRequest,
+    )
+    from writing_resources import WritingMaterial
+    from writing_runtime import get_writing_runtime
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/writing", tags=["Writing"])
+router: APIRouter = APIRouter(prefix="/api/writing", tags=["Writing"])
 
 _FIGURE_IMAGE_MEDIA_TYPES = {
     ".png": "image/png",
@@ -135,6 +162,7 @@ def _candidate_to_create_asset_payload(
         "material_id": candidate.material_id,
         "source_page": candidate.page,
         "bbox": candidate.bbox,
+        "bbox_unit": candidate.bbox_unit.value if candidate.bbox_unit is not None else None,
         "width": None,
         "height": None,
         "format": Path(asset_path).suffix.lstrip(".").lower() or None,
@@ -161,7 +189,10 @@ def _resolve_figure_file_path(project_id: str, asset_path: str) -> Path:
     if re.match(r"^[a-z][a-z0-9+.-]*://", normalized_asset_path, re.IGNORECASE):
         raise HTTPException(status_code=400, detail="Only local image asset paths can be served")
 
-    from project_paths import REPO_ROOT, WORKSPACE_ARTIFACTS_ROOT, project_data_path
+    if TYPE_CHECKING:
+        from literature_assistant.core.project_paths import REPO_ROOT, WORKSPACE_ARTIFACTS_ROOT, project_data_path
+    else:
+        from project_paths import REPO_ROOT, WORKSPACE_ARTIFACTS_ROOT, project_data_path
 
     project_root = project_data_path(normalized_project_id).resolve()
     workspace_root = WORKSPACE_ARTIFACTS_ROOT.resolve()
@@ -234,7 +265,10 @@ def _browser_displayable_figure_file(project_id: str, resolved: Path) -> tuple[P
             if image_format in _BROWSER_NATIVE_IMAGE_FORMATS and (expected_suffix is None or suffix == expected_suffix):
                 return resolved, _FIGURE_IMAGE_MEDIA_TYPES.get(suffix, f"image/{image_format.lower()}")
 
-            from project_paths import project_data_path
+            if TYPE_CHECKING:
+                from literature_assistant.core.project_paths import project_data_path
+            else:
+                from project_paths import project_data_path
 
             stat = resolved.stat()
             cache_seed = f"{resolved.resolve()}:{stat.st_mtime_ns}:{stat.st_size}:{image_format}".encode("utf-8")
@@ -337,7 +371,7 @@ def _build_project_export_bundle_manifest(
             }
         )
 
-    project_payload = response.project if isinstance(response.project, dict) else {}
+    project_payload: dict[str, Any] = response.project if isinstance(response.project, dict) else {}
     return {
         "schema_version": "writing_export_bundle_manifest_v1",
         "bundle": {
@@ -385,6 +419,32 @@ def _preflight_http_detail(preflight: Mapping[str, Any]) -> dict[str, Any]:
         "message": "Workflow passport and evidence integrity gate do not allow this action yet.",
         "action_preflight": dict(preflight),
     }
+
+
+def _validated_mapping(value: object, *, context: str) -> dict[str, Any]:
+    """Validate a dynamic internal response before exposing it through FastAPI."""
+
+    if not isinstance(value, Mapping):
+        raise HTTPException(status_code=500, detail=f"Invalid {context} response")
+    normalized: dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise HTTPException(status_code=500, detail=f"Invalid {context} response")
+        normalized[key] = item
+    return normalized
+
+
+def _validated_string_mapping(value: object, *, context: str) -> dict[str, str]:
+    """Validate an internal string mapping returned through a legacy import."""
+
+    if not isinstance(value, Mapping):
+        raise HTTPException(status_code=500, detail=f"Invalid {context} response")
+    normalized: dict[str, str] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or not isinstance(item, str):
+            raise HTTPException(status_code=500, detail=f"Invalid {context} response")
+        normalized[key] = item
+    return normalized
 
 
 async def _record_project_export_workflow_state(
@@ -507,16 +567,19 @@ async def _record_project_export_workflow_state(
             }
         ],
     )
-    action_preflight = runtime.build_action_preflight(
-        action_id="writing.export_project",
-        required_claim_id="export_readiness",
-        session_id=session.session_id,
-        job_id=job.job_id,
-        project_id=project_id,
-        require_ready=bool(request.require_action_preflight),
-        workflow_state=state,
-        persist_refresh_receipt=True,
-        limit=500,
+    action_preflight = _validated_mapping(
+        runtime.build_action_preflight(
+            action_id="writing.export_project",
+            required_claim_id="export_readiness",
+            session_id=session.session_id,
+            job_id=job.job_id,
+            project_id=project_id,
+            require_ready=bool(request.require_action_preflight),
+            workflow_state=state,
+            persist_refresh_receipt=True,
+            limit=500,
+        ),
+        context="writing export preflight",
     )
     runtime.update_job_metadata(job.job_id, {"action_preflight": action_preflight})
     await runtime.complete_job(
@@ -658,10 +721,16 @@ def _writing_annotation_notes_by_material(
     if not normalized_ids:
         return {}
     try:
-        from routers.annotation_router import (
-            AnnotationUseScope,
-            get_enabled_annotation_notes,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.annotation_router import (
+                AnnotationUseScope,
+                get_enabled_annotation_notes,
+            )
+        else:
+            from routers.annotation_router import (
+                AnnotationUseScope,
+                get_enabled_annotation_notes,
+            )
 
         eligible = get_enabled_annotation_notes(
             normalized_ids,
@@ -1197,28 +1266,44 @@ async def list_projects_alias(
     page_size: int = Query(20, ge=1, le=100, description="每页条数"),
 ) -> list[ProjectPayload]:
     """List all writing projects (alias to /resources/projects)."""
-    from routers.resources_router.endpoints_projects import list_projects
-    return await list_projects(
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router.endpoints_projects import list_projects
+    else:
+        from routers.resources_router.endpoints_projects import list_projects
+
+    projects = await list_projects(
         user_id=user_id,
         include_archived=include_archived,
         page=page,
         page_size=page_size,
     )
+    if not isinstance(projects, Sequence) or isinstance(projects, (str, bytes, bytearray)):
+        raise HTTPException(status_code=500, detail="Invalid writing projects response")
+    return [ProjectPayload.model_validate(project) for project in projects]
 
 
 @router.get("/projects/{project_id}", response_model=ProjectPayload)
 async def get_project_alias(project_id: str) -> ProjectPayload:
     """Get a writing project by ID (alias to /resources/project/{id})."""
-    from routers.resources_router.endpoints_projects import get_project
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router.endpoints_projects import get_project
+    else:
+        from routers.resources_router.endpoints_projects import get_project
     return await get_project(project_id)
 
 
 @router.get("/projects/{project_id}/retention")
 async def get_project_retention_alias(project_id: str) -> dict[str, Any]:
     """Read persisted archive/restore receipts through the writing API."""
-    from routers.resources_router.endpoints_projects import get_project_retention
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router.endpoints_projects import get_project_retention
+    else:
+        from routers.resources_router.endpoints_projects import get_project_retention
 
-    return await get_project_retention(project_id)
+    return _validated_mapping(
+        await get_project_retention(project_id),
+        context="project retention",
+    )
 
 
 @router.post("/projects/{project_id}/restore", response_model=ProjectPayload)
@@ -1229,7 +1314,10 @@ async def restore_project_alias(
     user_id: str | None = Query(None),
 ) -> ProjectPayload:
     """Restore an archived project through the writing API alias."""
-    from routers.resources_router.endpoints_projects import restore_project
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router.endpoints_projects import restore_project
+    else:
+        from routers.resources_router.endpoints_projects import restore_project
 
     return await restore_project(
         project_id,
@@ -1242,7 +1330,10 @@ async def restore_project_alias(
 @router.post("/projects", response_model=ProjectPayload)
 async def create_project_alias(request: CreateProjectRequest) -> ProjectPayload:
     """Create a new writing project (alias to /resources/project)."""
-    from routers.resources_router.endpoints_projects import create_project
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router.endpoints_projects import create_project
+    else:
+        from routers.resources_router.endpoints_projects import create_project
     return await create_project(request)
 
 
@@ -1252,7 +1343,10 @@ async def update_project_status_alias(
     status: str = Query(..., description="New status"),
 ) -> ProjectPayload:
     """Update project status (alias to /resources/project/{id}/status)."""
-    from routers.resources_router.endpoints_projects import update_project_status
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router.endpoints_projects import update_project_status
+    else:
+        from routers.resources_router.endpoints_projects import update_project_status
     return await update_project_status(project_id, status)
 
 
@@ -1263,12 +1357,18 @@ async def delete_project_alias(
     user_id: str | None = Query(None),
 ) -> dict[str, str]:
     """Archive a writing project through the resources API alias."""
-    from routers.resources_router.endpoints_projects import delete_project
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router.endpoints_projects import delete_project
+    else:
+        from routers.resources_router.endpoints_projects import delete_project
 
-    return await delete_project(
-        project_id,
-        expected_updated_at=expected_updated_at,
-        user_id=user_id,
+    return _validated_string_mapping(
+        await delete_project(
+            project_id,
+            expected_updated_at=expected_updated_at,
+            user_id=user_id,
+        ),
+        context="project archive",
     )
 
 
@@ -1284,7 +1384,10 @@ async def get_outline(
 
     Returns hierarchical outline structure. Currently maps to sections.
     """
-    from routers.resources_router import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import get_writing_resource_store
+    else:
+        from routers.resources_router import get_writing_resource_store
 
     store = get_writing_resource_store()
     project = store.get_project(project_id)
@@ -1311,7 +1414,10 @@ async def update_outline(
 
     Currently updates sections. Full hierarchical outline support pending.
     """
-    from routers.resources_router import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import get_writing_resource_store
+    else:
+        from routers.resources_router import get_writing_resource_store
 
     store = get_writing_resource_store()
     project = store.get_project(project_id)
@@ -1354,8 +1460,15 @@ async def delete_outline_item(item_id: str) -> dict[str, str]:
 
     Currently deletes the corresponding section.
     """
-    from routers.resources_router.endpoints_projects import delete_section
-    return await delete_section(item_id)
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router.endpoints_projects import delete_section
+    else:
+        from routers.resources_router.endpoints_projects import delete_section
+
+    return _validated_string_mapping(
+        await delete_section(item_id),
+        context="outline deletion",
+    )
 
 
 # =========================================================================
@@ -1372,7 +1485,10 @@ async def generate_outline(request: GenerateOutlineRequest) -> OutlinePayload:
         usable material context exists, preventing plausible but unsupported
         outlines from entering downstream MCP writing workflows.
     """
-    from routers.resources_router import get_ai_adapter, get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import get_ai_adapter, get_writing_resource_store
+    else:
+        from routers.resources_router import get_ai_adapter, get_writing_resource_store
 
     store = get_writing_resource_store()
     project = store.get_project(request.project_id)
@@ -1441,8 +1557,12 @@ def _meta_int(meta: dict[str, object], key: str) -> int | None:
     value = meta.get(key)
     if value is None or value == "":
         return None
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, (float, str, bytes, bytearray)):
+        return None
     try:
-        return int(value)  # type: ignore[arg-type]
+        return int(value)
     except (TypeError, ValueError):
         return None
 
@@ -1495,7 +1615,10 @@ async def get_citation_sources(
     from material metadata. This is NOT Word-style bibliography generation;
     formatting is done client-side (citeproc) or at export (pandoc).
     """
-    from routers.resources_router import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import get_writing_resource_store
+    else:
+        from routers.resources_router import get_writing_resource_store
 
     store = get_writing_resource_store()
     project = store.get_project(project_id)
@@ -1517,7 +1640,10 @@ async def update_citation_source(
     ``publication`` is stored as ``venue`` to match the export bibliography
     builder's metadata keys.
     """
-    from routers.resources_router import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import get_writing_resource_store
+    else:
+        from routers.resources_router import get_writing_resource_store
 
     store = get_writing_resource_store()
     material = store.get_material(source_id)
@@ -1566,7 +1692,10 @@ async def suggest_citations(request: SuggestCitationsRequest) -> list[CitationSu
 
     Analyzes draft text and recommends materials to cite.
     """
-    from routers.resources_router import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import get_writing_resource_store
+    else:
+        from routers.resources_router import get_writing_resource_store
 
     store = get_writing_resource_store()
     project = store.get_project(request.project_id)
@@ -1588,9 +1717,7 @@ async def suggest_citations(request: SuggestCitationsRequest) -> list[CitationSu
 
     # Search for relevant chunks based on context
     try:
-        from main_rag_workflow import search_chunks
-
-        search_results = search_chunks(
+        search_results = resources_router.search_project_chunks_for_query(
             query=context,
             project_id=request.project_id,
             top_k=request.max_suggestions,
@@ -1637,7 +1764,10 @@ async def list_figure_assets(
     Returns actual extracted/uploaded figures with asset files.
     Distinct from text-derived candidates.
     """
-    from routers.resources_router import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import get_writing_resource_store
+    else:
+        from routers.resources_router import get_writing_resource_store
 
     store = get_writing_resource_store()
     project = store.get_project(project_id)
@@ -1653,7 +1783,10 @@ async def create_figure_asset(request: CreateFigureAssetRequest) -> FigureAssetP
 
     Registers an extracted or uploaded figure/table with asset file.
     """
-    from routers.resources_router import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import get_writing_resource_store
+    else:
+        from routers.resources_router import get_writing_resource_store
     import uuid
 
     store = get_writing_resource_store()
@@ -1669,6 +1802,7 @@ async def create_figure_asset(request: CreateFigureAssetRequest) -> FigureAssetP
         material_id=request.material_id,
         source_page=request.source_page,
         bbox=request.bbox,
+        bbox_unit=request.bbox_unit.value if request.bbox_unit is not None else None,
         width=request.width,
         height=request.height,
         format=request.format,
@@ -1684,14 +1818,24 @@ async def update_figure_asset(
     numbering: str | None = Query(None),
 ) -> FigureAssetPayload:
     """Update figure/table asset metadata."""
-    from routers.resources_router import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import get_writing_resource_store
+    else:
+        from routers.resources_router import get_writing_resource_store
 
     store = get_writing_resource_store()
     asset = store.get_figure_asset(asset_id)
     if asset is None:
         raise HTTPException(status_code=404, detail=f"Asset not found: {asset_id}")
 
-    payload = request or UpdateFigureAssetRequest()
+    payload = request or UpdateFigureAssetRequest(
+        kind=None,
+        bbox=None,
+        bbox_unit=None,
+    )
+    replace_bbox_anchor = request is not None and bool(
+        {"bbox", "bbox_unit"} & request.model_fields_set
+    )
     updated = store.update_figure_asset(
         asset_id,
         kind=_figure_asset_value(payload.kind),
@@ -1700,6 +1844,8 @@ async def update_figure_asset(
         material_id=_figure_asset_value(payload.material_id),
         source_page=payload.source_page,
         bbox=payload.bbox,
+        bbox_unit=payload.bbox_unit.value if payload.bbox_unit is not None else None,
+        replace_bbox_anchor=replace_bbox_anchor,
         asset_path=_figure_asset_value(payload.asset_path),
         width=payload.width,
         height=payload.height,
@@ -1713,7 +1859,10 @@ async def update_figure_asset(
 @router.delete("/figures/{asset_id}")
 async def delete_figure_asset(asset_id: str) -> dict[str, str]:
     """Delete a figure/table asset."""
-    from routers.resources_router import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import get_writing_resource_store
+    else:
+        from routers.resources_router import get_writing_resource_store
 
     store = get_writing_resource_store()
     if not store.delete_figure_asset(asset_id):
@@ -1727,7 +1876,10 @@ async def serve_figure_asset_file(
     path: str = Query(..., description="Local asset path recorded on the figure/table item"),
 ) -> FileResponse:
     """Serve a project-scoped figure/table image for in-app preview and paste."""
-    from routers.resources_router import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import get_writing_resource_store
+    else:
+        from routers.resources_router import get_writing_resource_store
 
     store = get_writing_resource_store()
     if not store.get_project(project_id):
@@ -1748,9 +1900,17 @@ async def generate_figure_assets(request: GenerateFigureAssetsRequest) -> Genera
     already extracted pixel candidates into persisted writing assets while
     preserving source material, page, bbox, and local asset path provenance.
     """
-    from routers.resources_router import get_writing_resource_store
-    from routers.resources_router import _ensure_project_chunks
-    from routers.resources_router.endpoints_search_upload import derive_figure_table_candidates
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import (
+            _ensure_project_chunks,
+            get_writing_resource_store,
+        )
+        from literature_assistant.core.routers.resources_router.endpoints_search_upload import (
+            derive_figure_table_candidates,
+        )
+    else:
+        from routers.resources_router import _ensure_project_chunks, get_writing_resource_store
+        from routers.resources_router.endpoints_search_upload import derive_figure_table_candidates
 
     store = get_writing_resource_store()
     project = store.get_project(request.project_id)
@@ -1824,14 +1984,23 @@ async def list_figure_candidates_alias(
 
     Returns candidates extracted from chunk text, not real assets.
     """
-    from routers.resources_router.endpoints_search_upload import list_figure_table_candidates
-    return await list_figure_table_candidates(
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router.endpoints_search_upload import (
+            list_figure_table_candidates,
+        )
+    else:
+        from routers.resources_router.endpoints_search_upload import list_figure_table_candidates
+
+    candidates = await list_figure_table_candidates(
         project_id=project_id,
         limit=limit,
         pixel_only=pixel_only,
         render_pdf_fallback=render_pdf_fallback,
         query=query,
     )
+    if not isinstance(candidates, Sequence) or isinstance(candidates, (str, bytes, bytearray)):
+        raise HTTPException(status_code=500, detail="Invalid figure candidates response")
+    return [FigureTableCandidatePayload.model_validate(candidate) for candidate in candidates]
 
 
 # =========================================================================
@@ -1844,8 +2013,12 @@ async def submit_for_review(request: SubmitForReviewRequest) -> SubmissionRespon
 
     Packages project content for reviewer access.
     """
-    from routers.resources_router import get_writing_resource_store
-    from project_paths import output_path
+    if TYPE_CHECKING:
+        from literature_assistant.core.project_paths import output_path
+        from literature_assistant.core.routers.resources_router import get_writing_resource_store
+    else:
+        from project_paths import output_path
+        from routers.resources_router import get_writing_resource_store
     import uuid
 
     store = get_writing_resource_store()
@@ -1919,8 +2092,14 @@ async def export_project(request: ExportProjectRequest) -> ProjectExportPayload 
     Supports JSON, Markdown, Word, LaTeX, and PDF formats.
     """
     try:
-        from routers.resources_router import ProjectExportFormat
-        from routers.resources_router.endpoints_export_stats import export_project as export_project_resource
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.resources_router import ProjectExportFormat
+            from literature_assistant.core.routers.resources_router.endpoints_export_stats import (
+                export_project as export_project_resource,
+            )
+        else:
+            from routers.resources_router import ProjectExportFormat
+            from routers.resources_router.endpoints_export_stats import export_project as export_project_resource
         export_format = ProjectExportFormat(request.format)
     except ValueError as exc:
         raise HTTPException(

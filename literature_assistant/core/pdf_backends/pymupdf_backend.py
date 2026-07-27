@@ -27,12 +27,14 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from functools import lru_cache
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from types import ModuleType
+from typing import Protocol, TypeGuard
 
 from . import (
     PDFParseResult,
@@ -48,6 +50,102 @@ __all__ = ["PyMuPDFBackend"]
 logger = logging.getLogger("PyMuPDFBackend")
 _BACKEND_CONTRACT = "scholar-ai.pdf-parser.pymupdf-fallback-compat/v1"
 _VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.!+_-]{0,127}$")
+
+
+class _TextPage(Protocol):
+    def get_text(self) -> object: ...
+
+
+class _CloseableDocument(Protocol):
+    def close(self) -> None: ...
+
+
+class _PageIterable(Protocol):
+    def __iter__(self) -> Iterator[object]: ...
+
+
+class _PageSequence(Protocol):
+    def __len__(self) -> int: ...
+
+    def __getitem__(self, index: int) -> object: ...
+
+
+class _PageCountLoader(Protocol):
+    @property
+    def page_count(self) -> int: ...
+
+    def load_page(self, index: int) -> object: ...
+
+
+def _has_page_iterator(value: object) -> TypeGuard[_PageIterable]:
+    return callable(getattr(value, "__iter__", None))
+
+
+def _has_page_sequence(value: object) -> TypeGuard[_PageSequence]:
+    return callable(getattr(value, "__len__", None)) and callable(
+        getattr(value, "__getitem__", None)
+    )
+
+
+def _has_page_count_loader(value: object) -> TypeGuard[_PageCountLoader]:
+    page_count = getattr(value, "page_count", None)
+    return (
+        isinstance(page_count, int)
+        and not isinstance(page_count, bool)
+        and page_count >= 0
+        and callable(getattr(value, "load_page", None))
+    )
+
+
+def _is_closeable_document(value: object) -> TypeGuard[_CloseableDocument]:
+    return callable(getattr(value, "close", None))
+
+
+def _is_text_page(value: object) -> TypeGuard[_TextPage]:
+    return callable(getattr(value, "get_text", None))
+
+
+def _read_page_text(page: object) -> str:
+    """Read one page through a checked text-extraction boundary."""
+
+    if not _is_text_page(page):
+        raise TypeError("PyMuPDF page must expose callable get_text")
+    text = page.get_text()
+    if not isinstance(text, str):
+        raise TypeError("PyMuPDF Page.get_text() must return a string")
+    return text
+
+
+def _call_runtime_method(
+    target: object,
+    method_name: str,
+    *args: object,
+    **kwargs: object,
+) -> object:
+    """Call one checked method on a partially typed dependency surface."""
+
+    method = getattr(target, method_name, None)
+    if not callable(method):
+        raise TypeError(f"PyMuPDF object must expose callable {method_name}")
+    result: object = method(*args, **kwargs)
+    return result
+
+
+def _iter_document_pages(document: object) -> Iterator[object]:
+    """Preserve supported PyMuPDF iterable, sequence, and page APIs."""
+
+    if _has_page_count_loader(document):
+        for index in range(document.page_count):
+            yield document.load_page(index)
+        return
+    if _has_page_sequence(document):
+        for index in range(len(document)):
+            yield document[index]
+        return
+    if _has_page_iterator(document):
+        yield from document
+        return
+    raise TypeError("PyMuPDF document does not expose a supported page contract")
 
 
 def _safe_dependency_version(value: object) -> str | None:
@@ -206,11 +304,18 @@ class PyMuPDFBackend:
                     outcome="succeeded",
                     attempted_parsers=("pymupdf",),
                 )
-                doc = pymupdf.open(str(source_path))
+                document = _call_runtime_method(pymupdf, "open", str(source_path))
+                if not _is_closeable_document(document):
+                    raise TypeError(
+                        "PyMuPDF open() must return a closeable document"
+                    )
                 try:
-                    pages = [page.get_text() for page in doc]
+                    pages = [
+                        _read_page_text(page)
+                        for page in _iter_document_pages(document)
+                    ]
                 finally:
-                    doc.close()
+                    document.close()
                 text = "\n\n".join(pages)
             except ImportError:
                 pypdf2_loaded = False

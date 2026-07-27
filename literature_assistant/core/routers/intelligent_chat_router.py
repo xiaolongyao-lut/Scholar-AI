@@ -25,39 +25,64 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from enum import Enum
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
-from mcp_runtime.accessors import get_enabled_server
-from mcp_runtime.client_manager import get_mcp_client_manager
-from models import (
-    EvidencePackBuildRequest,
-    EvidencePackIntegrityGateRequest,
-    PdfAnchorFields,
-    PdfBboxUnit,
-    coerce_pdf_bbox,
-    pdf_bbox_matches_unit,
-)
-from project_paths import (
-    REPO_ROOT,
-    WORKSPACE_ARTIFACTS_ROOT,
-    WORKSPACE_REFERENCES_ROOT,
-    project_data_path,
-    runtime_state_path,
-)
-from llm_defaults import resolve_llm_params
-from evidence_packer import _select_query_quote
-from local_citation_scope import (
+_hook_logger = logging.getLogger("IntelligentChatRouter")
+
+if TYPE_CHECKING:
+    from literature_assistant.core.evidence_packer import _select_query_quote
+    from literature_assistant.core.llm_defaults import resolve_llm_params
+    from literature_assistant.core.mcp_runtime.accessors import get_enabled_server
+    from literature_assistant.core.mcp_runtime.client_manager import get_mcp_client_manager
+    from literature_assistant.core.models import (
+        EvidencePackBuildRequest,
+        EvidencePackIntegrityGateRequest,
+        PdfAnchorFields,
+        PdfBboxUnit,
+        coerce_pdf_bbox,
+        pdf_bbox_matches_unit,
+    )
+    from literature_assistant.core.project_paths import (
+        REPO_ROOT,
+        WORKSPACE_ARTIFACTS_ROOT,
+        WORKSPACE_REFERENCES_ROOT,
+        project_data_path,
+        runtime_state_path,
+    )
+    from literature_assistant.core.text_utils import cjk_aware_tokenize
+else:
+    from evidence_packer import _select_query_quote
+    from llm_defaults import resolve_llm_params
+    from mcp_runtime.accessors import get_enabled_server
+    from mcp_runtime.client_manager import get_mcp_client_manager
+    from models import (
+        EvidencePackBuildRequest,
+        EvidencePackIntegrityGateRequest,
+        PdfAnchorFields,
+        PdfBboxUnit,
+        coerce_pdf_bbox,
+        pdf_bbox_matches_unit,
+    )
+    from project_paths import (
+        REPO_ROOT,
+        WORKSPACE_ARTIFACTS_ROOT,
+        WORKSPACE_REFERENCES_ROOT,
+        project_data_path,
+        runtime_state_path,
+    )
+    from text_utils import cjk_aware_tokenize
+
+from literature_assistant.core.local_citation_scope import (
     LocalCitationMatch,
     LocalCitationResolution,
     limit_local_citation_resolutions,
     resolve_local_citation_scope,
 )
-from text_utils import cjk_aware_tokenize
 from literature_assistant.core.knowledge_graph.citation_projection import (
     CitationProjectionBatch,
     CitationSelectionLocator,
@@ -95,88 +120,183 @@ from literature_assistant.core.knowledge_graph.reviewed_knowledge_source_sync im
 from literature_assistant.core.knowledge_graph.reviewed_knowledge_store import (
     ReviewedKnowledgeStoreError,
 )
-from model_config_store import (
-    CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT,
-    CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
-    CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
-    chat_context_compression_store,
-    chat_store,
-    normalize_chat_context_compression_settings,
-)
-from pre_llm_call_hooks import (
-    PreLlmCallContext,
-    PreLlmCallImage,
-    run_pre_llm_call_hooks,
-)
-from pdf_selection_crop import (
-    PdfSelectionCropError,
-    PdfSelectionCropSpec,
-    derive_pdf_selection_crops,
-)
-from runtime_env import env_value
-from sampling_storage import load_user_sampling
-from chat.pipeline import (
-    EvidenceRole,
-    apply_session_auto_compression,
-    append_session_turns,
-    build_chat_pipeline,
-    build_session_context_messages,
-    clean_optional_text,
-    coerce_evidence_reference_records,
-    extract_source_labels,
-    load_session_store,
-    render_context_strings,
-    save_session_store,
-    summarize_session_record,
-    title_from_session_messages,
-)
-from chat.discussion_history import (
-    DISCUSSION_SESSION_SOURCE,
-    mirror_completed_discussion_runs_to_smart_read,
-)
-from chat.history_store import (
-    ANSWER_RECEIPT_SCHEMA_VERSION,
-    RESEARCH_SELECTION_SCHEMA_VERSION,
-    ChatHistoryStore,
-    VisualObservationConflictError,
-    VisualObservationCorruptionError,
-    VisualObservationStoreError,
-    default_chat_history_db_path,
-    sanitize_research_selections,
-)
-from chat.visual_observation import (
-    VisualObservationCandidate,
-    VisualObservationError,
-    VisualObservationImageInput,
-    VisualObservationLifecycleEvent,
-    VisualObservationLifecycleReceipt,
-    VisualObservationLifecycleRequest,
-    VisualObservationProducer,
-    VisualObservationReference,
-    VisualObservationSourceRevisionApplyReceipt,
-    VisualObservationSourceRevisionApplyRequest,
-    VisualObservationSourceRevisionIdentity,
-    VisualObservationSourceRevisionOperation,
-    VisualObservationSourceRevisionPreflight,
-    sanitize_visual_observation_refs,
-    visual_material_source_binding_fingerprint,
-    visual_observation_reference,
-)
-from routers.chat_router import (
-    ChatImageAttachment,
-    ChatRequest,
-    ChatStreamRequest,
-    LLMConfig,
-    _chat_model_supports_images,
-    _maybe_build_analysis_chain as _maybe_build_chat_analysis_chain,
-    chat_ask,
-    chat_stream as lower_chat_stream,
-)
-from models.analysis_chain import AnalysisChainPayload
-from routers.llm_cost_router import _read_cost_aggregate
-from routers.resources_router import load_project_chunks_for_rag, search_project_chunks_for_query
-from tolf_text_selector import _expand_query_with_bridge_terms, select_tolf_context_chunks
-from writing_resources import get_writing_resource_store
+if TYPE_CHECKING:
+    from literature_assistant.core.chat.discussion_history import (
+        DISCUSSION_SESSION_SOURCE,
+        mirror_completed_discussion_runs_to_smart_read,
+    )
+    from literature_assistant.core.chat.history_store import (
+        ANSWER_RECEIPT_SCHEMA_VERSION,
+        RESEARCH_SELECTION_SCHEMA_VERSION,
+        ChatHistoryStore,
+        VisualObservationConflictError,
+        VisualObservationCorruptionError,
+        VisualObservationStoreError,
+        default_chat_history_db_path,
+        sanitize_research_selections,
+    )
+    from literature_assistant.core.chat.pipeline import (
+        AssistantTurnRecord,
+        EvidenceRole,
+        apply_session_auto_compression,
+        append_session_turns,
+        build_chat_pipeline,
+        build_session_context_messages,
+        clean_optional_text,
+        coerce_evidence_reference_records,
+        extract_source_labels,
+        load_session_store,
+        render_context_strings,
+        save_session_store,
+        summarize_session_record,
+        title_from_session_messages,
+    )
+    from literature_assistant.core.chat.visual_observation import (
+        VisualObservationCandidate,
+        VisualObservationError,
+        VisualObservationImageInput,
+        VisualObservationLifecycleEvent,
+        VisualObservationLifecycleReceipt,
+        VisualObservationLifecycleRequest,
+        VisualObservationProducer,
+        VisualObservationReference,
+        VisualObservationSourceRevisionApplyReceipt,
+        VisualObservationSourceRevisionApplyRequest,
+        VisualObservationSourceRevisionIdentity,
+        VisualObservationSourceRevisionOperation,
+        VisualObservationSourceRevisionPreflight,
+        sanitize_visual_observation_refs,
+        visual_material_source_binding_fingerprint,
+        visual_observation_reference,
+    )
+    from literature_assistant.core.model_config_store import (
+        CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT,
+        CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
+        CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
+        chat_context_compression_store,
+        chat_store,
+        normalize_chat_context_compression_settings,
+    )
+    from literature_assistant.core.models.analysis_chain import AnalysisChainPayload
+    from literature_assistant.core.pdf_selection_crop import (
+        PdfSelectionCropError,
+        PdfSelectionCropSpec,
+        derive_pdf_selection_crops,
+    )
+    from literature_assistant.core.pre_llm_call_hooks import (
+        PreLlmCallContext,
+        PreLlmCallImage,
+        run_pre_llm_call_hooks,
+    )
+    from literature_assistant.core.routers.chat_router import (
+        ChatImageAttachment,
+        ChatRequest,
+        ChatStreamRequest,
+        LLMConfig,
+        _chat_model_supports_images,
+        _maybe_build_analysis_chain as _maybe_build_chat_analysis_chain,
+        chat_ask,
+        chat_stream as lower_chat_stream,
+    )
+    from literature_assistant.core.routers.llm_cost_router import _read_cost_aggregate
+    from literature_assistant.core.routers.resources_router import (
+        load_project_chunks_for_rag,
+        search_project_chunks_for_query,
+    )
+    from literature_assistant.core.runtime_env import env_value
+    from literature_assistant.core.sampling_storage import load_user_sampling
+    from literature_assistant.core.tolf_text_selector import (
+        _expand_query_with_bridge_terms,
+        select_tolf_context_chunks,
+    )
+    from literature_assistant.core.writing_resources import get_writing_resource_store
+else:
+    from chat.discussion_history import (
+        DISCUSSION_SESSION_SOURCE,
+        mirror_completed_discussion_runs_to_smart_read,
+    )
+    from chat.history_store import (
+        ANSWER_RECEIPT_SCHEMA_VERSION,
+        RESEARCH_SELECTION_SCHEMA_VERSION,
+        ChatHistoryStore,
+        VisualObservationConflictError,
+        VisualObservationCorruptionError,
+        VisualObservationStoreError,
+        default_chat_history_db_path,
+        sanitize_research_selections,
+    )
+    from chat.pipeline import (
+        AssistantTurnRecord,
+        EvidenceRole,
+        apply_session_auto_compression,
+        append_session_turns,
+        build_chat_pipeline,
+        build_session_context_messages,
+        clean_optional_text,
+        coerce_evidence_reference_records,
+        extract_source_labels,
+        load_session_store,
+        render_context_strings,
+        save_session_store,
+        summarize_session_record,
+        title_from_session_messages,
+    )
+    from chat.visual_observation import (
+        VisualObservationCandidate,
+        VisualObservationError,
+        VisualObservationImageInput,
+        VisualObservationLifecycleEvent,
+        VisualObservationLifecycleReceipt,
+        VisualObservationLifecycleRequest,
+        VisualObservationProducer,
+        VisualObservationReference,
+        VisualObservationSourceRevisionApplyReceipt,
+        VisualObservationSourceRevisionApplyRequest,
+        VisualObservationSourceRevisionIdentity,
+        VisualObservationSourceRevisionOperation,
+        VisualObservationSourceRevisionPreflight,
+        sanitize_visual_observation_refs,
+        visual_material_source_binding_fingerprint,
+        visual_observation_reference,
+    )
+    from model_config_store import (
+        CHAT_CONTEXT_COMPRESSION_KEEP_RECENT_DEFAULT,
+        CHAT_CONTEXT_COMPRESSION_TARGET_DEFAULT,
+        CHAT_CONTEXT_COMPRESSION_TRIGGER_DEFAULT,
+        chat_context_compression_store,
+        chat_store,
+        normalize_chat_context_compression_settings,
+    )
+    from models.analysis_chain import AnalysisChainPayload
+    from pdf_selection_crop import (
+        PdfSelectionCropError,
+        PdfSelectionCropSpec,
+        derive_pdf_selection_crops,
+    )
+    from pre_llm_call_hooks import (
+        PreLlmCallContext,
+        PreLlmCallImage,
+        run_pre_llm_call_hooks,
+    )
+    from routers.chat_router import (
+        ChatImageAttachment,
+        ChatRequest,
+        ChatStreamRequest,
+        LLMConfig,
+        _chat_model_supports_images,
+        _maybe_build_analysis_chain as _maybe_build_chat_analysis_chain,
+        chat_ask,
+        chat_stream as lower_chat_stream,
+    )
+    from routers.llm_cost_router import _read_cost_aggregate
+    from routers.resources_router import (
+        load_project_chunks_for_rag,
+        search_project_chunks_for_query,
+    )
+    from runtime_env import env_value
+    from sampling_storage import load_user_sampling
+    from tolf_text_selector import _expand_query_with_bridge_terms, select_tolf_context_chunks
+    from writing_resources import get_writing_resource_store
 
 
 ContextTier = Literal["fast", "balanced", "thorough"]
@@ -199,7 +319,7 @@ class ChatMode(str, Enum):
     LITERATURE_QA = "literature_qa"
     INSPIRATION = "inspiration"
 
-router = APIRouter(prefix="/api", tags=["Chat"])
+router: APIRouter = APIRouter(prefix="/api", tags=["Chat"])
 
 _SESSION_STORE_PATH = runtime_state_path("intelligent_chat_sessions.json")
 _SESSION_LOCK = threading.Lock()
@@ -400,9 +520,9 @@ _AUTHOR_YEAR_SCOPE_RE = re.compile(
 class TokenUsagePayload(BaseModel):
     """Token usage payload consumed by the chat UI."""
 
-    prompt: int = Field(0, ge=0)
-    completion: int = Field(0, ge=0)
-    total: int = Field(0, ge=0)
+    prompt: int = Field(default=0, ge=0)
+    completion: int = Field(default=0, ge=0)
+    total: int = Field(default=0, ge=0)
 
 
 def _coerce_pdf_bbox_unit(value: object) -> PdfBboxUnit | None:
@@ -418,13 +538,35 @@ def _coerce_pdf_bbox_unit(value: object) -> PdfBboxUnit | None:
     return None
 
 
+def _coerce_pdf_bbox_values(
+    value: object,
+) -> list[float] | None:
+    """Validate an untyped bbox helper result into a fixed four-float shape."""
+
+    raw_bbox = coerce_pdf_bbox(value)
+    if not isinstance(raw_bbox, list) or len(raw_bbox) != 4:
+        return None
+    if any(
+        isinstance(item, bool) or not isinstance(item, int | float)
+        for item in raw_bbox
+    ):
+        return None
+    return [
+        float(raw_bbox[0]),
+        float(raw_bbox[1]),
+        float(raw_bbox[2]),
+        float(raw_bbox[3]),
+    ]
+
+
 def _coerce_context_bbox(value: object, unit: PdfBboxUnit | None) -> list[float] | None:
     """Return a bbox only when it matches its declared coordinate unit."""
 
-    bbox = coerce_pdf_bbox(value)
+    bbox = _coerce_pdf_bbox_values(value)
     if bbox is None or unit is None:
         return None
-    return bbox if pdf_bbox_matches_unit(bbox, unit) else None
+    normalized_bbox = list(bbox)
+    return normalized_bbox if pdf_bbox_matches_unit(normalized_bbox, unit) else None
 
 
 def _coerce_internal_normalized_ratio_bbox(
@@ -448,12 +590,13 @@ def _coerce_internal_normalized_ratio_bbox(
         return None
     if raw_unit not in {"", PdfBboxUnit.NORMALIZED_RATIO.value}:
         return None
-    bbox = coerce_pdf_bbox(value)
+    bbox = _coerce_pdf_bbox_values(value)
     if bbox is None:
         return None
-    if not pdf_bbox_matches_unit(bbox, PdfBboxUnit.NORMALIZED_RATIO):
+    normalized_bbox = list(bbox)
+    if not pdf_bbox_matches_unit(normalized_bbox, PdfBboxUnit.NORMALIZED_RATIO):
         return None
-    return bbox
+    return normalized_bbox
 
 
 def _coerce_evidence_anchor_kind(value: object, *, chunk_type: object = None) -> Literal["text", "visual"] | None:
@@ -527,7 +670,7 @@ class ContextChunkPayload(PdfAnchorFields):
     source_hint: str | None = None
     rerank_score: float | None = Field(default=None, ge=0.0)
     figure_candidate: str | None = Field(default=None, max_length=260)
-    figure_candidate_detail: dict[str, Any] | None = None
+    figure_candidate_detail: Mapping[str, object] | None = None
     image_paths: list[str] = Field(default_factory=list)
     quote: str | None = Field(default=None, max_length=320)
     anchor_kind: Literal["text", "visual"] | None = None
@@ -677,7 +820,7 @@ class ResearchSelectionPayload(PdfAnchorFields):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal["scholar-ai-research-selection/v1"] = (
-        RESEARCH_SELECTION_SCHEMA_VERSION
+        "scholar-ai-research-selection/v1"
     )
     selection_id: str = Field(..., min_length=1, max_length=256)
     turn_id: str = Field(..., min_length=1, max_length=256)
@@ -1182,9 +1325,14 @@ async def _hydrate_replayed_pdf_selection_images(
         raise HTTPException(status_code=404, detail="当前项目中未找到视觉选区对应的文献。")
 
     try:
-        from routers.resources_router.endpoints_search_upload import (
-            _resolve_material_source_path,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.resources_router.endpoints_search_upload import (
+                _resolve_material_source_path,
+            )
+        else:
+            from routers.resources_router.endpoints_search_upload import (
+                _resolve_material_source_path,
+            )
 
         source_path = _resolve_material_source_path(
             project_id,
@@ -1202,10 +1350,16 @@ async def _hydrate_replayed_pdf_selection_images(
     spec_indexes: dict[tuple[int, tuple[float, float, float, float]], int] = {}
     target_spec_indexes: list[int] = []
     for _selection_index, selection in targets:
-        bbox = coerce_pdf_bbox(selection.bbox)
+        bbox = _coerce_pdf_bbox_values(selection.bbox)
         if bbox is None or not pdf_bbox_matches_unit(bbox, PdfBboxUnit.NORMALIZED_RATIO):
             raise HTTPException(status_code=422, detail="视觉选区坐标不是有效的 normalized_ratio。")
-        canonical_bbox = tuple(round(float(value), 6) for value in bbox)
+        x, y, width, height = bbox
+        canonical_bbox = (
+            round(x, 6),
+            round(y, 6),
+            round(width, 6),
+            round(height, 6),
+        )
         spec_key = (selection.page, canonical_bbox)
         spec_index = spec_indexes.get(spec_key)
         if spec_index is None:
@@ -1249,8 +1403,8 @@ async def _hydrate_replayed_pdf_selection_images(
 
     crop_image_indexes: list[int] = []
     for spec, crop in zip(unique_specs, crops, strict=True):
-        image_index = content_indexes.get(crop.content_sha256)
-        if image_index is None:
+        known_image_index = content_indexes.get(crop.content_sha256)
+        if known_image_index is None:
             extension = "png" if crop.mime == "image/png" else "jpg"
             image = ImageAttachmentPayload(
                 mime=crop.mime,
@@ -1261,6 +1415,8 @@ async def _hydrate_replayed_pdf_selection_images(
             image_index = len(images)
             images.append(image)
             content_indexes[crop.content_sha256] = image_index
+        else:
+            image_index = known_image_index
         crop_image_indexes.append(image_index)
 
     for (selection_index, selection), spec_index in zip(targets, target_spec_indexes, strict=True):
@@ -1689,14 +1845,20 @@ class ChatResumeMessagePayload(BaseModel):
     def _sanitize_resume_research_selections(cls, value: object) -> list[dict[str, Any]]:
         """Keep malformed legacy selection metadata from breaking session restore."""
 
-        return sanitize_research_selections(value)
+        sanitized = sanitize_research_selections(value)
+        if not isinstance(sanitized, list):
+            return []
+        return [dict(item) for item in sanitized if isinstance(item, Mapping)]
 
     @field_validator("visual_observation_refs", mode="before")
     @classmethod
     def _sanitize_resume_visual_observation_refs(cls, value: object) -> list[dict[str, Any]]:
         """Restore only output-free visual candidate references."""
 
-        return sanitize_visual_observation_refs(value)
+        sanitized = sanitize_visual_observation_refs(value)
+        if not isinstance(sanitized, list):
+            return []
+        return [dict(item) for item in sanitized if isinstance(item, Mapping)]
 
     @field_validator("turn_id", mode="before")
     @classmethod
@@ -1786,12 +1948,15 @@ def _ragworkflow_chat_enabled() -> bool:
 
 def _tolf_context_enabled() -> bool:
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
     except ImportError:
         # External-cwd / legacy snapshot path: feature_flags module unreachable.
         val = os.getenv("INTELLIGENT_CHAT_TOLF_CONTEXT_ENABLED")
         return _truthy(val) if val else False
-    return is_enabled("tolf_context")
+    return bool(is_enabled("tolf_context"))
 
 
 def _tolf_fusion_mode_enabled() -> bool:
@@ -1805,11 +1970,14 @@ def _tolf_fusion_mode_enabled() -> bool:
     the historical TOLF-or-RAG branch.
     """
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
     except ImportError:
         val = os.getenv("INTELLIGENT_CHAT_TOLF_FUSION_MODE_ENABLED")
         return _truthy(val) if val else False
-    return is_enabled("tolf_fusion_mode")
+    return bool(is_enabled("tolf_fusion_mode"))
 
 
 def _hybrid_retrieval_enabled() -> bool:
@@ -1824,11 +1992,14 @@ def _hybrid_retrieval_enabled() -> bool:
     on even when only some projects have been backfilled.
     """
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
     except ImportError:
         val = os.getenv("INTELLIGENT_CHAT_HYBRID_RETRIEVAL_ENABLED")
         return _truthy(val) if val else False
-    return is_enabled("hybrid_retrieval")
+    return bool(is_enabled("hybrid_retrieval"))
 
 
 def _expand_project_retrieval_query(query: str) -> str:
@@ -2228,7 +2399,8 @@ def _collect_related_visual_evidence_chunks(
         seen_chunk_ids.add(chunk_id)
         seen_image_paths.update(image_paths)
         chunk["image_paths"] = image_paths
-        labels = list(chunk.get("source_labels")) if isinstance(chunk.get("source_labels"), list) else []
+        raw_labels = chunk.get("source_labels")
+        labels = list(raw_labels) if isinstance(raw_labels, list) else []
         if "visual_relevance" not in labels:
             labels.append("visual_relevance")
         chunk["source_labels"] = labels
@@ -2272,6 +2444,7 @@ def _build_visual_evidence_refs_from_chunks(
         bbox_unit = _coerce_pdf_bbox_unit(chunk.get("bbox_unit"))
         bbox = _coerce_context_bbox(chunk.get("bbox"), bbox_unit)
         score = chunk.get("visual_evidence_score")
+        rerank_score = chunk.get("rerank_score")
         refs.append(
             EvidenceReferencePayload(
                 chunk_id=chunk_id,
@@ -2283,9 +2456,9 @@ def _build_visual_evidence_refs_from_chunks(
                 label="visual_evidence",
                 score=(float(score) if isinstance(score, int | float) and not isinstance(score, bool) else None),
                 rerank_score=(
-                    float(chunk.get("rerank_score"))
-                    if isinstance(chunk.get("rerank_score"), int | float)
-                    and not isinstance(chunk.get("rerank_score"), bool)
+                    float(rerank_score)
+                    if isinstance(rerank_score, int | float)
+                    and not isinstance(rerank_score, bool)
                     else None
                 ),
                 source_labels=_extract_source_labels(chunk, "visual_relevance"),
@@ -2422,9 +2595,14 @@ def _load_project_native_visual_candidates(
     except (OSError, RuntimeError, TypeError, ValueError):
         return [], set()
     try:
-        from routers.resources_router.endpoints_search_upload import (
-            _collect_existing_project_asset_paths,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.resources_router.endpoints_search_upload import (
+                _collect_existing_project_asset_paths,
+            )
+        else:
+            from routers.resources_router.endpoints_search_upload import (
+                _collect_existing_project_asset_paths,
+            )
 
         raw_paths = _collect_existing_project_asset_paths(project_id)
     except (ImportError, OSError, RuntimeError, TypeError, ValueError):
@@ -2656,11 +2834,14 @@ def _structured_sibling_inclusion_enabled() -> bool:
     already in the result set are never displaced.
     """
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
     except ImportError:
         val = os.getenv("RAG_STRUCTURED_SIBLING_INCLUSION_ENABLED")
         return _truthy(val) if val else False
-    return is_enabled("rag_structured_sibling_inclusion")
+    return bool(is_enabled("rag_structured_sibling_inclusion"))
 
 
 def _project_query_has_relevant_structured_evidence(
@@ -2730,7 +2911,12 @@ def _project_query_has_relevant_structured_evidence(
 
     if _structured_sibling_inclusion_enabled():
         try:
-            from rag_structured_sibling_inclusion import select_structured_siblings
+            if TYPE_CHECKING:
+                from literature_assistant.core.rag_structured_sibling_inclusion import (
+                    select_structured_siblings,
+                )
+            else:
+                from rag_structured_sibling_inclusion import select_structured_siblings
 
             siblings = select_structured_siblings(selected, chunk_pool, max_siblings=1)
             if any(_structured_chunk_has_actionable_evidence(chunk) for chunk in siblings):
@@ -2780,11 +2966,14 @@ def _evidence_window_shadow_enabled() -> bool:
     """Record Phase 5A evidence-window telemetry without changing context."""
 
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
     except ImportError:
         val = os.getenv("RAG_EVIDENCE_WINDOW_SHADOW_ENABLED")
         return _truthy(val) if val else False
-    return is_enabled("rag_evidence_window_shadow")
+    return bool(is_enabled("rag_evidence_window_shadow"))
 
 
 async def _hybrid_search_project(
@@ -2812,7 +3001,12 @@ async def _hybrid_search_project(
         return []
 
     try:
-        from layers.r_layer_hybrid_retriever import HybridRetrieverWithRerank
+        if TYPE_CHECKING:
+            from literature_assistant.core.layers.r_layer_hybrid_retriever import (
+                HybridRetrieverWithRerank,
+            )
+        else:
+            from layers.r_layer_hybrid_retriever import HybridRetrieverWithRerank
     except ImportError:
         return []
 
@@ -2825,7 +3019,7 @@ async def _hybrid_search_project(
 
     retriever = HybridRetrieverWithRerank(use_reranker=None)
     try:
-        return await retriever.search(
+        raw_results = await retriever.search(
             {"chunks": chunks},
             query=query,
             top_k=top_k,
@@ -2833,6 +3027,9 @@ async def _hybrid_search_project(
         )
     except Exception:
         return []
+    if not isinstance(raw_results, list):
+        return []
+    return [dict(item) for item in raw_results if isinstance(item, Mapping)]
 
 
 def _rrf_merge(
@@ -3067,10 +3264,16 @@ def _project_annotation_note_candidates(
     if not normalized_project_id:
         return []
     try:
-        from routers.annotation_router import (
-            AnnotationUseScope,
-            get_enabled_annotation_notes,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.annotation_router import (
+                AnnotationUseScope,
+                get_enabled_annotation_notes,
+            )
+        else:
+            from routers.annotation_router import (
+                AnnotationUseScope,
+                get_enabled_annotation_notes,
+            )
 
         store = get_writing_resource_store()
         if normalized_material_id is not None:
@@ -3153,7 +3356,8 @@ def _project_annotation_note_candidates(
 
 
 def _clean_optional_text(value: Any) -> str | None:
-    return clean_optional_text(value)
+    cleaned = clean_optional_text(value)
+    return cleaned if isinstance(cleaned, str) else None
 
 
 # B11 (2026-06-13/14): light-chat fast path detector.
@@ -3477,7 +3681,8 @@ def _bind_overlapping_table_text(
         base_content = _extract_project_chunk_content(result)
         result["content"] = f"{base_content}\n[Table text within crop]\n{table_text}".strip()
         result["raw_content"] = result["content"]
-        labels = list(result.get("source_labels")) if isinstance(result.get("source_labels"), list) else []
+        raw_labels = result.get("source_labels")
+        labels = list(raw_labels) if isinstance(raw_labels, list) else []
         if "table_text_window" not in labels:
             labels.append("table_text_window")
         if used_consecutive_locator and "table_text_consecutive_locator" not in labels:
@@ -3488,20 +3693,28 @@ def _bind_overlapping_table_text(
 
 
 def _extract_source_labels(chunk: dict[str, Any], fallback: str) -> list[str]:
-    return extract_source_labels(chunk, fallback)
+    raw_labels = extract_source_labels(chunk, fallback)
+    if not isinstance(raw_labels, list):
+        return [fallback]
+    labels = [label for label in raw_labels if isinstance(label, str)]
+    return labels or [fallback]
 
 
 def _extract_image_paths(chunk: dict[str, Any]) -> list[str]:
     """Return all unique project-relative image assets linked to a chunk."""
 
+    raw_paths: object
     try:
-        from routers.resources_router.endpoints_search_upload import _chunk_image_paths
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.resources_router.endpoints_search_upload import (
+                _chunk_image_paths,
+            )
+        else:
+            from routers.resources_router.endpoints_search_upload import _chunk_image_paths
 
-        return _chunk_image_paths(chunk, max_items=None)
+        raw_paths = _chunk_image_paths(chunk, max_items=None)
     except (ImportError, RuntimeError, TypeError, ValueError):
-        pass
-
-    raw_paths = chunk.get("image_paths")
+        raw_paths = chunk.get("image_paths")
     if not isinstance(raw_paths, list):
         return []
     paths: list[str] = []
@@ -3526,7 +3739,14 @@ def _extract_figure_candidate_detail(chunk: dict[str, Any]) -> dict[str, Any] | 
         if not material_id or not chunk_id:
             return None
         try:
-            from routers.resources_router.endpoints_search_upload import _chunk_figure_candidate_detail
+            if TYPE_CHECKING:
+                from literature_assistant.core.routers.resources_router.endpoints_search_upload import (
+                    _chunk_figure_candidate_detail,
+                )
+            else:
+                from routers.resources_router.endpoints_search_upload import (
+                    _chunk_figure_candidate_detail,
+                )
 
             raw = _chunk_figure_candidate_detail(
                 chunk,
@@ -3626,6 +3846,8 @@ def _build_context_chunks(query: str, source_paths: list[Path], tier: ContextTie
                 source=source,
                 content=content,
                 relevance_score=round(float(score), 4),
+                bbox=None,
+                bbox_unit=None,
             )
         )
         used_chars += len(content)
@@ -3809,7 +4031,12 @@ async def _build_project_context_chunks(
             ]
         if sibling_pool:
             try:
-                from rag_evidence_window import record_shadow_relations_if_enabled
+                if TYPE_CHECKING:
+                    from literature_assistant.core.rag_evidence_window import (
+                        record_shadow_relations_if_enabled,
+                    )
+                else:
+                    from rag_evidence_window import record_shadow_relations_if_enabled
 
                 record_shadow_relations_if_enabled(
                     project_id=project_id,
@@ -3839,10 +4066,16 @@ async def _build_project_context_chunks(
                     if str(chunk.get("material_id") or "").strip() == cleaned_material_id
                 ]
         if sibling_pool:
-            from rag_structured_sibling_inclusion import (
-                merge_with_siblings,
-                select_structured_siblings,
-            )
+            if TYPE_CHECKING:
+                from literature_assistant.core.rag_structured_sibling_inclusion import (
+                    merge_with_siblings,
+                    select_structured_siblings,
+                )
+            else:
+                from rag_structured_sibling_inclusion import (
+                    merge_with_siblings,
+                    select_structured_siblings,
+                )
             siblings = select_structured_siblings(results, sibling_pool)
             if siblings:
                 results = merge_with_siblings(
@@ -3864,9 +4097,14 @@ async def _build_project_context_chunks(
                 ]
         if visual_candidate_pool:
             try:
-                from routers.resources_router.endpoints_search_upload import (
-                    _collect_existing_project_asset_paths,
-                )
+                if TYPE_CHECKING:
+                    from literature_assistant.core.routers.resources_router.endpoints_search_upload import (
+                        _collect_existing_project_asset_paths,
+                    )
+                else:
+                    from routers.resources_router.endpoints_search_upload import (
+                        _collect_existing_project_asset_paths,
+                    )
 
                 existing_image_paths = _collect_existing_project_asset_paths(project_id)
             except (ImportError, OSError, RuntimeError, TypeError, ValueError):
@@ -3994,6 +4232,12 @@ async def _build_project_context_chunks(
             fallback_content=content,
             query=query,
         )
+        raw_rerank_score = result.get("rerank_score")
+        raw_gateway_diagnostics = result.get("retrieval_gateway_diagnostics")
+        raw_tolf_diagnostics = result.get("tolf_diagnostics")
+        raw_tolf_activation_score = result.get("tolf_activation_score")
+        raw_tolf_final_rank_score = result.get("tolf_final_rank_score")
+        raw_tolf_rank_contributions = result.get("tolf_rank_contributions")
         chunks.append(
             ContextChunkPayload(
                 index=len(chunks) + 1,
@@ -4008,9 +4252,9 @@ async def _build_project_context_chunks(
                 source_labels=_extract_source_labels(result, "project_chunks"),
                 source_hint=_clean_optional_text(result.get("source_hint")),
                 rerank_score=(
-                    float(result.get("rerank_score"))
-                    if isinstance(result.get("rerank_score"), int | float)
-                    and not isinstance(result.get("rerank_score"), bool)
+                    float(raw_rerank_score)
+                    if isinstance(raw_rerank_score, int | float)
+                    and not isinstance(raw_rerank_score, bool)
                     else None
                 ),
                 figure_candidate=_clean_optional_text(result.get("figure_candidate")),
@@ -4024,32 +4268,36 @@ async def _build_project_context_chunks(
                 embedding_input_hash=_clean_optional_text(result.get("embedding_input_hash")),
                 hash_version=_clean_optional_text(result.get("hash_version")),
                 retrieval_gateway_diagnostics=(
-                    dict(result.get("retrieval_gateway_diagnostics"))
-                    if isinstance(result.get("retrieval_gateway_diagnostics"), Mapping)
+                    dict(raw_gateway_diagnostics)
+                    if isinstance(raw_gateway_diagnostics, Mapping)
                     else None
                 ),
                 tolf_diagnostics=(
-                    dict(result.get("tolf_diagnostics"))
-                    if isinstance(result.get("tolf_diagnostics"), Mapping)
+                    dict(raw_tolf_diagnostics)
+                    if isinstance(raw_tolf_diagnostics, Mapping)
                     else None
                 ),
                 tolf_activation_score=(
-                    float(result.get("tolf_activation_score"))
-                    if isinstance(result.get("tolf_activation_score"), int | float)
+                    float(raw_tolf_activation_score)
+                    if isinstance(raw_tolf_activation_score, int | float)
+                    and not isinstance(raw_tolf_activation_score, bool)
                     else None
                 ),
                 tolf_final_rank_score=(
-                    float(result.get("tolf_final_rank_score"))
-                    if isinstance(result.get("tolf_final_rank_score"), int | float)
+                    float(raw_tolf_final_rank_score)
+                    if isinstance(raw_tolf_final_rank_score, int | float)
+                    and not isinstance(raw_tolf_final_rank_score, bool)
                     else None
                 ),
                 tolf_rank_contributions=(
                     {
                         str(key): float(value)
-                        for key, value in result.get("tolf_rank_contributions").items()
-                        if isinstance(key, str) and isinstance(value, int | float)
+                        for key, value in raw_tolf_rank_contributions.items()
+                        if isinstance(key, str)
+                        and isinstance(value, int | float)
+                        and not isinstance(value, bool)
                     }
-                    if isinstance(result.get("tolf_rank_contributions"), Mapping)
+                    if isinstance(raw_tolf_rank_contributions, Mapping)
                     else None
                 ),
                 bbox=bbox,
@@ -4086,6 +4334,8 @@ async def _build_project_context_chunks(
                 page=candidate["page"],
                 source_labels=list(candidate["source_labels"]),
                 source_hint=str(candidate["source_hint"]),
+                bbox=None,
+                bbox_unit=None,
             )
         )
         used_chars += len(content)
@@ -4113,6 +4363,7 @@ async def _build_project_context_chunks_with_visual_refs(
         "boost_keywords": boost_keywords,
         "material_id": material_id,
     }
+    parameters: Mapping[str, inspect.Parameter]
     try:
         parameters = inspect.signature(_build_project_context_chunks).parameters
     except (TypeError, ValueError):
@@ -4538,12 +4789,15 @@ def _build_session_context_strings(session_id: str | None) -> list[str]:
     if not isinstance(session, dict):
         return []
     try:
-        return build_session_context_messages(
+        raw_messages = build_session_context_messages(
             session=session,
             keep_recent_turns=int(policy["keep_recent_turns"]),
         )
     except (TypeError, ValueError):
         return []
+    if not isinstance(raw_messages, list):
+        return []
+    return [message for message in raw_messages if isinstance(message, str)]
 
 
 def _compose_llm_context(
@@ -4726,9 +4980,16 @@ def _resolve_current_pdf_citation_scope(
                 failure_reason=f"citation_resolver_{exc.__class__.__name__.casefold()}",
             )
         resolutions.append(resolution)
-    return limit_local_citation_resolutions(
+    limited = limit_local_citation_resolutions(
         resolutions,
         max_secondary_materials=_LOCAL_CITATION_MAX_SECONDARY_MATERIALS,
+    )
+    if not isinstance(limited, Sequence):
+        return tuple(resolutions)
+    return tuple(
+        resolution
+        for resolution in limited
+        if isinstance(resolution, LocalCitationResolution)
     )
 
 
@@ -5262,8 +5523,12 @@ async def _iter_sse_json_payloads(response: StreamingResponse) -> AsyncIterator[
 def _load_skill_tool_schemas() -> list[dict[str, Any]] | None:
     """Get OpenAI-compatible tool schemas for enabled non-experimental skills."""
     try:
-        from skills.service import get_writing_skill_service
-        from skill_executor import get_active_skill_tool_schemas
+        if TYPE_CHECKING:
+            from literature_assistant.core.skill_executor import get_active_skill_tool_schemas
+            from literature_assistant.core.skills.service import get_writing_skill_service
+        else:
+            from skill_executor import get_active_skill_tool_schemas
+            from skills.service import get_writing_skill_service
         svc = get_writing_skill_service()
         schemas = get_active_skill_tool_schemas(svc._registry)
         return schemas if schemas else None
@@ -5290,8 +5555,12 @@ def _execute_skill_tool_calls(tool_calls: list[dict[str, Any]]) -> list[str]:
     """Execute skills requested by LLM tool_calls, return result strings."""
     results: list[str] = []
     try:
-        from skills.service import get_writing_skill_service
-        from skill_executor import execute_skill
+        if TYPE_CHECKING:
+            from literature_assistant.core.skill_executor import execute_skill
+            from literature_assistant.core.skills.service import get_writing_skill_service
+        else:
+            from skill_executor import execute_skill
+            from skills.service import get_writing_skill_service
         svc = get_writing_skill_service()
         for tc in tool_calls:
             func = tc.get("function", {})
@@ -5685,7 +5954,10 @@ def _schedule_local_citation_capture(
             )
         return batch
     try:
-        from evolution import run_capture_in_background
+        if TYPE_CHECKING:
+            from literature_assistant.core.evolution import run_capture_in_background
+        else:
+            from evolution import run_capture_in_background
     except Exception as exc:  # pragma: no cover - optional capture helper unavailable
         import logging
 
@@ -5818,6 +6090,12 @@ def _visual_observation_candidate_id(
     return f"visual-observation-{candidate_digest[:32]}"
 
 
+def _visual_observation_producer_text(value: object) -> str | None:
+    """Narrow opaque producer metadata before Pydantic sanitizes the text."""
+
+    return value if isinstance(value, str) else None
+
+
 def _visual_observation_producer(
     value: Mapping[str, object] | None,
     *,
@@ -5828,24 +6106,30 @@ def _visual_observation_producer(
     raw = dict(value or {})
     if route == "direct_model":
         return VisualObservationProducer(
-            provider=raw.get("provider"),
-            model=raw.get("model"),
-            model_version=raw.get("model_version"),
+            provider=_visual_observation_producer_text(raw.get("provider")),
+            model=_visual_observation_producer_text(raw.get("model")),
+            model_version=_visual_observation_producer_text(raw.get("model_version")),
         )
     return VisualObservationProducer(
-        provider=raw.get("provider"),
-        model=raw.get("model"),
-        model_version=raw.get("model_version"),
-        tool_name=raw.get("tool") or raw.get("tool_name") or _VISION_AUX_TOOL_NAME,
-        tool_version=(
-            raw.get("tool_version")
-            or raw.get("server_version")
-            or raw.get("version")
+        provider=_visual_observation_producer_text(raw.get("provider")),
+        model=_visual_observation_producer_text(raw.get("model")),
+        model_version=_visual_observation_producer_text(raw.get("model_version")),
+        tool_name=_visual_observation_producer_text(
+            raw.get("tool") or raw.get("tool_name") or _VISION_AUX_TOOL_NAME
+        ),
+        tool_version=_visual_observation_producer_text(
+            raw.get("tool_version") or raw.get("server_version") or raw.get("version")
         ),
         server_slug=_VISION_AUX_SERVER_SLUG,
-        server_id=raw.get("server") or raw.get("server_id"),
-        server_fingerprint=raw.get("server_fingerprint"),
-        fingerprint_version=raw.get("fingerprint_version"),
+        server_id=_visual_observation_producer_text(
+            raw.get("server") or raw.get("server_id")
+        ),
+        server_fingerprint=_visual_observation_producer_text(
+            raw.get("server_fingerprint")
+        ),
+        fingerprint_version=_visual_observation_producer_text(
+            raw.get("fingerprint_version")
+        ),
     )
 
 
@@ -5900,7 +6184,10 @@ def _visual_observation_material_source_fingerprints(
     if not project_id or not material_id:
         return []
     try:
-        from routers import resources_router as resources
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers import resources_router as resources
+        else:
+            from routers import resources_router as resources
 
         document = resources._load_doc_store(project_id).get(material_id)
         if not isinstance(document, Mapping):
@@ -6605,7 +6892,10 @@ async def _call_project_ragworkflow_answer(
     project_id: str,
     tier: ContextTier,
 ) -> tuple[str, list[ContextChunkPayload], bool, list[EvidenceReferencePayload], SamplingParamsPayload | None]:
-    from main_rag_workflow import RAGWorkflow
+    if TYPE_CHECKING:
+        from literature_assistant.core.main_rag_workflow import RAGWorkflow
+    else:
+        from main_rag_workflow import RAGWorkflow
 
     class _NoopSemanticRouter:
         async def route_query(self, user_query: str, top_k: int = 3) -> list[str]:
@@ -6666,7 +6956,10 @@ def _schedule_rag_capture(*, query: str, project_id: str, result: Any) -> None:
     """Fire RAG capture off the request path. See evolution/background.py."""
 
     try:
-        from evolution import run_capture_in_background
+        if TYPE_CHECKING:
+            from literature_assistant.core.evolution import run_capture_in_background
+        else:
+            from evolution import run_capture_in_background
     except Exception as exc:  # pragma: no cover - evolution package missing
         _hook_logger.debug("evolution package unavailable; rag capture skipped: %s", exc)
         return
@@ -6686,16 +6979,19 @@ def _capture_rag_candidate(*, query: str, project_id: str, result: Any) -> None:
     calling response unchanged.
     """
 
-    import logging
-
-    _hook_logger = logging.getLogger("IntelligentChatRouter")
-
     try:
-        from evolution import (
-            extract_from_rag_result,
-            get_evolution_service,
-            is_candidate_capture_enabled,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.evolution import (
+                extract_from_rag_result,
+                get_evolution_service,
+                is_candidate_capture_enabled,
+            )
+        else:
+            from evolution import (
+                extract_from_rag_result,
+                get_evolution_service,
+                is_candidate_capture_enabled,
+            )
     except Exception as exc:  # pragma: no cover - evolution package missing
         _hook_logger.debug("evolution package unavailable; rag capture skipped: %s", exc)
         return
@@ -6767,7 +7063,10 @@ async def _sidebar_receipt_evidence_scope(
         return {"evidence_pack_ref": requested_pack_ref} if requested_pack_ref else {}
 
     try:
-        import routers.evidence_router as evidence_router
+        if TYPE_CHECKING:
+            import literature_assistant.core.routers.evidence_router as evidence_router
+        else:
+            import routers.evidence_router as evidence_router
     except ImportError as exc:
         if requested_pack_ref:
             return {"evidence_pack_ref": requested_pack_ref}
@@ -7008,13 +7307,15 @@ def _durable_message_to_resume_payload(node: Mapping[str, Any]) -> ChatResumeMes
     role = _display_text(node.get("role"))
     if role not in {"user", "assistant"}:
         return None
-    raw = node.get("raw") if isinstance(node.get("raw"), Mapping) else {}
-    metadata = node.get("metadata") if isinstance(node.get("metadata"), Mapping) else {}
+    raw_value = node.get("raw")
+    metadata_value = node.get("metadata")
+    raw: dict[str, Any] = dict(raw_value) if isinstance(raw_value, Mapping) else {}
+    metadata: dict[str, Any] = (
+        dict(metadata_value) if isinstance(metadata_value, Mapping) else {}
+    )
     merged: dict[str, Any] = {}
-    if isinstance(raw, Mapping):
-        merged.update(dict(raw))
-    if isinstance(metadata, Mapping):
-        merged.update(dict(metadata))
+    merged.update(raw)
+    merged.update(metadata)
     content = _display_text(node.get("content_text") or merged.get("content"))
     if not content:
         return None
@@ -7024,32 +7325,46 @@ def _durable_message_to_resume_payload(node: Mapping[str, Any]) -> ChatResumeMes
     answer_model_origin = _display_text(merged.get("answer_model_origin"))
     if answer_model_origin == "host_agent":
         answer_model_origin = "external_agent"
-    return ChatResumeMessagePayload(
-        id=_display_text(
-            raw.get("id"),
-            _display_text(node.get("node_id"), f"{node.get('conversation_id')}_{role}"),
-        ),
-        role=role,  # type: ignore[arg-type]
-        content=content,
-        timestamp=_display_text(node.get("created_at")) or _now_iso(),
-        turn_id=_display_text(merged.get("turn_id")) or None,
-        research_selections=merged.get("research_selections"),
-        evidence_refs=_coerce_resume_evidence_refs(merged.get("evidence_refs")),
-        visual_evidence_refs=_coerce_resume_evidence_refs(merged.get("visual_evidence_refs")),
-        visual_observation_refs=merged.get("visual_observation_refs"),
-        answer_origin=answer_origin if answer_origin in {"internal_smartread", "external_agent"} else None,
-        answer_model_origin=(
-            answer_model_origin
-            if answer_model_origin in {"scholar_ai_configured_chat", "external_agent"}
-            else None
-        ),
-        retrieval_provider="scholar_ai" if role == "assistant" else None,
-        generated_in=(
-            _display_text(merged.get("generated_in"))
-            if _display_text(merged.get("generated_in")) in {"smart_read", "mcp_sidebar"}
-            else None
-        ),
-        evidence_pack_ref=_display_text(merged.get("evidence_pack_ref")) or None,
+    generated_in = _display_text(merged.get("generated_in"))
+    return ChatResumeMessagePayload.model_validate(
+        {
+            "id": _display_text(
+                raw.get("id"),
+                _display_text(
+                    node.get("node_id"),
+                    f"{node.get('conversation_id')}_{role}",
+                ),
+            ),
+            "role": role,
+            "content": content,
+            "timestamp": _display_text(node.get("created_at")) or _now_iso(),
+            "turn_id": _display_text(merged.get("turn_id")) or None,
+            "research_selections": merged.get("research_selections"),
+            "evidence_refs": _coerce_resume_evidence_refs(merged.get("evidence_refs")),
+            "visual_evidence_refs": _coerce_resume_evidence_refs(
+                merged.get("visual_evidence_refs")
+            ),
+            "visual_observation_refs": merged.get("visual_observation_refs"),
+            "answer_origin": (
+                answer_origin
+                if answer_origin in {"internal_smartread", "external_agent"}
+                else None
+            ),
+            "answer_model_origin": (
+                answer_model_origin
+                if answer_model_origin
+                in {"scholar_ai_configured_chat", "external_agent"}
+                else None
+            ),
+            "retrieval_provider": "scholar_ai" if role == "assistant" else None,
+            "generated_in": (
+                generated_in
+                if generated_in in {"smart_read", "mcp_sidebar"}
+                else None
+            ),
+            "evidence_pack_ref": _display_text(merged.get("evidence_pack_ref"))
+            or None,
+        }
     )
 
 
@@ -7194,7 +7509,10 @@ def _compute_answer_receipt_staleness(conversation: Mapping[str, Any], receipt: 
     warnings: list[str] = []
 
     try:
-        import routers.evidence_router as evidence_router
+        if TYPE_CHECKING:
+            import literature_assistant.core.routers.evidence_router as evidence_router
+        else:
+            import routers.evidence_router as evidence_router
     except ImportError as exc:
         return {
             "status": "unchecked",
@@ -7407,7 +7725,10 @@ def _legacy_session_receipt_metadata(session: Mapping[str, Any]) -> dict[str, An
     """Return receipt metadata from a legacy session without writing history."""
 
     updated_at = str(session.get("updated_at") or session.get("created_at") or "1970-01-01T00:00:00Z")
-    return ChatHistoryStore._receipt_metadata_from_legacy_session(session, updated_at)
+    metadata = ChatHistoryStore._receipt_metadata_from_legacy_session(session, updated_at)
+    if not isinstance(metadata, Mapping):
+        return None
+    return dict(metadata)
 
 
 def _import_project_answer_receipts(project_id: str) -> ChatHistoryImportResponse:
@@ -7559,7 +7880,7 @@ def _persist_turns(
     now = _now_iso()
     with _SESSION_LOCK:
         store = _load_session_store()
-        assistant_turn: dict[str, Any] = {
+        assistant_turn: AssistantTurnRecord = {
             "content": response.response,
             "tier_used": response.tier_used,
             "context_metadata": (
@@ -7575,7 +7896,10 @@ def _persist_turns(
             "evidence_pack_ref": response.evidence_pack_ref,
         }
         if response.receipt_top_evidence_refs:
-            assistant_turn["top_evidence_refs"] = response.receipt_top_evidence_refs
+            top_evidence_refs: list[Mapping[str, object]] = [
+                ref for ref in response.receipt_top_evidence_refs
+            ]
+            assistant_turn["top_evidence_refs"] = top_evidence_refs
         if response.receipt_retrieval_diagnostics is not None:
             assistant_turn["retrieval_diagnostics"] = response.receipt_retrieval_diagnostics
         elif response.retrieval_diagnostics is not None:
@@ -7679,12 +8003,14 @@ def _apply_auto_compression_to_store(
     if not isinstance(session, dict):
         return False
     try:
-        return apply_session_auto_compression(
-            session=session,
-            trigger_tokens=int(policy["trigger_tokens"]),
-            target_tokens=int(policy["target_tokens"]),
-            keep_recent_turns=int(policy["keep_recent_turns"]),
-            now_iso=now_iso,
+        return bool(
+            apply_session_auto_compression(
+                session=session,
+                trigger_tokens=int(policy["trigger_tokens"]),
+                target_tokens=int(policy["target_tokens"]),
+                keep_recent_turns=int(policy["keep_recent_turns"]),
+                now_iso=now_iso,
+            )
         )
     except (TypeError, ValueError):
         return False
@@ -7706,7 +8032,11 @@ def _session_summary(session: dict[str, Any]) -> ChatSessionSummaryPayload:
 
 
 def _title_from_session_messages(messages: list[Any], *, session_id: str) -> str:
-    return title_from_session_messages(messages, session_id=session_id)
+    title = title_from_session_messages(messages, session_id=session_id)
+    if isinstance(title, str) and title:
+        return title
+    suffix = session_id[-6:] if session_id else "new"
+    return f"会话 #{suffix}"
 
 
 def _classify_chat_error(exc: BaseException) -> tuple[int, str]:
@@ -7739,7 +8069,9 @@ def _classify_chat_error(exc: BaseException) -> tuple[int, str]:
 
 
 @router.post("/chat", response_model=IntelligentChatResponse)
-async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatResponse:
+async def intelligent_chat(
+    req: IntelligentChatRequest,
+) -> IntelligentChatResponse | JSONResponse:
     """Answer a literature-grounded frontend chat request."""
     try:
         return await _intelligent_chat_impl(req)
@@ -7756,7 +8088,7 @@ async def intelligent_chat(req: IntelligentChatRequest) -> IntelligentChatRespon
 
 
 @router.post("/chat/stream")
-async def intelligent_chat_stream(req: IntelligentChatRequest) -> StreamingResponse:
+async def intelligent_chat_stream(req: IntelligentChatRequest) -> Response:
     """Stream a SmartRead answer while reusing the unified pipeline boundary."""
 
     try:
@@ -7854,13 +8186,22 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
                     context=[],
                 )
             else:
-                from user_research_profile import (
-                    add_direction,
-                    extract_keywords,
-                    get_boost_keywords,
-                    load_profile,
-                    save_profile,
-                )
+                if TYPE_CHECKING:
+                    from literature_assistant.core.user_research_profile import (
+                        add_direction,
+                        extract_keywords,
+                        get_boost_keywords,
+                        load_profile,
+                        save_profile,
+                    )
+                else:
+                    from user_research_profile import (
+                        add_direction,
+                        extract_keywords,
+                        get_boost_keywords,
+                        load_profile,
+                        save_profile,
+                    )
 
                 profile = load_profile(runtime_state_path())
                 boost_keywords = get_boost_keywords(profile)
@@ -8309,12 +8650,20 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
             )
 
             if effective_mode != ChatMode.DIRECT:
-                from user_research_profile import (
-                    add_direction,
-                    extract_keywords,
-                    load_profile,
-                    save_profile,
-                )
+                if TYPE_CHECKING:
+                    from literature_assistant.core.user_research_profile import (
+                        add_direction,
+                        extract_keywords,
+                        load_profile,
+                        save_profile,
+                    )
+                else:
+                    from user_research_profile import (
+                        add_direction,
+                        extract_keywords,
+                        load_profile,
+                        save_profile,
+                    )
 
                 profile = load_profile(runtime_state_path())
                 detected = extract_keywords(req.query, profile)
@@ -8389,7 +8738,9 @@ async def _intelligent_chat_stream_response(req: IntelligentChatRequest) -> Stre
     )
 
 
-async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChatResponse:
+async def _intelligent_chat_impl(
+    req: IntelligentChatRequest,
+) -> IntelligentChatResponse | JSONResponse:
     """Internal implementation; outer wrapper classifies exceptions."""
     project_id = _validate_project_id(req.project_id)
     ragworkflow_answer: str | None = None
@@ -8529,7 +8880,22 @@ async def _intelligent_chat_impl(req: IntelligentChatRequest) -> IntelligentChat
         return response
 
     # Load user research profile for retrieval boost
-    from user_research_profile import load_profile, get_boost_keywords, extract_keywords, add_direction, save_profile
+    if TYPE_CHECKING:
+        from literature_assistant.core.user_research_profile import (
+            add_direction,
+            extract_keywords,
+            get_boost_keywords,
+            load_profile,
+            save_profile,
+        )
+    else:
+        from user_research_profile import (
+            add_direction,
+            extract_keywords,
+            get_boost_keywords,
+            load_profile,
+            save_profile,
+        )
     profile = load_profile(runtime_state_path())
     boost_keywords = get_boost_keywords(profile)
     citation_scope = _resolve_current_pdf_citation_scope(req, project_id)
@@ -8842,7 +9208,10 @@ def _citation_db_path_for_project(project_id: str) -> Path:
     normalized = str(project_id or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:@+-]{0,255}", normalized):
         raise ValueError("project_id has an unsupported identifier shape")
-    return project_data_path(normalized, "citation_graph", "citation_graph.db")
+    db_path = project_data_path(normalized, "citation_graph", "citation_graph.db")
+    if not isinstance(db_path, Path):
+        raise TypeError("project_data_path must return a pathlib.Path")
+    return db_path
 
 
 def _citation_store_for_project(project_id: str) -> CitationCandidateStore:
@@ -9677,7 +10046,10 @@ async def revalidate_answer_receipt(
         raise HTTPException(status_code=422, detail="Answer receipt has no question to revalidate")
 
     try:
-        import routers.evidence_router as evidence_router
+        if TYPE_CHECKING:
+            import literature_assistant.core.routers.evidence_router as evidence_router
+        else:
+            import routers.evidence_router as evidence_router
     except ImportError as exc:
         raise HTTPException(status_code=503, detail="Evidence router unavailable") from exc
 
@@ -9713,9 +10085,10 @@ async def revalidate_answer_receipt(
     gate_status = str(getattr(gate, "status", "") or "").strip()
     apply_allowed = gate_status == "passed" and not bool(top_ref_delta.get("changed"))
     candidate_conversation = dict(conversation)
+    raw_candidate_metadata = conversation.get("metadata")
     candidate_metadata = (
-        dict(conversation.get("metadata"))
-        if isinstance(conversation.get("metadata"), Mapping)
+        dict(raw_candidate_metadata)
+        if isinstance(raw_candidate_metadata, Mapping)
         else {}
     )
     candidate_metadata["answer_receipt"] = candidate_receipt
@@ -9861,7 +10234,8 @@ async def resume_chat_session(req: ChatResumeRequest) -> ChatResumeResponse:
         if durable is not None:
             return _supplement_resume_visual_evidence_refs(durable)
         raise HTTPException(status_code=404, detail=f"Session not found: {req.session_id}")
-    raw_messages = session.get("messages") if isinstance(session.get("messages"), list) else []
+    stored_messages = session.get("messages")
+    raw_messages = stored_messages if isinstance(stored_messages, list) else []
     recent = raw_messages[-req.limit :]
     response = ChatResumeResponse(
         session_id=req.session_id,
@@ -9879,8 +10253,16 @@ async def resume_chat_session(req: ChatResumeRequest) -> ChatResumeResponse:
 async def get_budget_status() -> BudgetStatusPayload:
     """Return a lightweight daily LLM budget summary for the status bar."""
     aggregate = _read_cost_aggregate(date.today(), date.today())
-    call_count = int(aggregate.get("total_calls") or 0)
-    cost_usd = round(float(aggregate.get("total_cost_usd") or 0.0), 6)
+    call_count = _safe_non_negative_int(aggregate.get("total_calls"))
+    raw_cost_usd = aggregate.get("total_cost_usd")
+    cost_value = (
+        float(raw_cost_usd)
+        if isinstance(raw_cost_usd, int | float) and not isinstance(raw_cost_usd, bool)
+        else 0.0
+    )
+    if cost_value != cost_value or cost_value in (float("inf"), float("-inf")) or cost_value < 0:
+        cost_value = 0.0
+    cost_usd = round(cost_value, 6)
     call_cap = _positive_int_env("INTELLIGENT_CHAT_DAILY_CALL_CAP", 200)
     budget_usd = _non_negative_float_env("INTELLIGENT_CHAT_DAILY_BUDGET_USD", 5.0)
     percent_calls = min(100.0, round(call_count / call_cap * 100, 2))

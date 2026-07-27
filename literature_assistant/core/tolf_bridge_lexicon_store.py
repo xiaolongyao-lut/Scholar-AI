@@ -15,12 +15,15 @@ import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
-try:
+if TYPE_CHECKING:
     from literature_assistant.core.project_paths import runtime_state_path
-except ImportError:  # pragma: no cover - legacy flat import path
-    from project_paths import runtime_state_path
+else:
+    try:
+        from literature_assistant.core.project_paths import runtime_state_path
+    except ImportError:  # pragma: no cover - legacy flat import path
+        from project_paths import runtime_state_path
 
 _DEFAULT_LEXICON_PATH = Path(__file__).resolve().parent / "config" / "cjk_bridge_lexicon.json"
 _LEXICON_SCHEMA_VERSION = "scholar-ai-cjk-bridge-lexicon/v1"

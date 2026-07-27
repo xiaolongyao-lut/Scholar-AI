@@ -10,27 +10,47 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from uuid import uuid4
 
-from harness_protocols import (
-    WritingSession,
-    WritingJob,
-    WritingEvent,
-    WritingArtifact,
-    WritingApprovalRequest,
-    EventType,
-    ArtifactType,
-)
-from harness_store import (
-    HarnessStore,
-    DurableSession,
-    DurableJob,
-    DurableEvent,
-    DurableArtifact,
-    DurableApproval,
-    get_harness_store,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.harness_protocols import (
+        ArtifactType,
+        EventType,
+        WritingApprovalRequest,
+        WritingArtifact,
+        WritingEvent,
+        WritingJob,
+        WritingSession,
+    )
+    from literature_assistant.core.harness_store import (
+        DurableApproval,
+        DurableArtifact,
+        DurableEvent,
+        DurableJob,
+        DurableSession,
+        HarnessStore,
+        get_harness_store,
+    )
+else:
+    from harness_protocols import (
+        ArtifactType,
+        EventType,
+        WritingApprovalRequest,
+        WritingArtifact,
+        WritingEvent,
+        WritingJob,
+        WritingSession,
+    )
+    from harness_store import (
+        DurableApproval,
+        DurableArtifact,
+        DurableEvent,
+        DurableJob,
+        DurableSession,
+        HarnessStore,
+        get_harness_store,
+    )
 
 logger = logging.getLogger("HarnessPersistenceAdapter")
 
@@ -61,7 +81,7 @@ class HarnessPersistenceAdapter:
         """
         durable_session = DurableSession(
             session_id=runtime_session.session_id,
-            user_id=runtime_session.user_id,
+            user_id=runtime_session.user_id or "",
             mode=runtime_session.mode.value,
             created_at=runtime_session.created_at,  # Already ISO format string
             updated_at=self._now_iso(),
@@ -85,7 +105,10 @@ class HarnessPersistenceAdapter:
             return None
 
         # Return restored WritingSession
-        from harness_protocols import SessionMode
+        if TYPE_CHECKING:
+            from literature_assistant.core.harness_protocols import SessionMode
+        else:
+            from harness_protocols import SessionMode
 
         return WritingSession(
             session_id=durable.session_id,
@@ -133,7 +156,10 @@ class HarnessPersistenceAdapter:
         if not durable:
             return None
 
-        from harness_protocols import JobKind, JobStatus
+        if TYPE_CHECKING:
+            from literature_assistant.core.harness_protocols import JobKind, JobStatus
+        else:
+            from harness_protocols import JobKind, JobStatus
 
         # Extract input_text from payload
         input_text = durable.payload.get("input_text", "") if durable.payload else ""
@@ -271,7 +297,10 @@ class HarnessPersistenceAdapter:
         Returns:
             Exported state dictionary
         """
-        return self.store.export_state(session_id)
+        state = self.store.export_state(session_id)
+        if not isinstance(state, dict):
+            raise TypeError("durable store export must be a dictionary")
+        return dict(state)
 
     def restore_session_state(self, state: dict[str, Any]) -> str:
         """
@@ -283,7 +312,10 @@ class HarnessPersistenceAdapter:
         Returns:
             Restored session ID
         """
-        return self.store.import_state(state)
+        session_id = self.store.import_state(state)
+        if not isinstance(session_id, str):
+            raise TypeError("durable store import must return a session id")
+        return session_id
 
 
 # Global adapter instance

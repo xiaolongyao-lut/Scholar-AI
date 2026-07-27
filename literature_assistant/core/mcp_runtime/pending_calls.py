@@ -37,9 +37,15 @@ import threading
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from models.mcp import McpToolCapability, PendingMcpToolCall
+if TYPE_CHECKING:
+    from literature_assistant.core.models.mcp import (
+        McpToolCapability,
+        PendingMcpToolCall,
+    )
+else:
+    from models.mcp import McpToolCapability, PendingMcpToolCall
 
 
 PENDING_CALL_TIMEOUT_SECONDS_DEFAULT = 60.0

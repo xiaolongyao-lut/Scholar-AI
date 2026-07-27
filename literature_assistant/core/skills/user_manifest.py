@@ -12,13 +12,22 @@ import re
 import math
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from dynamic_config_schema import (
-    extract_dynamic_config_schema,
-    parse_dynamic_config_schema,
-)
-from extension_secret_policy import is_plaintext_secret_config_field
+if TYPE_CHECKING:
+    from literature_assistant.core.dynamic_config_schema import (
+        extract_dynamic_config_schema,
+        parse_dynamic_config_schema,
+    )
+    from literature_assistant.core.extension_secret_policy import (
+        is_plaintext_secret_config_field,
+    )
+else:
+    from dynamic_config_schema import (
+        extract_dynamic_config_schema,
+        parse_dynamic_config_schema,
+    )
+    from extension_secret_policy import is_plaintext_secret_config_field
 
 
 # ---------------------------------------------------------------------------

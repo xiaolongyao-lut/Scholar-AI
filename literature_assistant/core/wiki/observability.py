@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
-from typing import TypeAlias
+from typing import Literal, TypeAlias
 from uuid import uuid4
 
 from literature_assistant.core.project_paths import ensure_directory, wiki_observability_path
@@ -296,7 +296,7 @@ class WikiObservationSpan:
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
         tb: TracebackType | None,
-    ) -> bool:
+    ) -> Literal[False]:
         del tb
         started = self._started_ns if self._started_ns is not None else time.perf_counter_ns()
         duration_ms = max(0.0, (time.perf_counter_ns() - started) / 1_000_000.0)

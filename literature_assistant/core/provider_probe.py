@@ -29,12 +29,25 @@ import json as _json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from provider_endpoint_policy import TrustSource, validate_endpoint
-from provider_payload_compat import apply_openai_chat_payload_compat, provider_http_timeout_s
+if TYPE_CHECKING:
+    from literature_assistant.core.provider_endpoint_policy import (
+        TrustSource,
+        validate_endpoint,
+    )
+    from literature_assistant.core.provider_payload_compat import (
+        apply_openai_chat_payload_compat,
+        provider_http_timeout_s,
+    )
+else:
+    from provider_endpoint_policy import TrustSource, validate_endpoint
+    from provider_payload_compat import (
+        apply_openai_chat_payload_compat,
+        provider_http_timeout_s,
+    )
 
 logger = logging.getLogger(__name__)
 

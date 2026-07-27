@@ -9,16 +9,29 @@ dedupe, or state-machine rules.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from evolution.service import EvolutionService, get_evolution_service
-from evolution.store import StoreWriteResult
-from models.evolution import (
-    CandidateMemoryType,
-    CandidateRiskLevel,
-    CandidateSourceType,
-    ExperienceCandidate,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.evolution.service import (
+        EvolutionService,
+        get_evolution_service,
+    )
+    from literature_assistant.core.evolution.store import StoreWriteResult
+    from literature_assistant.core.models.evolution import (
+        CandidateMemoryType,
+        CandidateRiskLevel,
+        CandidateSourceType,
+        ExperienceCandidate,
+    )
+else:
+    from evolution.service import EvolutionService, get_evolution_service
+    from evolution.store import StoreWriteResult
+    from models.evolution import (
+        CandidateMemoryType,
+        CandidateRiskLevel,
+        CandidateSourceType,
+        ExperienceCandidate,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,14 +70,14 @@ class EvolutionAgent:
     """Stable F2 facade over ``EvolutionService.capture``."""
 
     def __init__(self, service: EvolutionService | None = None) -> None:
-        self._service = service or get_evolution_service()
+        self._service: EvolutionService = service or get_evolution_service()
 
     def generate_candidate(self, candidate_input: EvolutionCandidateInput) -> StoreWriteResult:
         """Generate one candidate through the authoritative service path."""
         if not isinstance(candidate_input, EvolutionCandidateInput):
             raise TypeError("candidate_input must be EvolutionCandidateInput")
         self._validate_input(candidate_input)
-        return self._service.capture(
+        result = self._service.capture(
             workspace_id=candidate_input.workspace_id.strip(),
             source_type=candidate_input.source_type,
             source_id=candidate_input.source_id.strip(),
@@ -80,6 +93,9 @@ class EvolutionAgent:
             evidence_refs=candidate_input.evidence_refs,
             risk_level=candidate_input.risk_level,
         )
+        if not isinstance(result, StoreWriteResult):
+            raise TypeError("EvolutionService.capture must return StoreWriteResult")
+        return result
 
     def list_candidates(
         self,

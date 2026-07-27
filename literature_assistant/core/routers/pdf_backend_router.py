@@ -12,31 +12,55 @@ import importlib.util
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from feature_flags import is_enabled
-from credential_store import CredentialNotFoundError, RuntimeCredentialStore
-from pdf_backends import (
-    ENV_VAR,
-    OcrEngine,
-    OcrRuntimeConfig,
-    OcrReadinessStatus,
-    build_ocr_engine,
-    infer_remote_ocr_provider,
-    list_ocr_engine_info,
-    ocr_engine_next_safe_local_actions,
-    public_ocr_status,
-    remote_ocr_endpoint_path,
-    resolve_ocr_runtime_config,
-    select_ocr_engine,
-    write_ocr_runtime_config,
-)
-from pdf_backends.ocr_engine import OcrImageResult
-from project_paths import REPO_ROOT, WORKSPACE_ARTIFACTS_ROOT
+if TYPE_CHECKING:
+    from literature_assistant.core.credential_store import (
+        CredentialNotFoundError,
+        RuntimeCredentialStore,
+    )
+    from literature_assistant.core.feature_flags import is_enabled
+    from literature_assistant.core.pdf_backends import (
+        ENV_VAR,
+        OcrEngine,
+        OcrReadinessStatus,
+        OcrRuntimeConfig,
+        build_ocr_engine,
+        infer_remote_ocr_provider,
+        list_ocr_engine_info,
+        ocr_engine_next_safe_local_actions,
+        public_ocr_status,
+        remote_ocr_endpoint_path,
+        resolve_ocr_runtime_config,
+        select_ocr_engine,
+        write_ocr_runtime_config,
+    )
+    from literature_assistant.core.pdf_backends.ocr_engine import OcrImageResult
+    from literature_assistant.core.project_paths import REPO_ROOT, WORKSPACE_ARTIFACTS_ROOT
+else:
+    from credential_store import CredentialNotFoundError, RuntimeCredentialStore
+    from feature_flags import is_enabled
+    from pdf_backends import (
+        ENV_VAR,
+        OcrEngine,
+        OcrReadinessStatus,
+        OcrRuntimeConfig,
+        build_ocr_engine,
+        infer_remote_ocr_provider,
+        list_ocr_engine_info,
+        ocr_engine_next_safe_local_actions,
+        public_ocr_status,
+        remote_ocr_endpoint_path,
+        resolve_ocr_runtime_config,
+        select_ocr_engine,
+        write_ocr_runtime_config,
+    )
+    from pdf_backends.ocr_engine import OcrImageResult
+    from project_paths import REPO_ROOT, WORKSPACE_ARTIFACTS_ROOT
 
 
 router = APIRouter(prefix="/api/pdf-backend", tags=["PDF Backend"])
@@ -55,13 +79,16 @@ _OCR_PROBE_IMAGE_SUFFIXES = {
     ".tiff",
     ".webp",
 }
-_OCR_READINESS_STATUS_VALUES = set(OcrReadinessStatus.__args__)
+_OCR_READINESS_STATUS_VALUES = set(get_args(OcrReadinessStatus))
 
 
 def _get_ocr_credential_store() -> RuntimeCredentialStore:
     """Return the shared credential store without importing routers at module load."""
 
-    from routers.credentials_router import get_credential_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.credentials_router import get_credential_store
+    else:
+        from routers.credentials_router import get_credential_store
 
     return get_credential_store()
 
@@ -579,6 +606,7 @@ def check_ocr_engine_health(request: OcrHealthRequest) -> OcrHealthResponse:
     try:
         credential_store = _get_ocr_credential_store()
         runtime_config = resolve_ocr_runtime_config()
+        engine: OcrEngine | None = None
         if request.engine:
             engine_config = (
                 request.engine_config
@@ -608,6 +636,8 @@ def check_ocr_engine_health(request: OcrHealthRequest) -> OcrHealthResponse:
                 )
                 if engine is None:
                     raise ValueError(str(warning or "no OCR engine selected"))
+        if engine is None:
+            raise ValueError("no OCR engine selected")
         health = engine.health_check()
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

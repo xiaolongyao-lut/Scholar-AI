@@ -10,7 +10,7 @@ class NoUrlInTitle(FieldRule):
 
     URL_PATTERN = re.compile(r'https?://|www\.|\.com|\.org|\.net|\.edu')
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="no-url-in-title",
             target_field="title",
@@ -44,7 +44,7 @@ class ValidateUrlFormat(FieldRule):
         r'(?:/?|[/?]\S+)$', re.IGNORECASE
     )
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="validate-url-format",
             target_field="url",
@@ -82,7 +82,7 @@ class RequireItemType(ItemRule):
         "software",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="require-item-type",
             name="要求文献类型",

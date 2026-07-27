@@ -5,15 +5,28 @@ Aggregates evidence across all chunks of a single academic paper
 
 import json
 import logging
-from typing import Dict, List, Any, Optional
+from typing import TYPE_CHECKING, Dict, List, Any, Optional
 from pathlib import Path
 from dataclasses import dataclass, field
 
-from modules.configuration_manager import get_configuration
-from modules.classifier_interface import ClassifierInterface, EvidenceScore
-from modules.classifier_registry import ClassifierRegistry
-from modules.scoring_interface import ScoringInterface
-from modules.scoring_registry import ScoringRegistry
+if TYPE_CHECKING:
+    from literature_assistant.core.modules.classifier_interface import (
+        ClassifierInterface,
+        EvidenceScore,
+    )
+    from literature_assistant.core.modules.classifier_registry import ClassifierRegistry
+    from literature_assistant.core.modules.configuration_manager import (
+        ConfigurationManager,
+        get_configuration,
+    )
+    from literature_assistant.core.modules.scoring_interface import ScoringInterface
+    from literature_assistant.core.modules.scoring_registry import ScoringRegistry
+else:
+    from modules.classifier_interface import ClassifierInterface, EvidenceScore
+    from modules.classifier_registry import ClassifierRegistry
+    from modules.configuration_manager import get_configuration
+    from modules.scoring_interface import ScoringInterface
+    from modules.scoring_registry import ScoringRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +62,10 @@ class PaperProcessor:
 
     def __init__(
         self, 
-        config=None, 
+        config: "ConfigurationManager | None" = None,
         classifier: Optional[ClassifierInterface] = None,
         scorer: Optional[ScoringInterface] = None
-    ):
+    ) -> None:
         """
         Initialize with configuration, classifier, and scorer
         
@@ -76,7 +89,10 @@ class PaperProcessor:
         else:
             logger.debug("No scorer injected, falling back to default from registry")
             # Ensure default scorer is loaded
-            import modules.default_scorer 
+            if TYPE_CHECKING:
+                import literature_assistant.core.modules.default_scorer
+            else:
+                import modules.default_scorer
             self.scorer = ScoringRegistry.create("default")
 
     def process_json_file(self, file_path: str, paper_id: Optional[str] = None) -> PaperProcessReport:

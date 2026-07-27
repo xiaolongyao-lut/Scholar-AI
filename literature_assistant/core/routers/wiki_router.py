@@ -6,7 +6,7 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, Mapping
+from typing import TYPE_CHECKING, Any, Literal, Mapping
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
@@ -32,7 +32,12 @@ from literature_assistant.core.source_vault import (
 from literature_assistant.core.wiki.compiler import WikiCompiler
 from literature_assistant.core.wiki.doctor import WikiDoctor
 from literature_assistant.core.wiki.graph import WikiGraphStore, build_wiki_graph
-from literature_assistant.core.wiki.models import WikiPageKind, WikiPageStatus, make_stable_slug
+from literature_assistant.core.wiki.models import (
+    WikiPageKind,
+    WikiPageStatus,
+    from_evidence_reference,
+    make_stable_slug,
+)
 from literature_assistant.core.wiki.observability import default_wiki_observability_sink
 from literature_assistant.core.wiki.page_store import (
     AUTO_END,
@@ -84,11 +89,15 @@ from literature_assistant.core.wiki.source_registry import (
     derive_source_id,
     utc_now_iso,
 )
-from harness_protocols import ArtifactType, JobKind, SessionMode
-from writing_runtime import get_writing_runtime
+if TYPE_CHECKING:
+    from literature_assistant.core.harness_protocols import ArtifactType, JobKind, SessionMode
+    from literature_assistant.core.writing_runtime import get_writing_runtime
+else:
+    from harness_protocols import ArtifactType, JobKind, SessionMode
+    from writing_runtime import get_writing_runtime
 
 
-router = APIRouter(prefix="/api/wiki", tags=["Wiki"])
+router: APIRouter = APIRouter(prefix="/api/wiki", tags=["Wiki"])
 _SAFE_FILTER_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 _SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
 _SAFE_EXPORT_ARCHIVE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.zip$")
@@ -1030,13 +1039,16 @@ def _live_project_chat_answer_records(project_id: str, remaining: int) -> tuple[
         raise ValueError("project_id must be non-empty")
     if remaining <= 0:
         return [], ["live chat-history collection skipped because max_live_records was exhausted"]
-    try:
+    if TYPE_CHECKING:
         from literature_assistant.core.chat.history_store import ChatHistoryStore, default_chat_history_db_path
-    except ImportError:
+    else:
         try:
-            from chat.history_store import ChatHistoryStore, default_chat_history_db_path  # type: ignore[no-redef]
-        except ImportError as exc:
-            return [], [f"live chat-history collection skipped: {exc}"]
+            from literature_assistant.core.chat.history_store import ChatHistoryStore, default_chat_history_db_path
+        except ImportError:
+            try:
+                from chat.history_store import ChatHistoryStore, default_chat_history_db_path
+            except ImportError as exc:
+                return [], [f"live chat-history collection skipped: {exc}"]
 
     db_path = default_chat_history_db_path()
     if not db_path.exists():
@@ -1097,13 +1109,16 @@ def _live_project_runtime_records(
     records: dict[str, list[dict[str, Any]]] = {"answers": [], "tasks": []}
     if remaining <= 0:
         return records, ["live agent-runtime collection skipped because max_live_records was exhausted"]
-    try:
-        import routers.agent_bridge_router as agent_bridge_router
-    except ImportError:
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers import agent_bridge_router
+    else:
         try:
-            from literature_assistant.core.routers import agent_bridge_router  # type: ignore[no-redef]
-        except ImportError as exc:
-            return records, [f"live agent-runtime collection skipped: {exc}"]
+            import routers.agent_bridge_router as agent_bridge_router
+        except ImportError:
+            try:
+                from literature_assistant.core.routers import agent_bridge_router
+            except ImportError as exc:
+                return records, [f"live agent-runtime collection skipped: {exc}"]
     try:
         runtime, _session_mode = agent_bridge_router.get_runtime()
         sessions = runtime.list_sessions(include_archived=True)
@@ -1156,6 +1171,7 @@ def _live_project_runtime_records(
             nested_metadata = _mapping_or_empty(job_metadata.get("metadata"))
             task_manifest = _mapping_or_empty(nested_metadata.get("task_manifest"))
             paper = _mapping_or_empty(task_manifest.get("paper"))
+            missing_fields = nested_metadata.get("missing_fields")
             task_id = str(nested_metadata.get("task_id") or task_manifest.get("task_id") or request_id or job_id)
             task_record = {
                 "task_id": task_id,
@@ -1175,7 +1191,7 @@ def _live_project_runtime_records(
                 "artifact_kinds": artifact_kinds,
                 "single_paper_task": str(nested_metadata.get("task_schema_version") or "") == "scholar-ai-single-paper-task/v1",
                 "paper_title": str(paper.get("title") or nested_metadata.get("task_title") or ""),
-                "missing_field_count": len(nested_metadata.get("missing_fields")) if isinstance(nested_metadata.get("missing_fields"), list) else 0,
+                "missing_field_count": len(missing_fields) if isinstance(missing_fields, list) else 0,
                 "has_private_input_text": bool(str(getattr(job, "input_text", "") or "").strip()),
                 "summary": "Agent request/task metadata collected from the local runtime. Prompt and artifact content omitted.",
             }
@@ -1219,13 +1235,16 @@ def _live_project_discussion_records(project_id: str, remaining: int) -> tuple[l
         raise ValueError("project_id must be non-empty")
     if remaining <= 0:
         return [], ["live discussion-run collection skipped because max_live_records was exhausted"]
-    try:
-        from discussion_task_store import get_discussion_task_store
-    except ImportError:
+    if TYPE_CHECKING:
+        from literature_assistant.core.discussion_task_store import get_discussion_task_store
+    else:
         try:
-            from literature_assistant.core.discussion_task_store import get_discussion_task_store  # type: ignore[no-redef]
-        except ImportError as exc:
-            return [], [f"live discussion-run collection skipped: {exc}"]
+            from discussion_task_store import get_discussion_task_store
+        except ImportError:
+            try:
+                from literature_assistant.core.discussion_task_store import get_discussion_task_store
+            except ImportError as exc:
+                return [], [f"live discussion-run collection skipped: {exc}"]
     try:
         summaries = get_discussion_task_store().list_project_run_summaries(project_id, limit=remaining)
     except Exception as exc:
@@ -1289,7 +1308,10 @@ def _collect_live_project_okf_records(
     if max_records < 1:
         raise ValueError("max_records must be positive")
 
-    import routers.resources_router as resources_router
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers import resources_router
+    else:
+        import routers.resources_router as resources_router
 
     store = resources_router.get_writing_resource_store()
     project = store.get_project(normalized_project_id)
@@ -1655,8 +1677,16 @@ def _source_vault_sync_from_import(
         if source_status["status"] == "mirrored" and chunk_status["status"] == "mirrored"
         else f"{source_status['status']}:{chunk_status['status']}"
     )
-    source_vault_source_id = registry.get_source_vault_id(source_id) if source_status["status"] == "mirrored" else ""
-    source_vault_chunk_id = registry.get_source_vault_chunk_id(legacy_chunk_id) if chunk_status["status"] == "mirrored" else ""
+    source_vault_source_id = (
+        registry.get_source_vault_id(source_id) or ""
+        if source_status["status"] == "mirrored"
+        else ""
+    )
+    source_vault_chunk_id = (
+        registry.get_source_vault_chunk_id(legacy_chunk_id) or ""
+        if chunk_status["status"] == "mirrored"
+        else ""
+    )
     source_vault_ref_id = build_source_vault_chunk_ref_id(source_vault_chunk_id) if source_vault_chunk_id else ""
     source_vault_read_endpoint = (
         build_source_vault_chunk_read_endpoint(source_vault_chunk_id)
@@ -2237,7 +2267,10 @@ def _annotation_review_project_material(project_id: str, material_id: str) -> tu
     if normalized_project_id is None or normalized_material_id is None:
         raise HTTPException(status_code=400, detail="project_id and material_id are required")
 
-    import routers.resources_router as resources_router
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers import resources_router
+    else:
+        import routers.resources_router as resources_router
 
     store = resources_router.get_writing_resource_store()
     project = store.get_project(normalized_project_id)
@@ -2254,9 +2287,22 @@ def _annotation_review_project_material(project_id: str, material_id: str) -> tu
 def _annotation_review_note_snapshot(material_id: str, note_id: str) -> dict[str, Any] | None:
     """Read a strict annotation note through its owning router module."""
 
-    import routers.annotation_router as annotation_router
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers import annotation_router
+    else:
+        import routers.annotation_router as annotation_router
 
-    return annotation_router.get_annotation_note_snapshot(material_id, note_id)
+    raw_snapshot: object = annotation_router.get_annotation_note_snapshot(material_id, note_id)
+    if raw_snapshot is None:
+        return None
+    if not isinstance(raw_snapshot, dict):
+        raise TypeError("annotation note snapshot must be a mapping")
+    snapshot: dict[str, Any] = {}
+    for key, value in raw_snapshot.items():
+        if not isinstance(key, str):
+            raise TypeError("annotation note snapshot keys must be strings")
+        snapshot[key] = value
+    return snapshot
 
 
 def _validate_live_annotation_review_target(
@@ -3639,12 +3685,13 @@ def wiki_page_create(
 
     service = get_wiki_service()
     try:
+        evidence_refs = [from_evidence_reference(ref) for ref in request.evidence_refs]
         page = service.create_page(
             title=request.title,
             kind=request.kind,
             body=request.body,
             status=forced_status,
-            evidence_refs=request.evidence_refs,
+            evidence_refs=evidence_refs,
             source_hashes=request.source_hashes,
             extra=page_extra,
         )
@@ -3719,12 +3766,17 @@ def wiki_page_update(
             merged_extra = dict(existing_page.extra)
             merged_extra.update({key: value for key, value in request.extra.items() if key != PERMISSIONS_KEY})
             merged_extra = set_permissions(merged_extra, current_permissions)
+        evidence_refs = (
+            [from_evidence_reference(ref) for ref in request.evidence_refs]
+            if request.evidence_refs is not None
+            else None
+        )
         page = service.update_page(
             slug=slug,
             title=request.title,
             body=request.body,
             status=request.status,
-            evidence_refs=request.evidence_refs,
+            evidence_refs=evidence_refs,
             source_hashes=request.source_hashes,
             extra=merged_extra,
         )
@@ -3870,9 +3922,16 @@ def wiki_project_okf_export(request: WikiProjectOkfExportRequest) -> WikiProject
         for group, records in live_records.items():
             records_by_group[group] = [*records_by_group[group], *records]
 
+    export_records_by_group: Mapping[
+        str,
+        list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
+    ] = {
+        group: list(records)
+        for group, records in records_by_group.items()
+    }
     try:
         result = export_project_artifact_okf_bundle(
-            records_by_group,
+            export_records_by_group,
             resolved_output_path,
             project_id=request.project_id,
         )

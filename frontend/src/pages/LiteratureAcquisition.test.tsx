@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -90,7 +91,7 @@ const manualEvidence: AccessEvidence = {
   kind: 'manual_review',
   access_route: 'manual_review',
   pdf_url: 'https://publisher.invalid/article.pdf',
-  statement: 'Bearer secret-token at C:\\Users\\xiao\\private.sqlite',
+  statement: 'Bearer secret-token at C:\\Users\\example-user\\private.sqlite',
   license: null,
   observed_at: timestamp,
 };
@@ -145,7 +146,7 @@ const queuedJob: DownloadJob = {
   access_evidence_id: 'evidence-oa',
   source_platform: 'arxiv',
   source_url: oaEvidence.pdf_url,
-  artifact_path: 'C:\\Users\\xiao\\secret-downloads\\job-1.part',
+  artifact_path: 'C:\\Users\\example-user\\secret-downloads\\job-1.part',
   status: 'queued',
   attempts: 0,
   bytes_downloaded: 0,
@@ -168,6 +169,17 @@ const completedJob: DownloadJob = {
   bytes_downloaded: 4096,
   artifact_id: 'artifact-1',
   completed_at: timestamp,
+};
+
+const projectBJob: DownloadJob = {
+  ...queuedJob,
+  job_id: 'job-2',
+  project_id: 'project-2',
+  candidate_id: 'candidate-2',
+  access_evidence_id: 'evidence-2',
+  source_platform: 'pubmed',
+  source_url: 'https://pubmed.ncbi.nlm.nih.gov/12345678/',
+  artifact_path: 'C:\\Users\\example-user\\secret-downloads\\job-2.part',
 };
 
 const openGate: HumanAccessGate = {
@@ -241,14 +253,49 @@ function statusWith(
   return { sources: [source], download_jobs: downloadJobs, gates };
 }
 
-function renderPage(): void {
-  render(
-    <MemoryRouter initialEntries={['/acquisition?project_id=project-1']}>
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve: ((value: T) => void) | undefined;
+  let reject: ((reason?: unknown) => void) | undefined;
+  const promise = new Promise<T>((complete, fail) => {
+    resolve = complete;
+    reject = fail;
+  });
+  return {
+    promise,
+    resolve: (value: T): void => {
+      if (!resolve) throw new Error('Deferred promise was not initialized');
+      resolve(value);
+    },
+    reject: (reason?: unknown): void => {
+      if (!reject) throw new Error('Deferred promise was not initialized');
+      reject(reason);
+    },
+  };
+}
+
+interface RenderPageOptions {
+  initialEntry?: string;
+  strictMode?: boolean;
+}
+
+function renderPage({
+  initialEntry = '/acquisition?project_id=project-1',
+  strictMode = false,
+}: RenderPageOptions = {}): void {
+  const page = (
+    <MemoryRouter initialEntries={[initialEntry]}>
       <WritingProvider>
         <LiteratureAcquisition />
       </WritingProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  render(strictMode ? <StrictMode>{page}</StrictMode> : page);
 }
 
 describe('LiteratureAcquisition', () => {
@@ -426,5 +473,234 @@ describe('LiteratureAcquisition', () => {
     expect(mockedRun).not.toHaveBeenCalled();
     expect(await screen.findByText('取消后的本地文件清理已重试。')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '重试清理' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      action: 'start',
+      job: queuedJob,
+      buttonName: '开始',
+      assertNotCalled: (): void => expect(mockedRun).not.toHaveBeenCalled(),
+    },
+    {
+      action: 'cancel',
+      job: queuedJob,
+      buttonName: '取消下载',
+      assertNotCalled: (): void => expect(mockedControl).not.toHaveBeenCalled(),
+    },
+    {
+      action: 'import',
+      job: completedJob,
+      buttonName: '导入项目',
+      assertNotCalled: (): void => expect(mockedImport).not.toHaveBeenCalled(),
+    },
+  ])('clears project A immediately and rejects its stale $action action', async ({
+    job,
+    buttonName,
+    assertNotCalled,
+  }) => {
+    const projectBStatus = deferred<AcquisitionStatus>();
+    mockedGetWritingBackendService.mockReturnValue({
+      listProjects: vi.fn(async () => [
+        { project_id: 'project-1', title: '研究项目 A' },
+        { project_id: 'project-2', title: '研究项目 B' },
+      ]),
+    } as unknown as ReturnType<typeof getWritingBackendService>);
+    mockedGetStatus.mockImplementation((projectId) => (
+      projectId === 'project-2' ? projectBStatus.promise : Promise.resolve(statusWith([job]))
+    ));
+
+    renderPage();
+    expect(await screen.findByRole('button', { name: buttonName })).toBeEnabled();
+
+    fireEvent.change(screen.getByRole('combobox', { name: '选择项目' }), {
+      target: { value: 'project-2' },
+    });
+
+    const staleAction = screen.queryByRole('button', { name: buttonName });
+    if (staleAction) fireEvent.click(staleAction);
+    assertNotCalled();
+    expect(screen.queryByText('arXiv 下载任务')).not.toBeInTheDocument();
+  });
+
+  it('keeps project B status when a project A refresh resolves late', async () => {
+    const lateProjectAStatus = deferred<AcquisitionStatus>();
+    let projectARequests = 0;
+    mockedGetWritingBackendService.mockReturnValue({
+      listProjects: vi.fn(async () => [
+        { project_id: 'project-1', title: '研究项目 A' },
+        { project_id: 'project-2', title: '研究项目 B' },
+      ]),
+    } as unknown as ReturnType<typeof getWritingBackendService>);
+    mockedGetStatus.mockImplementation((projectId) => {
+      if (projectId === 'project-2') return Promise.resolve(statusWith([projectBJob]));
+      projectARequests += 1;
+      return projectARequests === 1
+        ? Promise.resolve(statusWith([queuedJob]))
+        : lateProjectAStatus.promise;
+    });
+
+    renderPage();
+    expect(await screen.findByText('arXiv 下载任务')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '刷新状态' }));
+    await waitFor(() => expect(projectARequests).toBe(2));
+
+    fireEvent.change(screen.getByRole('combobox', { name: '选择项目' }), {
+      target: { value: 'project-2' },
+    });
+    expect(await screen.findByText('PubMed 下载任务')).toBeInTheDocument();
+
+    await act(async () => {
+      lateProjectAStatus.resolve(statusWith([queuedJob]));
+      await lateProjectAStatus.promise;
+    });
+
+    expect(screen.getByText('PubMed 下载任务')).toBeInTheDocument();
+    expect(screen.queryByText('arXiv 下载任务')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      outcome: 'success',
+      settle: (request: Deferred<Array<{ project_id: string; title: string }>>): void => {
+        request.resolve([{ project_id: 'project-1', title: '旧项目列表' }]);
+      },
+    },
+    {
+      outcome: 'failure',
+      settle: (request: Deferred<Array<{ project_id: string; title: string }>>): void => {
+        request.reject(new Error('stale project load failed'));
+      },
+    },
+  ])('ignores a stale project-list $outcome under StrictMode after a user selects project B', async ({ settle }) => {
+    const staleProjects = deferred<Array<{ project_id: string; title: string }>>();
+    const currentProjects = [
+      { project_id: 'project-1', title: '研究项目 A' },
+      { project_id: 'project-2', title: '研究项目 B' },
+    ];
+    const listProjects = vi.fn(() => Promise.resolve(currentProjects));
+    listProjects.mockImplementationOnce(() => staleProjects.promise);
+    mockedGetWritingBackendService.mockReturnValue({
+      listProjects,
+    } as unknown as ReturnType<typeof getWritingBackendService>);
+    mockedGetStatus.mockImplementation((projectId) => Promise.resolve(
+      projectId === 'project-2' ? statusWith([projectBJob]) : statusWith([queuedJob]),
+    ));
+
+    renderPage({ initialEntry: '/acquisition', strictMode: true });
+
+    await waitFor(() => expect(listProjects.mock.calls.length).toBeGreaterThanOrEqual(2));
+    const projectSelect = await screen.findByRole('combobox', { name: '选择项目' });
+    await waitFor(() => expect(projectSelect).toHaveValue('project-1'));
+    fireEvent.change(projectSelect, { target: { value: 'project-2' } });
+    expect(await screen.findByText('PubMed 下载任务')).toBeInTheDocument();
+
+    await act(async () => {
+      settle(staleProjects);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByRole('combobox', { name: '选择项目' })).toHaveValue('project-2'));
+    expect(screen.getByText('PubMed 下载任务')).toBeInTheDocument();
+    expect(screen.queryByText('arXiv 下载任务')).not.toBeInTheDocument();
+  });
+
+  it('keeps a queued job when an older status refresh resolves after queue mutation', async () => {
+    const staleStatus = deferred<AcquisitionStatus>();
+    renderPage();
+
+    fireEvent.change(await screen.findByPlaceholderText('标题、主题、作者或 DOI'), {
+      target: { value: 'retrieval augmented generation' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '显式检索' }));
+    const queueButton = (await screen.findAllByRole('button', { name: '加入下载队列' }))[0];
+    mockedGetStatus.mockImplementationOnce(() => staleStatus.promise);
+    fireEvent.click(screen.getByRole('button', { name: '刷新状态' }));
+    await waitFor(() => expect(mockedGetStatus).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(queueButton);
+    expect(await screen.findByRole('button', { name: '开始' })).toBeEnabled();
+
+    await act(async () => {
+      staleStatus.resolve(statusWith());
+      await staleStatus.promise;
+    });
+
+    expect(screen.getByRole('button', { name: '开始' })).toBeEnabled();
+  });
+
+  it('keeps a completed job when an older status refresh resolves after run mutation', async () => {
+    const staleStatus = deferred<AcquisitionStatus>();
+    mockedGetStatus.mockResolvedValue(statusWith([queuedJob]));
+    renderPage();
+
+    const runButton = await screen.findByRole('button', { name: '开始' });
+    mockedGetStatus.mockImplementationOnce(() => staleStatus.promise);
+    fireEvent.click(screen.getByRole('button', { name: '刷新状态' }));
+    await waitFor(() => expect(mockedGetStatus).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(runButton);
+    expect(await screen.findByRole('button', { name: '导入项目' })).toBeEnabled();
+
+    await act(async () => {
+      staleStatus.resolve(statusWith([queuedJob]));
+      await staleStatus.promise;
+    });
+
+    expect(screen.getByRole('button', { name: '导入项目' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: '开始' })).not.toBeInTheDocument();
+  });
+
+  it('keeps a resumed job when an older status refresh resolves after control mutation', async () => {
+    const pausedJob: DownloadJob = { ...queuedJob, status: 'paused', bytes_downloaded: 1024 };
+    const staleStatus = deferred<AcquisitionStatus>();
+    mockedGetStatus.mockResolvedValue(statusWith([pausedJob]));
+    mockedControl.mockResolvedValue({ ...pausedJob, status: 'queued' });
+    renderPage();
+
+    const resumeButton = await screen.findByRole('button', { name: '恢复到队列' });
+    mockedGetStatus.mockImplementationOnce(() => staleStatus.promise);
+    fireEvent.click(screen.getByRole('button', { name: '刷新状态' }));
+    await waitFor(() => expect(mockedGetStatus).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(resumeButton);
+    expect(await screen.findByText(/仍需显式点击“开始”/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '恢复到队列' })).not.toBeInTheDocument();
+
+    await act(async () => {
+      staleStatus.resolve(statusWith([pausedJob]));
+      await staleStatus.promise;
+    });
+
+    expect(screen.queryByRole('button', { name: '恢复到队列' })).not.toBeInTheDocument();
+  });
+
+  it('keeps a resolved gate when an older status refresh resolves after gate mutation', async () => {
+    const humanRequiredJob: DownloadJob = {
+      ...queuedJob,
+      status: 'human_required',
+      gate_id: 'gate-1',
+    };
+    const staleStatus = deferred<AcquisitionStatus>();
+    mockedGetStatus.mockResolvedValue(statusWith([humanRequiredJob], [openGate]));
+    renderPage();
+
+    const handleGateButton = await screen.findByRole('button', { name: '处理' });
+    mockedGetStatus.mockImplementationOnce(() => staleStatus.promise);
+    fireEvent.click(screen.getByRole('button', { name: '刷新状态' }));
+    await waitFor(() => expect(mockedGetStatus).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(handleGateButton);
+    fireEvent.click(screen.getByRole('checkbox', { name: /我确认已在来源页面完成必要步骤/ }));
+    fireEvent.click(screen.getByRole('button', { name: '确认完成并恢复到队列' }));
+    expect(await screen.findByText(/任务已回到等待状态，不会自动继续下载/)).toBeInTheDocument();
+
+    await act(async () => {
+      staleStatus.resolve(statusWith([humanRequiredJob], [openGate]));
+      await staleStatus.promise;
+    });
+
+    expect(screen.queryByRole('button', { name: '处理' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '开始' })).toBeEnabled();
   });
 });

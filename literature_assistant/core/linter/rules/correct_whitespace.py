@@ -18,7 +18,7 @@ def normalize_whitespace(text: str) -> str:
 class CorrectTitleWhitespace(FieldRule):
     """清理标题中的多余空格"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-title-whitespace",
             target_field="title",
@@ -44,7 +44,7 @@ class CorrectTitleWhitespace(FieldRule):
 class CorrectTitleEnWhitespace(FieldRule):
     """清理英文标题中的多余空格"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-title-en-whitespace",
             target_field="title_en",
@@ -70,7 +70,7 @@ class CorrectTitleEnWhitespace(FieldRule):
 class CorrectJournalWhitespace(FieldRule):
     """清理期刊名中的多余空格"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-journal-whitespace",
             target_field="journal",

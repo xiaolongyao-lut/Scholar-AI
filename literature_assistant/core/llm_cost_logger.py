@@ -17,10 +17,14 @@ import os
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from llm_pricing import estimate_cost_usd, is_known_model
-from project_paths import output_path
+if TYPE_CHECKING:
+    from literature_assistant.core.llm_pricing import estimate_cost_usd, is_known_model
+    from literature_assistant.core.project_paths import output_path
+else:
+    from llm_pricing import estimate_cost_usd, is_known_model
+    from project_paths import output_path
 
 _LOCK = threading.Lock()
 _OUTPUT_DIR = output_path()

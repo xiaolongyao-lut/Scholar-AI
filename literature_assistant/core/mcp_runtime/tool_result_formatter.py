@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from mcp_runtime.security_policy import redact_text_for_audit
+if TYPE_CHECKING:
+    from literature_assistant.core.mcp_runtime.security_policy import redact_text_for_audit
+else:
+    from mcp_runtime.security_policy import redact_text_for_audit
 
 
 PREVIEW_CHAR_LIMIT = 1200

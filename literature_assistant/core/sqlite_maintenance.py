@@ -7,19 +7,32 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
-from datetime_utils import utc_now_iso_z
-from db import (
-    backup_sqlite_database,
-    checkpoint_sqlite_wal,
-    check_sqlite_integrity,
-    collect_sqlite_health_report,
-    get_sqlite_database_stats,
-    resolve_sqlite_path,
-    restore_sqlite_database,
-    vacuum_sqlite_database,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.db import (
+        backup_sqlite_database,
+        checkpoint_sqlite_wal,
+        check_sqlite_integrity,
+        collect_sqlite_health_report,
+        get_sqlite_database_stats,
+        resolve_sqlite_path,
+        restore_sqlite_database,
+        vacuum_sqlite_database,
+    )
+else:
+    from datetime_utils import utc_now_iso_z
+    from db import (
+        backup_sqlite_database,
+        checkpoint_sqlite_wal,
+        check_sqlite_integrity,
+        collect_sqlite_health_report,
+        get_sqlite_database_stats,
+        resolve_sqlite_path,
+        restore_sqlite_database,
+        vacuum_sqlite_database,
+    )
 
 MANIFEST_FILENAME = "sqlite_maintenance_manifest.json"
 MANAGED_TARGETS = ("runtime", "resources")

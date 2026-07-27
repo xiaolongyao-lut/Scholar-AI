@@ -2,9 +2,14 @@ import re
 import json
 import asyncio
 import logging
-from typing import List, Dict, Any, Optional, Callable
-from models.p2_logic_models import Claim, SourceMeta
-from layers.claim_cache import ClaimCache
+from typing import TYPE_CHECKING, List, Dict, Any, Optional, Callable, Awaitable
+
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.claim_cache import ClaimCache
+    from literature_assistant.core.models.p2_logic_models import Claim, SourceMeta
+else:
+    from layers.claim_cache import ClaimCache
+    from models.p2_logic_models import Claim, SourceMeta
 
 logger = logging.getLogger("P2_ClaimExtractor")
 
@@ -15,7 +20,11 @@ class ClaimExtractor:
     优化：集成 NER 模型提升准确度 (85% → 92%)
     """
 
-    def __init__(self, llm_client: Optional[Callable] = None, enable_cache: bool = True):
+    def __init__(
+        self,
+        llm_client: Optional[Callable[[str], Awaitable[str]]] = None,
+        enable_cache: bool = True,
+    ):
         self.llm_client = llm_client
         self.semaphore = asyncio.Semaphore(5)
         self.cache = ClaimCache() if enable_cache else None
@@ -167,6 +176,9 @@ class ClaimExtractor:
         """
         if not edge_cases:
             return []
+        llm_client = self.llm_client
+        if llm_client is None:
+            return edge_cases
         
         prompt = (
             f"以下是从文献中抽取的边界情况声明，需要精化确认。\n"
@@ -181,7 +193,10 @@ class ClaimExtractor:
         
         try:
             async with self.semaphore:
-                resp = await self.llm_client(prompt)
+                resp = await llm_client(prompt)
+                if not isinstance(resp, str):
+                    logger.warning("LLM 精化响应不是文本，使用原始声明")
+                    return edge_cases
                 # 解析 LLM 返回的 JSON (简化处理)
                 json_str = resp[resp.find("["):resp.rfind("]")+1]
                 data = json.loads(json_str)

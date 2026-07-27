@@ -19,13 +19,27 @@ from functools import lru_cache
 from enum import Enum
 from pathlib import Path
 from threading import RLock
-from typing import Any, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 from uuid import uuid4
 
-from datetime_utils import utc_now_iso_z
-from db import resolve_sqlite_path
-from project_paths import output_path
-from repositories.writing_resource_repository import WritingResourceRepository, normalize_writing_resource_state
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.db import resolve_sqlite_path
+    from literature_assistant.core.models.evidence import PdfAnchorFields
+    from literature_assistant.core.project_paths import output_path
+    from literature_assistant.core.repositories.writing_resource_repository import (
+        WritingResourceRepository,
+        normalize_writing_resource_state,
+    )
+else:
+    from datetime_utils import utc_now_iso_z
+    from db import resolve_sqlite_path
+    from models.evidence import PdfAnchorFields
+    from project_paths import output_path
+    from repositories.writing_resource_repository import (
+        WritingResourceRepository,
+        normalize_writing_resource_state,
+    )
 
 
 CITATION_ANCHORS_METADATA_KEY = "citation_anchors"
@@ -55,10 +69,15 @@ def _normalize_citation_anchor(anchor: Mapping[str, Any]) -> dict[str, Any]:
     if not token:
         raise ValueError("citation anchor token must be a non-empty string")
 
+    start_offset_raw = anchor.get("startOffset")
+    end_offset_raw = anchor.get("endOffset")
+    ordinal_raw = anchor.get("ordinal")
     try:
-        start_offset = int(anchor.get("startOffset"))
-        end_offset = int(anchor.get("endOffset"))
-        ordinal = int(anchor.get("ordinal"))
+        if start_offset_raw is None or end_offset_raw is None or ordinal_raw is None:
+            raise TypeError("citation anchor numeric fields are required")
+        start_offset = int(start_offset_raw)
+        end_offset = int(end_offset_raw)
+        ordinal = int(ordinal_raw)
     except (TypeError, ValueError) as exc:
         raise ValueError("citation anchor offsets and ordinal must be integers") from exc
 
@@ -151,12 +170,12 @@ def _default_resource_store_path() -> Path:
     if configured_path:
         return Path(configured_path).expanduser().resolve()
 
-    return output_path("writing_resources_state.json").resolve()
+    return Path(output_path("writing_resources_state.json")).resolve()
 
 
 def _default_resource_db_path() -> Path:
     """Resolve the default SQLite path for the resource singleton."""
-    return resolve_sqlite_path("WRITING_RESOURCE_DB_PATH", "writing_resources_state.sqlite3")
+    return Path(resolve_sqlite_path("WRITING_RESOURCE_DB_PATH", "writing_resources_state.sqlite3"))
 
 
 class ProjectStatus(str, Enum):
@@ -369,6 +388,7 @@ class WritingFigureAsset:
     material_id: str | None = None
     source_page: int | None = None
     bbox: list[float] | None = None
+    bbox_unit: str | None = None
     width: int | None = None
     height: int | None = None
     format: str | None = None
@@ -385,6 +405,7 @@ class WritingFigureAsset:
         material_id: str | None = None,
         source_page: int | None = None,
         bbox: Sequence[float] | None = None,
+        bbox_unit: str | None = None,
         width: int | None = None,
         height: int | None = None,
         format: str | None = None,
@@ -400,6 +421,7 @@ class WritingFigureAsset:
             material_id: Optional source material id.
             source_page: Optional one-based source page.
             bbox: Optional four-number source bounding box.
+            bbox_unit: Explicit coordinate unit paired with ``bbox``.
             width: Optional positive pixel width.
             height: Optional positive pixel height.
             format: Optional file format label.
@@ -415,6 +437,10 @@ class WritingFigureAsset:
         normalized_caption = _non_empty_text(caption, "caption")
         normalized_numbering = _non_empty_text(numbering, "numbering")
         normalized_asset_path = _non_empty_text(asset_path, "asset_path")
+        normalized_bbox, normalized_bbox_unit = _normalize_optional_bbox_anchor(
+            bbox,
+            bbox_unit,
+        )
         return WritingFigureAsset(
             asset_id=f"fig_{uuid4().hex[:12]}",
             project_id=normalized_project_id,
@@ -423,7 +449,8 @@ class WritingFigureAsset:
             numbering=normalized_numbering,
             material_id=_optional_non_empty_text(material_id),
             source_page=_optional_positive_int(source_page, "source_page"),
-            bbox=_normalize_optional_bbox(bbox),
+            bbox=normalized_bbox,
+            bbox_unit=normalized_bbox_unit,
             asset_path=normalized_asset_path,
             width=_optional_positive_int(width, "width"),
             height=_optional_positive_int(height, "height"),
@@ -439,12 +466,18 @@ class WritingFigureAsset:
         material_id: str | None = None,
         source_page: int | None = None,
         bbox: Sequence[float] | None = None,
+        bbox_unit: str | None = None,
+        replace_bbox_anchor: bool = False,
         asset_path: str | None = None,
         width: int | None = None,
         height: int | None = None,
         format: str | None = None,
     ) -> "WritingFigureAsset":
-        """Return an updated asset while preserving immutable identity."""
+        """Return an updated asset while preserving immutable identity.
+
+        ``replace_bbox_anchor`` distinguishes an omitted partial-update field
+        from an explicit request to clear an unusable or empty anchor.
+        """
         data = self.to_dict()
         if kind is not None:
             data["kind"] = _normalize_figure_kind(kind)
@@ -456,8 +489,13 @@ class WritingFigureAsset:
             data["material_id"] = _optional_non_empty_text(material_id)
         if source_page is not None:
             data["source_page"] = _optional_positive_int(source_page, "source_page")
-        if bbox is not None:
-            data["bbox"] = _normalize_optional_bbox(bbox)
+        if replace_bbox_anchor:
+            normalized_bbox, normalized_bbox_unit = _normalize_optional_bbox_anchor(
+                bbox,
+                bbox_unit,
+            )
+            data["bbox"] = normalized_bbox
+            data["bbox_unit"] = normalized_bbox_unit
         if asset_path is not None:
             data["asset_path"] = _non_empty_text(asset_path, "asset_path")
         if width is not None:
@@ -523,6 +561,23 @@ def _normalize_optional_bbox(value: Sequence[float] | None) -> list[float] | Non
             raise ValueError("bbox must contain exactly four numbers")
         bbox.append(float(item))
     return bbox
+
+
+def _normalize_optional_bbox_anchor(
+    bbox: Sequence[float] | None,
+    bbox_unit: str | None,
+) -> tuple[list[float] | None, str | None]:
+    """Validate bbox provenance as one atomic pair without unit inference."""
+
+    normalized_bbox = _normalize_optional_bbox(bbox)
+    anchor = PdfAnchorFields.model_validate(
+        {
+            "bbox": normalized_bbox,
+            "bbox_unit": bbox_unit,
+        }
+    )
+    normalized_unit = anchor.bbox_unit.value if anchor.bbox_unit is not None else None
+    return anchor.bbox, normalized_unit
 
 
 @dataclass(frozen=True)
@@ -1848,6 +1903,7 @@ class WritingResourceStore:
         self._sections: dict[str, WritingSection] = {}
         self._materials: dict[str, WritingMaterial] = {}
         self._figure_assets: dict[str, WritingFigureAsset] = {}
+        self._legacy_figure_bboxes: dict[str, list[float]] = {}
         self._drafts: dict[str, WritingDraft] = {}
         self._revisions: dict[str, WritingRevision] = {}
         self._draft_revisions: dict[str, list[str]] = {}  # draft_id -> [revision_ids]
@@ -2128,7 +2184,8 @@ class WritingResourceStore:
             retention = project.metadata.get(PROJECT_RETENTION_METADATA_KEY)
             if not isinstance(retention, Mapping):
                 return None
-            return json.loads(json.dumps(dict(retention), ensure_ascii=False))
+            detached = json.loads(json.dumps(dict(retention), ensure_ascii=False))
+            return detached if isinstance(detached, dict) else None
 
     def delete_project(self, project_id: str) -> bool:
         """Archive a project; retained as a compatibility alias for callers."""
@@ -2153,6 +2210,7 @@ class WritingResourceStore:
             figure_asset_ids = [aid for aid, a in self._figure_assets.items() if a.project_id == project_id]
             for asset_id in figure_asset_ids:
                 del self._figure_assets[asset_id]
+                self._legacy_figure_bboxes.pop(asset_id, None)
             # Remove associated drafts and their revisions
             draft_ids = [did for did, d in self._drafts.items() if d.project_id == project_id]
             for did in draft_ids:
@@ -2349,6 +2407,7 @@ class WritingResourceStore:
         material_id: str | None = None,
         source_page: int | None = None,
         bbox: Sequence[float] | None = None,
+        bbox_unit: str | None = None,
         width: int | None = None,
         height: int | None = None,
         format: str | None = None,
@@ -2364,6 +2423,7 @@ class WritingResourceStore:
                 material_id=material_id,
                 source_page=source_page,
                 bbox=bbox,
+                bbox_unit=bbox_unit,
                 width=width,
                 height=height,
                 format=format,
@@ -2391,12 +2451,23 @@ class WritingResourceStore:
         material_id: str | None = None,
         source_page: int | None = None,
         bbox: Sequence[float] | None = None,
+        bbox_unit: str | None = None,
+        replace_bbox_anchor: bool = False,
         asset_path: str | None = None,
         width: int | None = None,
         height: int | None = None,
         format: str | None = None,
     ) -> WritingFigureAsset | None:
-        """Update persisted figure/table asset metadata."""
+        """Update persisted figure/table asset metadata.
+
+        Args:
+            asset_id: Existing immutable asset identifier.
+            replace_bbox_anchor: Whether the request explicitly supplied bbox
+                provenance, including an explicit request to clear it.
+
+        Returns:
+            The updated asset, or ``None`` when ``asset_id`` is unknown.
+        """
         with self._lock:
             asset = self._figure_assets.get(asset_id)
             if asset is None:
@@ -2408,12 +2479,16 @@ class WritingResourceStore:
                 material_id=material_id,
                 source_page=source_page,
                 bbox=bbox,
+                bbox_unit=bbox_unit,
+                replace_bbox_anchor=replace_bbox_anchor,
                 asset_path=asset_path,
                 width=width,
                 height=height,
                 format=format,
             )
             self._figure_assets[asset_id] = updated
+            if replace_bbox_anchor:
+                self._legacy_figure_bboxes.pop(asset_id, None)
             self._autosave_if_enabled()
             return updated
 
@@ -2423,6 +2498,7 @@ class WritingResourceStore:
             if asset_id not in self._figure_assets:
                 return False
             del self._figure_assets[asset_id]
+            self._legacy_figure_bboxes.pop(asset_id, None)
             self._autosave_if_enabled()
             return True
 
@@ -2829,7 +2905,7 @@ class WritingResourceStore:
         query_terms = _extract_terms(query)
         scoring_terms = list(dict.fromkeys([*query_terms, *focus_terms]))
         if not scoring_terms:
-            scoring_terms = focus_terms[:]
+            scoring_terms = list(focus_terms)
 
         ranked_signals: list[WritingAssociationSignal] = []
         for candidate in candidates:
@@ -3075,6 +3151,17 @@ class WritingResourceStore:
             SQLite would apply for incremental deletes.
         """
         state, repairs = normalize_writing_resource_state(self.export_state())
+        if not isinstance(state, dict):
+            raise TypeError("normalized writing resource state must be a mapping")
+        figure_assets = state.get("figure_assets")
+        if not isinstance(figure_assets, dict):
+            raise TypeError("normalized figure asset state must be a mapping")
+        for asset_id, legacy_bbox in self._legacy_figure_bboxes.items():
+            payload = figure_assets.get(asset_id)
+            if not isinstance(payload, dict):
+                continue
+            if payload.get("bbox") is None and payload.get("bbox_unit") in (None, ""):
+                payload["bbox"] = list(legacy_bbox)
         if repairs:
             self._logger.warning(
                 "Repaired writing resource state before persistence: %s",
@@ -3169,9 +3256,20 @@ class WritingResourceStore:
                 )
 
             figure_assets: dict[str, WritingFigureAsset] = {}
+            legacy_figure_bboxes: dict[str, list[float]] = {}
             for asset_id, payload in figure_assets_raw.items():
                 if not isinstance(payload, Mapping):
                     raise TypeError("figure asset payload must be a mapping")
+                raw_bbox = payload.get("bbox")
+                raw_bbox_unit = None if payload.get("bbox_unit") in (None, "") else str(payload.get("bbox_unit"))
+                if raw_bbox is not None and raw_bbox_unit is None:
+                    legacy_bbox = _normalize_optional_bbox(raw_bbox)
+                    if legacy_bbox is not None:
+                        legacy_figure_bboxes[str(asset_id)] = legacy_bbox
+                bbox, bbox_unit = _normalize_optional_bbox_anchor(
+                    raw_bbox,
+                    raw_bbox_unit,
+                )
                 figure_assets[str(asset_id)] = WritingFigureAsset(
                     asset_id=str(payload["asset_id"]),
                     project_id=str(payload["project_id"]),
@@ -3180,7 +3278,8 @@ class WritingResourceStore:
                     numbering=str(payload.get("numbering", "")),
                     material_id=None if payload.get("material_id") in (None, "") else str(payload.get("material_id")),
                     source_page=_optional_positive_int(payload.get("source_page"), "source_page"),
-                    bbox=_normalize_optional_bbox(payload.get("bbox")) if payload.get("bbox") is not None else None,
+                    bbox=bbox,
+                    bbox_unit=bbox_unit,
                     asset_path=str(payload.get("asset_path", "")),
                     width=_optional_positive_int(payload.get("width"), "width"),
                     height=_optional_positive_int(payload.get("height"), "height"),
@@ -3238,6 +3337,7 @@ class WritingResourceStore:
             self._sections = sections
             self._materials = materials
             self._figure_assets = figure_assets
+            self._legacy_figure_bboxes = legacy_figure_bboxes
             self._drafts = drafts
             self._revisions = revisions
             self._draft_revisions = draft_revisions
@@ -3274,7 +3374,7 @@ class WritingResourceStore:
             return None
 
         self._repository.replace_state(self._normalized_export_state())
-        return self._repository.db_path
+        return Path(self._repository.db_path)
 
     def _restore_from_durable_state_after_autosave_failure(self) -> bool:
         """
@@ -3284,7 +3384,7 @@ class WritingResourceStore:
             True when a durable state was loaded; False when no durable state
             exists and the in-memory aggregate was reset to an empty state.
         """
-        empty_state = {
+        empty_state: dict[str, Any] = {
             "projects": {},
             "sections": {},
             "materials": {},

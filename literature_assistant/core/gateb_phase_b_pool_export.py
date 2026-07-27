@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from eval_retrieval_runtime import (
     ChunkVectorStore,
@@ -21,7 +21,10 @@ from eval_retrieval_runtime import (
     hybrid_search_async,
     rerank_async,
 )
-from project_paths import output_path
+if TYPE_CHECKING:
+    from literature_assistant.core.project_paths import output_path
+else:
+    from project_paths import output_path
 
 
 SOURCE_LABELS = ("bm25", "dense", "graph", "rrf", "rerank", "evidence_set")
@@ -30,6 +33,25 @@ LEGACY_EVALUATION_PATHS = {
     Path("artifacts") / "eval_audit" / "gateb_goldset.jsonl": EVALUATION_DATA_ROOT / "gateb_goldset.jsonl",
     Path("eval_queries_v2.1.jsonl"): EVALUATION_DATA_ROOT / "eval_queries_v2.1.jsonl",
 }
+
+
+SourceHits = dict[str, list[dict[str, Any]]]
+
+
+class RetrievalCollector(Protocol):
+    """Async retrieval boundary used by the deterministic pool exporter."""
+
+    async def __call__(
+        self,
+        query_text: str,
+        *,
+        top_k: int,
+        corpus: dict[str, Any],
+        keyword_graph: dict[str, Any] | None = None,
+        vector_store: Any | None = None,
+        query_vec: Any | None = None,
+        rerank_semaphore: asyncio.Semaphore | None = None,
+    ) -> SourceHits: ...
 
 
 def _get_git_commit_sha() -> str:
@@ -228,12 +250,13 @@ def merge_query_candidates(
         if isinstance(original_query, dict) and isinstance(original_query.get("evidence_set"), list)
         else []
     )
-    expected_doc_ids = {
-        _normalize_doc_id(item.get("doc_id"))
-        for item in original_evidence
-        if isinstance(item, dict) and _normalize_doc_id(item.get("doc_id"))
-    }
-    expected_doc_ids = {doc_id for doc_id in expected_doc_ids if doc_id}
+    expected_doc_ids: set[str] = set()
+    for item in original_evidence:
+        if not isinstance(item, dict):
+            continue
+        normalized_doc_id = _normalize_doc_id(item.get("doc_id"))
+        if normalized_doc_id:
+            expected_doc_ids.add(normalized_doc_id)
 
     candidates_by_doc: dict[str, dict[str, Any]] = {}
     source_doc_ids: dict[str, list[str]] = {}
@@ -361,7 +384,7 @@ async def collect_query_source_hits(
     vector_store: Any | None = None,
     query_vec: Any | None = None,
     rerank_semaphore: asyncio.Semaphore | None = None,
-) -> dict[str, list[dict[str, Any]]]:
+) -> SourceHits:
     hybrid_hits: list[dict[str, Any]] = []
     graph_hits: list[dict[str, Any]] = []
     dense_hits: list[dict[str, Any]] = []
@@ -415,7 +438,7 @@ async def _export_phase_b_pools_async(
     pool_output_path: Path,
     annotation_output_path: Path,
     corpus: dict[str, Any],
-    retrieval_collector,
+    retrieval_collector: RetrievalCollector,
     top_k: int,
 ) -> dict[str, Any]:
     chunks = corpus.get("chunks", []) if isinstance(corpus.get("chunks"), list) else []
@@ -479,7 +502,7 @@ def export_phase_b_pools(
     pool_output_path: Path,
     annotation_output_path: Path,
     corpus: dict[str, Any] | None = None,
-    retrieval_collector=None,
+    retrieval_collector: RetrievalCollector | None = None,
     top_k: int = 10,
 ) -> dict[str, Any]:
     resolved_goldset_path = _resolve_evaluation_data_path(goldset_path)

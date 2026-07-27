@@ -9,13 +9,17 @@ import hashlib
 import json
 from pathlib import PurePosixPath
 import re
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-VISUAL_OBSERVATION_SCHEMA_VERSION = "scholar-ai-visual-observation/v1"
-VISUAL_OBSERVATION_REF_SCHEMA_VERSION = "scholar-ai-visual-observation-ref/v1"
+VISUAL_OBSERVATION_SCHEMA_VERSION: Final[
+    Literal["scholar-ai-visual-observation/v1"]
+] = "scholar-ai-visual-observation/v1"
+VISUAL_OBSERVATION_REF_SCHEMA_VERSION: Final[
+    Literal["scholar-ai-visual-observation-ref/v1"]
+] = "scholar-ai-visual-observation-ref/v1"
 VISUAL_OBSERVATION_MAX_COUNT = 12
 
 VisualObservationRoute = Literal["direct_model", "vision_aux_mcp"]
@@ -813,13 +817,16 @@ class VisualObservationLifecycleReceipt(BaseModel):
 
     @model_validator(mode="after")
     def _validate_receipt_transition(self) -> "VisualObservationLifecycleReceipt":
+        target_review_status: VisualObservationReviewDecisionStatus | None = None
+        if self.axis == "review":
+            if self.result_review_status == "candidate":
+                raise ValueError("review receipt target cannot remain candidate")
+            target_review_status = self.result_review_status
         request = VisualObservationLifecycleRequest(
             operation_id=self.operation_id,
             expected_review_status=self.previous_review_status,
             expected_freshness_status=self.previous_freshness_status,
-            target_review_status=(
-                self.result_review_status if self.axis == "review" else None
-            ),
+            target_review_status=target_review_status,
             target_freshness_status=(
                 self.result_freshness_status if self.axis == "freshness" else None
             ),

@@ -84,20 +84,22 @@ def _build_context_text(
 ) -> str:
     parts: list[str] = []
     if isinstance(material, Mapping):
-        parts.extend([
-            material.get("title"),
-            material.get("title_en"),
-            material.get("summary"),
-            material.get("summary_en"),
-        ])
+        for key in ("title", "title_en", "summary", "summary_en"):
+            value = _normalize_text(material.get(key))
+            if value:
+                parts.append(value)
         for key in ("focus_points", "focus_points_en"):
             points = material.get(key)
             if isinstance(points, Sequence) and not isinstance(points, (str, bytes)):
-                parts.extend(points)
+                parts.extend(
+                    normalized
+                    for point in points
+                    if (normalized := _normalize_text(point))
+                )
     for chunk in list(chunks)[:MAX_CHUNKS]:
         if isinstance(chunk, Mapping):
             parts.append(_chunk_text(chunk))
-    joined = " ".join(_normalize_text(part) for part in parts if _normalize_text(part))
+    joined = " ".join(parts)
     return joined[:CONTEXT_CHAR_LIMIT]
 
 

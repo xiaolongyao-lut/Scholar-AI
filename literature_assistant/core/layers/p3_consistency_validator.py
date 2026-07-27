@@ -3,12 +3,16 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from itertools import combinations
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
-from layers.p3_causal_engine import CausalChain
-from models.p2_logic_models import ClassifiedConflict
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.p3_causal_engine import CausalChain
+    from literature_assistant.core.models.p2_logic_models import ClassifiedConflict
+else:
+    from layers.p3_causal_engine import CausalChain
+    from models.p2_logic_models import ClassifiedConflict
 
 logger = logging.getLogger("P3_ConsistencyValidator")
 

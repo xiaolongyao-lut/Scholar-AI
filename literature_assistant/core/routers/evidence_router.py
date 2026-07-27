@@ -6,7 +6,7 @@ and citation overlap detection (D8).
 """
 
 from fastapi import APIRouter, HTTPException, Query, Response
-from typing import Any, Callable, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Literal, Optional
 from datetime import datetime, timezone
 from pathlib import Path
 from pydantic import BaseModel, Field, ValidationError
@@ -18,7 +18,6 @@ import os
 import re
 import uuid
 
-import routers.resources_router as _resources_router
 from literature_assistant.core.chunk_package_quality import (
     default_joint_recall_policy,
     weighted_rrf_fuse,
@@ -40,49 +39,96 @@ from literature_assistant.core.wiki.page_store import WikiPageStore
 from literature_assistant.core.wiki.review_queue import ReviewItem, ReviewItemKind, ReviewQueue
 from literature_assistant.core.wiki.graph import parse_wiki_page
 from literature_assistant.core.wiki.query import WikiQueryIndex, build_knowledge_refs
-from project_paths import project_data_path, runtime_state_path
-from routers.resources_router.endpoints_search_upload import (
-    build_locator_coverage,
-    _augment_chunks_with_linked_visual_assets,
-    _augment_chunks_with_project_figure_assets,
-    _chunk_to_search_ref,
-    _flatten_chunk_store_for_search_refs,
-    _merge_visual_search_ref_chunks,
-    _search_refs_visual_query_enabled,
-    _select_search_ref_chunks,
-    _select_search_ref_chunks_fts_first,
-    enrich_chunk_locator_with_pdf,
-    find_chunk_locator,
-)
-from models import (
-    PdfAnchorFields,
-    coerce_pdf_bbox,
-    SourceLabelPayload,
-    CreateSourceLabelRequest,
-    UpdateSourceLabelRequest,
-    EvidenceRefPayload,
-    EvidenceRefsResponse,
-    ChunkLocatorPayload,
-    DiscussionEvidencePackPayload,
-    EvidencePackBuildRequest,
-    EvidencePackBuildResponse,
-    EvidencePackIntegrityCheckPayload,
-    EvidencePackIntegrityGateRequest,
-    EvidencePackIntegrityGateResponse,
-    EvidenceQrelsReviewBundleRequest,
-    EvidenceQrelsReviewBundleResponse,
-    EvidencePackReferencePayload,
-    EvidenceRetrievalDiagnosticsPayload,
-    RetrievalQrelsStatusPayload,
-    ToolAttempt,
-    ToolNextAction,
-    ToolOutcome,
-    CitationOverlapPayload,
-    CitationVerificationPayload,
-    CitationVerificationRequest,
-    CitationVerificationStatus,
-    CitationVerificationsResponse,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.models import (
+        ChunkLocatorPayload,
+        CitationOverlapPayload,
+        CitationVerificationPayload,
+        CitationVerificationRequest,
+        CitationVerificationStatus,
+        CitationVerificationsResponse,
+        CreateSourceLabelRequest,
+        DiscussionEvidencePackPayload,
+        EvidencePackBuildRequest,
+        EvidencePackBuildResponse,
+        EvidencePackIntegrityCheckPayload,
+        EvidencePackIntegrityGateRequest,
+        EvidencePackIntegrityGateResponse,
+        EvidencePackReferencePayload,
+        EvidenceQrelsReviewBundleRequest,
+        EvidenceQrelsReviewBundleResponse,
+        EvidenceRefPayload,
+        EvidenceRefsResponse,
+        EvidenceRetrievalDiagnosticsPayload,
+        PdfAnchorFields,
+        RetrievalQrelsStatusPayload,
+        SourceLabelPayload,
+        ToolAttempt,
+        ToolNextAction,
+        ToolOutcome,
+        UpdateSourceLabelRequest,
+        coerce_pdf_bbox,
+    )
+    from literature_assistant.core.project_paths import project_data_path, runtime_state_path
+    from literature_assistant.core.routers import resources_router as _resources_router
+    from literature_assistant.core.routers.resources_router.endpoints_search_upload import (
+        _augment_chunks_with_linked_visual_assets,
+        _augment_chunks_with_project_figure_assets,
+        _chunk_to_search_ref,
+        _flatten_chunk_store_for_search_refs,
+        _merge_visual_search_ref_chunks,
+        _search_refs_visual_query_enabled,
+        _select_search_ref_chunks,
+        _select_search_ref_chunks_fts_first,
+        build_locator_coverage,
+        enrich_chunk_locator_with_pdf,
+        find_chunk_locator,
+    )
+else:
+    import routers.resources_router as _resources_router
+    from models import (
+        ChunkLocatorPayload,
+        CitationOverlapPayload,
+        CitationVerificationPayload,
+        CitationVerificationRequest,
+        CitationVerificationStatus,
+        CitationVerificationsResponse,
+        CreateSourceLabelRequest,
+        DiscussionEvidencePackPayload,
+        EvidencePackBuildRequest,
+        EvidencePackBuildResponse,
+        EvidencePackIntegrityCheckPayload,
+        EvidencePackIntegrityGateRequest,
+        EvidencePackIntegrityGateResponse,
+        EvidencePackReferencePayload,
+        EvidenceQrelsReviewBundleRequest,
+        EvidenceQrelsReviewBundleResponse,
+        EvidenceRefPayload,
+        EvidenceRefsResponse,
+        EvidenceRetrievalDiagnosticsPayload,
+        PdfAnchorFields,
+        RetrievalQrelsStatusPayload,
+        SourceLabelPayload,
+        ToolAttempt,
+        ToolNextAction,
+        ToolOutcome,
+        UpdateSourceLabelRequest,
+        coerce_pdf_bbox,
+    )
+    from project_paths import project_data_path, runtime_state_path
+    from routers.resources_router.endpoints_search_upload import (
+        _augment_chunks_with_linked_visual_assets,
+        _augment_chunks_with_project_figure_assets,
+        _chunk_to_search_ref,
+        _flatten_chunk_store_for_search_refs,
+        _merge_visual_search_ref_chunks,
+        _search_refs_visual_query_enabled,
+        _select_search_ref_chunks,
+        _select_search_ref_chunks_fts_first,
+        build_locator_coverage,
+        enrich_chunk_locator_with_pdf,
+        find_chunk_locator,
+    )
 
 router = APIRouter(tags=["Evidence"])
 
@@ -432,7 +478,7 @@ def _evidence_runtime_store_path(filename: str) -> Path:
     normalized = str(filename or "").strip()
     if not normalized or normalized != Path(normalized).name:
         raise ValueError("evidence store filename must be a plain filename")
-    return runtime_state_path("evidence", normalized)
+    return Path(runtime_state_path("evidence", normalized))
 
 
 def _read_json_payload(path: Path) -> Any:
@@ -444,6 +490,18 @@ def _read_json_payload(path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def _json_object_or_empty(value: Any) -> dict[str, Any]:
+    """Return the string-keyed portion of a JSON object or an empty mapping."""
+
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: item
+        for key, item in value.items()
+        if isinstance(key, str)
+    }
 
 
 def _write_json_payload(path: Path, payload: dict[str, Any]) -> None:
@@ -614,7 +672,7 @@ def _select_evidence_refs(
 def _evidence_ref_export_row(ref: EvidenceRefPayload) -> dict[str, Any]:
     """Convert one evidence ref to a JSON-serializable export row."""
 
-    return ref.model_dump(mode="json")
+    return _json_object_or_empty(ref.model_dump(mode="json"))
 
 
 def _csv_cell(value: Any) -> str:
@@ -729,8 +787,8 @@ def _refresh_citation_verifications_store() -> dict[str, CitationVerificationPay
 
 @router.get("/api/evidence_refs", response_model=EvidenceRefsResponse)
 async def get_evidence_refs(
-    project_id: str = Query(None, description="Filter by project"),
-    material_id: str = Query(None, description="Filter by material"),
+    project_id: Optional[str] = Query(None, description="Filter by project"),
+    material_id: Optional[str] = Query(None, description="Filter by material"),
     source_labels: List[str] = Query(None, description="Filter by source labels"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -972,7 +1030,7 @@ def _chunk_locator_payload_from_store(project_id: str, chunk_id: str) -> ChunkLo
             }
         )
     except ValidationError:
-        anchor = PdfAnchorFields()
+        anchor = PdfAnchorFields(bbox=None, bbox_unit=None)
 
     return ChunkLocatorPayload(
         chunk_id=str(locator["chunk_id"]),
@@ -1007,6 +1065,7 @@ async def get_chunk_locator(
             page=None,
             chunk_index=None,
             bbox=None,
+            bbox_unit=None,
             text_preview="",
         )
     return _chunk_locator_payload_from_store(project_id=project_id, chunk_id=chunk_id)
@@ -1022,7 +1081,7 @@ def _discussion_evidence_pack_store_path() -> Path:
     Returns:
         A pathlib-compatible path with parent directories created by writers.
     """
-    return runtime_state_path("discussion", "evidence_packs.json")
+    return Path(runtime_state_path("discussion", "evidence_packs.json"))
 
 
 def _discussion_evidence_pack_from_raw(raw_pack: Any) -> DiscussionEvidencePackPayload | None:
@@ -1139,7 +1198,7 @@ def _evidence_pack_ref(project_id: str, query: str, section_id: str | None) -> s
 def _evidence_pack_build_store_path() -> Path:
     """Return the durable bounded evidence-pack build store path."""
 
-    return runtime_state_path("evidence_pack", "builds.json")
+    return Path(runtime_state_path("evidence_pack", "builds.json"))
 
 
 def _evidence_pack_build_from_raw(raw_pack: Any) -> EvidencePackBuildResponse | None:
@@ -1720,6 +1779,28 @@ def _search_ref_to_evidence_ref(project_id: str, ref: Any) -> EvidencePackRefere
     return evidence_ref
 
 
+def _validated_scored_chunks(
+    value: Any,
+    *,
+    source: str,
+) -> list[tuple[float, dict[str, Any]]]:
+    """Validate scored chunks returned through legacy untyped router imports."""
+
+    if not isinstance(value, list):
+        raise TypeError(f"{source} must return a list of scored chunks")
+    validated: list[tuple[float, dict[str, Any]]] = []
+    for item in value:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            raise TypeError(f"{source} returned a malformed scored chunk")
+        score, chunk = item
+        if isinstance(score, bool) or not isinstance(score, (int, float)):
+            raise TypeError(f"{source} returned a non-numeric score")
+        if not isinstance(chunk, dict):
+            raise TypeError(f"{source} returned a non-object chunk")
+        validated.append((float(score), _json_object_or_empty(chunk)))
+    return validated
+
+
 def _select_project_evidence_chunks(
     *,
     project_id: str,
@@ -1787,11 +1868,14 @@ def _select_project_evidence_chunks(
         if selected:
             if _search_refs_visual_query_enabled(normalized_query):
                 scored = _resources_router._score_chunks_for_query(all_chunks, normalized_query)
-                return _merge_visual_search_ref_chunks(
-                    normalized_query,
-                    selected,
-                    scored,
-                    top_k=top_k,
+                return _validated_scored_chunks(
+                    _merge_visual_search_ref_chunks(
+                        normalized_query,
+                        selected,
+                        scored,
+                        top_k=top_k,
+                    ),
+                    source="_merge_visual_search_ref_chunks",
                 )
             if len(selected) < top_k:
                 seen_keys = {
@@ -1802,11 +1886,15 @@ def _select_project_evidence_chunks(
                     for _score, chunk in selected
                     if isinstance(chunk, dict)
                 }
-                for fallback_score, fallback_chunk in _select_search_ref_chunks(
-                    all_chunks,
-                    normalized_query,
-                    top_k=top_k,
-                ):
+                fallback_chunks = _validated_scored_chunks(
+                    _select_search_ref_chunks(
+                        all_chunks,
+                        normalized_query,
+                        top_k=top_k,
+                    ),
+                    source="_select_search_ref_chunks",
+                )
+                for fallback_score, fallback_chunk in fallback_chunks:
                     fallback_key = (
                         str(fallback_chunk.get("material_id") or "").strip(),
                         str(fallback_chunk.get("chunk_id") or "").strip(),
@@ -1819,14 +1907,20 @@ def _select_project_evidence_chunks(
                         break
             return selected
 
-    return _select_search_ref_chunks(all_chunks, normalized_query, top_k=top_k)
+    return _validated_scored_chunks(
+        _select_search_ref_chunks(all_chunks, normalized_query, top_k=top_k),
+        source="_select_search_ref_chunks",
+    )
 
 
 def _resolve_hybrid_retriever_class() -> Any | None:
     """Return the existing hybrid retriever class, or ``None`` if unavailable."""
 
     try:
-        from layers.r_layer_hybrid_retriever import HybridRetrieverWithRerank
+        if TYPE_CHECKING:
+            from literature_assistant.core.layers.r_layer_hybrid_retriever import HybridRetrieverWithRerank
+        else:
+            from layers.r_layer_hybrid_retriever import HybridRetrieverWithRerank
     except ImportError:
         return None
     return HybridRetrieverWithRerank
@@ -2029,7 +2123,7 @@ def _knowledge_hit_to_evidence_ref(
         return None
     ref_id = str(hit.get("ref_id") or "").strip()
     read_endpoint = str(hit.get("read_endpoint") or "").strip()
-    metadata = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
+    metadata = _json_object_or_empty(hit.get("metadata"))
     summary = _bounded_evidence_pack_summary(str(hit.get("summary") or ""))
     expected_read_endpoint = f"/api/agent-bridge/resource/{ref_id}"
     chunk_id = _knowledge_chunk_id_from_ref(ref_id, source_type)
@@ -2117,7 +2211,7 @@ def _knowledge_summaries(
     for hit in hits[: max(0, min(top_k, _EVIDENCE_PACK_MAX_KNOWLEDGE_REFS))]:
         if not isinstance(hit, dict):
             continue
-        metadata = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
+        metadata = _json_object_or_empty(hit.get("metadata"))
         summaries.append(
             {
                 "ref_id": str(hit.get("ref_id") or ""),
@@ -2372,7 +2466,7 @@ def _evidence_refs_from_fused_joint_hits(
         if not isinstance(fused, dict):
             continue
         doc_id = str(fused.get("doc_id") or "").strip()
-        payload = fused.get("payload") if isinstance(fused.get("payload"), dict) else {}
+        payload = _json_object_or_empty(fused.get("payload"))
         ref: EvidencePackReferencePayload | None = None
         if doc_id in project_by_ref_id:
             ref = project_by_ref_id[doc_id]
@@ -2450,13 +2544,18 @@ def _joint_recall_diagnostics(
             },
             project_refs[:top_k],
         )
-    gate = getattr(searcher, "_wiki_integrity_gate", None)
-    if isinstance(gate, dict) and not gate.get("allowed", False):
+    raw_searcher_gate = getattr(searcher, "_wiki_integrity_gate", None)
+    searcher_gate = (
+        _json_object_or_empty(raw_searcher_gate)
+        if isinstance(raw_searcher_gate, dict)
+        else None
+    )
+    if searcher_gate is not None and not searcher_gate.get("allowed", False):
         return _blocked_wiki_joint_recall_result(
             policy=policy,
             project_refs=project_refs,
             top_k=top_k,
-            gate=gate,
+            gate=searcher_gate,
         )
     wiki_hits = searcher(query, max(top_k, int(policy.get("per_source_caps", {}).get("wiki", top_k))))
     if not isinstance(wiki_hits, list):
@@ -2473,7 +2572,7 @@ def _joint_recall_diagnostics(
                 "wiki_hit_count": 0,
                 "wiki_share_after_fusion": 0.0,
                 "source_counts": {"project": min(len(project_refs), top_k), "wiki": 0},
-                "integrity_gate": gate if isinstance(gate, dict) else {"status": "unchecked"},
+                "integrity_gate": searcher_gate if searcher_gate is not None else {"status": "unchecked"},
                 "top_doc_ids": [ref.ref_id for ref in project_refs[: min(5, top_k)]],
                 "wiki_summaries": [],
             },
@@ -2506,7 +2605,7 @@ def _joint_recall_diagnostics(
             "wiki_hit_count": fused["wiki_hit_count"],
             "wiki_share_after_fusion": fused["wiki_share_after_fusion"],
             "source_counts": source_counts,
-            "integrity_gate": gate if isinstance(gate, dict) else {"status": "unchecked"},
+            "integrity_gate": searcher_gate if searcher_gate is not None else {"status": "unchecked"},
             "top_doc_ids": [str(hit.get("doc_id") or "") for hit in fused["hits"][: min(5, top_k)]],
             "wiki_summaries": [
                 {
@@ -2814,7 +2913,13 @@ def _evidence_pack_locator_attempt(diagnostics: EvidenceRetrievalDiagnosticsPayl
     """Return a locator-coverage attempt for workflow and integrity gates."""
 
     coverage = diagnostics.locator_coverage
-    status = "success" if coverage.risk_level == "none" else "blocked" if coverage.risk_level == "block" else "degraded"
+    status: Literal["success", "blocked", "degraded"]
+    if coverage.risk_level == "none":
+        status = "success"
+    elif coverage.risk_level == "block":
+        status = "blocked"
+    else:
+        status = "degraded"
     reason_by_state: dict[str, str] = {
         "no_refs": "No project refs were returned for source locator coverage.",
         "missing": "Returned project refs are missing material/chunk locators.",
@@ -2894,8 +2999,8 @@ def _evidence_pack_wiki_integrity_attempt(diagnostics: EvidenceRetrievalDiagnost
 def _evidence_pack_knowledge_refs_attempt(diagnostics: EvidenceRetrievalDiagnosticsPayload) -> ToolAttempt:
     """Return a bounded knowledge-ref attempt for non-project context sources."""
 
-    joint = diagnostics.joint_recall if isinstance(diagnostics.joint_recall, dict) else {}
-    knowledge_refs = joint.get("knowledge_refs") if isinstance(joint.get("knowledge_refs"), dict) else {}
+    joint = _json_object_or_empty(diagnostics.joint_recall)
+    knowledge_refs = _json_object_or_empty(joint.get("knowledge_refs"))
     if not knowledge_refs:
         return ToolAttempt(
             stage="knowledge_refs",
@@ -2904,7 +3009,7 @@ def _evidence_pack_knowledge_refs_attempt(diagnostics: EvidenceRetrievalDiagnost
             metadata={"enabled": False, "source_counts": {}},
         )
     status = str(knowledge_refs.get("status") or "skipped")
-    source_counts = knowledge_refs.get("source_counts") if isinstance(knowledge_refs.get("source_counts"), dict) else {}
+    source_counts = _json_object_or_empty(knowledge_refs.get("source_counts"))
     if status == "active":
         return ToolAttempt(
             stage="knowledge_refs",
@@ -3050,21 +3155,23 @@ def _evidence_pack_outcome(
     attempts.append(_evidence_pack_qrels_attempt(qrels_status))
 
     if evidence_refs:
-        status = "success" if diagnostics.rerank_status == "active" else "degraded"
+        outcome_status: Literal["success", "degraded", "empty"] = (
+            "success" if diagnostics.rerank_status == "active" else "degraded"
+        )
         reason = (
             "Evidence refs returned with active rerank provenance."
             if diagnostics.rerank_status == "active"
             else "Evidence refs returned without active rerank provenance."
         )
     elif all_chunks:
-        status = "empty"
+        outcome_status = "empty"
         reason = "Project chunks were indexed, but this query returned no evidence refs."
     else:
-        status = "empty"
+        outcome_status = "empty"
         reason = "No indexed project chunks were available for evidence-pack retrieval."
 
     return ToolOutcome(
-        status=status,
+        status=outcome_status,
         quality="refs_only" if evidence_refs else "none",
         reason=reason,
         next_action=_evidence_pack_next_action(
@@ -3164,18 +3271,18 @@ def _image_assets_from_detail(value: Any, *, key_hint: str = "", depth: int = 0)
     if isinstance(value, str):
         return [value] if _looks_like_image_asset_key(key_hint) else []
     if isinstance(value, list):
-        assets: list[str] = []
+        list_assets: list[str] = []
         for item in value[:20]:
             if isinstance(item, str) and _looks_like_image_asset_key(key_hint):
-                assets.append(item)
+                list_assets.append(item)
             elif isinstance(item, (dict, list)):
-                assets.extend(_image_assets_from_detail(item, key_hint=key_hint, depth=depth + 1))
-        return assets
+                list_assets.extend(_image_assets_from_detail(item, key_hint=key_hint, depth=depth + 1))
+        return list_assets
     if isinstance(value, dict):
-        assets: list[str] = []
+        mapping_assets: list[str] = []
         for key, item in list(value.items())[:40]:
-            assets.extend(_image_assets_from_detail(item, key_hint=str(key), depth=depth + 1))
-        return assets
+            mapping_assets.extend(_image_assets_from_detail(item, key_hint=str(key), depth=depth + 1))
+        return mapping_assets
     return []
 
 

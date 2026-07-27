@@ -21,10 +21,14 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 import inspect
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from models.analysis_chain import AnalysisChainPayload
-from models.project_reasoning_bias import ProjectReasoningBiasPayload
+if TYPE_CHECKING:
+    from literature_assistant.core.models.analysis_chain import AnalysisChainPayload
+    from literature_assistant.core.models.project_reasoning_bias import ProjectReasoningBiasPayload
+else:
+    from models.analysis_chain import AnalysisChainPayload
+    from models.project_reasoning_bias import ProjectReasoningBiasPayload
 
 
 logger = logging.getLogger(__name__)
@@ -150,8 +154,16 @@ def _render_prompt_block(
     project_reasoning_bias: ProjectReasoningBiasPayload | None = None,
 ) -> str | None:
     try:
-        from prompts.analysis_chain_helpers import render_analysis_chain_prompt_block
-        from prompts.project_reasoning_bias import render_project_reasoning_bias_block
+        if TYPE_CHECKING:
+            from literature_assistant.core.prompts.analysis_chain_helpers import (
+                render_analysis_chain_prompt_block,
+            )
+            from literature_assistant.core.prompts.project_reasoning_bias import (
+                render_project_reasoning_bias_block,
+            )
+        else:
+            from prompts.analysis_chain_helpers import render_analysis_chain_prompt_block
+            from prompts.project_reasoning_bias import render_project_reasoning_bias_block
     except ImportError:
         logger.debug("analysis_chain_helpers unavailable; returning deterministic chain")
         return None
@@ -160,11 +172,14 @@ def _render_prompt_block(
     context_summary = (
         f"用户问题：{_truncate(query, 160)}；最终答案前 200 字：{_truncate(answer, 200)}"
     )
+    normalized_frame: Literal["irac", "fincot"] = "fincot" if frame == "fincot" else "irac"
     prompt_block = render_analysis_chain_prompt_block(
-        frame if frame in ("irac", "fincot") else "irac",
+        normalized_frame,
         context_summary=context_summary,
         evidence_present=evidence_present,
     )
+    if not isinstance(prompt_block, str):
+        raise TypeError("analysis-chain prompt renderer must return a string")
     if project_reasoning_bias is None:
         return prompt_block
     return (

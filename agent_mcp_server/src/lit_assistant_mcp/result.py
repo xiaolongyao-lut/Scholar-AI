@@ -105,8 +105,8 @@ def _compact_json_value(value: Any, max_bytes: int) -> tuple[Any, bool]:
         per_item_budget = max(256, max_bytes // max(len(value), 1))
         for item in value:
             compacted_item, item_truncated = _compact_json_value(item, per_item_budget)
-            candidate = [*compacted_list, compacted_item]
-            if _json_size(candidate) > max_bytes:
+            list_candidate = [*compacted_list, compacted_item]
+            if _json_size(list_candidate) > max_bytes:
                 truncated = True
                 break
             compacted_list.append(compacted_item)

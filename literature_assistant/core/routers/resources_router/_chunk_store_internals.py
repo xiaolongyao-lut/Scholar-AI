@@ -16,34 +16,64 @@ from contextlib import contextmanager
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Iterator, TypeGuard
 
-from _atomic_io import CrossProcessFileLock
+if TYPE_CHECKING:
+    from literature_assistant.core._atomic_io import CrossProcessFileLock
+    from literature_assistant.core.chunk_evidence_linter import ChunkEvidenceUnitLinter
+    from literature_assistant.core.chunk_fts_index import (
+        CHUNK_FTS_INDEX_SCHEMA_VERSION,
+        rebuild_chunk_fts_index,
+    )
+    from literature_assistant.core.chunk_hashing import (
+        CHUNK_HASH_VERSION,
+        SUPPORTED_CHUNK_HASH_VERSIONS,
+        classify_embedding_only_manifest_drift,
+        compute_chunk_manifest_digest,
+        compute_chunk_store_version,
+        with_chunk_hashes,
+    )
+    from literature_assistant.core.chunk_index_backfill_ledger import (
+        CHUNK_INDEX_BACKFILL_LEDGER_SCHEMA_VERSION,
+        ChunkIndexBackfillLedgerEntry,
+        ledger_status_counts,
+        linter_entries_for_store,
+        make_chunk_index_backfill_entry,
+        merge_chunk_index_backfill_ledger_entries,
+        transition_entries_for_material,
+        utc_now_iso,
+    )
+    from literature_assistant.core.chunk_size_guard import (
+        hard_max_chars,
+        hard_max_tokens,
+        inspect_chunk,
+    )
+    from literature_assistant.core.routers import resources_router as _rr
+else:
+    from _atomic_io import CrossProcessFileLock
+    from chunk_evidence_linter import ChunkEvidenceUnitLinter
+    from chunk_fts_index import CHUNK_FTS_INDEX_SCHEMA_VERSION, rebuild_chunk_fts_index
+    from chunk_hashing import (
+        CHUNK_HASH_VERSION,
+        SUPPORTED_CHUNK_HASH_VERSIONS,
+        classify_embedding_only_manifest_drift,
+        compute_chunk_manifest_digest,
+        compute_chunk_store_version,
+        with_chunk_hashes,
+    )
+    from chunk_index_backfill_ledger import (
+        CHUNK_INDEX_BACKFILL_LEDGER_SCHEMA_VERSION,
+        ChunkIndexBackfillLedgerEntry,
+        ledger_status_counts,
+        linter_entries_for_store,
+        make_chunk_index_backfill_entry,
+        merge_chunk_index_backfill_ledger_entries,
+        transition_entries_for_material,
+        utc_now_iso,
+    )
+    from chunk_size_guard import hard_max_chars, hard_max_tokens, inspect_chunk
 
-from chunk_index_backfill_ledger import (
-    CHUNK_INDEX_BACKFILL_LEDGER_SCHEMA_VERSION,
-    ChunkIndexBackfillLedgerEntry,
-    ledger_status_counts,
-    linter_entries_for_store,
-    make_chunk_index_backfill_entry,
-    merge_chunk_index_backfill_ledger_entries,
-    transition_entries_for_material,
-    utc_now_iso,
-)
-from chunk_evidence_linter import ChunkEvidenceUnitLinter
-from chunk_hashing import (
-    CHUNK_HASH_VERSION,
-    SUPPORTED_CHUNK_HASH_VERSIONS,
-    classify_embedding_only_manifest_drift,
-    compute_chunk_manifest_digest,
-    compute_chunk_store_version,
-    with_chunk_hashes,
-)
-from chunk_size_guard import hard_max_chars, hard_max_tokens, inspect_chunk
-
-import routers.resources_router as _rr
-
-from chunk_fts_index import CHUNK_FTS_INDEX_SCHEMA_VERSION, rebuild_chunk_fts_index
+    import routers.resources_router as _rr
 
 
 class ChunkStoreIntegrityError(ValueError):
@@ -81,10 +111,22 @@ ChunkStoreUpdater = Callable[[ChunkStore], ChunkStore]
 ProjectStoresUpdater = Callable[[DocStore, ChunkStore], tuple[DocStore, ChunkStore]]
 
 
+def _resolve_project_data_dirs(project_id: str) -> tuple[Path, Path]:
+    """Validate the dynamically dispatched project data-directory contract."""
+
+    resolved: object = _rr._resolve_data_dir(project_id)
+    if not isinstance(resolved, tuple) or len(resolved) != 2:
+        raise TypeError("Project data directory resolver must return two paths")
+    doc_dir, chunk_dir = resolved
+    if not isinstance(doc_dir, Path) or not isinstance(chunk_dir, Path):
+        raise TypeError("Project data directory resolver must return Path values")
+    return doc_dir, chunk_dir
+
+
 def _get_doc_store_path(project_id: str) -> Path:
     """Return the JSON doc store path for a given project."""
     safe_id = "".join(c for c in project_id if c.isalnum() or c in "_-")
-    doc_dir, _ = _rr._resolve_data_dir(project_id)
+    doc_dir, _ = _resolve_project_data_dirs(project_id)
     return doc_dir / f"{safe_id}.json"
 
 
@@ -197,12 +239,12 @@ def _get_chunk_store_path(project_id: str) -> Path:
     compatibility (callers still use this for existence checks/migration).
     The active v2 layout lives under :func:`_chunk_store_dir`.
     """
-    _, chunk_dir = _rr._resolve_data_dir(project_id)
+    _, chunk_dir = _resolve_project_data_dirs(project_id)
     return chunk_dir / f"{_safe_project_id(project_id)}_chunks.json"
 
 
 def _chunk_store_dir(project_id: str) -> Path:
-    _, chunk_dir = _rr._resolve_data_dir(project_id)
+    _, chunk_dir = _resolve_project_data_dirs(project_id)
     return chunk_dir / _safe_project_id(project_id)
 
 
@@ -256,10 +298,13 @@ def _material_filename(material_id: str, chunks: list[dict[str, Any]]) -> str:
 
 
 def _hash_chunks(chunks: list[dict[str, Any]]) -> str:
-    return compute_chunk_manifest_digest(chunks)
+    digest: object = compute_chunk_manifest_digest(chunks)
+    if not isinstance(digest, str):
+        raise TypeError("Chunk manifest digest must be a string")
+    return digest
 
 
-def _is_plain_sha256(value: object) -> bool:
+def _is_plain_sha256(value: object) -> TypeGuard[str]:
     return (
         isinstance(value, str)
         and len(value) == 64
@@ -638,7 +683,9 @@ def _reusable_unchanged_material_entry(
     expected_hash = str(previous_entry.get("sha256") or "")
     if not expected_hash:
         raise ValueError("chunk store integrity mismatch: manifest sha256 missing")
-    raw_count = previous_entry.get("total_chunks", previous_entry.get("count"))
+    raw_count: object = previous_entry.get("total_chunks", previous_entry.get("count"))
+    if not isinstance(raw_count, (str, bytes, bytearray, int, float)):
+        raise ValueError("chunk store count mismatch: manifest count is invalid")
     try:
         expected_count = int(raw_count)
     except (TypeError, ValueError):
@@ -694,7 +741,7 @@ def _chunk_store_hash_version(project_id: str) -> str:
 
     manifest_path = _chunk_store_dir(project_id) / "manifest.json"
     if not manifest_path.is_file():
-        return CHUNK_HASH_VERSION
+        return str(CHUNK_HASH_VERSION)
     manifest = _load_manifest(manifest_path.parent)
     hash_version = str(manifest.get("chunk_hash_version") or "").strip()
     if hash_version not in SUPPORTED_CHUNK_HASH_VERSIONS:

@@ -8,20 +8,39 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Final
+from typing import TYPE_CHECKING, Any, Callable, Final
 
-from mcp_runtime.provider_tool_adapter import parse_namespaced_tool
-from mcp_runtime.tool_dispatcher import DispatchInput
-from mcp_runtime.tool_result_formatter import ToolResultRecord, build_tool_result_record
-from models.mcp import (
-    McpApprovalState,
-    McpProvenance,
-    McpServerConfig,
-    McpStdioConfig,
-    McpToolCapability,
-    McpToolDescriptor,
-    McpTransport,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.mcp_runtime.provider_tool_adapter import parse_namespaced_tool
+    from literature_assistant.core.mcp_runtime.tool_dispatcher import DispatchInput
+    from literature_assistant.core.mcp_runtime.tool_catalog import McpToolCatalog
+    from literature_assistant.core.mcp_runtime.tool_result_formatter import (
+        ToolResultRecord,
+        build_tool_result_record,
+    )
+    from literature_assistant.core.models.mcp import (
+        McpApprovalState,
+        McpProvenance,
+        McpServerConfig,
+        McpStdioConfig,
+        McpToolCapability,
+        McpToolDescriptor,
+        McpTransport,
+    )
+else:
+    from mcp_runtime.provider_tool_adapter import parse_namespaced_tool
+    from mcp_runtime.tool_dispatcher import DispatchInput
+    from mcp_runtime.tool_catalog import McpToolCatalog
+    from mcp_runtime.tool_result_formatter import ToolResultRecord, build_tool_result_record
+    from models.mcp import (
+        McpApprovalState,
+        McpProvenance,
+        McpServerConfig,
+        McpStdioConfig,
+        McpToolCapability,
+        McpToolDescriptor,
+        McpTransport,
+    )
 
 
 BUILTIN_SERVER_ID: Final[str] = "builtin_literature_assistant"
@@ -449,10 +468,18 @@ class _InProcessBackendClient:
 
         if self._client is None:
             from fastapi.testclient import TestClient
-            from python_adapter_server import app
+            if TYPE_CHECKING:
+                from literature_assistant.core.python_adapter_server import app
+            else:
+                from python_adapter_server import app
 
             self._client = TestClient(app)
         return self._client
+
+    def current_base_url(self) -> str | None:
+        """Return no external URL because this adapter calls the app in-process."""
+
+        return None
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Perform an in-process GET request and return a RuntimeTools envelope."""
@@ -518,8 +545,21 @@ class _InProcessBackendClient:
         return {"is_error": True, "error_code": f"backend_http_{status_code}", "message": response.text, "data": None}
 
 
-class _LocalToolCatalog:
+class _LocalToolCatalog(McpToolCatalog):
     """Catalog shim used by McpToolUseRunner for built-in tools."""
+
+    def __init__(self) -> None:
+        """Initialize the catalog base while retaining static lookup behavior."""
+
+        super().__init__(self._load_static_tools)
+
+    async def _load_static_tools(
+        self,
+        _config: McpServerConfig,
+    ) -> list[McpToolDescriptor]:
+        """Provide the base catalog with the same static descriptor list."""
+
+        return local_literature_tool_descriptors()
 
     async def get_tools(
         self,
@@ -588,7 +628,15 @@ class LocalLiteratureToolManager:
             method = getattr(self._get_source_tools(), source_method)
         else:
             method = getattr(self._get_runtime_tools(), spec.method_name)
-        return method(**arguments)
+        raw_result: object = method(**arguments)
+        if not isinstance(raw_result, dict):
+            raise TypeError(f"built-in tool {spec.name} must return an object")
+        result: dict[str, Any] = {}
+        for key, value in raw_result.items():
+            if not isinstance(key, str):
+                raise TypeError(f"built-in tool {spec.name} returned a non-string key")
+            result[key] = value
+        return result
 
     def _get_runtime_tools(self) -> Any:
         """Return the RuntimeTools instance used by local chat tools."""

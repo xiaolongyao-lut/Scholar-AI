@@ -21,21 +21,40 @@ import logging
 import os
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
-from models.mcp import McpServerConfig, McpToolDescriptor, McpTransport
-from mcp_runtime.credential_env_resolver import (
-    CredentialRefError,
-    McpCredentialEnvResolver,
-)
-from mcp_runtime.security_policy import (
-    DEFAULT_LAUNCH_POLICY,
-    ProcessLaunchPolicy,
-    prepare_isolated_cwd,
-    prepare_subprocess_env,
-    validate_stdio_command,
-    validate_streamable_http_url,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.mcp_runtime.credential_env_resolver import (
+        CredentialRefError,
+        McpCredentialEnvResolver,
+    )
+    from literature_assistant.core.mcp_runtime.security_policy import (
+        DEFAULT_LAUNCH_POLICY,
+        ProcessLaunchPolicy,
+        prepare_isolated_cwd,
+        prepare_subprocess_env,
+        validate_stdio_command,
+        validate_streamable_http_url,
+    )
+    from literature_assistant.core.models.mcp import (
+        McpServerConfig,
+        McpToolDescriptor,
+        McpTransport,
+    )
+else:
+    from mcp_runtime.credential_env_resolver import (
+        CredentialRefError,
+        McpCredentialEnvResolver,
+    )
+    from mcp_runtime.security_policy import (
+        DEFAULT_LAUNCH_POLICY,
+        ProcessLaunchPolicy,
+        prepare_isolated_cwd,
+        prepare_subprocess_env,
+        validate_stdio_command,
+        validate_streamable_http_url,
+    )
+    from models.mcp import McpServerConfig, McpToolDescriptor, McpTransport
 
 
 logger = logging.getLogger("McpClientManager")
@@ -80,7 +99,10 @@ def _capability_from_tool(tool: Any) -> Any:
     Servers that omit annotations entirely still get UNKNOWN, which the
     dispatcher rejects without ``allow_high_risk_tools=True``.
     """
-    from models.mcp import McpToolCapability
+    if TYPE_CHECKING:
+        from literature_assistant.core.models.mcp import McpToolCapability
+    else:
+        from models.mcp import McpToolCapability
 
     annotations = getattr(tool, "annotations", None)
     if annotations is None:
@@ -232,7 +254,12 @@ class McpClientManager:
         from mcp import ClientSession
         from mcp.client.streamable_http import streamablehttp_client
 
-        from mcp_runtime.safe_transport import safe_mcp_httpx_client_factory
+        if TYPE_CHECKING:
+            from literature_assistant.core.mcp_runtime.safe_transport import (
+                safe_mcp_httpx_client_factory,
+            )
+        else:
+            from mcp_runtime.safe_transport import safe_mcp_httpx_client_factory
 
         if config.http is None:
             raise McpServerLaunchError(

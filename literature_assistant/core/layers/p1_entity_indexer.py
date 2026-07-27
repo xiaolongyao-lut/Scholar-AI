@@ -35,14 +35,20 @@ class EntityIndexer:
         # 尝试从 focus_registry 加载映射逻辑等
         self._load_focus_aliases(focus_registry_path)
     
-    def _load_focus_aliases(self, registry_path: str):
+    def _load_focus_aliases(self, registry_path: str) -> None:
         """预留逻辑：从现有 registry 加载别名"""
         if Path(registry_path).exists():
             logger.info(f"Registry found at {registry_path}, placeholder for alias loading.")
             # 这里的实际解析逻辑取决于 focus_registry.py 的内容
             pass
 
-    def register_entity(self, entity_name: str, category: str, doc_id: str, year: int = 2024):
+    def register_entity(
+        self,
+        entity_name: str,
+        category: str,
+        doc_id: str,
+        year: int = 2024,
+    ) -> None:
         """
         注册一个实体出现 (P1 关键逻辑)
         """
@@ -102,7 +108,7 @@ class EntityIndexer:
             "gap_severity": severity
         }
     
-    def export_registry(self, output_path: str):
+    def export_registry(self, output_path: str) -> None:
         """导出实体注册表为 JSON"""
         data = {
             "metadata": {

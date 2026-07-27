@@ -114,7 +114,8 @@ def resolve_host_to_ips(host: str, port: int) -> list[str]:
     seen: list[str] = []
     for info in infos:
         sockaddr = info[4]
-        ip_str = sockaddr[0] if isinstance(sockaddr, tuple) and sockaddr else ""
+        raw_ip = sockaddr[0] if isinstance(sockaddr, tuple) and sockaddr else None
+        ip_str = raw_ip if isinstance(raw_ip, str) else ""
         if ip_str and ip_str not in seen:
             seen.append(ip_str)
     return seen

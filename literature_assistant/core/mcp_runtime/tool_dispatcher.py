@@ -22,32 +22,58 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from mcp_runtime.client_manager import (
-    McpClientManager,
-    McpClientManagerError,
-    McpServerLaunchError,
-    McpStreamableHttpDisabledError,
-    McpToolCallError,
-)
-from mcp_runtime import audit as mcp_audit
-from mcp_runtime.provider_tool_adapter import (
-    NamespacedTool,
-    ToolNamespaceError,
-    parse_namespaced_tool,
-)
-from mcp_runtime.tool_catalog import McpToolCatalog
-from mcp_runtime.tool_result_formatter import (
-    ToolResultRecord,
-    build_tool_result_record,
-)
-from models.mcp import (
-    McpApprovalState,
-    McpServerConfig,
-    McpToolCapability,
-    McpToolDescriptor,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.mcp_runtime import audit as mcp_audit
+    from literature_assistant.core.mcp_runtime.client_manager import (
+        McpClientManager,
+        McpClientManagerError,
+        McpServerLaunchError,
+        McpStreamableHttpDisabledError,
+        McpToolCallError,
+    )
+    from literature_assistant.core.mcp_runtime.provider_tool_adapter import (
+        NamespacedTool,
+        ToolNamespaceError,
+        parse_namespaced_tool,
+    )
+    from literature_assistant.core.mcp_runtime.tool_catalog import McpToolCatalog
+    from literature_assistant.core.mcp_runtime.tool_result_formatter import (
+        ToolResultRecord,
+        build_tool_result_record,
+    )
+    from literature_assistant.core.models.mcp import (
+        McpApprovalState,
+        McpServerConfig,
+        McpToolCapability,
+        McpToolDescriptor,
+    )
+else:
+    from mcp_runtime import audit as mcp_audit
+    from mcp_runtime.client_manager import (
+        McpClientManager,
+        McpClientManagerError,
+        McpServerLaunchError,
+        McpStreamableHttpDisabledError,
+        McpToolCallError,
+    )
+    from mcp_runtime.provider_tool_adapter import (
+        NamespacedTool,
+        ToolNamespaceError,
+        parse_namespaced_tool,
+    )
+    from mcp_runtime.tool_catalog import McpToolCatalog
+    from mcp_runtime.tool_result_formatter import (
+        ToolResultRecord,
+        build_tool_result_record,
+    )
+    from models.mcp import (
+        McpApprovalState,
+        McpServerConfig,
+        McpToolCapability,
+        McpToolDescriptor,
+    )
 
 
 logger = logging.getLogger("McpToolDispatcher")

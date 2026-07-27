@@ -20,9 +20,12 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
-from models.mcp import McpServerConfig, McpToolDescriptor
+if TYPE_CHECKING:
+    from literature_assistant.core.models.mcp import McpServerConfig, McpToolDescriptor
+else:
+    from models.mcp import McpServerConfig, McpToolDescriptor
 
 
 logger = logging.getLogger("McpToolCatalog")

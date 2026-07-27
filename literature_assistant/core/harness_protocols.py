@@ -10,10 +10,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from datetime_utils import utc_now_iso_z
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+else:
+    from datetime_utils import utc_now_iso_z
 
 
 class SessionMode(str, Enum):

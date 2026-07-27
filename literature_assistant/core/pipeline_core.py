@@ -12,6 +12,8 @@ pipeline_core.py
 - P-Layer: 展示 (Presentation) -> Word 文档排版
 """
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 import hashlib
@@ -21,53 +23,86 @@ import logging
 import os
 import re
 import sys
-from pathlib import Path
+from collections.abc import Awaitable
 from datetime import datetime
-from typing import Optional, Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional, Any
 
-from chunk_vector_store import batch_embed_texts
-from project_paths import output_path
-from runtime_env import resolve_embedding_config
+if TYPE_CHECKING:
+    from literature_assistant.core.chunk_vector_store import batch_embed_texts
+    from literature_assistant.core.project_paths import output_path
+    from literature_assistant.core.runtime_env import resolve_embedding_config
+else:
+    from chunk_vector_store import batch_embed_texts
+    from project_paths import output_path
+    from runtime_env import resolve_embedding_config
 
 # 导入模块化层（Patch 友好导入模式）
-try:
-    from modules.pipeline_observer import PipelineObserver
-    import layers.e_layer_multimodal as e_layer
-    import layers.a_layer_agent_coordinator as a_layer
-    import layers.r_layer_hybrid_retriever as r_layer
-    from layers.k_layer_index_builder import KLayerManager
-    from layers.g_layer_academic_generator import AcademicScorer
-    import layers.p_layer_presentation_word as p_layer
-    import layers.contracts as contracts
-    from material_bundler import build_material_pack
-except ImportError as e:
-    print(f"Error: 无法加载架构层模块，请确保 layers/ 目录完整。错误信息: {e}")
-    sys.exit(1)
+if TYPE_CHECKING:
+    import literature_assistant.core.layers.a_layer_agent_coordinator as a_layer
+    import literature_assistant.core.layers.contracts as contracts
+    import literature_assistant.core.layers.e_layer_multimodal as e_layer
+    import literature_assistant.core.layers.p_layer_presentation_word as p_layer
+    import literature_assistant.core.layers.r_layer_hybrid_retriever as r_layer
+    from literature_assistant.core.layers.g_layer_academic_generator import AcademicScorer
+    from literature_assistant.core.layers.k_layer_index_builder import KLayerManager
+    from literature_assistant.core.material_bundler import build_material_pack
+    from literature_assistant.core.modules.pipeline_observer import PipelineObserver
+else:
+    try:
+        from modules.pipeline_observer import PipelineObserver
+        import layers.e_layer_multimodal as e_layer
+        import layers.a_layer_agent_coordinator as a_layer
+        import layers.r_layer_hybrid_retriever as r_layer
+        from layers.k_layer_index_builder import KLayerManager
+        from layers.g_layer_academic_generator import AcademicScorer
+        import layers.p_layer_presentation_word as p_layer
+        import layers.contracts as contracts
+        from material_bundler import build_material_pack
+    except ImportError as e:
+        print(f"Error: 无法加载架构层模块，请确保 layers/ 目录完整。错误信息: {e}")
+        sys.exit(1)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("Pipeline_Core")
 
 # P3 因果推理层（可选，失败不阻断管线）
-try:
-    from layers.p3_causal_engine import CausalEngine
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.p3_causal_engine import CausalEngine
     _P3_AVAILABLE = True
-except ImportError:
-    _P3_AVAILABLE = False
+else:
+    try:
+        from layers.p3_causal_engine import CausalEngine
+        _P3_AVAILABLE = True
+    except ImportError:
+        _P3_AVAILABLE = False
 
 # M-Layer 记忆层（可选）
-try:
-    from layers.m_layer_mempalace_memory import MempalaceMemoryAdapter, load_mempalace_settings
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.m_layer_mempalace_memory import (
+        MempalaceMemoryAdapter,
+        load_mempalace_settings,
+    )
     _MEMPALACE_AVAILABLE = True
-except ImportError:
-    _MEMPALACE_AVAILABLE = False
+else:
+    try:
+        from layers.m_layer_mempalace_memory import MempalaceMemoryAdapter, load_mempalace_settings
+        _MEMPALACE_AVAILABLE = True
+    except ImportError:
+        _MEMPALACE_AVAILABLE = False
 
 # TOLF 撒饵捕鱼引擎（可选，失败不阻断管线）
-try:
-    from layers.tolf_engine import TOLFEngine
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.tolf_engine import TOLFEngine
     import numpy as _np
     _TOLF_AVAILABLE = True
-except ImportError:
-    _TOLF_AVAILABLE = False
+else:
+    try:
+        from layers.tolf_engine import TOLFEngine
+        import numpy as _np
+        _TOLF_AVAILABLE = True
+    except ImportError:
+        _TOLF_AVAILABLE = False
 
 WINDOWS_INVALID_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1F]')
 MAX_SAFE_COMPONENT_LEN = 120
@@ -142,10 +177,15 @@ def _extract_triplets_from_writing_points(writing_points: list[dict]) -> list[tu
     return triplets
 
 
+async def _await_value(value: Awaitable[Any]) -> Any:
+    """Adapt any awaitable to the coroutine contract required by ``asyncio.run``."""
+    return await value
+
+
 def _resolve_maybe_awaitable(value: Any) -> Any:
     """Resolve coroutine-style results without forcing the whole pipeline async."""
     if inspect.isawaitable(value):
-        return asyncio.run(value)
+        return asyncio.run(_await_value(value))
     return value
 
 
@@ -182,22 +222,24 @@ def run_pipeline(
     goal: str,
     output_dir: str | None = None,
     observer: Optional[PipelineObserver] = None,
-):
-    pdf_path = Path(pdf_path)
-    pipeline_id = sanitize_path_component(pdf_path.stem)
+) -> dict[str, Any]:
+    """Run the document pipeline and return its generated artifact manifest."""
+
+    pdf_file = Path(pdf_path)
+    pipeline_id = sanitize_path_component(pdf_file.stem)
     out_dir = Path(output_dir or output_path()) / pipeline_id
     out_dir.mkdir(parents=True, exist_ok=True)
     
     if observer:
-        observer.on_run_start(pipeline_id, {"goal": goal, "pdf": str(pdf_path), "original_title": pdf_path.stem})
+        observer.on_run_start(pipeline_id, {"goal": goal, "pdf": str(pdf_file), "original_title": pdf_file.stem})
 
-    logger.info("开始处理文献: %s", pdf_path.name)
+    logger.info("开始处理文献: %s", pdf_file.name)
     start_time = datetime.now()
     
     try:
         if observer: observer.on_phase_start("extraction", pipeline_id)
         logger.info(">>> [E-Layer] 正在进行多模态提取...")
-        raw_extract = e_layer.full_extract(str(pdf_path))
+        raw_extract = e_layer.full_extract(str(pdf_file))
         if observer: observer.on_phase_success("extraction", pipeline_id, {"chunk_count": len(raw_extract.get("chunks", []))})
     
         extract_json = out_dir / "01_full_extract.json"
@@ -347,9 +389,9 @@ def run_pipeline(
 
         logger.info(">>> [K-Layer] 正在构建写作材料包...")
         material_pack = build_material_pack(scoring_results, bound_contract)
-        material_pack.setdefault("paper_title", pdf_path.stem)
+        material_pack.setdefault("paper_title", pdf_file.stem)
         material_pack.setdefault("schema_version", "v3.academic-synthesis")
-        material_pack.setdefault("source_pdf", str(pdf_path.resolve()))
+        material_pack.setdefault("source_pdf", str(pdf_file.resolve()))
         material_pack.setdefault("goal", goal)
         material_pack["pipeline_id"] = pipeline_id
         material_pack["llm_status"] = scoring_results.get("llm_status", getattr(scorer, "llm_status", "unknown"))
@@ -403,16 +445,16 @@ def run_pipeline(
                             continue
                         content = (
                             f"[{wp.get('point_type', 'claim')}] {claim}\n"
-                            f"来源: {pdf_path.stem} (p.{wp.get('page', '?')})\n"
+                            f"来源: {pdf_file.stem} (p.{wp.get('page', '?')})\n"
                             f"相关度: {wp.get('relevance_score', 0):.2f}"
                         )
                         mem.add_memory(
                             wing="literature",
                             room=goal or "general",
                             content=content,
-                            source_file=str(pdf_path),
+                            source_file=str(pdf_file),
                             metadata={
-                                "paper_title": pdf_path.stem,
+                                "paper_title": pdf_file.stem,
                                 "pipeline_id": pipeline_id,
                                 "writing_point_id": wp.get("writing_point_id", ""),
                                 "point_type": wp.get("point_type", ""),
@@ -426,15 +468,15 @@ def run_pipeline(
                             content = (
                                 f"[causal] {link['source']} --{link.get('relation', '→')}--> {link['target']}\n"
                                 f"置信度: {link.get('confidence', 0):.2f}\n"
-                                f"来源: {pdf_path.stem}"
+                                f"来源: {pdf_file.stem}"
                             )
                             mem.add_memory(
                                 wing="literature",
                                 room=goal or "general",
                                 content=content,
-                                source_file=str(pdf_path),
+                                source_file=str(pdf_file),
                                 metadata={
-                                    "paper_title": pdf_path.stem,
+                                    "paper_title": pdf_file.stem,
                                     "pipeline_id": pipeline_id,
                                     "fact_type": "causal_relation",
                                     "source_entity": link["source"],
@@ -464,7 +506,12 @@ def run_pipeline(
             "view": project_view,
         }
         
-        if observer: observer.on_run_success(pipeline_id, {"duration": duration, "output": str(out_dir)})
+        if observer:
+            observer.on_run_success(
+                pipeline_id,
+                duration,
+                {"output": str(out_dir)},
+            )
 
         return {
             "status": "success",
@@ -486,12 +533,14 @@ def run_pipeline(
         logger.error("流水线执行失败: %s", e)
         if observer: 
             try:
-                observer.on_run_error(pipeline_id, str(e), {"phase": "integrated_run"})
+                observer.on_error(pipeline_id, "integrated_run", e)
             except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError):
                 pass
         raise
 
-def main():
+def main() -> None:
+    """Run the pipeline command-line entry point."""
+
     parser = argparse.ArgumentParser(description='文献处理器 - 模块化流水线总控')
     parser.add_argument('pdf', help='输入 PDF 文件路径')
     parser.add_argument('--goal', default='提取文献核心结论与实验数据', help='写作目标/关注点')

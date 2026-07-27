@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """元数据 Linter API 路由：检查和修复文献元数据。"""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-try:
+if TYPE_CHECKING:
     from literature_assistant.core.academic_writing_linter import (
         AcademicWritingLintRequest,
         AcademicWritingLintResponse,
@@ -18,23 +18,40 @@ try:
         lint_material_metadata,
     )
     from literature_assistant.core.linter_adapter import lint_materials_with_new_engine
+    from literature_assistant.core.linter_task import LinterTask
     from literature_assistant.core.terminal_logger import linter_logger
-except ModuleNotFoundError:
-    from academic_writing_linter import (  # type: ignore[no-redef]
-        AcademicWritingLintRequest,
-        AcademicWritingLintResponse,
-        lint_academic_writing,
-    )
-    from metadata_linter import (  # type: ignore[no-redef]
-        CaseStyle,
-        LinterResult,
-        apply_linter_fixes,
-        lint_material_metadata,
-    )
-    from linter_adapter import lint_materials_with_new_engine  # type: ignore[no-redef]
-    from terminal_logger import linter_logger  # type: ignore[no-redef]
+    from literature_assistant.core.writing_resources import WritingResourceStore
+else:
+    try:
+        from literature_assistant.core.academic_writing_linter import (
+            AcademicWritingLintRequest,
+            AcademicWritingLintResponse,
+            lint_academic_writing,
+        )
+        from literature_assistant.core.metadata_linter import (
+            CaseStyle,
+            LinterResult,
+            apply_linter_fixes,
+            lint_material_metadata,
+        )
+        from literature_assistant.core.linter_adapter import lint_materials_with_new_engine
+        from literature_assistant.core.terminal_logger import linter_logger
+    except ModuleNotFoundError:
+        from academic_writing_linter import (
+            AcademicWritingLintRequest,
+            AcademicWritingLintResponse,
+            lint_academic_writing,
+        )
+        from linter_adapter import lint_materials_with_new_engine
+        from metadata_linter import (
+            CaseStyle,
+            LinterResult,
+            apply_linter_fixes,
+            lint_material_metadata,
+        )
+        from terminal_logger import linter_logger
 
-router = APIRouter(prefix="/api/linter", tags=["Linter"])
+router: APIRouter = APIRouter(prefix="/api/linter", tags=["Linter"])
 
 
 class LintRequest(BaseModel):
@@ -63,12 +80,15 @@ class ApplyFixesRequest(BaseModel):
     preferred_case: CaseStyle = Field(default="title")
 
 
-def _get_writing_store() -> Any:
+def _get_writing_store() -> "WritingResourceStore":
     """Resolve the active writing store through the existing resource router seam."""
-    try:
-        from routers.resources_router import get_writing_resource_store
-    except ModuleNotFoundError:
+    if TYPE_CHECKING:
         from literature_assistant.core.routers.resources_router import get_writing_resource_store
+    else:
+        try:
+            from routers.resources_router import get_writing_resource_store
+        except ModuleNotFoundError:
+            from literature_assistant.core.routers.resources_router import get_writing_resource_store
     return get_writing_resource_store()
 
 
@@ -373,12 +393,16 @@ async def lint_batch_async(request: BatchLintRequest) -> dict[str, Any]:
     }
 
 
-async def _run_linter_task(task_id: str, task: Any, preferred_case: str):
+async def _run_linter_task(
+    task_id: str,
+    task: "LinterTask",
+    preferred_case: CaseStyle,
+) -> None:
     """运行 Linter 任务（后台）"""
     try:
         _active_linter_tasks[task_id]["status"] = "running"
 
-        def update_progress(current: int, total: int, message: str):
+        def update_progress(current: int, total: int, message: str) -> None:
             _active_linter_tasks[task_id]["progress"] = {
                 "current": current,
                 "total": total,

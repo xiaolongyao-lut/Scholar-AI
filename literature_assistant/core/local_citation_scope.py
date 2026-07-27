@@ -14,9 +14,12 @@ import json
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from models import PdfBboxUnit, pdf_bbox_matches_unit
+if TYPE_CHECKING:
+    from literature_assistant.core.models import PdfBboxUnit, pdf_bbox_matches_unit
+else:
+    from models import PdfBboxUnit, pdf_bbox_matches_unit
 
 
 _REFERENCE_SECTION_RE = re.compile(
@@ -209,6 +212,14 @@ def _positive_int(value: object) -> int | None:
         parsed = int(value.strip())
         return parsed if parsed > 0 else None
     return None
+
+
+def _reference_chunk_sort_key(chunk: Mapping[str, Any]) -> tuple[int, int]:
+    """Return stable page/index ordering for a reference-section chunk."""
+
+    raw_index = chunk.get("chunk_index")
+    chunk_index = raw_index if isinstance(raw_index, int) else 1_000_000
+    return _positive_int(chunk.get("page")) or 1_000_000, chunk_index
 
 
 def _bbox_unit(value: object, *, has_bbox: bool) -> PdfBboxUnit | None:
@@ -437,14 +448,14 @@ def _structured_selection_window(
         chunk_page = _positive_int(chunk.get("page"))
         chunk_index = chunk.get("chunk_index")
         ordering = chunk_index if isinstance(chunk_index, int) else fallback_index
-        linked_ids = (
+        adjacent_linked_ids = (
             _string_values(chunk.get("linked_figure_ids"))
             if selection_kind == "figure"
             else _string_values(chunk.get("linked_table_ids"))
             if selection_kind == "table"
             else ()
         )
-        explicitly_linked = bool(object_id and object_id in linked_ids)
+        explicitly_linked = bool(object_id and object_id in adjacent_linked_ids)
         if selection_kind in {"figure", "table"} and not explicitly_linked and chunk_page != anchor_page:
             continue
         if selection_kind == "formula" and chunk_page != anchor_page:
@@ -788,10 +799,7 @@ def _reference_entries(chunks: Sequence[Mapping[str, Any]], material_id: str) ->
     unmarked_continuations = 0
     ordered_chunks = sorted(
         (chunk for chunk in chunks if _clean_text(chunk.get("material_id"), max_chars=256) == material_id),
-        key=lambda item: (
-            _positive_int(item.get("page")) or 1_000_000,
-            int(item.get("chunk_index")) if isinstance(item.get("chunk_index"), int) else 1_000_000,
-        ),
+        key=_reference_chunk_sort_key,
     )
     for ordered_index, chunk in enumerate(ordered_chunks):
         text = _clean_text(chunk.get("raw_content")) or _chunk_text(chunk)
@@ -934,7 +942,8 @@ def _material_record(
     title = _clean_text(material.get("title"), max_chars=1000)
     title_en = _clean_text(material.get("title_en"), max_chars=1000)
     titles = tuple(dict.fromkeys(item for item in (title, title_en) if item))
-    metadata = material.get("metadata") if isinstance(material.get("metadata"), Mapping) else {}
+    raw_metadata = material.get("metadata")
+    metadata: Mapping[str, Any] = raw_metadata if isinstance(raw_metadata, Mapping) else {}
     if not material_id or not titles:
         return None
     fingerprint = _stable_fingerprint(

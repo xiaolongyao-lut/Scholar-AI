@@ -28,9 +28,12 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-from project_paths import runtime_state_path
+if TYPE_CHECKING:
+    from literature_assistant.core.project_paths import runtime_state_path
+else:
+    from project_paths import runtime_state_path
 
 
 logger = logging.getLogger("EvidencePack")
@@ -207,10 +210,19 @@ def _extract_score(chunk: dict) -> float:
 
 def _default_retriever(project_id: str, query: str, top_k: int) -> list[dict]:
     """Lazy-import the project chunk retriever so this module stays cheap."""
-    from routers.resources_router import search_project_chunks_for_query
-    return search_project_chunks_for_query(
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.resources_router import (
+            search_project_chunks_for_query,
+        )
+    else:
+        from routers.resources_router import search_project_chunks_for_query
+
+    payload = search_project_chunks_for_query(
         project_id=project_id, query=query, top_k=top_k
     )
+    if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+        raise TypeError("project chunk retriever must return a list of objects")
+    return [dict(item) for item in payload]
 
 
 def _build_pack_id(

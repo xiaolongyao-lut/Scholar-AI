@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from literature_assistant.core.models.evidence import (
-    PDF_URL_BBOX_UNIT,
     PdfBboxUnit,
     coerce_pdf_bbox,
     pdf_bbox_matches_unit,
@@ -55,10 +54,8 @@ def _read_text_list(value: Any) -> list[str] | None:
 
 
 def _read_bbox_unit(value: Any, bbox: list[float] | None) -> str | None:
-    if bbox is None:
+    if bbox is None or value is None:
         return None
-    if value is None:
-        return PDF_URL_BBOX_UNIT.value if pdf_bbox_matches_unit(bbox, PDF_URL_BBOX_UNIT) else None
     try:
         unit = PdfBboxUnit(str(value))
     except ValueError:
@@ -66,13 +63,29 @@ def _read_bbox_unit(value: Any, bbox: list[float] | None) -> str | None:
     return unit.value if pdf_bbox_matches_unit(bbox, unit) else None
 
 
-def coerce_evidence_reference(raw: Any) -> dict[str, Any]:
-    if isinstance(raw, dict):
-        return raw
+def _string_keyed_dict(value: object) -> dict[str, Any]:
+    """Copy a mapping after validating the public evidence key shape."""
+
+    if not isinstance(value, Mapping):
+        raise TypeError(f"Cannot coerce {type(value)} to evidence reference")
+    result: dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise TypeError("Cannot coerce evidence reference with a non-string key")
+        result[key] = item
+    return result
+
+
+def coerce_evidence_reference(raw: object) -> dict[str, Any]:
+    if isinstance(raw, Mapping):
+        return _string_keyed_dict(raw)
     if hasattr(raw, "__dict__"):
-        return vars(raw)
-    if hasattr(raw, "_asdict"):
-        return raw._asdict()
+        attributes: object = vars(raw)
+        return _string_keyed_dict(attributes)
+    as_dict = getattr(raw, "_asdict", None)
+    if callable(as_dict):
+        converted: object = as_dict()
+        return _string_keyed_dict(converted)
     raise TypeError(f"Cannot coerce {type(raw)} to evidence reference")
 
 

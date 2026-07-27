@@ -28,17 +28,27 @@ import os
 import sys
 import threading
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, TypedDict, Unpack
 
 import httpx
 import numpy as np
-from runtime_env import (
-    build_embedding_failover_pool,
-    build_embedding_request_payload,
-    extract_embedding_vectors,
-    resolve_embedding_config,
-    resolve_embedding_request_url,
-)
+
+if TYPE_CHECKING:
+    from literature_assistant.core.runtime_env import (
+        build_embedding_failover_pool,
+        build_embedding_request_payload,
+        extract_embedding_vectors,
+        resolve_embedding_config,
+        resolve_embedding_request_url,
+    )
+else:
+    from runtime_env import (
+        build_embedding_failover_pool,
+        build_embedding_request_payload,
+        extract_embedding_vectors,
+        resolve_embedding_config,
+        resolve_embedding_request_url,
+    )
 
 # 配置日志（仅在首次导入时执行，避免干扰其他模块的日志配置）
 _logger = logging.getLogger(__name__)
@@ -53,6 +63,34 @@ if not _logger.hasHandlers():
 logger = _logger
 DEFAULT_EMBEDDING_BASE_URL = "https://api.siliconflow.cn/v1"
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
+
+
+class SemanticRouterOptions(TypedDict, total=False):
+    """Optional constructor arguments accepted by :func:`init_router`."""
+
+    base_url: str
+    embedding_model: str
+    timeout: float
+    batch_size: int
+    lazy_vectorize: bool
+
+
+def _validated_embedding_vectors(value: object) -> list[list[float]]:
+    """Validate provider or failover-pool embedding output."""
+
+    if not isinstance(value, list):
+        raise ValueError("embedding response must be a list")
+    vectors: list[list[float]] = []
+    for raw_vector in value:
+        if not isinstance(raw_vector, list):
+            raise ValueError("each embedding must be a list")
+        vector: list[float] = []
+        for component in raw_vector:
+            if isinstance(component, bool) or not isinstance(component, (int, float)):
+                raise ValueError("embedding components must be numeric")
+            vector.append(float(component))
+        vectors.append(vector)
+    return vectors
 
 
 class SemanticRouter:
@@ -302,8 +340,9 @@ class SemanticRouter:
                 )
 
                 if response.status_code == 200:
-                    embeddings = extract_embedding_vectors(response.json())
-                    return embeddings
+                    return _validated_embedding_vectors(
+                        extract_embedding_vectors(response.json())
+                    )
                 elif response.status_code in (429, 500, 502, 503):
                     # 可重试的错误
                     if attempt < max_retries - 1:
@@ -356,15 +395,19 @@ class SemanticRouter:
                         cred.model,
                     )
 
-                return await self._embedding_pool.try_call_async(
+                pooled_vectors = await self._embedding_pool.try_call_async(
                     "embedding",
                     _invoke,
                     cooldown_on=lambda _exc: True,
                 )
+                return _validated_embedding_vectors(pooled_vectors)
 
+            api_key = self.api_key
+            if not api_key:
+                raise RuntimeError("embedding API key is unavailable")
             return await self._call_embedding_api_once(
                 texts,
-                self.api_key,
+                api_key,
                 self.base_url,
                 self.embedding_model,
             )
@@ -411,12 +454,14 @@ class SemanticRouter:
             vectors_norm = self.focus_vectors_norm
 
         # 仅归一化查询向量（关注点已预归一化）
-        query_norm = np.linalg.norm(query_vector)
-        query_norm = max(query_norm, 1e-8)
+        query_norm = max(float(np.linalg.norm(query_vector)), 1e-8)
         query_normalized = query_vector / query_norm
 
         # 点积 = 余弦相似度（在归一化后）
-        similarities = np.dot(vectors_norm, query_normalized)
+        similarities = np.asarray(
+            np.dot(vectors_norm, query_normalized),
+            dtype=np.float64,
+        )
 
         return similarities
     
@@ -581,7 +626,7 @@ _global_router: Optional[SemanticRouter] = None
 def init_router(
     api_key: str,
     focus_points_path: str,
-    **kwargs
+    **kwargs: Unpack[SemanticRouterOptions],
 ) -> SemanticRouter:
     """初始化全局路由器实例"""
     global _global_router
@@ -634,7 +679,7 @@ def route_query_sync(
                 return []
         else:
             # 已在异步上下文中，使用线程池运行
-            def _run_async_in_thread():
+            def _run_async_in_thread() -> List[str]:
                 """在新线程中创建事件循环并运行"""
                 new_loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(new_loop)
@@ -665,7 +710,7 @@ def route_query_sync(
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 # 在运行的事件循环中，使用线程池
-                def _run_async_in_thread():
+                def _run_async_in_thread() -> List[str]:
                     new_loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(new_loop)
                     try:
@@ -699,7 +744,7 @@ def route_query_sync(
 # 测试和演示
 # ============================================================================
 
-async def demo():
+async def demo() -> None:
     """演示语义路由的效果"""
 
     # 获取访问凭证

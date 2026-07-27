@@ -12,8 +12,12 @@ from __future__ import annotations
 
 import threading
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
-from models.mcp_installation import McpPackageScanResult
+if TYPE_CHECKING:
+    from literature_assistant.core.models.mcp_installation import McpPackageScanResult
+else:
+    from models.mcp_installation import McpPackageScanResult
 
 
 class ScanNotFoundError(LookupError):

@@ -319,14 +319,23 @@ def extract_support_maps(edges: list[dict[str, Any]]) -> tuple[dict[str, set[str
     for e in edges:
         if e.get('source_type') != 'chunk':
             continue
-        sid = e.get('source_id')
-        chunk_rel_types[sid].append(e.get('relation_type', ''))
+        source_id = e.get('source_id')
+        target_id = e.get('target_id')
+        if (
+            not isinstance(source_id, str)
+            or not source_id.strip()
+            or not isinstance(target_id, str)
+            or not target_id.strip()
+        ):
+            continue
+        relation_type = e.get('relation_type', '')
+        chunk_rel_types[source_id].append(relation_type if isinstance(relation_type, str) else '')
         if e.get('target_type') == 'figure':
-            chunk_to_figs[sid].add(e.get('target_id'))
+            chunk_to_figs[source_id].add(target_id)
         elif e.get('target_type') == 'table':
-            chunk_to_tabs[sid].add(e.get('target_id'))
+            chunk_to_tabs[source_id].add(target_id)
         elif e.get('target_type') == 'reference':
-            chunk_to_refs[sid].add(e.get('target_id'))
+            chunk_to_refs[source_id].add(target_id)
     return chunk_to_figs, chunk_to_tabs, chunk_to_refs, chunk_rel_types
 
 
@@ -432,8 +441,8 @@ def choose_top_points(writing_points: list[dict[str, Any]], topk: int, goal_prof
 
     sorted_points = sorted(writing_points, key=sort_key, reverse=True)
     selected: list[dict[str, Any]] = []
-    type_counts = Counter()
-    page_counts = Counter()
+    type_counts: Counter[str] = Counter()
+    page_counts: Counter[int] = Counter()
     selected_ids: set[str] = set()
 
     def accept(pt: dict[str, Any], strict: bool) -> bool:

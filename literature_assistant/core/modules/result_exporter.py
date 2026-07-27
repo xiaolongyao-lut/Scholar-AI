@@ -6,12 +6,19 @@ Exports scoring results to various formats (JSON, CSV, Markdown)
 import json
 import logging
 import csv
-from typing import List, Dict, Any, Optional
+from typing import TYPE_CHECKING, List, Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
 
-from modules.paper_processor import PaperProcessReport
-from modules.configuration_manager import get_configuration
+if TYPE_CHECKING:
+    from literature_assistant.core.modules.configuration_manager import (
+        ConfigurationManager,
+        get_configuration,
+    )
+    from literature_assistant.core.modules.paper_processor import PaperProcessReport
+else:
+    from modules.configuration_manager import get_configuration
+    from modules.paper_processor import PaperProcessReport
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +26,16 @@ logger = logging.getLogger(__name__)
 class ResultExporter:
     """Exports batch processing results to structured and human-readable files"""
 
-    def __init__(self, config=None):
+    def __init__(self, config: "ConfigurationManager | None" = None) -> None:
         """Initialize exporter"""
         self.config = config or get_configuration()
 
-    def export_all(self, reports: List[PaperProcessReport], output_dir: str, base_name: str = "scoring_results"):
+    def export_all(
+        self,
+        reports: List[PaperProcessReport],
+        output_dir: str,
+        base_name: str = "scoring_results",
+    ) -> Dict[str, str]:
         """
         Export reports in all supported formats
         
@@ -53,7 +65,7 @@ class ResultExporter:
         """Export raw data to JSON"""
         data = []
         for r in reports:
-            report_dict = {
+            report_dict: Dict[str, Any] = {
                 "paper_id": r.paper_id,
                 "source_pdf": r.source_pdf,
                 "overall_score": round(r.overall_score, 4),

@@ -2,8 +2,12 @@
 """Scoring Registry - Manages discovery and instantiation of scoring plugins."""
 
 import logging
-from typing import Dict, Type, Any, Callable
-from modules.scoring_interface import ScoringInterface
+from typing import TYPE_CHECKING, Dict, Type, Any, Callable
+
+if TYPE_CHECKING:
+    from literature_assistant.core.modules.scoring_interface import ScoringInterface
+else:
+    from modules.scoring_interface import ScoringInterface
 
 logger = logging.getLogger(__name__)
 

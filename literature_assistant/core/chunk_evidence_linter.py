@@ -7,10 +7,14 @@ import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from chunk_hashing import compute_chunk_hashes
-from chunk_size_guard import inspect_chunk
+if TYPE_CHECKING:
+    from literature_assistant.core.chunk_hashing import compute_chunk_hashes
+    from literature_assistant.core.chunk_size_guard import inspect_chunk
+else:
+    from chunk_hashing import compute_chunk_hashes
+    from chunk_size_guard import inspect_chunk
 
 
 CHUNK_EVIDENCE_LINTER_SCHEMA_VERSION = "scholar-ai-chunk-evidence-linter/v1"
@@ -99,8 +103,10 @@ def _normalized_duplicate_text(chunk: Mapping[str, Any]) -> str:
 def _coerce_positive_page(value: object) -> int | None:
     if isinstance(value, bool):
         return None
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        return None
     try:
-        page = int(value)  # type: ignore[arg-type]
+        page = int(value)
     except (TypeError, ValueError):
         return None
     return page if page > 0 else None

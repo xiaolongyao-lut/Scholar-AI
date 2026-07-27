@@ -8,6 +8,7 @@ viewer aliases are retained unchanged.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from typing import Literal
 
 from fastapi import APIRouter, Query
@@ -43,6 +44,7 @@ from literature_assistant.core.knowledge_graph.project_literature_projection imp
     build_project_literature_graph,
 )
 from literature_assistant.core.project_paths import project_data_path
+from literature_assistant.core.wiki.graph import WikiGraphSnapshot
 
 router = APIRouter(prefix="/api/graph", tags=["Graph"])
 kg_router = APIRouter(prefix="/api/kg", tags=["Graph"])
@@ -54,7 +56,7 @@ WikiEvidenceScopeKindQ = Literal["source", "knowledge_item", "insight", "questio
 _GRAPH_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,255}$"
 
 
-def _load_snapshot():
+def _load_snapshot() -> WikiGraphSnapshot | None:
     """Return the current WikiGraphSnapshot, or None if wiki is disabled.
 
     Imports are deferred so the router stays importable in environments
@@ -83,7 +85,7 @@ def _load_snapshot():
         return None
 
 
-def _load_smart_read_session(session_id: str):
+def _load_smart_read_session(session_id: str) -> dict[str, object] | None:
     """Return one persisted SmartRead session mapping, or None when absent."""
 
     normalized = session_id.strip()
@@ -103,7 +105,7 @@ def _load_smart_read_session(session_id: str):
     return session if isinstance(session, dict) else None
 
 
-def _load_project_materials(project_id: str) -> list[object] | None:
+def _load_project_materials(project_id: str) -> Sequence[object] | None:
     """Return project materials, or ``None`` when the project is absent."""
 
     normalized = project_id.strip()

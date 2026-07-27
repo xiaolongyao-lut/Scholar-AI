@@ -9,7 +9,15 @@ from typing import Any
 
 def load_json(path: str | Path) -> dict[str, Any]:
     with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
+        payload: object = json.load(f)
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected a JSON object in {path}")
+    normalized: dict[str, Any] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            raise ValueError(f"expected string keys in JSON object: {path}")
+        normalized[key] = value
+    return normalized
 
 
 def load_text(path: str | Path) -> str:
@@ -351,7 +359,7 @@ def main() -> None:
     material_pack = load_json(args.material_pack)
     figure_pack = load_json(args.figure_pack)
 
-    governance = {
+    governance: dict[str, Any] = {
         'project_view': load_json(args.project_view),
         'prompt_md': load_text(args.prompt_md),
         'prompt_json': load_json(args.prompt_json),

@@ -62,11 +62,14 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from project_paths import runtime_state_path
+from literature_assistant.core.project_paths import runtime_state_path
 
-from models.mcp import McpStdioConfig, mask_env_value
+if TYPE_CHECKING:
+    from literature_assistant.core.models.mcp import McpStdioConfig, mask_env_value
+else:
+    from models.mcp import McpStdioConfig, mask_env_value
 
 
 # ---------------------------------------------------------------------------
@@ -401,11 +404,18 @@ def validate_streamable_http_url(url: str) -> None:
     # of those). The regex check above only catches literal IPs and
     # obvious names like 'localhost'; this catches a DNS record that
     # resolves to 10.x or 169.254.
-    from ip_guard import (
-        classify_resolved_ips,
-        classify_unsafe_ip,
-        resolve_host_to_ips,
-    )
+    if TYPE_CHECKING:
+        from literature_assistant.core.ip_guard import (
+            classify_resolved_ips,
+            classify_unsafe_ip,
+            resolve_host_to_ips,
+        )
+    else:
+        from ip_guard import (
+            classify_resolved_ips,
+            classify_unsafe_ip,
+            resolve_host_to_ips,
+        )
 
     # If the host is a literal IP, classify via ip_guard. The regex check
     # above covered the obvious IPv4 and IPv6 ranges, but it misses IPv4-

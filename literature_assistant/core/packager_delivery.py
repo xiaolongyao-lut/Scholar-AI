@@ -10,13 +10,25 @@ from typing import Any
 
 
 def load_json(path: str | Path) -> dict[str, Any]:
-    with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    """Load a JSON object from ``path``.
+
+    Raises:
+        ValueError: If the JSON root is not an object.
+    """
+
+    with Path(path).open('r', encoding='utf-8') as f:
+        payload = json.load(f)
+    if not isinstance(payload, dict):
+        raise ValueError(f"JSON root must be an object: {path}")
+    return payload
 
 
 def dump_json(obj: Any, path: str | Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as f:
+    """Write a JSON-serializable value to ``path``."""
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open('w', encoding='utf-8') as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
 
 

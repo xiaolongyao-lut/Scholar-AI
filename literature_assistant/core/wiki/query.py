@@ -1206,7 +1206,7 @@ def save_exploration(
         relative_path = Path(WikiPageKind.exploration.value) / f"{slug}.md"
 
         # Build frontmatter
-        frontmatter = {
+        frontmatter: dict[str, Any] = {
             "id": page_id,
             "kind": WikiPageKind.exploration.value,
             "title": query.strip(),

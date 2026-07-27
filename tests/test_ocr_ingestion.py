@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import io
 import sys
+import types
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -25,6 +26,7 @@ from pdf_backends import (  # noqa: E402
     register_ocr_engine,
 )
 from pdf_backends.ocr_classifier import PDFClassificationResult  # noqa: E402
+import pdf_backends.ocr_ingestion as ocr_ingestion_module  # noqa: E402
 from pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed  # noqa: E402
 from routers.resources_router._document_extraction import ExtractedDocumentPayload  # noqa: E402
 from services import unified_batch_upload_service as upload_service_module  # noqa: E402
@@ -307,6 +309,109 @@ def test_text_pdf_makes_zero_ocr_calls(tmp_path: Path, monkeypatch: pytest.Monke
     assert result.ocr_report is not None
     assert result.ocr_report.strategy == "text_only"
     assert result.parser_provenance is parser_provenance
+
+
+def test_legacy_three_field_payload_remains_compatible(
+    tmp_path: Path,
+) -> None:
+    class _LegacyPayload:
+        def __init__(
+            self,
+            content: str,
+            blocks: object,
+            markdown_full: str | None,
+        ) -> None:
+            self.content = content
+            self.blocks = blocks
+            self.markdown_full = markdown_full
+
+    pdf_path = tmp_path / "legacy-payload.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    payload = _LegacyPayload("legacy parser text", None, None)
+
+    result = apply_pdf_ocr_if_needed(
+        "legacy-payload.pdf",
+        pdf_path,
+        payload,
+        classifier=_StaticClassifier(
+            _classification(text_pages=[0], strategy="text_only")
+        ),
+        render_page=lambda _path, _page: pytest.fail(
+            "text-only legacy payloads must not render pages"
+        ),
+    )
+
+    assert isinstance(result, _LegacyPayload)
+    assert result.content == "legacy parser text"
+    assert result.blocks is None
+    assert result.markdown_full is None
+    assert not hasattr(result, "parser_provenance")
+    assert not hasattr(result, "parser_output_sha256")
+
+
+def test_payload_constructor_type_error_is_not_retried_or_swallowed(
+    tmp_path: Path,
+) -> None:
+    class _DomainValidatedPayload:
+        calls = 0
+
+        def __init__(
+            self,
+            content: str,
+            blocks: object,
+            markdown_full: str | None,
+            ocr_report: object | None = None,
+        ) -> None:
+            type(self).calls += 1
+            if ocr_report is not None:
+                raise TypeError("domain validation rejected OCR report")
+            self.content = content
+            self.blocks = blocks
+            self.markdown_full = markdown_full
+            self.ocr_report = ocr_report
+
+    pdf_path = tmp_path / "domain-validated-payload.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    payload = _DomainValidatedPayload("parser text", None, None)
+    _DomainValidatedPayload.calls = 0
+
+    with pytest.raises(TypeError, match="domain validation rejected OCR report"):
+        apply_pdf_ocr_if_needed(
+            "domain-validated-payload.pdf",
+            pdf_path,
+            payload,
+            classifier=_StaticClassifier(
+                _classification(text_pages=[0], strategy="text_only")
+            ),
+            render_page=lambda _path, _page: pytest.fail(
+                "text-only payloads must not render pages"
+            ),
+        )
+
+    assert _DomainValidatedPayload.calls == 1
+
+
+def test_default_renderer_closes_incomplete_document(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[bool] = []
+
+    class _CloseOnlyDocument:
+        def close(self) -> None:
+            closed.append(True)
+
+    fake_pymupdf = types.ModuleType("pymupdf")
+    fake_pymupdf.open = lambda _path: _CloseOnlyDocument()
+    monkeypatch.setitem(sys.modules, "pymupdf", fake_pymupdf)
+
+    pdf_path = tmp_path / "incomplete-renderer.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    with pytest.raises(TypeError, match="page-sequence document"):
+        ocr_ingestion_module._render_pdf_page_png(pdf_path, 0)
+
+    assert closed == [True]
 
 
 def test_scanned_pdf_without_available_engine_degrades_visibly(

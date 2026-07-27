@@ -6,24 +6,30 @@ Tools for profiling and measuring performance of the scoring system.
 
 import time
 import functools
-from typing import Dict, Callable, Any, Optional
+from typing import Any, Callable, Dict, Iterator, Optional, ParamSpec, TYPE_CHECKING, TypeVar
 from contextlib import contextmanager
 from collections import defaultdict
-from modules.logger_config import get_logger
+if TYPE_CHECKING:
+    from literature_assistant.core.modules.logger_config import get_logger
+else:
+    from modules.logger_config import get_logger
 
 logger = get_logger("scoring_system.profiler")
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 class PerformanceProfiler:
     """Profiler for measuring execution time of different components"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize profiler"""
-        self.timings: Dict[str, list] = defaultdict(list)
+        self.timings: Dict[str, list[float]] = defaultdict(list)
         self.call_counts: Dict[str, int] = defaultdict(int)
 
     @contextmanager
-    def timer(self, name: str):
+    def timer(self, name: str) -> Iterator[None]:
         """
         Context manager for timing code blocks
 
@@ -125,7 +131,10 @@ def get_profiler() -> PerformanceProfiler:
     return _default_profiler
 
 
-def timed(profile_name: str, profiler: Optional[PerformanceProfiler] = None):
+def timed(
+    profile_name: str,
+    profiler: Optional[PerformanceProfiler] = None,
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator for timing function execution
 
@@ -136,9 +145,9 @@ def timed(profile_name: str, profiler: Optional[PerformanceProfiler] = None):
     """
     prof = profiler or get_profiler()
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> Any:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             with prof.timer(profile_name or func.__name__):
                 return func(*args, **kwargs)
 
@@ -159,17 +168,18 @@ class MemoryProfiler:
     @staticmethod
     def format_bytes(num_bytes: int) -> str:
         """Format bytes to human-readable format"""
+        formatted_size = float(num_bytes)
         for unit in ["B", "KB", "MB", "GB"]:
-            if num_bytes < 1024:
-                return f"{num_bytes:.2f}{unit}"
-            num_bytes /= 1024
-        return f"{num_bytes:.2f}TB"
+            if formatted_size < 1024:
+                return f"{formatted_size:.2f}{unit}"
+            formatted_size /= 1024
+        return f"{formatted_size:.2f}TB"
 
 
 class BenchmarkResult:
     """Container for benchmark results"""
 
-    def __init__(self, name: str, duration: float, iterations: int = 1):
+    def __init__(self, name: str, duration: float, iterations: int = 1) -> None:
         """Initialize benchmark result"""
         self.name = name
         self.duration = duration
@@ -189,7 +199,12 @@ class BenchmarkResult:
         )
 
 
-def benchmark(func: Callable, iterations: int = 100, *args, **kwargs) -> BenchmarkResult:
+def benchmark(
+    func: Callable[P, object],
+    iterations: int = 100,
+    *args: P.args,
+    **kwargs: P.kwargs,
+) -> BenchmarkResult:
     """
     Simple benchmarking utility
 
@@ -209,9 +224,9 @@ def benchmark(func: Callable, iterations: int = 100, *args, **kwargs) -> Benchma
 class MemoryTracker:
     """Track memory usage during execution"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize tracker"""
-        self.snapshots: Dict[str, int] = {}
+        self.snapshots: Dict[str, Dict[str, int]] = {}
 
     def snapshot(self, name: str) -> None:
         """Take memory snapshot"""

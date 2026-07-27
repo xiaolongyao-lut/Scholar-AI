@@ -12,7 +12,9 @@ from typing import Literal
 # 确保 Windows 终端支持 UTF-8
 if sys.platform == "win32":
     try:
-        sys.stdout.reconfigure(encoding='utf-8')
+        reconfigure_stdout = getattr(sys.stdout, "reconfigure", None)
+        if callable(reconfigure_stdout):
+            reconfigure_stdout(encoding="utf-8")
     except Exception:
         pass
 
@@ -34,14 +36,19 @@ class TerminalLogger:
         "BOLD": "\033[1m",       # 粗体
     }
 
-    def __init__(self, component: str):
+    def __init__(self, component: str) -> None:
         """
         Args:
             component: 组件名称（如 "Linter API", "任务中心", "PDF 解析"）
         """
         self.component = component
 
-    def _format_message(self, level: LogLevel, message: str, details: dict | None = None) -> str:
+    def _format_message(
+        self,
+        level: LogLevel,
+        message: str,
+        details: dict[str, object] | None = None,
+    ) -> str:
         """格式化日志消息"""
         timestamp = datetime.now().strftime("%H:%M:%S")
         color = self.COLORS.get(level, "")
@@ -60,23 +67,23 @@ class TerminalLogger:
 
         return main
 
-    def info(self, message: str, **details) -> None:
+    def info(self, message: str, **details: object) -> None:
         """信息日志"""
         print(self._format_message("INFO", message, details or None))
 
-    def success(self, message: str, **details) -> None:
+    def success(self, message: str, **details: object) -> None:
         """成功日志"""
         print(self._format_message("SUCCESS", message, details or None))
 
-    def warning(self, message: str, **details) -> None:
+    def warning(self, message: str, **details: object) -> None:
         """警告日志"""
         print(self._format_message("WARNING", message, details or None))
 
-    def error(self, message: str, **details) -> None:
+    def error(self, message: str, **details: object) -> None:
         """错误日志"""
         print(self._format_message("ERROR", message, details or None))
 
-    def debug(self, message: str, **details) -> None:
+    def debug(self, message: str, **details: object) -> None:
         """调试日志"""
         print(self._format_message("DEBUG", message, details or None))
 

@@ -5,7 +5,13 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
+
+if TYPE_CHECKING or __package__ == "literature_assistant.core":
+    from literature_assistant.core.key_pool import KeyPool
+else:
+    from key_pool import KeyPool
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +60,10 @@ def _runtime_env_path() -> Path:
     """
 
     try:
-        from project_paths import runtime_state_path
+        if TYPE_CHECKING or __package__ == "literature_assistant.core":
+            from literature_assistant.core.project_paths import runtime_state_path
+        else:
+            from project_paths import runtime_state_path
 
         return runtime_state_path("local_env", "literature_assistant.env")
     except Exception:
@@ -188,9 +197,13 @@ def wiki_enabled() -> bool:
     """Return whether the LLM-Wiki integration is globally enabled."""
 
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
 
-        return is_enabled("wiki")
+        enabled: object = is_enabled("wiki")
+        return enabled if isinstance(enabled, bool) else False
     except Exception:
         pass
     return env_bool("LITERATURE_ASSISTANT_WIKI_ENABLED", default=False)
@@ -250,10 +263,16 @@ def resolve_llm_config(
     # Security gate: validate endpoint when returning config with credentials
     if resolved_key and resolved_url:
         try:
-            from provider_endpoint_policy import (
-                TrustSource,
-                validate_endpoint,
-            )
+            if TYPE_CHECKING or __package__ == "literature_assistant.core":
+                from literature_assistant.core.provider_endpoint_policy import (
+                    TrustSource,
+                    validate_endpoint,
+                )
+            else:
+                from provider_endpoint_policy import (
+                    TrustSource,
+                    validate_endpoint,
+                )
 
             decision = validate_endpoint(
                 resolved_url,
@@ -436,10 +455,16 @@ def _probe_embedding_key(
 
     # Security gate: validate endpoint before sending credentials
     try:
-        from provider_endpoint_policy import (
-            TrustSource,
-            validate_endpoint,
-        )
+        if TYPE_CHECKING or __package__ == "literature_assistant.core":
+            from literature_assistant.core.provider_endpoint_policy import (
+                TrustSource,
+                validate_endpoint,
+            )
+        else:
+            from provider_endpoint_policy import (
+                TrustSource,
+                validate_endpoint,
+            )
 
         decision = validate_endpoint(
             base_url,
@@ -602,7 +627,10 @@ def _embedding_candidates_from_key_pool(
     if _dotenv_disabled():
         return []
     try:
-        from key_pool import get_pool
+        if TYPE_CHECKING or __package__ == "literature_assistant.core":
+            from literature_assistant.core.key_pool import get_pool
+        else:
+            from key_pool import get_pool
     except Exception:
         logger.debug("Key pool unavailable while resolving embedding candidates", exc_info=True)
         return []
@@ -754,10 +782,13 @@ def build_embedding_failover_pool(
     default_base_url: str,
     default_model: str,
     cooldown_seconds: float = DEFAULT_EMBEDDING_FAILOVER_COOLDOWN_SECONDS,
-):
+) -> KeyPool | None:
     """Build a KeyPool for embedding consumers using resolved candidates."""
     try:
-        from key_pool import Credential, KeyPool
+        if TYPE_CHECKING or __package__ == "literature_assistant.core":
+            from literature_assistant.core.key_pool import Credential, KeyPool
+        else:
+            from key_pool import Credential, KeyPool
     except Exception:
         return None
 
@@ -815,7 +846,10 @@ def resolve_embedding_config(
 
     # Runtime override layer (Settings UI writes to embedding_override.json)
     try:
-        from model_config_store import embedding_store
+        if TYPE_CHECKING or __package__ == "literature_assistant.core":
+            from literature_assistant.core.model_config_store import embedding_store
+        else:
+            from model_config_store import embedding_store
         override_api_key = embedding_store.get_resolved_field("api_key")
         override_base_url = embedding_store.get_resolved_field("base_url")
         override_model = embedding_store.get_resolved_field("model")

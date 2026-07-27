@@ -8,18 +8,30 @@ without duplicating prompt-frame selection, local generation, or LLM parsing.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from routers.inspiration_router import (
-    GenerateSparksRequest,
-    InspirationFrame,
-    SparkResponse,
-    _build_inspiration_prompt,
-    _select_inspiration_frame,
-    _generate_local_sparks,
-    _get_engine,
-    _local_spark_to_response,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.routers.inspiration_router import (
+        GenerateSparksRequest,
+        InspirationFrame,
+        SparkResponse,
+        _build_inspiration_prompt,
+        _generate_local_sparks,
+        _get_engine,
+        _local_spark_to_response,
+        _select_inspiration_frame,
+    )
+else:
+    from routers.inspiration_router import (
+        GenerateSparksRequest,
+        InspirationFrame,
+        SparkResponse,
+        _build_inspiration_prompt,
+        _generate_local_sparks,
+        _get_engine,
+        _local_spark_to_response,
+        _select_inspiration_frame,
+    )
 
 ResolvedInspirationFrame = Literal["irac", "fincot"]
 
@@ -54,7 +66,13 @@ class InspirationGenerator:
         """
         if not isinstance(query, str) or not query.strip():
             raise ValueError("query must be a non-empty string")
-        request = GenerateSparksRequest(query=query, limit=limit, frame=frame or self.default_frame)
+        request = GenerateSparksRequest(
+            query=query,
+            limit=limit,
+            project_id=None,
+            llm=None,
+            frame=frame or self.default_frame,
+        )
         return _build_inspiration_prompt(request.query, request.limit, request.frame)
 
     def generate_local(self, request: GenerateSparksRequest) -> list[SparkResponse]:
@@ -68,4 +86,3 @@ class InspirationGenerator:
 def build_inspiration_generator(default_frame: InspirationFrame = "auto") -> InspirationGenerator:
     """Return the stable E1 entrypoint for IRAC/FinCoT inspiration generation."""
     return InspirationGenerator(default_frame=default_frame)
-

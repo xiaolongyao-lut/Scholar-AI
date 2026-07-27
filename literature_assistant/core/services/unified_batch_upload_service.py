@@ -10,31 +10,42 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol, Sequence, cast
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol, Sequence, TypeGuard, cast
 
 from fastapi import UploadFile
 
-try:
-    from routers.resources_router._document_extraction import ExtractedDocumentPayload
-except ImportError:  # pragma: no cover - package import fallback
+if TYPE_CHECKING:
     from literature_assistant.core.routers.resources_router._document_extraction import (
         ExtractedDocumentPayload,
     )
-
-try:
-    from pdf_backends import PDFParseResult
-    from pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed
-except ImportError:  # pragma: no cover - package import fallback
     from literature_assistant.core.pdf_backends import PDFParseResult
     from literature_assistant.core.pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed
-
-try:
-    from services.smart_filter_engine import SmartFilterEngine, SmartFilterReport
-except ImportError:  # pragma: no cover - package import fallback
     from literature_assistant.core.services.smart_filter_engine import (
         SmartFilterEngine,
         SmartFilterReport,
     )
+else:
+    try:
+        from routers.resources_router._document_extraction import ExtractedDocumentPayload
+    except ImportError:  # pragma: no cover - package import fallback
+        from literature_assistant.core.routers.resources_router._document_extraction import (
+            ExtractedDocumentPayload,
+        )
+
+    try:
+        from pdf_backends import PDFParseResult
+        from pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed
+    except ImportError:  # pragma: no cover - package import fallback
+        from literature_assistant.core.pdf_backends import PDFParseResult
+        from literature_assistant.core.pdf_backends.ocr_ingestion import apply_pdf_ocr_if_needed
+
+    try:
+        from services.smart_filter_engine import SmartFilterEngine, SmartFilterReport
+    except ImportError:  # pragma: no cover - package import fallback
+        from literature_assistant.core.services.smart_filter_engine import (
+            SmartFilterEngine,
+            SmartFilterReport,
+        )
 
 
 logger = logging.getLogger("UnifiedBatchUploadService")
@@ -46,7 +57,6 @@ class UploadedSourceFile(Protocol):
     path: Path
     fingerprint: str
     size: int
-    created: bool
 
 
 PersistUploadFn = Callable[[str, str, UploadFile], Any]
@@ -623,7 +633,10 @@ class UnifiedBatchUploadService:
         if not pdf_paths:
             return []
         try:
-            from pdf_backends import get_pdf_backend
+            if TYPE_CHECKING:
+                from literature_assistant.core.pdf_backends import get_pdf_backend
+            else:
+                from pdf_backends import get_pdf_backend
 
             backend = get_pdf_backend()
             parse_batch = getattr(backend, "parse_batch_with_provenance", None)
@@ -678,16 +691,26 @@ class UnifiedBatchUploadService:
         return None
 
     def _build_summary(self, source_path: Path, filename: str, content: str) -> str:
+        summary = ""
         try:
-            metadata = self.filter_engine.extract_metadata(source_path)
-            summary = metadata.abstract.strip()
+            metadata: object = self.filter_engine.extract_metadata(source_path)
+            abstract: object = getattr(metadata, "abstract", "")
+            if not isinstance(abstract, str):
+                raise TypeError("filter metadata abstract must be a string")
+            summary = abstract.strip()
         except Exception:  # noqa: BLE001 - summary fallback must not block ingest
             summary = ""
         if not summary:
             # 使用智能摘要提取（优先 Abstract 章节）
             try:
-                from services.abstract_extractor import extract_abstract
-                summary = extract_abstract(content, max_length=500).strip()
+                if TYPE_CHECKING:
+                    from literature_assistant.core.services.abstract_extractor import extract_abstract
+                else:
+                    from services.abstract_extractor import extract_abstract
+                extracted_summary: object = extract_abstract(content, max_length=500)
+                if not isinstance(extracted_summary, str):
+                    raise TypeError("extract_abstract must return a string")
+                summary = extracted_summary.strip()
             except Exception:  # noqa: BLE001
                 summary = content[:500].replace("\n", " ").strip()
         if not summary:
@@ -746,7 +769,7 @@ class UnifiedBatchUploadService:
         return normalized
 
     @staticmethod
-    def _coerce_uploaded_source(uploaded: Any) -> UploadedSourceFile:
+    def _is_valid_uploaded_source(uploaded: object) -> TypeGuard[UploadedSourceFile]:
         path = getattr(uploaded, "path", None)
         fingerprint = str(getattr(uploaded, "fingerprint", "") or "").strip()
         size = getattr(uploaded, "size", None)
@@ -758,4 +781,10 @@ class UnifiedBatchUploadService:
             raise ValueError("persist_upload returned an empty fingerprint")
         if isinstance(size, bool) or not isinstance(size, int) or size < 0:
             raise ValueError("persist_upload returned an invalid size")
+        return True
+
+    @staticmethod
+    def _coerce_uploaded_source(uploaded: object) -> UploadedSourceFile:
+        if not UnifiedBatchUploadService._is_valid_uploaded_source(uploaded):
+            raise TypeError("persist_upload returned an invalid source object")
         return uploaded

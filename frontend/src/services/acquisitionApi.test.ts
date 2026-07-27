@@ -282,7 +282,7 @@ describe('acquisitionApi', () => {
         data: {
           detail: {
             code: 'internal_failure',
-            message: 'Bearer secret-token at C:\\Users\\xiao\\private.sqlite https://internal.invalid',
+            message: 'Bearer secret-token at C:\\Users\\example-user\\private.sqlite https://internal.invalid',
           },
         },
       },

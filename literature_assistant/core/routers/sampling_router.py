@@ -1,17 +1,26 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from llm_defaults import MODEL_MAX_TOKENS, TASK_DEFAULTS
-from model_config_store import (
-    CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
-    chat_context_compression_store,
-    normalize_chat_context_compression_settings,
-)
-from sampling_storage import load_user_sampling, save_user_sampling
+if TYPE_CHECKING:
+    from literature_assistant.core.llm_defaults import MODEL_MAX_TOKENS, TASK_DEFAULTS
+    from literature_assistant.core.model_config_store import (
+        CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
+        chat_context_compression_store,
+        normalize_chat_context_compression_settings,
+    )
+    from literature_assistant.core.sampling_storage import load_user_sampling, save_user_sampling
+else:
+    from llm_defaults import MODEL_MAX_TOKENS, TASK_DEFAULTS
+    from model_config_store import (
+        CHAT_MODEL_CONTEXT_WINDOW_DEFAULT,
+        chat_context_compression_store,
+        normalize_chat_context_compression_settings,
+    )
+    from sampling_storage import load_user_sampling, save_user_sampling
 
 DEFAULTS_VERSION = "2026-07-11"
 
@@ -31,7 +40,7 @@ def _configured_model_max_tokens() -> int:
     context_window = int(
         settings.get("model_context_window") or CHAT_MODEL_CONTEXT_WINDOW_DEFAULT
     )
-    return min(MODEL_MAX_TOKENS, context_window)
+    return min(int(MODEL_MAX_TOKENS), context_window)
 
 
 @router.get("")

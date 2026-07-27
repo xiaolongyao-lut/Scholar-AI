@@ -8,18 +8,25 @@ import shutil
 import sqlite3
 import tempfile
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from models import ToolAttempt, ToolNextAction, ToolOutcome
-from project_paths import WORKSPACE_OUTPUT_ROOT, ensure_directory
+if TYPE_CHECKING:
+    from literature_assistant.core.models import ToolAttempt, ToolNextAction, ToolOutcome
+    from literature_assistant.core.project_paths import WORKSPACE_OUTPUT_ROOT, ensure_directory
+else:
+    from models import ToolAttempt, ToolNextAction, ToolOutcome
+    from project_paths import WORKSPACE_OUTPUT_ROOT, ensure_directory
 
 
-ZOTERO_ATTACHMENT_HEALTH_SCHEMA_VERSION = "scholar-ai-zotero-attachment-health/v1"
+ZOTERO_ATTACHMENT_HEALTH_SCHEMA_VERSION: Final[
+    Literal["scholar-ai-zotero-attachment-health/v1"]
+] = "scholar-ai-zotero-attachment-health/v1"
 AttachmentHealthStatus = Literal[
     "ok",
     "missing_attachment_row",
@@ -239,7 +246,9 @@ def _load_zotero_rows(snapshot_db_path: Path) -> list[_RawAttachmentRow]:
             and (item_id in title_values or item_id in doi_values or item_id in attachments_by_parent)
         ]
         for parent_id in parent_ids:
-            attachments = attachments_by_parent.get(parent_id) or [None]
+            attachments: Iterable[sqlite3.Row | None] = (
+                attachments_by_parent.get(parent_id) or (None,)
+            )
             for attachment in attachments:
                 attachment_id = int(attachment["itemID"]) if attachment is not None else None
                 indexed_chars = None

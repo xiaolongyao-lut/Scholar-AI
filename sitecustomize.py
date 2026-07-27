@@ -6,8 +6,12 @@ under ``literature_assistant/core``.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
+
+configure_runtime_paths: Callable[[], None] | None
 try:
-    from literature_assistant.bootstrap import configure_runtime_paths
+    from literature_assistant.bootstrap import configure_runtime_paths as _configure_runtime_paths
 except Exception as exc:
     import os
     import warnings
@@ -20,6 +24,8 @@ except Exception as exc:
         raise RuntimeError(message) from exc
     warnings.warn(message, RuntimeWarning, stacklevel=1)
     configure_runtime_paths = None
+else:
+    configure_runtime_paths = _configure_runtime_paths
 
 if configure_runtime_paths is not None:
     configure_runtime_paths()

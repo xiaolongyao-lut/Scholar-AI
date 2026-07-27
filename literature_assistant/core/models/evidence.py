@@ -84,6 +84,8 @@ class PdfAnchorFields(BaseModel):
 
     bbox: Optional[List[float]] = Field(
         None,
+        min_length=4,
+        max_length=4,
         description="Four-number PDF region interpreted only by its explicit bbox_unit.",
     )
     bbox_unit: Optional[PdfBboxUnit] = Field(

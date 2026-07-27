@@ -1,7 +1,12 @@
 import json
 import os
 import logging
-from typing import List, Dict, Any, Optional
+from typing import TYPE_CHECKING, List, Dict, Any, Optional
+
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.p1_fusion_weight_calibrator import (
+        FusionWeightCalibrator,
+    )
 
 logger = logging.getLogger("AdaptiveWeightManager")
 
@@ -12,14 +17,14 @@ class AdaptiveWeightManager:
     """
 
     # 预定义的领域映射方案 (启发式初筛)
-    DOMAIN_MAPPING = {
+    DOMAIN_MAPPING: Dict[str, List[str]] = {
         "laser_processing": ["激光", "功率", "速度", "熔池", "laser", "weld", "power"],
         "microstructure": ["组织", "晶粒", "相变", "析出", "grain", "microstructure", "phase"],
         "mechanical_property": ["拉伸", "硬度", "应力", "形变", "tensile", "hardness", "stress", "strain"]
     }
 
     # 默认领域的基础权重 - 基于 Tier 3 (3264 queries) 评估结果微调
-    DEFAULT_WEIGHTS = {
+    DEFAULT_WEIGHTS: Dict[str, Dict[str, float]] = {
         "general": {"bm25": 0.35, "vector": 0.35, "context": 0.3}, # 提升 BM25 解决长 query 命中点偏移
         "laser_processing": {"bm25": 0.3, "vector": 0.4, "context": 0.3},
         "microstructure": {"bm25": 0.4, "vector": 0.3, "context": 0.3}, # 结构类词汇更多依赖精确匹配
@@ -29,21 +34,26 @@ class AdaptiveWeightManager:
     def __init__(self, cache_path: str = ".cache/weight_configs.json"):
         self.cache_path = cache_path
         os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
-        self.calibrator: Optional[Any] = None
+        self.calibrator: Optional[FusionWeightCalibrator] = None
         self._calibrator_resolution_attempted = False
-        self.cached_configs = self._load_cache()
+        self.cached_configs: Dict[str, Any] = self._load_cache()
 
-    def _create_calibrator(self) -> Optional[Any]:
+    def _create_calibrator(self) -> Optional["FusionWeightCalibrator"]:
         """Resolve the optional calibrator lazily to avoid circular imports at import time."""
         try:
-            from layers.p1_fusion_weight_calibrator import FusionWeightCalibrator
+            if TYPE_CHECKING:
+                from literature_assistant.core.layers.p1_fusion_weight_calibrator import (
+                    FusionWeightCalibrator,
+                )
+            else:
+                from layers.p1_fusion_weight_calibrator import FusionWeightCalibrator
 
             return FusionWeightCalibrator()
         except Exception as exc:
             logger.warning(f"初始化 FusionWeightCalibrator 失败，回退到静态权重: {exc}")
             return None
 
-    def _get_calibrator(self) -> Optional[Any]:
+    def _get_calibrator(self) -> Optional["FusionWeightCalibrator"]:
         """Create the optional calibrator only when calibration is explicitly requested."""
         if self._calibrator_resolution_attempted:
             return self.calibrator
@@ -55,12 +65,27 @@ class AdaptiveWeightManager:
         if os.path.exists(self.cache_path):
             try:
                 with open(self.cache_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception as e:
+                    payload: object = json.load(f)
+                if isinstance(payload, dict):
+                    return {str(key): value for key, value in payload.items()}
+                logger.warning("权重缓存必须是 JSON 对象，已忽略无效内容")
+            except (OSError, UnicodeError, json.JSONDecodeError) as e:
                 logger.warning(f"加载权重缓存失败: {e}")
         return {}
 
-    def _save_cache(self):
+    @staticmethod
+    def _normalize_weights(value: object) -> Optional[Dict[str, float]]:
+        if not isinstance(value, dict):
+            return None
+        weights: Dict[str, float] = {}
+        for name in ("bm25", "vector", "context"):
+            raw_weight: object = value.get(name)
+            if isinstance(raw_weight, bool) or not isinstance(raw_weight, (int, float)):
+                return None
+            weights[name] = float(raw_weight)
+        return weights
+
+    def _save_cache(self) -> None:
         try:
             with open(self.cache_path, "w", encoding="utf-8") as f:
                 json.dump(self.cached_configs, f, indent=2, ensure_ascii=False)
@@ -81,7 +106,7 @@ class AdaptiveWeightManager:
                     scores[domain] += 1
         
         # 找匹配分最高的领域
-        best_domain = max(scores, key=scores.get)
+        best_domain = max(scores, key=lambda domain: scores[domain])
         if scores[best_domain] == 0:
             return "general"
         return best_domain
@@ -95,8 +120,14 @@ class AdaptiveWeightManager:
         
         # 1. 检查持久化缓存中是否有经过校准的权重
         if domain in self.cached_configs:
-            logger.debug(f"命中权重缓存: {domain}")
-            return self.cached_configs[domain]["weights"]
+            cached_entry: object = self.cached_configs[domain]
+            cached_weights = self._normalize_weights(
+                cached_entry.get("weights") if isinstance(cached_entry, dict) else None
+            )
+            if cached_weights is not None:
+                logger.debug(f"命中权重缓存: {domain}")
+                return cached_weights
+            logger.warning("领域 [%s] 的缓存权重格式无效，回退到预设值", domain)
 
         # 2. 如果没有校准权重，尝试返回默认领域权重
         if domain in self.DEFAULT_WEIGHTS:
@@ -107,7 +138,7 @@ class AdaptiveWeightManager:
 
         return self.DEFAULT_WEIGHTS["general"]
 
-    async def run_calibration(self, domain: str):
+    async def run_calibration(self, domain: str) -> None:
         """
         【异步执行】利用 Grid Search 寻找该领域的最优权重并持久化。
         """

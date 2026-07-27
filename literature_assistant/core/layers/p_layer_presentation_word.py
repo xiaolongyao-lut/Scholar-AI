@@ -5,10 +5,11 @@ import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 try:
-    from docx import Document
+    from docx import Document as create_document
+    from docx.document import Document as DocxDocument
     from docx.enum.section import WD_SECTION
     from docx.enum.style import WD_STYLE_TYPE
     from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
@@ -16,6 +17,8 @@ try:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
     from docx.shared import Cm, Inches, Pt, RGBColor
+    from docx.table import _Cell
+    from docx.text.paragraph import Paragraph
     HAS_DOCX = True
 except ImportError:
     HAS_DOCX = False
@@ -29,6 +32,7 @@ except ImportError:
 # ==========================================
 # 视觉风格定义
 # ==========================================
+ACCENT_COLOR: Optional["RGBColor"]
 if HAS_DOCX:
     ACCENT_COLOR = RGBColor(0, 0, 0) # 标准学术黑
 else:  # pragma: no cover
@@ -38,6 +42,16 @@ BORDER_COLOR_HEX = '000000'
 
 logger = logging.getLogger("P_Layer_Word")
 
+
+class _PageBreakDocument(Protocol):
+    def add_page_break(self) -> object:
+        ...
+
+
+class _SavableDocument(Protocol):
+    def save(self, path_or_stream: str) -> None:
+        ...
+
 class WordWriter:
     """
     P-Layer: 专业展示层 (Word 文档生成)
@@ -46,16 +60,27 @@ class WordWriter:
     
     def __init__(self, output_path: str | Path):
         self.output_path = Path(output_path)
-        self.doc: Optional[Document] = None
+        self._doc: Optional["DocxDocument"] = None
         self.bookmark_id = 0
         self.image_cache: Dict[str, str] = {}
 
-    def setup(self):
+    @property
+    def doc(self) -> "DocxDocument":
+        """Return the initialized python-docx document.
+
+        Raises:
+            RuntimeError: If :meth:`setup` has not initialized the document.
+        """
+        if self._doc is None:
+            raise RuntimeError("WordWriter.setup() must be called before document access.")
+        return self._doc
+
+    def setup(self) -> None:
         """初始化文档并设置基础样式"""
         if not HAS_DOCX:
             raise RuntimeError("Missing 'python-docx' library. Please install it to use WordWriter.")
         
-        self.doc = Document()
+        self._doc = create_document()
         sec = self.doc.sections[0]
         # 设置标准页边距
         sec.top_margin = Cm(2.2)
@@ -90,13 +115,20 @@ class WordWriter:
                 st.font.bold = bold
                 st.font.color.rgb = color
 
-    def _set_cell_shading(self, cell, fill: str):
+    def _set_cell_shading(self, cell: "_Cell", fill: str) -> None:
         tc_pr = cell._tc.get_or_add_tcPr()
         shd = OxmlElement('w:shd')
         shd.set(qn('w:fill'), fill)
         tc_pr.append(shd)
 
-    def _set_cell_margins(self, cell, top=80, start=100, bottom=80, end=100):
+    def _set_cell_margins(
+        self,
+        cell: "_Cell",
+        top: int = 80,
+        start: int = 100,
+        bottom: int = 80,
+        end: int = 100,
+    ) -> None:
         tcPr = cell._tc.get_or_add_tcPr()
         tcMar = tcPr.first_child_found_in('w:tcMar')
         if tcMar is None:
@@ -110,7 +142,11 @@ class WordWriter:
             node.set(qn('w:w'), str(v))
             node.set(qn('w:type'), 'dxa')
 
-    def _add_journal_visuals(self, items: List[Dict[str, Any]], is_table: bool = False):
+    def _add_journal_visuals(
+        self,
+        items: List[Dict[str, Any]],
+        is_table: bool = False,
+    ) -> None:
         """ 紧凑型期刊风图文集成 (v40.4: 单栏紧凑) """
         for item in items:
             img_item = item.get('page_crop_image')
@@ -135,7 +171,7 @@ class WordWriter:
                 except Exception as e:
                     self.doc.add_paragraph(f"[Image Error: {e}]", style='Pack Note')
 
-    def _add_bookmark(self, paragraph, name: str):
+    def _add_bookmark(self, paragraph: "Paragraph", name: str) -> None:
         start = OxmlElement('w:bookmarkStart')
         start.set(qn('w:id'), str(self.bookmark_id))
         start.set(qn('w:name'), name)
@@ -181,7 +217,12 @@ class WordWriter:
         except:
             return max_inches
 
-    def add_title_page(self, title: str, subtitle: str = "", metadata: Dict[str, Any] = None):
+    def add_title_page(
+        self,
+        title: str,
+        subtitle: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """添加首页导读与元数据"""
         doc = self.doc
         p = doc.add_paragraph(style='Pack Title')
@@ -209,10 +250,15 @@ class WordWriter:
                     self._set_cell_margins(cell)
                     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
 
-    def add_writing_points(self, points: List[Dict[str, Any]], figure_map: Dict[str, Dict[str, Any]] = None):
+    def add_writing_points(
+        self,
+        points: List[Dict[str, Any]],
+        figure_map: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> None:
         """添加写作点区块"""
         doc = self.doc
-        doc.add_page_break()
+        page_break_document: _PageBreakDocument = doc
+        page_break_document.add_page_break()
         doc.add_paragraph('核心写作点', style='Pack Heading 1')
         
         for idx, wp in enumerate(points, start=1):
@@ -251,10 +297,11 @@ class WordWriter:
                 note.add_run('原文背景：').bold = True
                 note.add_run(preview)
 
-    def add_figure_gallery(self, figures: List[Dict[str, Any]]):
+    def add_figure_gallery(self, figures: List[Dict[str, Any]]) -> None:
         """添加图集区块"""
         doc = self.doc
-        doc.add_page_break()
+        page_break_document: _PageBreakDocument = doc
+        page_break_document.add_page_break()
         doc.add_paragraph('图表证据包', style='Pack Heading 1')
         
         for fig in figures:
@@ -295,12 +342,16 @@ class WordWriter:
                 note.add_run('支撑结论：').bold = True
                 note.add_run(" | ".join(fig['supporting_claims'][:3]))
 
-    def save(self):
+    def save(self) -> None:
         """保存文档"""
-        self.doc.save(str(self.output_path))
+        savable_document: _SavableDocument = self.doc
+        savable_document.save(str(self.output_path))
         logger.info(f"Word document saved to {self.output_path}")
 
-def generate_docx_report(material_pack_path: str | Path, output_docx: str | Path):
+def generate_docx_report(
+    material_pack_path: str | Path,
+    output_docx: str | Path,
+) -> str:
     """
     便捷函数：从写作材料包生成交付文档
     """

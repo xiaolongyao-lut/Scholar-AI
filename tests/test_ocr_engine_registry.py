@@ -3,12 +3,18 @@
 
 from __future__ import annotations
 
+import gzip
+import json
+import subprocess
 import sys
+import time
 import types
+from collections.abc import Iterator
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Mapping
 
+import httpcore
 import httpx
 import pytest
 from PIL import Image
@@ -41,6 +47,104 @@ from pdf_backends.ocr_engine_registry import (  # noqa: E402
     build_ocr_engine,
     load_builtin_ocr_engines,
 )
+
+
+class _MockResponseContext:
+    """Context manager matching the response returned by `httpx.Client.stream`."""
+
+    def __init__(self, response: httpx.Response) -> None:
+        self._response = response
+
+    def __enter__(self) -> httpx.Response:
+        return self._response
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+
+class _MockStreamingClient:
+    """Let existing HTTP client doubles participate in streaming downloads."""
+
+    def get(self, url: str, **kwargs: Any) -> httpx.Response:
+        raise NotImplementedError
+
+    def stream(self, method: str, url: str, **kwargs: Any) -> _MockResponseContext:
+        assert method == "GET"
+        response = self.get(url, **kwargs)
+        if response.is_stream_consumed:
+            response = httpx.Response(
+                response.status_code,
+                headers=response.headers,
+                stream=httpx.ByteStream(response.content),
+                request=response.request,
+                extensions=response.extensions,
+            )
+        return _MockResponseContext(response)
+
+
+class _RecordingNetworkStream(httpcore.NetworkStream):
+    """Minimal HTTP/1.1 stream that records TLS identity and request bytes."""
+
+    def __init__(self) -> None:
+        self._response = bytearray(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"
+        )
+        self.writes: list[bytes] = []
+        self.tls_hostnames: list[str | None] = []
+
+    def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+        del timeout
+        if not self._response:
+            return b""
+        chunk = bytes(self._response[:max_bytes])
+        del self._response[:max_bytes]
+        return chunk
+
+    def write(self, buffer: bytes, timeout: float | None = None) -> None:
+        del timeout
+        self.writes.append(buffer)
+
+    def close(self) -> None:
+        return None
+
+    def start_tls(
+        self,
+        ssl_context: object,
+        server_hostname: str | None = None,
+        timeout: float | None = None,
+    ) -> "_RecordingNetworkStream":
+        del ssl_context, timeout
+        self.tls_hostnames.append(server_hostname)
+        return self
+
+
+class _RecordingNetworkBackend(httpcore.NetworkBackend):
+    """Record the concrete TCP address selected by the pinned transport."""
+
+    def __init__(self) -> None:
+        self.connect_calls: list[tuple[str, int]] = []
+        self.stream = _RecordingNetworkStream()
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: object = None,
+    ) -> httpcore.NetworkStream:
+        del timeout, local_address, socket_options
+        self.connect_calls.append((host, port))
+        return self.stream
+
+    def connect_unix_socket(
+        self,
+        path: str,
+        timeout: float | None = None,
+        socket_options: object = None,
+    ) -> httpcore.NetworkStream:
+        del path, timeout, socket_options
+        raise AssertionError("Paddle result transport must not use Unix sockets")
 
 
 def _encoded_test_image(*, width: int, height: int) -> bytes:
@@ -455,12 +559,20 @@ def test_remote_api_paddle_jobs_submits_polls_and_extracts_document_markdown(
     tmp_path: Path,
 ) -> None:
     calls: list[dict[str, Any]] = []
+    client_options: list[dict[str, Any]] = []
     status_count = 0
 
-    class _MockClient:
-        def __init__(self, *, timeout: float, follow_redirects: bool) -> None:
+    class _MockClient(_MockStreamingClient):
+        def __init__(
+            self,
+            *,
+            timeout: float,
+            follow_redirects: bool,
+            **kwargs: Any,
+        ) -> None:
             self.timeout = timeout
             self.follow_redirects = follow_redirects
+            client_options.append(dict(kwargs))
 
         def __enter__(self) -> "_MockClient":
             return self
@@ -498,6 +610,7 @@ def test_remote_api_paddle_jobs_submits_polls_and_extracts_document_markdown(
             headers: dict[str, str] | None = None,
             follow_redirects: bool = False,
             timeout: float | None = None,
+            **_kwargs: Any,
         ) -> httpx.Response:
             nonlocal status_count
             calls.append(
@@ -533,6 +646,12 @@ def test_remote_api_paddle_jobs_submits_polls_and_extracts_document_markdown(
             )
 
     monkeypatch.setattr(ocr_builtin_engines.httpx, "Client", _MockClient)
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        lambda _host, _port: ["93.184.216.34"],
+        raising=False,
+    )
     monkeypatch.setattr(ocr_builtin_engines.time, "sleep", lambda _seconds: None)
     engine = RemoteApiOcrEngine(
         {
@@ -570,9 +689,541 @@ def test_remote_api_paddle_jobs_submits_polls_and_extracts_document_markdown(
     assert calls[-1] == {
         "method": "GET",
         "url": "https://results.example.test/job-123.jsonl",
-        "headers": {},
-        "follow_redirects": True,
+        "headers": {"Accept-Encoding": "identity"},
+        "follow_redirects": False,
     }
+    assert client_options[0] == {}
+    assert client_options[1]["trust_env"] is False
+    assert isinstance(
+        client_options[1]["transport"],
+        ocr_builtin_engines._PinnedPublicHTTPTransport,
+    )
+
+
+@pytest.mark.parametrize(
+    "result_url",
+    (
+        "https://127.0.0.1:8000/health",
+        "https://10.0.0.5/result.jsonl",
+        "https://169.254.169.254/latest/meta-data/",
+    ),
+)
+def test_remote_api_paddle_jobs_rejects_unsafe_result_ip_literals(
+    result_url: str,
+) -> None:
+    engine = RemoteApiOcrEngine(
+        {
+            "provider": "paddle_jobs",
+            "api_key": "secret-value",
+            "base_url": "https://paddleocr.aistudio-app.com",
+            "model": "PaddleOCR-VL-1.6",
+            "allow_remote_upload": True,
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="unsafe network target"):
+        engine._validated_paddle_result_url(result_url)
+
+
+def test_remote_api_paddle_jobs_rejects_result_host_resolving_private(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        lambda _host, _port: ["127.0.0.1"],
+        raising=False,
+    )
+    engine = RemoteApiOcrEngine(
+        {
+            "provider": "paddle_jobs",
+            "api_key": "secret-value",
+            "base_url": "https://paddleocr.aistudio-app.com",
+            "model": "PaddleOCR-VL-1.6",
+            "allow_remote_upload": True,
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="unsafe network target"):
+        engine._validated_paddle_result_url("https://results.example.test/job.jsonl")
+
+
+def test_paddle_result_transport_pins_tcp_address_and_preserves_tls_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolutions = iter(
+        (
+            ["93.184.216.34"],
+            ["8.8.8.8"],
+        )
+    )
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        lambda _host, _port: next(resolutions),
+        raising=False,
+    )
+    engine = RemoteApiOcrEngine(
+        {
+            "provider": "paddle_jobs",
+            "api_key": "secret-value",
+            "base_url": "https://paddleocr.aistudio-app.com",
+            "model": "PaddleOCR-VL-1.6",
+            "allow_remote_upload": True,
+        }
+    )
+    result_url = "https://results.example.test/job.jsonl"
+    assert engine._validated_paddle_result_url(result_url) == result_url
+
+    transport_type = getattr(
+        ocr_builtin_engines,
+        "_PinnedPublicHTTPTransport",
+        None,
+    )
+    assert transport_type is not None
+    backend = _RecordingNetworkBackend()
+    transport = transport_type(network_backend=backend)
+    with httpx.Client(transport=transport, trust_env=False) as client:
+        response = client.get(result_url)
+
+    assert response.status_code == 200
+    assert backend.connect_calls == [("8.8.8.8", 443)]
+    assert backend.stream.tls_hostnames == ["results.example.test"]
+    request_bytes = b"".join(backend.stream.writes).lower()
+    assert b"host: results.example.test\r\n" in request_bytes
+
+
+def test_paddle_result_transport_rejects_private_connect_time_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolutions = iter(
+        (
+            ["93.184.216.34"],
+            ["127.0.0.1"],
+        )
+    )
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        lambda _host, _port: next(resolutions),
+        raising=False,
+    )
+    engine = RemoteApiOcrEngine(
+        {
+            "provider": "paddle_jobs",
+            "api_key": "secret-value",
+            "base_url": "https://paddleocr.aistudio-app.com",
+            "model": "PaddleOCR-VL-1.6",
+            "allow_remote_upload": True,
+        }
+    )
+    result_url = "https://results.example.test/job.jsonl"
+    assert engine._validated_paddle_result_url(result_url) == result_url
+
+    transport_type = getattr(
+        ocr_builtin_engines,
+        "_PinnedPublicHTTPTransport",
+        None,
+    )
+    assert transport_type is not None
+    backend = _RecordingNetworkBackend()
+    transport = transport_type(network_backend=backend)
+    with httpx.Client(transport=transport, trust_env=False) as client:
+        with pytest.raises(httpx.ConnectError, match="unsafe network target"):
+            client.get(result_url)
+
+    assert backend.connect_calls == []
+
+
+def test_ocr_builtin_engines_supports_isolated_canonical_import(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    site_packages = Path(httpx.__file__).resolve().parents[1]
+    script = r"""
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1]).resolve()
+site_packages = Path(sys.argv[2]).resolve()
+sys.path.insert(0, str(site_packages))
+sys.path.insert(0, str(repo_root))
+import literature_assistant.core.pdf_backends.ocr_builtin_engines  # noqa: F401
+"""
+    completed = subprocess.run(
+        (
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            script,
+            str(repo_root),
+            str(site_packages),
+        ),
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_remote_api_paddle_jobs_rejects_compressed_result_before_decoding() -> None:
+    engine = RemoteApiOcrEngine(
+        {
+            "provider": "paddle_jobs",
+            "api_key": "secret-value",
+            "base_url": "https://paddleocr.aistudio-app.com",
+            "model": "PaddleOCR-VL-1.6",
+            "allow_remote_upload": True,
+        }
+    )
+    response = httpx.Response(
+        200,
+        headers={"Content-Encoding": "gzip"},
+        stream=httpx.ByteStream(gzip.compress(b'{"result": {}}\n')),
+        request=httpx.Request("GET", "https://results.example.test/result.jsonl"),
+    )
+    try:
+        with pytest.raises(RuntimeError, match="identity content encoding"):
+            engine._bounded_paddle_result_text(response)
+    finally:
+        response.close()
+
+
+def test_remote_api_paddle_jobs_rejects_oversized_result_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "_PADDLE_RESULT_MAX_BYTES",
+        256,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        lambda _host, _port: ["93.184.216.34"],
+        raising=False,
+    )
+
+    class _MockClient(_MockStreamingClient):
+        def __init__(
+            self,
+            *,
+            timeout: float,
+            follow_redirects: bool,
+            **_kwargs: Any,
+        ) -> None:
+            del timeout, follow_redirects
+
+        def __enter__(self) -> "_MockClient":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def post(self, url: str, **_kwargs: Any) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"code": 0, "data": {"jobId": "oversized-job"}},
+                request=httpx.Request("POST", url),
+            )
+
+        def get(self, url: str, **_kwargs: Any) -> httpx.Response:
+            if url.endswith("/oversized-job"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "code": 0,
+                        "data": {
+                            "state": "done",
+                            "resultUrl": {
+                                "jsonUrl": "https://results.example.test/oversized.jsonl"
+                            },
+                        },
+                    },
+                    request=httpx.Request("GET", url),
+                )
+            oversized_jsonl = json.dumps(
+                {
+                    "result": {
+                        "layoutParsingResults": [
+                            {"markdown": {"text": "x" * 512}}
+                        ]
+                    }
+                }
+            )
+            return httpx.Response(
+                200,
+                stream=httpx.ByteStream(oversized_jsonl.encode("utf-8")),
+                request=httpx.Request("GET", url),
+            )
+
+    monkeypatch.setattr(ocr_builtin_engines.httpx, "Client", _MockClient)
+    engine = RemoteApiOcrEngine(
+        {
+            "provider": "paddle_jobs",
+            "api_key": "secret-value",
+            "base_url": "https://paddleocr.aistudio-app.com",
+            "model": "PaddleOCR-VL-1.6",
+            "allow_remote_upload": True,
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="exceeds the 256-byte limit"):
+        engine.ocr_image(b"image-bytes", language="en")
+
+
+def test_remote_api_paddle_jobs_times_out_slow_result_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monotonic_values = iter((0.0, 0.0, 0.0, 6.0))
+    monkeypatch.setattr(
+        ocr_builtin_engines.time,
+        "monotonic",
+        lambda: next(monotonic_values, 6.0),
+    )
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        lambda _host, _port: ["93.184.216.34"],
+        raising=False,
+    )
+
+    class _MockClient(_MockStreamingClient):
+        def __init__(
+            self,
+            *,
+            timeout: float,
+            follow_redirects: bool,
+            **_kwargs: Any,
+        ) -> None:
+            del timeout, follow_redirects
+
+        def __enter__(self) -> "_MockClient":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def post(self, url: str, **_kwargs: Any) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"code": 0, "data": {"jobId": "slow-result-job"}},
+                request=httpx.Request("POST", url),
+            )
+
+        def get(self, url: str, **_kwargs: Any) -> httpx.Response:
+            if url.endswith("/slow-result-job"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "code": 0,
+                        "data": {
+                            "state": "done",
+                            "resultUrl": {
+                                "jsonUrl": "https://results.example.test/slow.jsonl"
+                            },
+                        },
+                    },
+                    request=httpx.Request("GET", url),
+                )
+            return httpx.Response(
+                200,
+                stream=httpx.ByteStream(
+                    b'{"result":{"layoutParsingResults":[]}}\n'
+                ),
+                request=httpx.Request("GET", url),
+            )
+
+    monkeypatch.setattr(ocr_builtin_engines.httpx, "Client", _MockClient)
+    engine = RemoteApiOcrEngine(
+        {
+            "provider": "paddle_jobs",
+            "api_key": "secret-value",
+            "base_url": "https://paddleocr.aistudio-app.com",
+            "model": "PaddleOCR-VL-1.6",
+            "allow_remote_upload": True,
+            "timeout_seconds": 5,
+            "poll_timeout_seconds": 10,
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="result download timed out"):
+        engine.ocr_image(b"image-bytes", language="en")
+
+
+def test_remote_api_paddle_jobs_enforces_wall_clock_result_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _BlockingStream(httpx.SyncByteStream):
+        def __iter__(self) -> Iterator[bytes]:
+            time.sleep(0.25)
+            yield b'{"result":{"layoutParsingResults":[]}}\n'
+
+    class _MockClient(_MockStreamingClient):
+        def __init__(
+            self,
+            *,
+            timeout: float,
+            follow_redirects: bool,
+            **_kwargs: Any,
+        ) -> None:
+            del timeout, follow_redirects
+
+        def __enter__(self) -> "_MockClient":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def get(self, url: str, **_kwargs: Any) -> httpx.Response:
+            return httpx.Response(
+                200,
+                stream=_BlockingStream(),
+                request=httpx.Request("GET", url),
+            )
+
+    monkeypatch.setattr(ocr_builtin_engines.httpx, "Client", _MockClient)
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        lambda _host, _port: ["93.184.216.34"],
+        raising=False,
+    )
+    engine = RemoteApiOcrEngine(
+        {
+            "provider": "paddle_jobs",
+            "api_key": "secret-value",
+            "base_url": "https://paddleocr.aistudio-app.com",
+            "model": "PaddleOCR-VL-1.6",
+            "allow_remote_upload": True,
+        }
+    )
+    monkeypatch.setattr(engine, "_timeout_seconds", lambda: 0.05)
+
+    started = time.perf_counter()
+    with pytest.raises(RuntimeError, match="result download timed out"):
+        engine._download_paddle_result(
+            "https://results.example.test/wall-clock.jsonl"
+        )
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 0.15
+
+
+def test_remote_api_paddle_jobs_counts_done_url_dns_in_result_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolver_started_at: list[float] = []
+
+    class _MockClient(_MockStreamingClient):
+        def __init__(
+            self,
+            *,
+            timeout: float,
+            follow_redirects: bool,
+            **_kwargs: Any,
+        ) -> None:
+            del timeout, follow_redirects
+
+        def __enter__(self) -> "_MockClient":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def post(self, url: str, **_kwargs: Any) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"code": 0, "data": {"jobId": "blocking-dns-job"}},
+                request=httpx.Request("POST", url),
+            )
+
+        def get(self, url: str, **_kwargs: Any) -> httpx.Response:
+            if url.endswith("/blocking-dns-job"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "code": 0,
+                        "data": {
+                            "state": "done",
+                            "resultUrl": {
+                                "jsonUrl": "https://results.example.test/blocking.jsonl"
+                            },
+                        },
+                    },
+                    request=httpx.Request("GET", url),
+                )
+            return httpx.Response(
+                200,
+                stream=httpx.ByteStream(
+                    b'{"result":{"layoutParsingResults":[]}}\n'
+                ),
+                request=httpx.Request("GET", url),
+            )
+
+    def _blocking_resolver(_host: str, _port: int) -> list[str]:
+        if not resolver_started_at:
+            resolver_started_at.append(time.perf_counter())
+        time.sleep(0.25)
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr(ocr_builtin_engines.httpx, "Client", _MockClient)
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        _blocking_resolver,
+        raising=False,
+    )
+    engine = RemoteApiOcrEngine(
+        {
+            "provider": "paddle_jobs",
+            "api_key": "secret-value",
+            "base_url": "https://paddleocr.aistudio-app.com",
+            "model": "PaddleOCR-VL-1.6",
+            "allow_remote_upload": True,
+        }
+    )
+    monkeypatch.setattr(engine, "_timeout_seconds", lambda: 0.05)
+
+    with pytest.raises(RuntimeError, match="result download timed out"):
+        engine.ocr_image(b"image-bytes", language="en")
+    returned_at = time.perf_counter()
+
+    assert resolver_started_at
+    assert returned_at - resolver_started_at[0] < 0.20
+
+
+def test_remote_api_paddle_jobs_rejects_http_result_before_dns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _unexpected_resolver(_host: str, _port: int) -> list[str]:
+        pytest.fail("plain HTTP result URLs must be rejected before DNS")
+
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        _unexpected_resolver,
+        raising=False,
+    )
+    engine = RemoteApiOcrEngine(
+        {
+            "provider": "paddle_jobs",
+            "api_key": "secret-value",
+            "base_url": "https://paddleocr.aistudio-app.com",
+            "model": "PaddleOCR-VL-1.6",
+            "allow_remote_upload": True,
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="result URL must use https"):
+        engine._download_paddle_result(
+            "http://results.example.test/insecure.jsonl"
+        )
 
 
 def test_remote_api_paddle_jobs_prefers_located_layout_blocks(
@@ -1093,8 +1744,14 @@ def test_remote_api_paddle_jobs_preserves_plain_text_http_error(
 def test_remote_api_paddle_jobs_allows_blank_jsonl_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class _MockClient:
-        def __init__(self, *, timeout: float, follow_redirects: bool) -> None:
+    class _MockClient(_MockStreamingClient):
+        def __init__(
+            self,
+            *,
+            timeout: float,
+            follow_redirects: bool,
+            **_kwargs: Any,
+        ) -> None:
             del timeout, follow_redirects
 
         def __enter__(self) -> "_MockClient":
@@ -1132,6 +1789,12 @@ def test_remote_api_paddle_jobs_allows_blank_jsonl_result(
             )
 
     monkeypatch.setattr(ocr_builtin_engines.httpx, "Client", _MockClient)
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        lambda _host, _port: ["93.184.216.34"],
+        raising=False,
+    )
     engine = RemoteApiOcrEngine(
         {
             "provider": "paddle_jobs",
@@ -1217,8 +1880,14 @@ def test_remote_api_paddle_jobs_uses_independent_default_poll_timeout(
     status_count = 0
     monotonic_values = iter((0.0, 0.0, 0.0, 300.0))
 
-    class _MockClient:
-        def __init__(self, *, timeout: float, follow_redirects: bool) -> None:
+    class _MockClient(_MockStreamingClient):
+        def __init__(
+            self,
+            *,
+            timeout: float,
+            follow_redirects: bool,
+            **_kwargs: Any,
+        ) -> None:
             assert timeout == 12
             del follow_redirects
 
@@ -1259,7 +1928,17 @@ def test_remote_api_paddle_jobs_uses_independent_default_poll_timeout(
             )
 
     monkeypatch.setattr(ocr_builtin_engines.httpx, "Client", _MockClient)
-    monkeypatch.setattr(ocr_builtin_engines.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        lambda _host, _port: ["93.184.216.34"],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        ocr_builtin_engines.time,
+        "monotonic",
+        lambda: next(monotonic_values, 300.0),
+    )
     monkeypatch.setattr(ocr_builtin_engines.time, "sleep", lambda _seconds: None)
     engine = RemoteApiOcrEngine(
         {
@@ -1321,8 +2000,14 @@ def test_remote_api_paddle_jobs_limits_status_request_to_poll_deadline(
 def test_remote_api_paddle_jobs_reports_result_download_http_detail(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class _MockClient:
-        def __init__(self, *, timeout: float, follow_redirects: bool) -> None:
+    class _MockClient(_MockStreamingClient):
+        def __init__(
+            self,
+            *,
+            timeout: float,
+            follow_redirects: bool,
+            **_kwargs: Any,
+        ) -> None:
             del timeout, follow_redirects
 
         def __enter__(self) -> "_MockClient":
@@ -1360,6 +2045,12 @@ def test_remote_api_paddle_jobs_reports_result_download_http_detail(
             )
 
     monkeypatch.setattr(ocr_builtin_engines.httpx, "Client", _MockClient)
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        lambda _host, _port: ["93.184.216.34"],
+        raising=False,
+    )
     engine = RemoteApiOcrEngine(
         {
             "provider": "paddle_jobs",
@@ -1380,8 +2071,14 @@ def test_remote_api_paddle_jobs_reports_result_download_http_detail(
 def test_remote_api_paddle_jobs_redacts_result_download_detail(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class _MockClient:
-        def __init__(self, *, timeout: float, follow_redirects: bool) -> None:
+    class _MockClient(_MockStreamingClient):
+        def __init__(
+            self,
+            *,
+            timeout: float,
+            follow_redirects: bool,
+            **_kwargs: Any,
+        ) -> None:
             del timeout, follow_redirects
 
         def __enter__(self) -> "_MockClient":
@@ -1419,6 +2116,12 @@ def test_remote_api_paddle_jobs_redacts_result_download_detail(
             )
 
     monkeypatch.setattr(ocr_builtin_engines.httpx, "Client", _MockClient)
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        lambda _host, _port: ["93.184.216.34"],
+        raising=False,
+    )
     engine = RemoteApiOcrEngine(
         {
             "provider": "paddle_jobs",
@@ -1441,8 +2144,14 @@ def test_remote_api_paddle_jobs_redacts_result_download_detail(
 def test_remote_api_paddle_jobs_reports_result_download_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class _MockClient:
-        def __init__(self, *, timeout: float, follow_redirects: bool) -> None:
+    class _MockClient(_MockStreamingClient):
+        def __init__(
+            self,
+            *,
+            timeout: float,
+            follow_redirects: bool,
+            **_kwargs: Any,
+        ) -> None:
             del timeout, follow_redirects
 
         def __enter__(self) -> "_MockClient":
@@ -1477,6 +2186,12 @@ def test_remote_api_paddle_jobs_reports_result_download_timeout(
             raise httpx.ReadTimeout("synthetic timeout", request=request)
 
     monkeypatch.setattr(ocr_builtin_engines.httpx, "Client", _MockClient)
+    monkeypatch.setattr(
+        ocr_builtin_engines,
+        "resolve_host_to_ips",
+        lambda _host, _port: ["93.184.216.34"],
+        raising=False,
+    )
     engine = RemoteApiOcrEngine(
         {
             "provider": "paddle_jobs",

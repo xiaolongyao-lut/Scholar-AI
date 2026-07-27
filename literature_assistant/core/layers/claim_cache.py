@@ -3,6 +3,7 @@ import json
 import sqlite3
 import hashlib
 import logging
+from contextlib import closing
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -26,7 +27,7 @@ class ClaimCache:
         if auto_init:
             self._init_db()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         """初始化数据库表结构和索引"""
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -74,7 +75,7 @@ class ClaimCache:
         如果命中，自动更新访问统计。
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with closing(sqlite3.connect(self.db_path)) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 cursor.execute(
@@ -84,19 +85,39 @@ class ClaimCache:
                 row = cursor.fetchone()
                 
                 if row:
-                    # 异步更新访问计数
+                    payload: object = json.loads(row["claims_json"])
+                    if not isinstance(payload, list):
+                        logger.warning("缓存记录不是声明列表 [sig: %s]", chunk_sig[:8])
+                        return None
+                    claims: List[Dict[str, Any]] = []
+                    for index, item in enumerate(payload):
+                        if not isinstance(item, dict):
+                            logger.warning(
+                                "缓存声明格式无效 [sig: %s, index: %d]",
+                                chunk_sig[:8],
+                                index,
+                            )
+                            return None
+                        claims.append(
+                            {str(key): value for key, value in item.items()}
+                        )
                     cursor.execute(
                         "UPDATE claims_cache SET accessed_at = CURRENT_TIMESTAMP, access_count = access_count + 1 WHERE chunk_signature = ?",
                         (chunk_sig,)
                     )
                     conn.commit()
-                    return json.loads(row["claims_json"])
+                    return claims
                 return None
-        except sqlite3.Error as e:
+        except (sqlite3.Error, json.JSONDecodeError, TypeError) as e:
             logger.warning(f"缓存读取出错: {e}")
             return None
 
-    def save_claims(self, chunk_sig: str, claims: List[Dict[str, Any]], metadata: Optional[Dict[str, Any]] = None):
+    def save_claims(
+        self,
+        chunk_sig: str,
+        claims: List[Dict[str, Any]],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """
         持久化保存提取出的 Claims。
         """
@@ -112,21 +133,56 @@ class ClaimCache:
         avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
 
         try:
+            claims_json = json.dumps(claims, ensure_ascii=False)
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    INSERT OR IGNORE INTO claims_cache 
+                    INSERT OR IGNORE INTO claims_cache
                     (chunk_signature, doc_id, claims_json, llm_model, extraction_confidence) 
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    (chunk_sig, doc_id, json.dumps(claims, ensure_ascii=False), llm_model, avg_confidence)
+                    (chunk_sig, doc_id, claims_json, llm_model, avg_confidence),
                 )
+                if cursor.rowcount == 0:
+                    cursor.execute(
+                        "SELECT claims_json FROM claims_cache WHERE chunk_signature = ?",
+                        (chunk_sig,),
+                    )
+                    row = cursor.fetchone()
+                    existing_payload: object = None
+                    if row is not None:
+                        try:
+                            existing_payload = json.loads(row[0])
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
+                    if not isinstance(existing_payload, list) or any(
+                        not isinstance(item, dict) for item in existing_payload
+                    ):
+                        cursor.execute(
+                            """
+                            UPDATE claims_cache
+                            SET doc_id = ?,
+                                claims_json = ?,
+                                cached_at = CURRENT_TIMESTAMP,
+                                llm_model = ?,
+                                extraction_confidence = ?
+                            WHERE chunk_signature = ?
+                            """,
+                            (
+                                doc_id,
+                                claims_json,
+                                llm_model,
+                                avg_confidence,
+                                chunk_sig,
+                            ),
+                        )
                 conn.commit()
         except sqlite3.Error as e:
             logger.error(f"缓存写入失败 [sig: {chunk_sig[:8]}]: {e}")
 
-    def invalidate_paper(self, doc_id: str):
+    def invalidate_paper(self, doc_id: str) -> None:
         """失效特定文档的所有缓存"""
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -152,6 +208,6 @@ class ClaimCache:
         except sqlite3.Error:
             return {}
 
-    def log_stats(self):
+    def log_stats(self) -> None:
         stats = self.get_stats()
         logger.info(f"📊 缓存状态 - 条目: {stats.get('total_entries', 0)}, 总命中: {stats.get('hit_count', 0)}, 文献数: {stats.get('cached_papers', 0)}")

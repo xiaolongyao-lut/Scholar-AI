@@ -116,7 +116,7 @@ export function Projects() {
 
   const handleBatchDelete = async () => {
     if (selectedIds.size === 0 || deleting) return;
-    if (!window.confirm(`确定要删除选中的 ${selectedIds.size} 个项目吗？删除后无法恢复。`)) return;
+    if (!window.confirm(`确定要归档选中的 ${selectedIds.size} 个项目吗？归档后项目资源会保留，之后可以恢复。`)) return;
     setDeleting(true);
     try {
       const svc = getWritingBackendService();
@@ -293,7 +293,7 @@ export function Projects() {
                   className="inline-flex items-center gap-1.5 rounded-md bg-red-500 px-2.5 py-1.5 font-label text-xs font-medium text-white transition-colors hover:bg-red-600 disabled:opacity-50"
                 >
                   {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                  删除 ({selectedIds.size})
+                  归档 ({selectedIds.size})
                 </button>
               )}
               <button

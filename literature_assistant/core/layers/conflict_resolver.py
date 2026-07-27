@@ -1,7 +1,7 @@
 import re
 import logging
 from dataclasses import dataclass
-from typing import List, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 logger = logging.getLogger("ConflictResolver")
@@ -28,7 +28,11 @@ class ConflictResolver:
     通过聚类与加权投票机制，将多篇文献中的数值冲突转化为单一共识结论。
     """
 
-    def resolve(self, parameter: str, conflicts: List[ConflictValue]) -> ResolutionResult:
+    def resolve(
+        self,
+        parameter: str,
+        conflicts: List[ConflictValue],
+    ) -> Optional[ResolutionResult]:
         if not conflicts:
             return None
         
@@ -51,7 +55,7 @@ class ConflictResolver:
             return self._solve_categorical_conflict(parameter, conflicts)
 
     def _extract_numbers(self, conflicts: List[ConflictValue]) -> Tuple[bool, List[float]]:
-        nums = []
+        nums: List[float] = []
         for c in conflicts:
             match = re.search(r"[-+]?\d*\.\d+|\d+", str(c.value))
             if match:
@@ -62,7 +66,7 @@ class ConflictResolver:
 
     def _solve_numeric_conflict(self, parameter: str, conflicts: List[ConflictValue], nums: List[float]) -> ResolutionResult:
         # 简单聚类：相对距离驱动 (5% 容差)
-        clusters = []
+        clusters: List[List[Tuple[float, ConflictValue]]] = []
         vals_sorted = sorted(zip(nums, conflicts), key=lambda x: x[0])
         
         if not vals_sorted:
@@ -86,8 +90,8 @@ class ConflictResolver:
         weights = [item[1].confidence for item in main_cluster]
         values = [item[0] for item in main_cluster]
         
-        weighted_avg = np.average(values, weights=weights)
-        total_conf = np.mean(weights) * (len(main_cluster) / len(conflicts))
+        weighted_avg = float(np.average(values, weights=weights))
+        total_conf = float(np.mean(weights)) * (len(main_cluster) / len(conflicts))
         
         # 决策
         decision = "needs_review"
@@ -107,11 +111,11 @@ class ConflictResolver:
 
     def _solve_categorical_conflict(self, parameter: str, conflicts: List[ConflictValue]) -> ResolutionResult:
         # 分类参数使用加权众数
-        counts = {}
+        counts: Dict[Any, float] = {}
         for c in conflicts:
             counts[c.value] = counts.get(c.value, 0) + c.confidence
             
-        best_val = max(counts, key=counts.get)
+        best_val = max(counts, key=counts.__getitem__)
         total_weight = sum(counts.values())
         winning_weight = counts[best_val]
         

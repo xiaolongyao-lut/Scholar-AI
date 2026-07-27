@@ -7,7 +7,7 @@ from literature_assistant.core.linter.rule_base import ItemRule, ApplyContext, R
 class RequireCreators(ItemRule):
     """要求至少一个作者"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="require-creators",
             name="要求作者",
@@ -28,7 +28,7 @@ class RequireCreators(ItemRule):
 class CorrectCreatorsDuplicates(ItemRule):
     """删除重复作者"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-creators-duplicates",
             name="删除重复作者",

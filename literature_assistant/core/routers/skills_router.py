@@ -2,41 +2,73 @@
 """Skills API Router - Manages writing skills, skill packs, and actions."""
 
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
 from fastapi import APIRouter, HTTPException, Query
-from models import (
-    SkillDescriptorPayload,
-    SkillSecurityAssessmentPayload,
-    SkillPackPayload,
-    CapabilityPayload,
-    WritingActionPayload,
-    RunActionRequest,
-    RunActionAcceptedPayload,
-    SkillRunResultPayload,
-    ImportUserSkillRequest,
-    ImportUserSkillResponse,
-    SkillToggleResponse,
-    SkillTestRunResponse,
-    SkillRuntimeSettingsUpdate,
-    SkillRuntimeSettingsResponse,
-    SkillApprovalRequestCreate,
-    SkillApprovalRequestPayload,
-    SkillApprovalDecisionCreate,
-    SkillApprovalDecisionPayload,
-    SkillApprovalDetailPayload,
-    SkillUninstallResponse,
-    SkillRollbackRequest,
-    SkillRollbackResponse,
-    SkillExportResponse,
-)
+
+if TYPE_CHECKING:
+    from literature_assistant.core.skills.service import WritingSkillService
+    from literature_assistant.core.models import (
+        CapabilityPayload,
+        ImportUserSkillRequest,
+        ImportUserSkillResponse,
+        RunActionAcceptedPayload,
+        RunActionRequest,
+        SkillApprovalDecisionCreate,
+        SkillApprovalDecisionPayload,
+        SkillApprovalDetailPayload,
+        SkillApprovalRequestCreate,
+        SkillApprovalRequestPayload,
+        SkillDescriptorPayload,
+        SkillExportResponse,
+        SkillPackPayload,
+        SkillRollbackRequest,
+        SkillRollbackResponse,
+        SkillRunResultPayload,
+        SkillRuntimeSettingsResponse,
+        SkillRuntimeSettingsUpdate,
+        SkillSecurityAssessmentPayload,
+        SkillTestRunResponse,
+        SkillToggleResponse,
+        SkillUninstallResponse,
+        WritingActionPayload,
+    )
+else:
+    from models import (
+        CapabilityPayload,
+        ImportUserSkillRequest,
+        ImportUserSkillResponse,
+        RunActionAcceptedPayload,
+        RunActionRequest,
+        SkillApprovalDecisionCreate,
+        SkillApprovalDecisionPayload,
+        SkillApprovalDetailPayload,
+        SkillApprovalRequestCreate,
+        SkillApprovalRequestPayload,
+        SkillDescriptorPayload,
+        SkillExportResponse,
+        SkillPackPayload,
+        SkillRollbackRequest,
+        SkillRollbackResponse,
+        SkillRunResultPayload,
+        SkillRuntimeSettingsResponse,
+        SkillRuntimeSettingsUpdate,
+        SkillSecurityAssessmentPayload,
+        SkillTestRunResponse,
+        SkillToggleResponse,
+        SkillUninstallResponse,
+        WritingActionPayload,
+    )
 
 logger = logging.getLogger("SkillsRouter")
 router = APIRouter(tags=["Skills"])
 
 
-def get_skill_service():
+def get_skill_service() -> "WritingSkillService":
     """Return the writing skill service used by this router."""
-    from skills.service import get_writing_skill_service
+    if TYPE_CHECKING:
+        from literature_assistant.core.skills.service import get_writing_skill_service
+    else:
+        from skills.service import get_writing_skill_service
 
     return get_writing_skill_service()
 
@@ -68,10 +100,23 @@ async def list_skills(
 async def get_skill_audit(
     skill_id: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Get audit events for skill operations."""
     service = get_skill_service()
-    return service.list_audit_events(skill_id=skill_id, limit=limit)
+    raw_events: object = service.list_audit_events(skill_id=skill_id, limit=limit)
+    if not isinstance(raw_events, list):
+        raise HTTPException(status_code=500, detail="Invalid skill audit response")
+    events: list[dict[str, Any]] = []
+    for raw_event in raw_events:
+        if not isinstance(raw_event, dict):
+            raise HTTPException(status_code=500, detail="Invalid skill audit response")
+        event: dict[str, Any] = {}
+        for key, value in raw_event.items():
+            if not isinstance(key, str):
+                raise HTTPException(status_code=500, detail="Invalid skill audit response")
+            event[key] = value
+        events.append(event)
+    return events
 
 
 @router.post("/skills/approvals/requests", response_model=SkillApprovalRequestPayload)
@@ -184,7 +229,29 @@ async def list_skill_packs(
 ) -> list[SkillPackPayload]:
     """List available skill packs for the requested UI mode."""
     service = get_skill_service()
-    return [SkillPackPayload(**item) for item in service.list_skill_packs(ui_mode=ui_mode)]
+    payloads: list[SkillPackPayload] = []
+    for item in service.list_skill_packs(ui_mode=ui_mode):
+        pack_id = item.get("id")
+        name = item.get("name")
+        description = item.get("description")
+        skill_ids = item.get("skillIds")
+        if (
+            not isinstance(pack_id, str)
+            or not isinstance(name, str)
+            or not isinstance(description, str)
+            or not isinstance(skill_ids, list)
+            or not all(isinstance(skill_id, str) for skill_id in skill_ids)
+        ):
+            raise HTTPException(status_code=500, detail="Invalid skill pack response")
+        payloads.append(
+            SkillPackPayload(
+                id=pack_id,
+                name=name,
+                description=description,
+                skillIds=skill_ids,
+            )
+        )
+    return payloads
 
 
 @router.get("/capabilities", response_model=list[CapabilityPayload])

@@ -45,13 +45,20 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from models.evolution import (
-    CandidateMemoryType,
-    CandidateStatus,
-    ExperienceCandidate,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.models.evolution import (
+        CandidateMemoryType,
+        CandidateStatus,
+        ExperienceCandidate,
+    )
+else:
+    from models.evolution import (
+        CandidateMemoryType,
+        CandidateStatus,
+        ExperienceCandidate,
+    )
 
 
 # Lowest-risk defaults for a draft skill: no scripts, no permissions,

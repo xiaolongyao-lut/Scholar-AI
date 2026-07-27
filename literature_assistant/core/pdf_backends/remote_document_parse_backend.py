@@ -125,7 +125,7 @@ class RemoteDocumentParseBackend:
             )
         return self._client
 
-    async def _close_client(self):
+    async def _close_client(self) -> None:
         """关闭 HTTP 客户端"""
         if self._client is not None:
             await self._client.aclose()

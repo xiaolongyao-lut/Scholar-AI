@@ -15,12 +15,19 @@ from __future__ import annotations
 
 import sqlite3
 import json
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
-from datetime_utils import utc_now_iso_z
-from harness_store import HarnessStore
-from harness_canonical_events import CanonicalEvent
-from recovery_telemetry import get_recovery_telemetry
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.harness_canonical_events import CanonicalEvent
+    from literature_assistant.core.harness_store import HarnessStore
+    from literature_assistant.core.recovery_telemetry import get_recovery_telemetry
+else:
+    from datetime_utils import utc_now_iso_z
+    from harness_canonical_events import CanonicalEvent
+    from harness_store import HarnessStore
+    from recovery_telemetry import get_recovery_telemetry
 
 
 class CanonicalEventStore:
@@ -434,7 +441,13 @@ class CanonicalEventStore:
         
         try:
             cursor.execute("SELECT COUNT(*) FROM canonical_events")
-            return cursor.fetchone()[0]
+            row = cursor.fetchone()
+            if not isinstance(row, tuple) or len(row) != 1:
+                raise RuntimeError("canonical event count query returned an invalid row")
+            count = row[0]
+            if isinstance(count, bool) or not isinstance(count, int):
+                raise RuntimeError("canonical event count must be an integer")
+            return int(count)
         finally:
             conn.close()
     
@@ -503,7 +516,68 @@ class CanonicalEventStore:
             'exported_at': utc_now_iso_z(),
         }
     
-    def _row_to_event(self, row: tuple, description: list) -> CanonicalEvent:
+    @staticmethod
+    def _decode_json_object(
+        value: object,
+        *,
+        field_name: str,
+        optional: bool = False,
+    ) -> dict[str, Any] | None:
+        """Decode a persisted JSON object after validating its database shape."""
+
+        if value is None:
+            if optional:
+                return None
+            raise ValueError(f"{field_name} must contain a JSON object")
+        if not isinstance(value, (str, bytes, bytearray)):
+            raise ValueError(f"{field_name} must contain encoded JSON")
+        try:
+            decoded = json.loads(value)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise ValueError(f"{field_name} contains invalid JSON") from exc
+        if not isinstance(decoded, dict) or any(
+            not isinstance(key, str) for key in decoded
+        ):
+            raise ValueError(f"{field_name} must decode to a JSON object")
+        return {
+            key: item
+            for key, item in decoded.items()
+            if isinstance(key, str)
+        }
+
+    @staticmethod
+    def _required_text_column(
+        columns: Mapping[str, object],
+        name: str,
+        *,
+        default: str = "",
+    ) -> str:
+        """Read a required SQLite text column without leaking untyped values."""
+
+        value = columns.get(name, default)
+        if not isinstance(value, str):
+            raise ValueError(f"{name} must be stored as text")
+        return value
+
+    @staticmethod
+    def _optional_text_column(
+        columns: Mapping[str, object],
+        name: str,
+    ) -> str | None:
+        """Read a nullable SQLite text column without coercing corrupt values."""
+
+        value = columns.get(name)
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError(f"{name} must be stored as text or null")
+        return value
+
+    def _row_to_event(
+        self,
+        row: Sequence[object],
+        description: Sequence[Sequence[object]] | None,
+    ) -> CanonicalEvent:
         """
         Convert database row to CanonicalEvent.
         
@@ -514,33 +588,56 @@ class CanonicalEventStore:
         Returns:
             CanonicalEvent object
         """
-        # Map row tuple to column names (skip id column)
-        cols = {desc[0]: row[i+1] for i, desc in enumerate(description[1:])}
+        if description is None or len(description) != len(row):
+            raise ValueError("canonical event row does not match its cursor description")
+
+        columns: dict[str, object] = {}
+        for index, descriptor in enumerate(description):
+            if not descriptor or not isinstance(descriptor[0], str):
+                raise ValueError("canonical event cursor contains an invalid column name")
+            columns[descriptor[0]] = row[index]
         
         # Parse JSON fields
-        payload = json.loads(cols.get('payload', '{}'))
-        previous_state = json.loads(cols.get('previous_state')) if cols.get('previous_state') else None
-        new_state = json.loads(cols.get('new_state')) if cols.get('new_state') else None
+        payload = self._decode_json_object(
+            columns.get("payload"),
+            field_name="payload",
+        )
+        if payload is None:  # pragma: no cover - required payloads cannot be null
+            raise ValueError("payload must contain a JSON object")
+        previous_state = self._decode_json_object(
+            columns.get("previous_state"),
+            field_name="previous_state",
+            optional=True,
+        )
+        new_state = self._decode_json_object(
+            columns.get("new_state"),
+            field_name="new_state",
+            optional=True,
+        )
         
         return CanonicalEvent(
-            event_id=cols.get('event_id', ''),
-            correlation_id=cols.get('correlation_id', ''),
-            timestamp=cols.get('timestamp', ''),
-            session_id=cols.get('session_id'),
-            job_id=cols.get('job_id'),
-            user_id=cols.get('user_id'),
-            aggregate_type=cols.get('aggregate_type', ''),
-            aggregate_id=cols.get('aggregate_id', ''),
-            event_type=cols.get('event_type', ''),
+            event_id=self._required_text_column(columns, "event_id"),
+            correlation_id=self._required_text_column(columns, "correlation_id"),
+            timestamp=self._required_text_column(columns, "timestamp"),
+            session_id=self._optional_text_column(columns, "session_id"),
+            job_id=self._optional_text_column(columns, "job_id"),
+            user_id=self._optional_text_column(columns, "user_id"),
+            aggregate_type=self._required_text_column(columns, "aggregate_type"),
+            aggregate_id=self._required_text_column(columns, "aggregate_id"),
+            event_type=self._required_text_column(columns, "event_type"),
             payload=payload,
-            actor_id=cols.get('actor_id'),
-            actor_type=cols.get('actor_type', 'system'),
-            severity=cols.get('severity', 'info'),
+            actor_id=self._optional_text_column(columns, "actor_id"),
+            actor_type=self._required_text_column(
+                columns,
+                "actor_type",
+                default="system",
+            ),
+            severity=self._required_text_column(columns, "severity", default="info"),
             previous_state=previous_state,
             new_state=new_state,
-            error_code=cols.get('error_code'),
-            error_message=cols.get('error_message'),
-            source=cols.get('source', 'harness'),
+            error_code=self._optional_text_column(columns, "error_code"),
+            error_message=self._optional_text_column(columns, "error_message"),
+            source=self._required_text_column(columns, "source", default="harness"),
         )
 
 

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
 
 import yaml
 
@@ -55,10 +55,13 @@ def load_evolution_config() -> Dict[str, Any]:
 
 
 def _feature_flag_value(name: str, fallback: bool) -> bool:
-    try:
-        from feature_flags import FEATURE_FLAGS, is_enabled
-    except Exception:
-        return fallback
+    if TYPE_CHECKING:
+        from literature_assistant.core.feature_flags import FEATURE_FLAGS, is_enabled
+    else:
+        try:
+            from feature_flags import FEATURE_FLAGS, is_enabled
+        except Exception:
+            return fallback
     if name not in FEATURE_FLAGS:
         return fallback
     return bool(is_enabled(name))

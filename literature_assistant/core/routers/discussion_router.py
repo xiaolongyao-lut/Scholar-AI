@@ -4,20 +4,31 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from discussion_bus import (
-    ConversationBus,
-    AgentRole,
-    MessageType,
-    DiscussionSession,
-    DiscussionMessage,
-)
-from agent_roles import get_role_prompt, format_discussion_context
-from routers.chat_router import ChatRequest, LLMConfig, chat_ask
+if TYPE_CHECKING:
+    from literature_assistant.core.agent_roles import format_discussion_context, get_role_prompt
+    from literature_assistant.core.discussion_bus import (
+        AgentRole,
+        ConversationBus,
+        DiscussionMessage,
+        DiscussionSession,
+        MessageType,
+    )
+    from literature_assistant.core.routers.chat_router import ChatRequest, LLMConfig, chat_ask
+else:
+    from agent_roles import format_discussion_context, get_role_prompt
+    from discussion_bus import (
+        AgentRole,
+        ConversationBus,
+        DiscussionMessage,
+        DiscussionSession,
+        MessageType,
+    )
+    from routers.chat_router import ChatRequest, LLMConfig, chat_ask
 
 router = APIRouter(prefix="/api/discussion", tags=["discussion"])
 
@@ -215,11 +226,6 @@ async def get_discussion_summary(session_id: str) -> dict[str, Any]:
     }
 
 
-class DiscussionHistoryResponse(BaseModel):
-    session_id: str
-    messages: list[dict[str, Any]]
-
-
 @router.post("/create", response_model=CreateDiscussionResponse)
 async def create_discussion(req: CreateDiscussionRequest) -> CreateDiscussionResponse:
     """Create a new multi-agent discussion session."""
@@ -290,7 +296,10 @@ async def run_discussion_turn(session_id: str) -> dict[str, Any]:
         )
 
         # Call LLM
-        from routers.chat_router import _resolve_chat_llm
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.chat_router import _resolve_chat_llm
+        else:
+            from routers.chat_router import _resolve_chat_llm
         llm = _resolve_chat_llm(LLMConfig())
         response = await chat_ask(
             ChatRequest(

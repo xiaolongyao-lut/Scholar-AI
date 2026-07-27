@@ -18,20 +18,39 @@ Design Principle: All commands emit canonical events via control plane for compl
 
 import sys
 import json
+from argparse import ArgumentParser, _SubParsersAction
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
+from typing import TYPE_CHECKING
 
 # Local imports
 try:
-    from recovery_autopilot_control_plane import AutopilotControlPlane, ControlPlaneState
-    from recovery_autopilot_policy import (
-        create_conservative_policy,
-        create_standard_policy,
-        create_permissive_policy,
-        AutopilotPolicy,
-    )
-    from recovery_store_provider import get_event_store, get_fact_store
-    from datetime_utils import utc_now_iso_z
+    if TYPE_CHECKING:
+        from literature_assistant.core.datetime_utils import utc_now_iso_z
+        from literature_assistant.core.recovery_autopilot_control_plane import (
+            AutopilotControlPlane,
+            ControlPlaneState,
+        )
+        from literature_assistant.core.recovery_autopilot_policy import (
+            AutopilotPolicy,
+            create_conservative_policy,
+            create_permissive_policy,
+            create_standard_policy,
+        )
+        from literature_assistant.core.recovery_store_provider import (
+            get_event_store,
+            get_fact_store,
+        )
+    else:
+        from datetime_utils import utc_now_iso_z
+        from recovery_autopilot_control_plane import AutopilotControlPlane, ControlPlaneState
+        from recovery_autopilot_policy import (
+            AutopilotPolicy,
+            create_conservative_policy,
+            create_permissive_policy,
+            create_standard_policy,
+        )
+        from recovery_store_provider import get_event_store, get_fact_store
 except ImportError as e:
     print(f"WARNING: Failed to import required modules: {e}", file=sys.stderr)
     print("WARNING: Autopilot CLI functionality will be restricted.", file=sys.stderr)
@@ -156,7 +175,8 @@ def cmd_autopilot_enable(args: Any) -> int:
         
         # Check if already enabled
         if control_plane.is_enabled():
-            print(f"Autopilot already enabled with policy: {control_plane.get_current_policy().policy_name}", file=sys.stderr)
+            current_policy = cast(AutopilotPolicy, control_plane.get_current_policy())
+            print(f"Autopilot already enabled with policy: {current_policy.policy_name}", file=sys.stderr)
             return 1
         
         # Enable autopilot
@@ -393,7 +413,7 @@ def cmd_autopilot_policy_set(args: Any) -> int:
 # --- CLI Registration ---
 
 
-def register_autopilot_commands(parser) -> None:
+def register_autopilot_commands(parser: ArgumentParser) -> None:
     """
     Register autopilot subcommands with argparse parser.
     
@@ -403,10 +423,17 @@ def register_autopilot_commands(parser) -> None:
       # Call this function to add autopilot commands
     """
     try:
-        subparsers = parser._subparsers._actions[-1]  # Get existing subparsers
+        subparser_group = parser._subparsers
+        if subparser_group is None:
+            raise AttributeError("parser does not have a subparser group")
+        existing_action = subparser_group._actions[-1]
     except (IndexError, AttributeError):
         # Create subparsers if they don't exist
         subparsers = parser.add_subparsers(dest="subcommand")
+    else:
+        if not isinstance(existing_action, _SubParsersAction):
+            raise AttributeError("existing parser action is not a subparser action")
+        subparsers = existing_action
     
     # Add autopilot parser
     autopilot_parser = subparsers.add_parser(

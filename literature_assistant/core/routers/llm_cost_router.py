@@ -3,9 +3,14 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Query
-from project_paths import output_path
+
+if TYPE_CHECKING:
+    from literature_assistant.core.project_paths import output_path
+else:
+    from project_paths import output_path
 
 _LOG_FILE = output_path("llm_cost.jsonl")
 _MAX_LOG_BYTES = 256 * 1024 * 1024

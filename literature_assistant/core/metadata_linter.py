@@ -12,7 +12,7 @@
 
 import re
 from collections.abc import Mapping, Sequence
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Literal, TypedDict
 
 from dateutil import parser as date_parser
@@ -175,7 +175,7 @@ def _normalize_date(date_str: str) -> tuple[str | None, list[str]]:
     if re.match(r'^\d{4}$', date_str):
         return date_str, warnings
     if re.match(r'^\d{4}-\d{2}$', date_str):
-        year, month = [int(part) for part in date_str.split("-")]
+        _, month = [int(part) for part in date_str.split("-")]
         if 1 <= month <= 12:
             return date_str, warnings
         warnings.append(f"无法解析日期格式: {date_str}")
@@ -189,7 +189,7 @@ def _normalize_date(date_str: str) -> tuple[str | None, list[str]]:
         return date_str, warnings
 
     try:
-        parsed = date_parser.parse(date_str, fuzzy=True, default=date(1900, 1, 1))
+        parsed = date_parser.parse(date_str, fuzzy=True, default=datetime(1900, 1, 1))
     except (TypeError, ValueError, OverflowError):
         parsed = None
 
@@ -201,9 +201,9 @@ def _normalize_date(date_str: str) -> tuple[str | None, list[str]]:
     # 提取年份
     year_match = re.search(r'\b(19|20)\d{2}\b', date_str)
     if year_match:
-        year = year_match.group()
-        warnings.append(f"日期已简化为年份: {year}")
-        return year, warnings
+        parsed_year = year_match.group()
+        warnings.append(f"日期已简化为年份: {parsed_year}")
+        return parsed_year, warnings
 
     warnings.append(f"无法解析日期格式: {date_str}")
     return None, warnings

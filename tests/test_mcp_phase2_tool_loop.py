@@ -11,14 +11,18 @@ real ``mcp`` SDK being importable.
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import os
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from typing import is_typeddict
 
 import pytest
+from pydantic import ValidationError
 
 from mcp_runtime.provider_tool_adapter import (
     NAMESPACE_PREFIX,
@@ -62,6 +66,39 @@ from models.mcp import (
     McpToolDescriptor,
     McpTransport,
 )
+
+
+def _isolated_python_env(root: Path) -> dict[str, str]:
+    """Build a credential-free environment for import-identity subprocesses."""
+
+    root.mkdir(parents=True, exist_ok=True)
+    env = {
+        name: value
+        for name in ("COMSPEC", "SYSTEMDRIVE", "SYSTEMROOT", "WINDIR")
+        if (value := os.environ.get(name))
+    }
+    env.update(
+        {
+            "APPDATA": str(root / "appdata"),
+            "EMBEDDING_KEY_PROBE_DISABLE": "1",
+            "HOME": str(root),
+            "LITASSIST_CREDENTIAL_SECRET_BACKEND": "plaintext_file",
+            "LITASSIST_DISABLE_FILE_LOG": "1",
+            "LITERATURE_ASSISTANT_RUNTIME_STATE_ROOT": str(root / "runtime"),
+            "LITERATURE_ASSISTANT_USER_ROOT": str(root / "user"),
+            "LITERATURE_DISABLE_KEY_POOL": "1",
+            "LOCALAPPDATA": str(root / "localappdata"),
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+            "RERANK_KEY_PROBE_DISABLE": "1",
+            "RUNTIME_ENV_DISABLE_DOTENV": "1",
+            "TEMP": str(root),
+            "TMP": str(root),
+            "USERPROFILE": str(root),
+            "WRITING_RUNTIME_STORAGE_ROOT": str(root / "writing"),
+        }
+    )
+    return env
 
 
 # ---------------------------------------------------------------------------
@@ -1374,3 +1411,497 @@ async def test_acc9_runcaps_per_call_timeout_enforced_on_dispatch() -> None:
     for rec in result.transcript:
         assert rec.is_error is True
         assert "timeout" in rec.preview.lower()
+
+
+@pytest.mark.parametrize(
+    ("resolver_module_name", "store_module_name"),
+    [
+        (
+            "literature_assistant.core.mcp_runtime.credential_env_resolver",
+            "literature_assistant.core.credential_store",
+        ),
+        ("mcp_runtime.credential_env_resolver", "credential_store"),
+    ],
+)
+def test_credential_resolver_translates_missing_reference_in_each_import_mode(
+    resolver_module_name: str,
+    store_module_name: str,
+    tmp_path: Path,
+) -> None:
+    """Canonical and flat imports must catch their matching store exception."""
+
+    resolver_module = importlib.import_module(resolver_module_name)
+    store_module = importlib.import_module(store_module_name)
+    assert (
+        resolver_module.CredentialNotFoundError
+        is store_module.CredentialNotFoundError
+    )
+    resolver = resolver_module.McpCredentialEnvResolver(
+        credential_store=store_module.RuntimeCredentialStore(
+            path=tmp_path / f"{store_module_name.replace('.', '_')}.json"
+        )
+    )
+
+    with pytest.raises(resolver_module.CredentialRefError) as exc_info:
+        resolver.resolve_env(
+            explicit_env={},
+            env_refs={"OPENAI_API_KEY": "cred_missing"},
+        )
+
+    assert exc_info.value.code == "credential_not_found"
+
+
+@pytest.mark.parametrize(
+    "module_prefix",
+    ["literature_assistant.core.", ""],
+    ids=["canonical", "flat"],
+)
+@pytest.mark.asyncio
+async def test_template_installer_translates_missing_credential_in_each_import_mode(
+    module_prefix: str,
+    tmp_path: Path,
+) -> None:
+    """Installer errors must use the same module graph as the injected store."""
+
+    bindings_module = importlib.import_module(f"{module_prefix}credential_bindings")
+    credential_store_module = importlib.import_module(
+        f"{module_prefix}credential_store"
+    )
+    scan_registry_module = importlib.import_module(
+        f"{module_prefix}mcp_runtime.scan_registry"
+    )
+    server_store_module = importlib.import_module(
+        f"{module_prefix}mcp_runtime.server_store"
+    )
+    template_module = importlib.import_module(
+        f"{module_prefix}mcp_runtime.template_installer"
+    )
+    tool_catalog_module = importlib.import_module(
+        f"{module_prefix}mcp_runtime.tool_catalog"
+    )
+    install_models = importlib.import_module(
+        f"{module_prefix}models.mcp_installation"
+    )
+    assert (
+        template_module.CredentialNotFoundError
+        is credential_store_module.CredentialNotFoundError
+    )
+
+    async def unused_list_tools(_config: object) -> list[object]:
+        raise AssertionError("credential validation must precede tool discovery")
+
+    mode = "canonical" if module_prefix else "flat"
+    registry = scan_registry_module.McpScanRegistry()
+    args = ["-m", "lit_mcp_test.server"]
+    candidate_sha = install_models.compute_launch_candidate_sha("python", args, ".")
+    candidate = install_models.McpLaunchCandidate(
+        command="python",
+        args=args,
+        cwd=".",
+        confidence=install_models.McpScanConfidence.HIGH,
+        source="literature-mcp.json",
+        sha=candidate_sha,
+    )
+    scan = install_models.McpPackageScanResult(
+        scan_id=install_models.generate_scan_id(),
+        source_path=str(tmp_path),
+        package_id="lit-mcp-test",
+        display_name="Test MCP",
+        confidence=install_models.McpScanConfidence.HIGH,
+        transport="stdio",
+        launch_candidates=[candidate],
+        expires_at=install_models.compute_scan_expiry(),
+    )
+    registry.register(scan)
+    installer = template_module.McpTemplateInstaller(
+        server_store=server_store_module.RuntimeMcpServerStore(
+            path=tmp_path / f"{mode}-servers.json"
+        ),
+        scan_registry=registry,
+        credential_store=credential_store_module.RuntimeCredentialStore(
+            path=tmp_path / f"{mode}-credentials.json"
+        ),
+        tool_catalog=tool_catalog_module.McpToolCatalog(unused_list_tools),
+        binding_index=bindings_module.CredentialBindingIndex(),
+        install_root=tmp_path / f"{mode}-installs",
+    )
+
+    with pytest.raises(template_module.InstallCredentialMissingError):
+        await installer.install(
+            scan_id=scan.scan_id,
+            launch_candidate_sha=candidate_sha,
+            server_slug="missing-credential",
+            display_name="Missing credential",
+            config_values={},
+            credential_bindings={"OPENAI_API_KEY": "cred_missing"},
+            trust_to_probe=False,
+        )
+
+
+@pytest.mark.parametrize(
+    "module_prefix",
+    ["literature_assistant.core.", ""],
+    ids=["canonical", "flat"],
+)
+def test_runtime_type_hints_resolve_in_each_import_mode(
+    module_prefix: str,
+    tmp_path: Path,
+) -> None:
+    """Runtime annotations must resolve to classes from the active module graph."""
+
+    repo_root = Path(__file__).resolve().parents[1]
+    import_mode = "canonical" if module_prefix else "flat"
+    script = r"""
+import importlib
+import os
+import sys
+from pathlib import Path
+from typing import get_type_hints
+
+mode = sys.argv[1]
+repo_root = Path(sys.argv[2]).resolve()
+core_root = repo_root / "literature_assistant" / "core"
+for entry in (str(repo_root), str(core_root)):
+    while entry in sys.path:
+        sys.path.remove(entry)
+if mode == "canonical":
+    sys.path.insert(0, str(repo_root))
+    sys.path.insert(1, str(core_root))
+    prefix = "literature_assistant.core."
+else:
+    sys.path.insert(0, str(core_root))
+    sys.path.insert(1, str(repo_root))
+    prefix = ""
+
+assert not any(name.endswith(("_API_KEY", "_TOKEN", "_SECRET")) for name in os.environ)
+assert not {"ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"} & set(os.environ)
+
+credential_models = importlib.import_module(f"{prefix}models.credentials")
+resolver_module = importlib.import_module(
+    f"{prefix}mcp_runtime.credential_env_resolver"
+)
+server_store_module = importlib.import_module(f"{prefix}mcp_runtime.server_store")
+template_module = importlib.import_module(f"{prefix}mcp_runtime.template_installer")
+key_pool_module = importlib.import_module(f"{prefix}key_pool")
+runtime_env_module = importlib.import_module(f"{prefix}runtime_env")
+
+resolver_hints = get_type_hints(
+    resolver_module.McpCredentialEnvResolver._fetch_enabled
+)
+assert resolver_hints["return"] is credential_models.RuntimeCredential
+installer_hints = get_type_hints(template_module.McpTemplateInstaller.__init__)
+assert installer_hints["server_store"] is server_store_module.RuntimeMcpServerStore
+failover_hints = get_type_hints(runtime_env_module.build_embedding_failover_pool)
+assert failover_hints["return"] == key_pool_module.KeyPool | None
+"""
+    completed = subprocess.run(
+        (
+            sys.executable,
+            "-I",
+            "-c",
+            script,
+            import_mode,
+            str(repo_root),
+        ),
+        cwd=repo_root,
+        env=_isolated_python_env(tmp_path / "subprocess-env"),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_mcp_install_typed_dicts_match_inherited_pydantic_fields() -> None:
+    """Handwritten constructor contracts must track every Pydantic field."""
+
+    from literature_assistant.core.models.mcp_installation import (
+        McpInstallConfigField,
+        McpRequiredCredential,
+        _McpInstallConfigFieldData,
+        _McpRequiredCredentialData,
+    )
+
+    contracts = [
+        (
+            _McpInstallConfigFieldData,
+            McpInstallConfigField,
+            frozenset({"id", "label", "env", "type"}),
+            frozenset(
+                {
+                    "required",
+                    "description",
+                    "default",
+                    "options",
+                    "min",
+                    "max",
+                    "step",
+                }
+            ),
+        ),
+        (
+            _McpRequiredCredentialData,
+            McpRequiredCredential,
+            frozenset({"id", "label", "env"}),
+            frozenset({"required", "description", "kind", "provider_hints"}),
+        ),
+    ]
+
+    for constructor_contract, model, expected_required, expected_optional in contracts:
+        assert is_typeddict(constructor_contract)
+        assert constructor_contract.__required_keys__ == expected_required
+        assert constructor_contract.__optional_keys__ == expected_optional
+        model_required = frozenset(
+            name for name, field in model.model_fields.items() if field.is_required()
+        )
+        assert model_required == expected_required
+        assert frozenset(model.model_fields) == expected_required | expected_optional
+
+
+def test_mcp_install_models_preserve_allowlist_and_pydantic_error_types() -> None:
+    """Allowlist failures stay raw while field-shape failures stay Pydantic errors."""
+
+    from literature_assistant.core.models.mcp_installation import (
+        McpInstallConfigField,
+        McpRequiredCredential,
+    )
+
+    with pytest.raises(ValueError) as config_allowlist_error:
+        McpInstallConfigField(
+            id="color",
+            label="Color",
+            env="COLOR",
+            type="color_picker",
+        )
+    assert type(config_allowlist_error.value) is ValueError
+
+    with pytest.raises(ValueError) as credential_allowlist_error:
+        McpRequiredCredential(
+            id="oauth",
+            label="OAuth",
+            env="OAUTH_TOKEN",
+            kind="oauth_token",
+        )
+    assert type(credential_allowlist_error.value) is ValueError
+
+    with pytest.raises(ValidationError):
+        McpInstallConfigField(type="text")
+    with pytest.raises(ValidationError):
+        McpRequiredCredential()
+
+
+@pytest.mark.parametrize("import_mode", ["canonical", "flat"])
+def test_mcp_module_graph_identity_and_successful_install_in_isolated_process(
+    import_mode: str,
+    tmp_path: Path,
+) -> None:
+    """Stores and installer must keep models inside one isolated import graph."""
+
+    repo_root = Path(__file__).resolve().parents[1]
+    probe_root = tmp_path / import_mode
+    probe_root.mkdir()
+    script = r"""
+import asyncio
+import importlib
+import os
+import sys
+from pathlib import Path
+from typing import get_type_hints
+
+mode = sys.argv[1]
+repo_root = Path(sys.argv[2]).resolve()
+probe_root = Path(sys.argv[3]).resolve()
+core_root = repo_root / "literature_assistant" / "core"
+for entry in (str(repo_root), str(core_root)):
+    while entry in sys.path:
+        sys.path.remove(entry)
+if mode == "canonical":
+    sys.path.insert(0, str(repo_root))
+    sys.path.insert(1, str(core_root))
+    prefix = "literature_assistant.core."
+else:
+    sys.path.insert(0, str(core_root))
+    sys.path.insert(1, str(repo_root))
+    prefix = ""
+
+assert os.environ["RUNTIME_ENV_DISABLE_DOTENV"] == "1"
+assert not any(name.endswith(("_API_KEY", "_TOKEN", "_SECRET")) for name in os.environ)
+assert not {"ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"} & set(os.environ)
+key_pool_module = importlib.import_module(f"{prefix}key_pool")
+assert "runtime_env" not in sys.modules
+assert "literature_assistant.core.runtime_env" not in sys.modules
+runtime_env_module = importlib.import_module(f"{prefix}runtime_env")
+assert runtime_env_module.KeyPool is key_pool_module.KeyPool
+if mode == "canonical":
+    assert "literature_assistant.core.runtime_env" in sys.modules
+    assert "runtime_env" not in sys.modules
+else:
+    assert "runtime_env" in sys.modules
+    assert "literature_assistant.core.runtime_env" not in sys.modules
+
+runtime_env_module._runtime_env_path()
+runtime_env_module.resolve_embedding_config(
+    "isolated-placeholder-key",
+    base_url="https://example.test/v1",
+    model="identity-model",
+    default_base_url="https://example.test/v1",
+    default_model="identity-model",
+    probe_candidates=False,
+)
+if mode == "canonical":
+    assert "literature_assistant.core.project_paths" in sys.modules
+    assert "literature_assistant.core.model_config_store" in sys.modules
+    assert "project_paths" not in sys.modules
+    assert "model_config_store" not in sys.modules
+else:
+    assert "project_paths" in sys.modules
+    assert "model_config_store" in sys.modules
+
+credential_models = importlib.import_module(f"{prefix}models.credentials")
+credential_store_module = importlib.import_module(f"{prefix}credential_store")
+mcp_models = importlib.import_module(f"{prefix}models.mcp")
+server_store_module = importlib.import_module(f"{prefix}mcp_runtime.server_store")
+
+assert credential_store_module.RuntimeCredential is credential_models.RuntimeCredential
+credential_hints = get_type_hints(
+    credential_store_module.RuntimeCredentialStore.get_internal
+)
+assert credential_hints["return"] is credential_models.RuntimeCredential
+assert server_store_module.McpServerConfig is mcp_models.McpServerConfig
+server_hints = get_type_hints(server_store_module.RuntimeMcpServerStore.get_internal)
+assert server_hints["return"] is mcp_models.McpServerConfig
+
+secret_backend = credential_store_module.PlaintextFileCredentialSecretBackend(
+    probe_root / "credential-secrets.json"
+)
+credential_store = credential_store_module.RuntimeCredentialStore(
+    path=probe_root / "credentials.json",
+    secret_backend=secret_backend,
+)
+credential_public = credential_store.create(
+    credential_models.RuntimeCredentialCreate(
+        category="generation",
+        provider="identity-test",
+        model="identity-model",
+        base_url="https://example.test/v1",
+        protocol="openai_chat_completions",
+        api_key="isolated-test-secret",
+    )
+)
+credential_internal = credential_store.get_internal(
+    credential_public.credential_id
+)
+assert type(credential_public) is credential_models.RuntimeCredentialPublic
+assert type(credential_internal) is credential_models.RuntimeCredential
+
+server_store = server_store_module.RuntimeMcpServerStore(
+    path=probe_root / "servers.json"
+)
+direct_server_public = server_store.create(
+    mcp_models.McpServerConfigCreate(
+        name="Direct identity server",
+        server_slug="direct-identity",
+        transport=mcp_models.McpTransport.STDIO,
+        stdio=mcp_models.McpStdioConfig(
+            command=sys.executable,
+            args=["-c", "pass"],
+            cwd=str(probe_root),
+        ),
+        provenance=mcp_models.McpProvenance.RUNTIME_USER_CONFIRMED,
+    )
+)
+direct_server_internal = server_store.get_internal(direct_server_public.server_id)
+assert type(direct_server_public) is mcp_models.McpServerConfigPublic
+assert type(direct_server_internal) is mcp_models.McpServerConfig
+
+bindings_module = importlib.import_module(f"{prefix}credential_bindings")
+install_models = importlib.import_module(f"{prefix}models.mcp_installation")
+scan_registry_module = importlib.import_module(f"{prefix}mcp_runtime.scan_registry")
+template_module = importlib.import_module(f"{prefix}mcp_runtime.template_installer")
+tool_catalog_module = importlib.import_module(f"{prefix}mcp_runtime.tool_catalog")
+
+package_root = probe_root / "package"
+package_root.mkdir()
+args = ["-c", "pass"]
+candidate_sha = install_models.compute_launch_candidate_sha("python", args, ".")
+candidate = install_models.McpLaunchCandidate(
+    command="python",
+    args=args,
+    cwd=".",
+    confidence=install_models.McpScanConfidence.HIGH,
+    source="literature-mcp.json",
+    sha=candidate_sha,
+)
+scan = install_models.McpPackageScanResult(
+    scan_id=install_models.generate_scan_id(),
+    source_path=str(package_root),
+    package_id="identity-test",
+    display_name="Identity test",
+    confidence=install_models.McpScanConfidence.HIGH,
+    transport="stdio",
+    launch_candidates=[candidate],
+    expires_at=install_models.compute_scan_expiry(),
+)
+registry = scan_registry_module.McpScanRegistry()
+registry.register(scan)
+
+async def unused_list_tools(_config: object) -> list[object]:
+    raise AssertionError("untrusted install must not probe the server")
+
+installer = template_module.McpTemplateInstaller(
+    server_store=server_store,
+    scan_registry=registry,
+    credential_store=credential_store,
+    tool_catalog=tool_catalog_module.McpToolCatalog(unused_list_tools),
+    binding_index=bindings_module.CredentialBindingIndex(),
+    install_root=probe_root / "installs",
+)
+installer._audit_install = lambda **_fields: None
+install_result = asyncio.run(
+    installer.install(
+        scan_id=scan.scan_id,
+        launch_candidate_sha=candidate_sha,
+        server_slug="installed-identity",
+        display_name="Installed identity server",
+        config_values={"LOG_LEVEL": "info"},
+        credential_bindings={
+            "OPENAI_API_KEY": credential_public.credential_id,
+        },
+        trust_to_probe=False,
+    )
+)
+installed_internal = server_store.get_internal(install_result.server.server_id)
+assert install_result.probe.status == "skipped_untrusted"
+assert type(install_result.server) is mcp_models.McpServerConfigPublic
+assert type(installed_internal) is mcp_models.McpServerConfig
+assert installed_internal.stdio is not None
+assert installed_internal.stdio.env_refs == {
+    "OPENAI_API_KEY": credential_public.credential_id,
+}
+"""
+
+    completed = subprocess.run(
+        (
+            sys.executable,
+            "-I",
+            "-c",
+            script,
+            import_mode,
+            str(repo_root),
+            str(probe_root),
+        ),
+        cwd=repo_root,
+        env=_isolated_python_env(probe_root / "subprocess-env"),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr

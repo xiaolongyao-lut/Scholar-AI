@@ -28,28 +28,52 @@ import logging
 import math
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from dynamic_config_schema import (
-    extract_dynamic_config_schema,
-    parse_dynamic_config_schema,
-)
-from extension_secret_policy import is_plaintext_secret_config_field
-from models.mcp_installation import (
-    CONFIG_FIELD_TYPES,
-    CREDENTIAL_KINDS,
-    McpInstallConfigField,
-    McpLaunchCandidate,
-    McpPackageScanRequest,
-    McpPackageScanResult,
-    McpRequiredCredential,
-    McpScanConfidence,
-    McpScanWarning,
-    McpScanWarningLevel,
-    compute_launch_candidate_sha,
-    compute_scan_expiry,
-    generate_scan_id,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.dynamic_config_schema import (
+        extract_dynamic_config_schema,
+        parse_dynamic_config_schema,
+    )
+    from literature_assistant.core.extension_secret_policy import (
+        is_plaintext_secret_config_field,
+    )
+    from literature_assistant.core.models.mcp_installation import (
+        CONFIG_FIELD_TYPES,
+        CREDENTIAL_KINDS,
+        McpInstallConfigField,
+        McpLaunchCandidate,
+        McpPackageScanRequest,
+        McpPackageScanResult,
+        McpRequiredCredential,
+        McpScanConfidence,
+        McpScanWarning,
+        McpScanWarningLevel,
+        compute_launch_candidate_sha,
+        compute_scan_expiry,
+        generate_scan_id,
+    )
+else:
+    from dynamic_config_schema import (
+        extract_dynamic_config_schema,
+        parse_dynamic_config_schema,
+    )
+    from extension_secret_policy import is_plaintext_secret_config_field
+    from models.mcp_installation import (
+        CONFIG_FIELD_TYPES,
+        CREDENTIAL_KINDS,
+        McpInstallConfigField,
+        McpLaunchCandidate,
+        McpPackageScanRequest,
+        McpPackageScanResult,
+        McpRequiredCredential,
+        McpScanConfidence,
+        McpScanWarning,
+        McpScanWarningLevel,
+        compute_launch_candidate_sha,
+        compute_scan_expiry,
+        generate_scan_id,
+    )
 
 
 logger = logging.getLogger("McpPackageScanner")
@@ -118,6 +142,8 @@ class McpPackageScanner:
         if any(w.level == McpScanWarningLevel.BLOCK for w in warnings) and manifest_data is None:
             return self._build_blocked_manual_result(normalized=normalized, warnings=warnings)
         if manifest_data is not None:
+            if manifest_path is None:
+                raise McpPackageScanError("manifest data is missing its source path")
             return self._build_result_from_manifest(
                 normalized=normalized,
                 manifest_path=manifest_path,
@@ -927,7 +953,7 @@ class McpPackageScanner:
     # ------------------------------------------------------------------ utils
 
     def _is_safe_command(self, command: str) -> bool:
-        return command and not any(ch in command for ch in SHELL_METACHARS)
+        return bool(command) and not any(ch in command for ch in SHELL_METACHARS)
 
     def _is_safe_arg(self, value: str) -> bool:
         if not value:
@@ -999,16 +1025,17 @@ class McpPackageScanner:
         signal silently).
         """
         try:
-            import tomllib  # type: ignore[import-not-found]
-        except ImportError:
             try:
-                import tomli as tomllib  # type: ignore[import-not-found]
+                import tomllib  # type: ignore[import-not-found]
             except ImportError:
-                return None
-        try:
-            return tomllib.loads(text)
+                import tomli  # type: ignore[import-not-found]
+
+                parsed = tomli.loads(text)
+            else:
+                parsed = tomllib.loads(text)
         except Exception:
             return None
+        return parsed if isinstance(parsed, dict) else None
 
     def _build_fallback_result(
         self,

@@ -20,30 +20,52 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Awaitable, Callable
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from chat.discussion_history import (
-    delete_discussion_smart_read_session,
-    persist_discussion_result_to_smart_read,
-    set_discussion_smart_read_archived,
-)
-from discussion_orchestrator import (
-    DiscussionCredentialMissingError,
-    DiscussionOrchestratorError,
-    DiscussionUnsupportedStrategyError,
-    run_discussion,
-)
-from model_dispatcher import DispatchCandidate
-from models.discussion import (
-    DiscussionRunConfig,
-    DiscussionRunExportPayload,
-    DiscussionRunHistoryItemPayload,
-    DiscussionRunHistoryPagePayload,
-    DiscussionRunResult,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.chat.discussion_history import (
+        delete_discussion_smart_read_session,
+        persist_discussion_result_to_smart_read,
+        set_discussion_smart_read_archived,
+    )
+    from literature_assistant.core.discussion_orchestrator import (
+        DiscussionCredentialMissingError,
+        DiscussionOrchestratorError,
+        DiscussionUnsupportedStrategyError,
+        run_discussion,
+    )
+    from literature_assistant.core.model_dispatcher import DispatchCandidate
+    from literature_assistant.core.models.discussion import (
+        DiscussionRunConfig,
+        DiscussionRunExportPayload,
+        DiscussionRunHistoryItemPayload,
+        DiscussionRunHistoryPagePayload,
+        DiscussionRunResult,
+    )
+else:
+    from chat.discussion_history import (
+        delete_discussion_smart_read_session,
+        persist_discussion_result_to_smart_read,
+        set_discussion_smart_read_archived,
+    )
+    from discussion_orchestrator import (
+        DiscussionCredentialMissingError,
+        DiscussionOrchestratorError,
+        DiscussionUnsupportedStrategyError,
+        run_discussion,
+    )
+    from model_dispatcher import DispatchCandidate
+    from models.discussion import (
+        DiscussionRunConfig,
+        DiscussionRunExportPayload,
+        DiscussionRunHistoryItemPayload,
+        DiscussionRunHistoryPagePayload,
+        DiscussionRunResult,
+    )
 
 
 logger = logging.getLogger("DiscussionAdvancedRouter")
@@ -57,16 +79,34 @@ def _trim_preview(value: Any, *, limit: int = 220) -> str:
 
 
 def _history_item_from_snapshot(snapshot: dict[str, Any]) -> DiscussionRunHistoryItemPayload:
-    config = snapshot.get("config") if isinstance(snapshot.get("config"), dict) else {}
-    result = snapshot.get("final_result") if isinstance(snapshot.get("final_result"), dict) else {}
-    synthesis = snapshot.get("synthesis") if isinstance(snapshot.get("synthesis"), dict) else None
-    if synthesis is None and isinstance(result.get("synthesis"), dict):
-        synthesis = result.get("synthesis")
-    turns = result.get("turns") if isinstance(result.get("turns"), list) else []
-    agent_configs = config.get("agent_configs") if isinstance(config.get("agent_configs"), list) else []
+    raw_config = snapshot.get("config")
+    config = raw_config if isinstance(raw_config, dict) else {}
+    raw_result = snapshot.get("final_result")
+    result = raw_result if isinstance(raw_result, dict) else {}
+    raw_synthesis = snapshot.get("synthesis")
+    synthesis = raw_synthesis if isinstance(raw_synthesis, dict) else None
+    result_synthesis = result.get("synthesis")
+    if synthesis is None and isinstance(result_synthesis, dict):
+        synthesis = result_synthesis
+    raw_turns = result.get("turns")
+    turns = raw_turns if isinstance(raw_turns, list) else []
+    raw_agent_configs = config.get("agent_configs")
+    agent_configs = raw_agent_configs if isinstance(raw_agent_configs, list) else []
+    raw_state = str(snapshot.get("state") or "pending")
+    state: Literal["pending", "running", "completed", "cancelled", "error"]
+    if raw_state == "running":
+        state = "running"
+    elif raw_state == "completed":
+        state = "completed"
+    elif raw_state == "cancelled":
+        state = "cancelled"
+    elif raw_state == "error":
+        state = "error"
+    else:
+        state = "pending"
     return DiscussionRunHistoryItemPayload(
         run_id=str(snapshot.get("run_id") or ""),
-        state=str(snapshot.get("state") or "pending"),
+        state=state,
         query=_trim_preview(config.get("query") or result.get("query") or ""),
         created_at=float(snapshot.get("created_at") or 0.0),
         updated_at=float(snapshot.get("updated_at") or 0.0),
@@ -116,28 +156,34 @@ def _paginate_history_items(
 
 
 def _snapshot_as_markdown(snapshot: dict[str, Any]) -> str:
-    result = snapshot.get("final_result") if isinstance(snapshot.get("final_result"), dict) else {}
-    config = snapshot.get("config") if isinstance(snapshot.get("config"), dict) else {}
+    raw_result = snapshot.get("final_result")
+    result = raw_result if isinstance(raw_result, dict) else {}
+    raw_config = snapshot.get("config")
+    config = raw_config if isinstance(raw_config, dict) else {}
     query = str(config.get("query") or result.get("query") or "")
     lines = [
         f"# Discussion {snapshot.get('run_id')}\n\n",
         f"- State: {snapshot.get('state')}\n",
         f"- Query: {query}\n\n",
     ]
-    turns = result.get("turns") if isinstance(result.get("turns"), list) else []
+    raw_turns = result.get("turns")
+    turns = raw_turns if isinstance(raw_turns, list) else []
     for turn in turns:
         if not isinstance(turn, dict):
             continue
         lines.append(f"## Turn {int(turn.get('turn_index') or 0) + 1}\n\n")
-        traces = turn.get("agent_traces") if isinstance(turn.get("agent_traces"), list) else []
+        raw_traces = turn.get("agent_traces")
+        traces = raw_traces if isinstance(raw_traces, list) else []
         for trace in traces:
             if not isinstance(trace, dict):
                 continue
             label = trace.get("role_label") or trace.get("agent_id") or "agent"
             answer = trace.get("answer") if isinstance(trace.get("answer"), str) else ""
             lines.append(f"### {label}\n\n{answer}\n\n")
-    synthesis = result.get("synthesis") if isinstance(result.get("synthesis"), dict) else {}
-    text = synthesis.get("text") if isinstance(synthesis.get("text"), str) else ""
+    raw_synthesis = result.get("synthesis")
+    synthesis = raw_synthesis if isinstance(raw_synthesis, dict) else {}
+    raw_text = synthesis.get("text")
+    text = raw_text if isinstance(raw_text, str) else ""
     if text:
         lines.append(f"## Synthesis\n\n{text}\n")
     return "".join(lines)
@@ -245,7 +291,10 @@ async def _default_invoke_agent(candidate: DispatchCandidate, prompt: str) -> st
         )
 
     # Local import keeps router-level imports cheap at startup.
-    from routers.chat_router import ChatRequest, LLMConfig, chat_ask
+    if TYPE_CHECKING:
+        from literature_assistant.core.routers.chat_router import ChatRequest, LLMConfig, chat_ask
+    else:
+        from routers.chat_router import ChatRequest, LLMConfig, chat_ask
 
     llm = LLMConfig(
         provider=candidate.provider,
@@ -289,15 +338,20 @@ def _make_default_invoke_factory() -> InvokeAgentFactory:
                 }
             else:
                 # No llm, no credential_id: use default chat config
-                from model_config_store import chat_store
-                from runtime_env import env_value
+                if TYPE_CHECKING:
+                    from literature_assistant.core.model_config_store import chat_store
+                    from literature_assistant.core.runtime_env import env_value
+                else:
+                    from model_config_store import chat_store
+                    from runtime_env import env_value
                 default_key = chat_store.get_resolved_field("api_key") or env_value("CHAT_API_KEY", "OPENAI_API_KEY_CHAT", "OPENAI_API_KEY", "ARK_API_KEY") or ""
                 endpoint_extras[agent.agent_id] = {
                     "api_key": default_key,
                 }
 
         async def invoke(candidate: DispatchCandidate, prompt: str) -> str:
-            extras = endpoint_extras.get(candidate.agent_id, {})
+            candidate_id = str(candidate.agent_id or "")
+            extras = endpoint_extras.get(candidate_id, {})
             # Merge extras into candidate.metadata for the inner call.
             # DispatchCandidate is frozen, so we reconstruct with merged metadata.
             new_metadata = {**{
@@ -339,13 +393,19 @@ def make_mcp_enabled_invoke_factory(
         base_invoke = base(config)
         overrides = config.mcp_overrides
         # Local import keeps router-level import cost low when MCP is unused.
-        from routers import chat_mcp_integration
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers import chat_mcp_integration
+        else:
+            from routers import chat_mcp_integration
 
         if overrides is None or not chat_mcp_integration.is_mcp_tools_enabled():
             return base_invoke
 
         # J8: Build agent_id -> server_ids mapping based on scope_type
-        from models.discussion import McpScopeType
+        if TYPE_CHECKING:
+            from literature_assistant.core.models.discussion import McpScopeType
+        else:
+            from models.discussion import McpScopeType
         agent_mcp_map: dict[str, list[str]] = {}
         if overrides.per_agent:
             logger.warning(
@@ -380,9 +440,12 @@ def make_mcp_enabled_invoke_factory(
                 )
 
             # J8: Resolve agent-specific MCP server list
-            agent_server_ids = agent_mcp_map.get(candidate.agent_id, [])
+            agent_server_ids = agent_mcp_map.get(str(candidate.agent_id or ""), [])
 
-            from routers.chat_router import ChatRequest, LLMConfig, chat_ask
+            if TYPE_CHECKING:
+                from literature_assistant.core.routers.chat_router import ChatRequest, LLMConfig, chat_ask
+            else:
+                from routers.chat_router import ChatRequest, LLMConfig, chat_ask
 
             llm = LLMConfig(
                 provider=candidate.provider,
@@ -448,7 +511,7 @@ async def post_discussion_run(config: DiscussionRunConfig) -> DiscussionRunResul
     invoke_agent = factory(config)
 
     try:
-        result = await run_discussion(config, invoke_agent=invoke_agent)
+        result: DiscussionRunResult = await run_discussion(config, invoke_agent=invoke_agent)
     except DiscussionUnsupportedStrategyError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except DiscussionCredentialMissingError as exc:
@@ -501,7 +564,10 @@ async def post_discussion_run_stream(config: DiscussionRunConfig) -> StreamingRe
     """
 
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
     except ImportError:
         raise HTTPException(status_code=404, detail="discussion streaming not enabled")
     if not is_enabled("discussion_streaming"):
@@ -509,10 +575,16 @@ async def post_discussion_run_stream(config: DiscussionRunConfig) -> StreamingRe
 
     # B1: pre-register run_id so events flow into the persistence store.
     import uuid as _uuid
-    from discussion_task_store import (
-        get_discussion_task_store,
-        DiscussionTaskStoreFull,
-    )
+    if TYPE_CHECKING:
+        from literature_assistant.core.discussion_task_store import (
+            DiscussionTaskStoreFull,
+            get_discussion_task_store,
+        )
+    else:
+        from discussion_task_store import (
+            DiscussionTaskStoreFull,
+            get_discussion_task_store,
+        )
 
     run_id = f"disc_{_uuid.uuid4().hex[:16]}"
     store = get_discussion_task_store()
@@ -580,7 +652,7 @@ async def post_discussion_run_stream(config: DiscussionRunConfig) -> StreamingRe
 
     task = asyncio.create_task(_run_task())
 
-    async def event_generator():
+    async def event_generator() -> AsyncIterator[str]:
         try:
             while True:
                 event = await queue.get()
@@ -628,7 +700,10 @@ def _schedule_discussion_capture(result: "DiscussionRunResult") -> None:
     """Fire discussion capture off the request path."""
 
     try:
-        from evolution import run_capture_in_background
+        if TYPE_CHECKING:
+            from literature_assistant.core.evolution import run_capture_in_background
+        else:
+            from evolution import run_capture_in_background
     except Exception as exc:  # pragma: no cover - evolution package missing
         logger.debug("evolution package unavailable; discussion capture skipped: %s", exc)
         return
@@ -647,11 +722,18 @@ def _capture_discussion_candidates(result: "DiscussionRunResult") -> None:
     """
 
     try:
-        from evolution import (
-            extract_from_discussion_result,
-            get_evolution_service,
-            is_candidate_capture_enabled,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.evolution import (
+                extract_from_discussion_result,
+                get_evolution_service,
+                is_candidate_capture_enabled,
+            )
+        else:
+            from evolution import (
+                extract_from_discussion_result,
+                get_evolution_service,
+                is_candidate_capture_enabled,
+            )
     except Exception as exc:  # pragma: no cover - evolution package missing
         logger.debug("evolution package unavailable; discussion capture skipped: %s", exc)
         return
@@ -718,7 +800,10 @@ async def list_discussion_history(
     include_archived: bool = Query(False),
 ) -> DiscussionRunHistoryPagePayload:
     """List run-scoped discussion history with pagination."""
-    from discussion_task_store import get_discussion_task_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.discussion_task_store import get_discussion_task_store
+    else:
+        from discussion_task_store import get_discussion_task_store
 
     snapshots = get_discussion_task_store().list_runs(include_archived=include_archived)
     items = [_history_item_from_snapshot(snapshot) for snapshot in snapshots]
@@ -733,7 +818,10 @@ async def list_archived_discussions(
     q: str | None = Query(None, min_length=1, max_length=200),
 ) -> DiscussionRunHistoryPagePayload:
     """List read-only archived discussion runs."""
-    from discussion_task_store import get_discussion_task_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.discussion_task_store import get_discussion_task_store
+    else:
+        from discussion_task_store import get_discussion_task_store
 
     snapshots = get_discussion_task_store().list_archived()
     snapshots.sort(
@@ -756,7 +844,10 @@ async def search_discussion_history(
     archived_only: bool = Query(False),
 ) -> DiscussionRunHistoryPagePayload:
     """Search discussion history and archived run summaries."""
-    from discussion_task_store import get_discussion_task_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.discussion_task_store import get_discussion_task_store
+    else:
+        from discussion_task_store import get_discussion_task_store
 
     store = get_discussion_task_store()
     snapshots = store.list_archived() if archived_only else store.list_runs(include_archived=True)
@@ -775,18 +866,24 @@ async def get_discussion_run(run_id: str) -> dict[str, Any]:
     - 404 → drop any stored ``run_id`` and reset to idle (B1 happy-path on
       first launch / after server restart / after 24h TTL expiry)
     """
-    from discussion_task_store import get_discussion_task_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.discussion_task_store import get_discussion_task_store
+    else:
+        from discussion_task_store import get_discussion_task_store
 
-    snapshot = get_discussion_task_store().get_any(run_id)
-    if snapshot is None:
+    snapshot: object = get_discussion_task_store().get_any(run_id)
+    if not isinstance(snapshot, dict):
         raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
-    return snapshot
+    return dict(snapshot)
 
 
 @router.put("/runs/{run_id}/archive", response_model=DiscussionRunHistoryItemPayload)
 async def archive_discussion_run(run_id: str) -> DiscussionRunHistoryItemPayload:
     """Archive a run so it can be viewed read-only in history."""
-    from discussion_task_store import get_discussion_task_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.discussion_task_store import get_discussion_task_store
+    else:
+        from discussion_task_store import get_discussion_task_store
 
     archived = get_discussion_task_store().archive(run_id)
     if archived is None:
@@ -805,7 +902,13 @@ async def archive_discussion_run(run_id: str) -> DiscussionRunHistoryItemPayload
 @router.put("/runs/{run_id}/restore", response_model=DiscussionRunHistoryItemPayload)
 async def restore_discussion_run(run_id: str) -> DiscussionRunHistoryItemPayload:
     """Restore an archived run to active history."""
-    from discussion_task_store import DiscussionTaskStoreFull, get_discussion_task_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.discussion_task_store import (
+            DiscussionTaskStoreFull,
+            get_discussion_task_store,
+        )
+    else:
+        from discussion_task_store import DiscussionTaskStoreFull, get_discussion_task_store
 
     try:
         restored = get_discussion_task_store().restore(run_id)
@@ -826,7 +929,10 @@ async def export_discussion_run(
     format: str = Query("json", pattern="^(json|markdown)$"),
 ) -> DiscussionRunExportPayload:
     """Export one discussion run as JSON or Markdown text."""
-    from discussion_task_store import get_discussion_task_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.discussion_task_store import get_discussion_task_store
+    else:
+        from discussion_task_store import get_discussion_task_store
 
     store = get_discussion_task_store()
     snapshot = store.get(run_id)
@@ -855,7 +961,10 @@ async def export_discussion_run(
 @router.delete("/runs/{run_id}")
 async def delete_discussion_run(run_id: str) -> dict[str, str]:
     """Delete one run from active history and archive."""
-    from discussion_task_store import get_discussion_task_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.discussion_task_store import get_discussion_task_store
+    else:
+        from discussion_task_store import get_discussion_task_store
 
     removed = get_discussion_task_store().delete(run_id)
     if not removed:
@@ -885,20 +994,26 @@ async def resume_discussion_run_stream(run_id: str) -> StreamingResponse:
     POST /runs/stream endpoint.
     """
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
     except ImportError:
         raise HTTPException(status_code=404, detail="discussion streaming not enabled")
     if not is_enabled("discussion_streaming"):
         raise HTTPException(status_code=404, detail="discussion streaming not enabled")
 
-    from discussion_task_store import get_discussion_task_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.discussion_task_store import get_discussion_task_store
+    else:
+        from discussion_task_store import get_discussion_task_store
 
     store = get_discussion_task_store()
     snapshot = store.get(run_id)
     if snapshot is None:
         raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
 
-    async def event_generator():
+    async def event_generator() -> AsyncIterator[str]:
         last_index = 0
         # Backlog replay loop: drain store's event_log; then if still running,
         # keep polling for new appends.

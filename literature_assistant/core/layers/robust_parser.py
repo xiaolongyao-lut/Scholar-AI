@@ -20,7 +20,10 @@ class RobustJSONParser:
     """
 
     @staticmethod
-    def parse(text: str, fallback: Optional[Dict] = None) -> Union[Dict[str, Any], Any]:
+    def parse(
+        text: str,
+        fallback: Optional[Union[Dict[str, Any], List[Any]]] = None,
+    ) -> object:
         """
         鲁棒解析 JSON 对象。
         
@@ -86,10 +89,11 @@ class RobustJSONParser:
         return result if isinstance(result, list) else fallback
 
     @staticmethod
-    def _try_parse(text: str) -> tuple[bool, Any]:
+    def _try_parse(text: str) -> tuple[bool, object]:
         """尝试进行一次 json.loads"""
         try:
-            return True, json.loads(text)
+            parsed: object = json.loads(text)
+            return True, parsed
         except (json.JSONDecodeError, TypeError):
             return False, None
 

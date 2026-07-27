@@ -352,7 +352,9 @@ export class WritingBackendService {
   }
 
   /**
-   * Delete a project and all its associated resources.
+   * Archive a project while retaining its resources for later restoration.
+   * The deleteProject name is retained for compatibility with the DELETE endpoint;
+   * this operation does not physically remove the project's resources.
    */
   async deleteProject(projectId: string): Promise<void> {
     await this.client.delete(`/api/writing/projects/${projectId}`);

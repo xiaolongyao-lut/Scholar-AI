@@ -5,15 +5,24 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
-from typing import Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
-from chunk_evidence_linter import ChunkEvidenceLintReport
-from chunk_hashing import (
-    CHUNK_HASH_VERSION,
-    ChunkHashTransition,
-    classify_chunk_hash_transition,
-    compute_chunk_hashes,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.chunk_evidence_linter import ChunkEvidenceLintReport
+    from literature_assistant.core.chunk_hashing import (
+        CHUNK_HASH_VERSION,
+        ChunkHashTransition,
+        classify_chunk_hash_transition,
+        compute_chunk_hashes,
+    )
+else:
+    from chunk_evidence_linter import ChunkEvidenceLintReport
+    from chunk_hashing import (
+        CHUNK_HASH_VERSION,
+        ChunkHashTransition,
+        classify_chunk_hash_transition,
+        compute_chunk_hashes,
+    )
 
 
 CHUNK_INDEX_BACKFILL_LEDGER_SCHEMA_VERSION = "scholar-ai-chunk-index-backfill-ledger/v1"

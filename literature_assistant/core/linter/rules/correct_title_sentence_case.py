@@ -17,7 +17,7 @@ from ..sentence_case import keep_original_title, to_sentence_case
 class CorrectTitleSentenceCase(FieldRule):
     """标题 Sentence Case 规则"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-title-sentence-case",
             target_field="title",
@@ -80,7 +80,7 @@ class CorrectTitleSentenceCase(FieldRule):
 class CorrectShortTitleSentenceCase(FieldRule):
     """短标题 Sentence Case 规则"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-short-title-sentence-case",
             target_field="short_title",

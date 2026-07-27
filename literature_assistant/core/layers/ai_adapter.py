@@ -7,15 +7,58 @@ import re
 import time
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
-from llm_cost_logger import log_llm_call
-from llm_defaults import resolve_llm_params
-from llm_pricing import usage_from_response
-from llm.gateway import invoke as invoke_llm_gateway
-from runtime_env import env_value
-from layers.robust_parser import RobustJSONParser
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    Union,
+    runtime_checkable,
+)
+
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.robust_parser import RobustJSONParser
+    from literature_assistant.core.llm.gateway import invoke as invoke_llm_gateway
+    from literature_assistant.core.llm_cost_logger import log_llm_call
+    from literature_assistant.core.llm_defaults import resolve_llm_params
+    from literature_assistant.core.llm_pricing import usage_from_response
+    from literature_assistant.core.runtime_env import env_value
+else:
+    from layers.robust_parser import RobustJSONParser
+    from llm.gateway import invoke as invoke_llm_gateway
+    from llm_cost_logger import log_llm_call
+    from llm_defaults import resolve_llm_params
+    from llm_pricing import usage_from_response
+    from runtime_env import env_value
 
 logger = logging.getLogger("AIAdapter")
+
+
+class _ChatMessage(Protocol):
+    content: str | None
+
+
+class _ChatChoice(Protocol):
+    message: _ChatMessage
+
+
+@runtime_checkable
+class _ChatResponse(Protocol):
+    choices: Sequence[_ChatChoice]
+
+
+def _chat_content(response: _ChatResponse) -> str:
+    """Return non-empty-shape chat content from a provider response."""
+    if not response.choices:
+        raise ValueError("LLM response contains no choices")
+    content = response.choices[0].message.content
+    if not isinstance(content, str):
+        raise ValueError("LLM response content must be text")
+    return content
 
 
 def _hash_text(value: str) -> str:
@@ -25,6 +68,26 @@ def _hash_text(value: str) -> str:
 def _hash_payload(payload: dict[str, Any]) -> str:
     material = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return sha256(material.encode("utf-8")).hexdigest()
+
+
+def _parse_json_object(content: object) -> dict[str, Any]:
+    """Parse an external model response only when it is a JSON object.
+
+    Args:
+        content: Raw response content from an OpenAI-compatible provider.
+
+    Returns:
+        A string-keyed mapping suitable for public adapter results.
+
+    Raises:
+        ValueError: If the provider content is absent or is not a JSON object.
+    """
+    if not isinstance(content, (str, bytes, bytearray)):
+        raise ValueError("model response content must be JSON text")
+    parsed: object = json.loads(content)
+    if not isinstance(parsed, dict):
+        raise ValueError("model response must be a JSON object")
+    return {str(key): value for key, value in parsed.items()}
 
 
 # --- Phase A2: generation key pool integration --------------------------------
@@ -49,7 +112,10 @@ def _resolve_generation_pool() -> Any:
     if os.environ.get("LITERATURE_DISABLE_KEY_POOL") == "1":
         return None
     try:
-        from key_pool import get_pool  # noqa: PLC0415
+        if TYPE_CHECKING:
+            from literature_assistant.core.key_pool import get_pool
+        else:
+            from key_pool import get_pool  # noqa: PLC0415
     except ImportError:
         return None
     try:
@@ -76,13 +142,18 @@ class AIAdapter:
     支持所有提供 OpenAI 兼容 API 接口的模型 (如 OpenAI, DeepSeek, 阿里通义, 智谱等)。
     """
 
-    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, model: str = None):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model: Optional[str] = None,
+    ):
         self.enabled = False
         self.client = None
         self.parser = RobustJSONParser()
         self.llm_status = "disabled_uninitialized"
         self.provider_name = "none"
-        self.model = model or "gpt-4o-mini"
+        self.model: Optional[str] = model or "gpt-4o-mini"
         self.base_url = base_url
         self.api_key = None
 
@@ -167,16 +238,28 @@ class AIAdapter:
 
         self.enabled = False
 
+        if self.api_key and not self.model:
+            self.client = None
+            self.llm_status = "disabled_missing_model"
+            logger.warning("AIAdapter 未启用: 当前提供商缺少有效的模型配置。")
+            return
+
         if self.api_key:
             # Security gate: validate endpoint before creating client
             try:
-                from provider_endpoint_policy import (
-                    TrustSource,
-                    validate_endpoint,
-                )
+                if TYPE_CHECKING:
+                    from literature_assistant.core.provider_endpoint_policy import (
+                        TrustSource,
+                        validate_endpoint,
+                    )
+                else:
+                    from provider_endpoint_policy import (
+                        TrustSource,
+                        validate_endpoint,
+                    )
 
                 decision = validate_endpoint(
-                    self.base_url,
+                    self.base_url or "",
                     trust_source=TrustSource.RUNTIME_USER_CONFIRMED,
                     allow_loopback_http=True,
                 )
@@ -235,10 +318,16 @@ class AIAdapter:
             base_url = getattr(cred, "base_url", None)
             if base_url:
                 try:
-                    from provider_endpoint_policy import (
-                        TrustSource,
-                        validate_endpoint,
-                    )
+                    if TYPE_CHECKING:
+                        from literature_assistant.core.provider_endpoint_policy import (
+                            TrustSource,
+                            validate_endpoint,
+                        )
+                    else:
+                        from provider_endpoint_policy import (
+                            TrustSource,
+                            validate_endpoint,
+                        )
 
                     decision = validate_endpoint(
                         base_url,
@@ -288,10 +377,15 @@ class AIAdapter:
         """
         pool = getattr(self, "_pool", None)
         if pool is None:
-            return self.client.chat.completions.create(**kwargs)
+            client = self.client
+            if client is None:
+                raise RuntimeError("AIAdapter client is unavailable")
+            return client.chat.completions.create(**kwargs)
 
         def _invoke_with_cred(cred: Any) -> Any:
             client = self._build_client_for_cred(cred)
+            if client is None:
+                raise RuntimeError("generation credential client is unavailable")
             cred_kwargs = dict(kwargs)
             if getattr(cred, "model", None):
                 cred_kwargs["model"] = cred.model
@@ -303,18 +397,28 @@ class AIAdapter:
 
         # Default: dispatcher + adapter path
         try:
-            from generation_dispatch_adapter import (  # noqa: PLC0415
-                build_candidates_from_pool,
-                make_pool_invoke_wrapper,
-            )
-            from model_dispatcher import invoke_failover  # noqa: PLC0415
+            if TYPE_CHECKING:
+                from literature_assistant.core.generation_dispatch_adapter import (
+                    build_candidates_from_pool,
+                    make_pool_invoke_wrapper,
+                )
+                from literature_assistant.core.model_dispatcher import invoke_failover
+            else:
+                from generation_dispatch_adapter import (  # noqa: PLC0415
+                    build_candidates_from_pool,
+                    make_pool_invoke_wrapper,
+                )
+                from model_dispatcher import invoke_failover  # noqa: PLC0415
         except ImportError:
             # Defensive fallback: legacy path if adapter import fails
             return pool.try_call(_GENERATION_CATEGORY, _invoke_with_cred)
 
         candidates = build_candidates_from_pool(pool, _GENERATION_CATEGORY)
         if not candidates:
-            return self.client.chat.completions.create(**kwargs)
+            client = self.client
+            if client is None:
+                raise RuntimeError("AIAdapter client is unavailable")
+            return client.chat.completions.create(**kwargs)
 
         # Capture the actual underlying exception object so we can re-raise it
         # with its original class on all-fail (preserves caller ``isinstance``
@@ -357,10 +461,13 @@ class AIAdapter:
         prompt: str,
         *,
         task: str,
-        overrides: dict | None = None,
-        response_format: dict | None = None,
-    ):
+        overrides: dict[str, object] | None = None,
+        response_format: dict[str, object] | None = None,
+    ) -> _ChatResponse:
         """统一 LLM 调用入口：解析 sampling + 埋点。"""
+        model = self.model
+        if not isinstance(model, str) or not model.strip():
+            raise RuntimeError("AIAdapter model is unavailable")
         params = resolve_llm_params(task, user_overrides=overrides)
         sampling_payload: dict[str, Any] = {
             "temperature": params["temperature"],
@@ -370,8 +477,8 @@ class AIAdapter:
         }
         if response_format:
             sampling_payload["response_format"] = response_format
-        kwargs = {
-            "model": self.model,
+        kwargs: dict[str, Any] = {
+            "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": params["temperature"],
             "top_p": params["top_p"],
@@ -384,7 +491,7 @@ class AIAdapter:
             kwargs["response_format"] = response_format
         t0 = time.perf_counter()
         status = "ok"
-        response = None
+        response: _ChatResponse | None = None
         cache_status = "miss"
         decision = "invoke"
         try:
@@ -393,10 +500,10 @@ class AIAdapter:
                 cache_status = next_cache_status
                 decision = next_decision
 
-            response = invoke_llm_gateway(
+            raw_response: object = invoke_llm_gateway(
                 kind="llm",
                 cache_key_parts={
-                    "model": self.model,
+                    "model": model,
                     "prompt_hash": _hash_text(prompt),
                     "sampling_params_hash": _hash_payload(sampling_payload),
                     "task": task,
@@ -406,6 +513,9 @@ class AIAdapter:
                 on_decision=_record_decision,
                 stage="query",
             )
+            if not isinstance(raw_response, _ChatResponse):
+                raise TypeError("LLM gateway response must expose a choices sequence")
+            response = raw_response
             return response
         except Exception:
             status = "error"
@@ -418,7 +528,7 @@ class AIAdapter:
                     "completion_tokens": 0,
                 }
                 log_llm_call(
-                    model=self.model,
+                    model=model,
                     task=task,
                     prompt_tokens=usage["prompt_tokens"],
                     completion_tokens=usage["completion_tokens"],
@@ -464,7 +574,7 @@ class AIAdapter:
                 task="extraction",
                 response_format={"type": "json_object"}
             )
-            content = response.choices[0].message.content
+            content = _chat_content(response)
             # 使用鲁棒的解析器代替 json.loads
             data = self.parser.parse(content, fallback=[])
             
@@ -510,7 +620,7 @@ class AIAdapter:
                 task="extraction",
                 overrides={"temperature": 0.1, "max_tokens": 10},
             )
-            score_str = response.choices[0].message.content.strip()
+            score_str = _chat_content(response).strip()
             # 简单提取出第一个浮点数
             import re
             match = re.search(r'0\.\d+|1\.0', score_str)
@@ -557,7 +667,7 @@ class AIAdapter:
                 task="extraction",
                 response_format={"type": "json_object"}
             )
-            content = response.choices[0].message.content
+            content = _chat_content(response)
             data = self.parser.parse(content, fallback=[])
             if isinstance(data, list):
                 return data
@@ -616,8 +726,8 @@ class AIAdapter:
                 task="extraction",
                 response_format={"type": "json_object"}
             )
-            content = response.choices[0].message.content
-            result = json.loads(content)
+            content = _chat_content(response)
+            result = _parse_json_object(content)
             result["claim"] = claim
             return result
         except Exception as e:
@@ -671,7 +781,7 @@ class AIAdapter:
                 task="extraction",
                 response_format={"type": "json_object"}
             )
-            content = response.choices[0].message.content
+            content = _chat_content(response)
             data = json.loads(content)
             if isinstance(data, list):
                 return data
@@ -726,8 +836,8 @@ class AIAdapter:
                 overrides={"temperature": 0.2},
                 response_format={"type": "json_object"}
             )
-            content = response.choices[0].message.content
-            result = json.loads(content)
+            content = _chat_content(response)
+            result = _parse_json_object(content)
             result["claim"] = claim
             return result
         except Exception as e:
@@ -833,7 +943,7 @@ baseline:
                 task="rewrite",
                 response_format={"type": "json_object"},
             )
-            content = response.choices[0].message.content
+            content = _chat_content(response)
             data = self.parser.parse(content, fallback={})
             if not isinstance(data, dict):
                 return {}

@@ -165,6 +165,25 @@ def _validate_aware_timestamp(value: datetime, field_name: str) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _validation_field_name(info: ValidationInfo) -> str:
+    """Return the field name guaranteed by a field-validator context.
+
+    Args:
+        info: Pydantic validation metadata supplied to a field validator.
+
+    Returns:
+        The concrete model field name for validation error reporting.
+
+    Raises:
+        ValueError: If the validator is invoked without a model-field context.
+    """
+
+    field_name = info.field_name
+    if field_name is None:
+        raise ValueError("field validator requires a model-field context")
+    return field_name
+
+
 class StrictRecord(BaseModel):
     """Base class for immutable, extra-forbidding persisted records."""
 
@@ -412,7 +431,7 @@ class AccessEvidence(StrictRecord):
     @field_validator("evidence_id", "candidate_id")
     @classmethod
     def _ids(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_id(value, info.field_name)
+        return _validate_id(value, _validation_field_name(info))
 
     @field_validator("source_platform")
     @classmethod
@@ -429,7 +448,7 @@ class AccessEvidence(StrictRecord):
     def _text(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
-        normalized = _validate_safe_text(value, info.field_name)
+        normalized = _validate_safe_text(value, _validation_field_name(info))
         return normalized or None
 
     @field_validator("observed_at")
@@ -529,7 +548,7 @@ class CandidateManifest(StrictRecord):
     @field_validator("candidate_id", "run_id", "project_id")
     @classmethod
     def _ids(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_id(value, info.field_name)
+        return _validate_id(value, _validation_field_name(info))
 
     @field_validator("title")
     @classmethod
@@ -599,13 +618,13 @@ class CandidateManifest(StrictRecord):
     def _optional_text(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
-        normalized = _validate_safe_text(value, info.field_name)
+        normalized = _validate_safe_text(value, _validation_field_name(info))
         return normalized or None
 
     @field_validator("created_at", "updated_at")
     @classmethod
     def _timestamps(cls, value: datetime, info: ValidationInfo) -> datetime:
-        return _validate_aware_timestamp(value, info.field_name)
+        return _validate_aware_timestamp(value, _validation_field_name(info))
 
     @model_validator(mode="after")
     def _candidate_shape(self) -> "CandidateManifest":
@@ -676,16 +695,17 @@ class SearchRun(StrictRecord):
     @field_validator("requested_sources", "attempted_sources", mode="before")
     @classmethod
     def _sources(cls, value: object, info: ValidationInfo) -> tuple[str, ...]:
+        field_name = _validation_field_name(info)
         if not isinstance(value, (list, tuple)):
-            raise ValueError(f"{info.field_name} must be a sequence")
-        return tuple(dict.fromkeys(_validate_source_id(str(item), info.field_name) for item in value))
+            raise ValueError(f"{field_name} must be a sequence")
+        return tuple(dict.fromkeys(_validate_source_id(str(item), field_name) for item in value))
 
     @field_validator("created_at", "updated_at", "completed_at")
     @classmethod
     def _timestamps(cls, value: datetime | None, info: ValidationInfo) -> datetime | None:
         if value is None:
             return None
-        return _validate_aware_timestamp(value, info.field_name)
+        return _validate_aware_timestamp(value, _validation_field_name(info))
 
     @model_validator(mode="after")
     def _run_shape(self) -> "SearchRun":
@@ -731,7 +751,7 @@ class IdentityMergeReceipt(StrictRecord):
     )
     @classmethod
     def _ids(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_id(value, info.field_name)
+        return _validate_id(value, _validation_field_name(info))
 
     @field_validator("evidence", mode="before")
     @classmethod
@@ -791,7 +811,7 @@ class CandidateVersionRelation(StrictRecord):
     )
     @classmethod
     def _ids(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_id(value, info.field_name)
+        return _validate_id(value, _validation_field_name(info))
 
     @field_validator("evidence", mode="before")
     @classmethod
@@ -864,7 +884,7 @@ class HumanAccessGate(StrictRecord):
     def _ids(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
-        return _validate_id(value, info.field_name)
+        return _validate_id(value, _validation_field_name(info))
 
     @field_validator("platform")
     @classmethod
@@ -879,9 +899,10 @@ class HumanAccessGate(StrictRecord):
     @field_validator("message", "next_action")
     @classmethod
     def _text(cls, value: str, info: ValidationInfo) -> str:
-        normalized = _validate_safe_text(value, info.field_name)
+        field_name = _validation_field_name(info)
+        normalized = _validate_safe_text(value, field_name)
         if not normalized:
-            raise ValueError(f"{info.field_name} must be non-empty")
+            raise ValueError(f"{field_name} must be non-empty")
         return normalized
 
     @field_validator("created_at", "updated_at", "resolved_at")
@@ -889,7 +910,7 @@ class HumanAccessGate(StrictRecord):
     def _times(cls, value: datetime | None, info: ValidationInfo) -> datetime | None:
         if value is None:
             return None
-        return _validate_aware_timestamp(value, info.field_name)
+        return _validate_aware_timestamp(value, _validation_field_name(info))
 
     @model_validator(mode="after")
     def _gate_shape(self) -> "HumanAccessGate":
@@ -938,7 +959,7 @@ class DownloadJob(StrictRecord):
     def _ids(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
-        return _validate_id(value, info.field_name)
+        return _validate_id(value, _validation_field_name(info))
 
     @field_validator("source_platform")
     @classmethod
@@ -975,7 +996,7 @@ class DownloadJob(StrictRecord):
     def _times(cls, value: datetime | None, info: ValidationInfo) -> datetime | None:
         if value is None:
             return None
-        return _validate_aware_timestamp(value, info.field_name)
+        return _validate_aware_timestamp(value, _validation_field_name(info))
 
     @model_validator(mode="after")
     def _job_shape(self) -> "DownloadJob":
@@ -1018,7 +1039,7 @@ class AcquisitionAttempt(StrictRecord):
     def _ids(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
-        return _validate_id(value, info.field_name)
+        return _validate_id(value, _validation_field_name(info))
 
     @field_validator("source_id")
     @classmethod
@@ -1037,13 +1058,13 @@ class AcquisitionAttempt(StrictRecord):
     def _safe_text(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
-        normalized = _validate_safe_text(value, info.field_name)
+        normalized = _validate_safe_text(value, _validation_field_name(info))
         return normalized or None
 
     @field_validator("started_at", "finished_at")
     @classmethod
     def _times(cls, value: datetime, info: ValidationInfo) -> datetime:
-        return _validate_aware_timestamp(value, info.field_name)
+        return _validate_aware_timestamp(value, _validation_field_name(info))
 
     @model_validator(mode="after")
     def _attempt_shape(self) -> "AcquisitionAttempt":
@@ -1079,14 +1100,15 @@ class PdfValidationProvenance(StrictRecord):
     @field_validator("validator_id", "parser_id")
     @classmethod
     def _component_ids(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_source_id(value, info.field_name)
+        return _validate_source_id(value, _validation_field_name(info))
 
     @field_validator("validator_version", "parser_version")
     @classmethod
     def _versions(cls, value: str, info: ValidationInfo) -> str:
-        normalized = _validate_safe_text(value, info.field_name)
+        field_name = _validation_field_name(info)
+        normalized = _validate_safe_text(value, field_name)
         if not normalized:
-            raise ValueError(f"{info.field_name} must be non-empty")
+            raise ValueError(f"{field_name} must be non-empty")
         return normalized
 
     @field_validator("checks")
@@ -1132,7 +1154,7 @@ class ArtifactPromotionProof(StrictRecord):
     @field_validator("proof_id", "artifact_id", "job_id", "attempt_id", "project_id", "candidate_id")
     @classmethod
     def _ids(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_id(value, info.field_name)
+        return _validate_id(value, _validation_field_name(info))
 
     @field_validator("source_platform")
     @classmethod
@@ -1142,7 +1164,7 @@ class ArtifactPromotionProof(StrictRecord):
     @field_validator("source_url", "final_url")
     @classmethod
     def _urls(cls, value: str, info: ValidationInfo) -> str:
-        return sanitize_public_https_url(value, field_name=info.field_name)
+        return sanitize_public_https_url(value, field_name=_validation_field_name(info))
 
     @field_validator("relative_path")
     @classmethod
@@ -1165,7 +1187,7 @@ class ArtifactPromotionProof(StrictRecord):
     def _promotion_times(cls, value: datetime | None, info: ValidationInfo) -> datetime | None:
         if value is None:
             return None
-        return _validate_aware_timestamp(value, info.field_name)
+        return _validate_aware_timestamp(value, _validation_field_name(info))
 
     @model_validator(mode="after")
     def _proof_shape(self) -> "ArtifactPromotionProof":
@@ -1203,7 +1225,7 @@ class ValidatedArtifact(StrictRecord):
     @field_validator("artifact_id", "job_id", "project_id", "candidate_id")
     @classmethod
     def _ids(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_id(value, info.field_name)
+        return _validate_id(value, _validation_field_name(info))
 
     @field_validator("relative_path")
     @classmethod
@@ -1262,7 +1284,7 @@ class ImportPublicationEvidence(StrictRecord):
     @field_validator("project_id", "material_id", "revision_receipt_id")
     @classmethod
     def _ids(cls, value: str, info: ValidationInfo) -> str:
-        return _validate_id(value, info.field_name)
+        return _validate_id(value, _validation_field_name(info))
 
     @field_validator(
         "source_fingerprint",
@@ -1276,7 +1298,7 @@ class ImportPublicationEvidence(StrictRecord):
     def _prefixed_sha256(cls, value: str, info: ValidationInfo) -> str:
         normalized = str(value or "").strip().lower()
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", normalized):
-            raise ValueError(f"{info.field_name} must use sha256:<64 lowercase hex>")
+            raise ValueError(f"{_validation_field_name(info)} must use sha256:<64 lowercase hex>")
         return normalized
 
     @field_validator("chunk_store_version", "fts_chunk_store_version")
@@ -1284,21 +1306,22 @@ class ImportPublicationEvidence(StrictRecord):
     def _plain_sha256(cls, value: str, info: ValidationInfo) -> str:
         normalized = str(value or "").strip().lower()
         if not _SHA256_RE.fullmatch(normalized):
-            raise ValueError(f"{info.field_name} must contain 64 lowercase hex characters")
+            raise ValueError(f"{_validation_field_name(info)} must contain 64 lowercase hex characters")
         return normalized
 
     @field_validator("chunk_hash_version", "fts_schema_version")
     @classmethod
     def _contract_versions(cls, value: str, info: ValidationInfo) -> str:
-        normalized = _validate_safe_text(value, info.field_name)
+        field_name = _validation_field_name(info)
+        normalized = _validate_safe_text(value, field_name)
         if not normalized:
-            raise ValueError(f"{info.field_name} must be non-empty")
+            raise ValueError(f"{field_name} must be non-empty")
         return normalized
 
     @field_validator("revision_applied_at", "verified_at")
     @classmethod
     def _times(cls, value: datetime, info: ValidationInfo) -> datetime:
-        return _validate_aware_timestamp(value, info.field_name)
+        return _validate_aware_timestamp(value, _validation_field_name(info))
 
     @field_validator("evidence_fingerprint")
     @classmethod
@@ -1367,7 +1390,7 @@ class ImportReceipt(StrictRecord):
     def _ids(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
-        return _validate_id(value, info.field_name)
+        return _validate_id(value, _validation_field_name(info))
 
     @field_validator("source_fingerprint")
     @classmethod
@@ -1396,7 +1419,7 @@ class ImportReceipt(StrictRecord):
     @field_validator("created_at", "updated_at")
     @classmethod
     def _times(cls, value: datetime, info: ValidationInfo) -> datetime:
-        return _validate_aware_timestamp(value, info.field_name)
+        return _validate_aware_timestamp(value, _validation_field_name(info))
 
     @model_validator(mode="after")
     def _receipt_shape(self) -> "ImportReceipt":

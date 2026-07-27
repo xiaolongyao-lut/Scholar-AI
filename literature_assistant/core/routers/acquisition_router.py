@@ -3,34 +3,59 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from acquisition.models import (
-    CandidateVersionRelation,
-    DownloadJob,
-    DownloadJobStatus,
-    GateStatus,
-    HumanAccessGate,
-    IdentityMergeReceipt,
-    ImportReceipt,
-    SearchQuery,
-    SearchRun,
-    SourcePolicy,
-    ValidatedArtifact,
-)
-from acquisition.service import (
-    AcquisitionConflictError,
-    AcquisitionNotFoundError,
-    AcquisitionPolicyError,
-    AcquisitionServiceError,
-    LiteratureAcquisitionService,
-    build_default_acquisition_service,
-)
-from acquisition.store import AcquisitionStoreError
-from acquisition.validator import DEFAULT_MAX_PDF_BYTES
+if TYPE_CHECKING:
+    from literature_assistant.core.acquisition.models import (
+        CandidateVersionRelation,
+        DownloadJob,
+        DownloadJobStatus,
+        GateStatus,
+        HumanAccessGate,
+        IdentityMergeReceipt,
+        ImportReceipt,
+        SearchQuery,
+        SearchRun,
+        SourcePolicy,
+        ValidatedArtifact,
+    )
+    from literature_assistant.core.acquisition.service import (
+        AcquisitionConflictError,
+        AcquisitionNotFoundError,
+        AcquisitionPolicyError,
+        AcquisitionServiceError,
+        LiteratureAcquisitionService,
+        build_default_acquisition_service,
+    )
+    from literature_assistant.core.acquisition.store import AcquisitionStoreError
+    from literature_assistant.core.acquisition.validator import DEFAULT_MAX_PDF_BYTES
+else:
+    from acquisition.models import (
+        CandidateVersionRelation,
+        DownloadJob,
+        DownloadJobStatus,
+        GateStatus,
+        HumanAccessGate,
+        IdentityMergeReceipt,
+        ImportReceipt,
+        SearchQuery,
+        SearchRun,
+        SourcePolicy,
+        ValidatedArtifact,
+    )
+    from acquisition.service import (
+        AcquisitionConflictError,
+        AcquisitionNotFoundError,
+        AcquisitionPolicyError,
+        AcquisitionServiceError,
+        LiteratureAcquisitionService,
+        build_default_acquisition_service,
+    )
+    from acquisition.store import AcquisitionStoreError
+    from acquisition.validator import DEFAULT_MAX_PDF_BYTES
 
 
 router = APIRouter(prefix="/api/acquisition", tags=["Literature Acquisition"])

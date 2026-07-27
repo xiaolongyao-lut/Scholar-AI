@@ -8,12 +8,15 @@ styles are read-only.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from csl_style_store import CslValidationError, csl_style_store
+if TYPE_CHECKING:
+    from literature_assistant.core.csl_style_store import CslValidationError, csl_style_store
+else:
+    from csl_style_store import CslValidationError, csl_style_store
 
 router = APIRouter(prefix="/api/csl-styles", tags=["Citation Styles"])
 

@@ -13,7 +13,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,9 @@ class ConversationManager:
     支持：工��区绑定 (FR-2)、追加式事件日志 (FR-1)、恢复重放 (FR-3)
     """
 
-    def __init__(self, storage_root: str | Path = None):
+    def __init__(self, storage_root: str | Path | None = None) -> None:
+        self.workspace_root: Path
+        self.modular_root: Path
         if storage_root is None:
             # 采用隐藏目录存储，实现工作区动态绑定
             self.workspace_root = get_workspace_root()
@@ -60,7 +62,7 @@ class ConversationManager:
         self.log_event(session_id, "session_created", {"title": title})
         return session_id
 
-    def log_event(self, session_id: str, kind: str, payload: Dict[str, Any]):
+    def log_event(self, session_id: str, kind: str, payload: dict[str, Any]) -> None:
         """记录追加式结构化事件 (FR-7.2)"""
         transcript_file = self.transcripts_dir / f"{session_id}.jsonl"
 
@@ -82,7 +84,12 @@ class ConversationManager:
 
         self._update_index(session_id, action="active")
 
-    def _update_index(self, session_id: str, action: str, extra: Dict = None):
+    def _update_index(
+        self,
+        session_id: str,
+        action: str,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
         """维护全局轻量级索引文件 (FR-7.3)"""
         index = {}
         if self.index_file.exists():
@@ -108,7 +115,7 @@ class ConversationManager:
         tmp_idx.write_text(json.dumps(index, indent=2, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp_idx, self.index_file)
 
-    def resume_session(self, session_id: str) -> List[Dict[str, Any]]:
+    def resume_session(self, session_id: str) -> list[dict[str, Any]]:
         """从持久化记录重构历史状态 (FR-3.5)"""
         transcript_file = self.transcripts_dir / f"{session_id}.jsonl"
         if not transcript_file.exists():
@@ -124,5 +131,5 @@ class ConversationManager:
 
         return events
 
-def get_conv_manager(**kwargs) -> ConversationManager:
+def get_conv_manager(**kwargs: Any) -> ConversationManager:
     return ConversationManager(**kwargs)

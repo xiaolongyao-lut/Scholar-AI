@@ -60,7 +60,7 @@ class DiscussionSession(BaseModel):
 class ConversationBus:
     """Message bus for multi-agent discussion."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._sessions: dict[str, DiscussionSession] = {}
 
     def create_session(

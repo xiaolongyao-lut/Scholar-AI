@@ -13,10 +13,14 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import TYPE_CHECKING, Literal, Protocol, Sequence, TypeGuard
 
-from models import PdfBboxUnit, coerce_pdf_bbox, pdf_bbox_matches_unit
-from project_paths import project_data_path
+if TYPE_CHECKING:
+    from literature_assistant.core.models import PdfBboxUnit, coerce_pdf_bbox, pdf_bbox_matches_unit
+    from literature_assistant.core.project_paths import project_data_path
+else:
+    from models import PdfBboxUnit, coerce_pdf_bbox, pdf_bbox_matches_unit
+    from project_paths import project_data_path
 
 
 PdfSelectionCropMime = Literal["image/png", "image/jpeg"]
@@ -24,6 +28,198 @@ PdfSelectionCropMime = Literal["image/png", "image/jpeg"]
 _CROP_CACHE_VERSION = "scholar-ai-pdf-selection-crop/v1"
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _JPEG_SIGNATURE = b"\xff\xd8\xff"
+
+
+class _PdfRect(Protocol):
+    """Rectangle capabilities consumed by crop geometry calculations."""
+
+    @property
+    def x0(self) -> float: ...
+
+    @property
+    def y0(self) -> float: ...
+
+    @property
+    def width(self) -> float: ...
+
+    @property
+    def height(self) -> float: ...
+
+    @property
+    def is_empty(self) -> bool: ...
+
+    def __and__(self, other: _PdfRect) -> _PdfRect: ...
+
+
+class _PdfPixmap(Protocol):
+    """Pixmap capabilities used for bounded image encoding."""
+
+    @property
+    def width(self) -> int: ...
+
+    @property
+    def height(self) -> int: ...
+
+    def tobytes(
+        self,
+        output: str,
+        *,
+        jpg_quality: int = ...,
+    ) -> object: ...
+
+
+class _PdfPage(Protocol):
+    """Page capabilities used by visual selection replay."""
+
+    @property
+    def rect(self) -> object: ...
+
+    def get_pixmap(
+        self,
+        *,
+        matrix: object,
+        colorspace: object,
+        alpha: bool,
+        clip: object,
+        annots: bool,
+    ) -> object: ...
+
+
+class _CloseableDocument(Protocol):
+    """Minimum resource capability required after opening a PDF."""
+
+    def close(self) -> None: ...
+
+
+class _PdfPageSequence(Protocol):
+    """Page sequence consumed by crop rendering."""
+
+    def __len__(self) -> int: ...
+
+    def __getitem__(self, index: int) -> object: ...
+
+
+class _PdfDocument(_CloseableDocument, _PdfPageSequence, Protocol):
+    """Context-managed page sequence returned by PyMuPDF."""
+
+    def __enter__(self) -> _PdfPageSequence: ...
+
+    def __exit__(
+        self,
+        exc_type: object,
+        exc_value: object,
+        traceback: object,
+    ) -> bool | None: ...
+
+
+def _is_pdf_rect(value: object) -> TypeGuard[_PdfRect]:
+    """Validate the numeric rectangle surface before geometry arithmetic."""
+
+    coordinates = (
+        getattr(value, "x0", None),
+        getattr(value, "y0", None),
+        getattr(value, "width", None),
+        getattr(value, "height", None),
+    )
+    return (
+        all(
+            isinstance(coordinate, (int, float))
+            and not isinstance(coordinate, bool)
+            for coordinate in coordinates
+        )
+        and isinstance(getattr(value, "is_empty", None), bool)
+        and callable(getattr(value, "__and__", None))
+    )
+
+
+def _is_pdf_pixmap(value: object) -> TypeGuard[_PdfPixmap]:
+    """Validate the encoded-pixmap surface returned by a page."""
+
+    width = getattr(value, "width", None)
+    height = getattr(value, "height", None)
+    return (
+        isinstance(width, int)
+        and not isinstance(width, bool)
+        and isinstance(height, int)
+        and not isinstance(height, bool)
+        and callable(getattr(value, "tobytes", None))
+    )
+
+
+def _is_pdf_page(value: object) -> TypeGuard[_PdfPage]:
+    """Validate the page surface required for crop rendering."""
+
+    return getattr(value, "rect", None) is not None and callable(
+        getattr(value, "get_pixmap", None)
+    )
+
+
+def _is_pdf_page_sequence(value: object) -> TypeGuard[_PdfPageSequence]:
+    """Validate page access independently from resource ownership."""
+
+    return callable(getattr(value, "__len__", None)) and callable(
+        getattr(value, "__getitem__", None)
+    )
+
+
+def _is_closeable_document(value: object) -> TypeGuard[_CloseableDocument]:
+    """Narrow an opened value before validating context/page behavior."""
+
+    return callable(getattr(value, "close", None))
+
+
+def _is_pdf_document(value: object) -> TypeGuard[_PdfDocument]:
+    """Validate the context-managed page sequence used by the open path."""
+
+    return all(
+        callable(getattr(value, method_name, None))
+        for method_name in (
+            "close",
+            "__len__",
+            "__getitem__",
+            "__enter__",
+            "__exit__",
+        )
+    )
+
+
+def _call_runtime_method(
+    target: object,
+    method_name: str,
+    *args: object,
+    **kwargs: object,
+) -> object:
+    """Call a checked method on PyMuPDF's partially typed runtime surface."""
+
+    method = getattr(target, method_name, None)
+    if not callable(method):
+        raise TypeError(f"PyMuPDF object must expose callable {method_name}")
+    result: object = method(*args, **kwargs)
+    return result
+
+
+def _new_pymupdf_rect(module: object, *args: object) -> _PdfRect:
+    """Create and validate one native PyMuPDF rectangle."""
+
+    rect = _call_runtime_method(module, "Rect", *args)
+    if not _is_pdf_rect(rect):
+        raise TypeError("PyMuPDF Rect() returned an incompatible rectangle")
+    return rect
+
+
+def _new_pymupdf_matrix(module: object, *args: object) -> object:
+    """Create an opaque matrix that is passed directly back to PyMuPDF."""
+
+    return _call_runtime_method(module, "Matrix", *args)
+
+
+def _open_pymupdf_document(module: object, source_path: str) -> _CloseableDocument:
+    """Open a document and first establish its minimum release capability."""
+
+    document = _call_runtime_method(module, "open", source_path)
+    if not _is_closeable_document(document):
+        raise TypeError("PyMuPDF open() must return a closeable document")
+    return document
 
 
 class PdfSelectionCropError(ValueError):
@@ -79,7 +275,12 @@ def _normalized_spec(spec: PdfSelectionCropSpec) -> PdfSelectionCropSpec:
             "invalid_bbox",
             "bbox must be a positive normalized_ratio rectangle inside the page",
         )
-    canonical = tuple(round(float(value), 6) for value in bbox)
+    canonical = (
+        round(float(bbox[0]), 6),
+        round(float(bbox[1]), 6),
+        round(float(bbox[2]), 6),
+        round(float(bbox[3]), 6),
+    )
     if not pdf_bbox_matches_unit(list(canonical), PdfBboxUnit.NORMALIZED_RATIO):
         raise PdfSelectionCropError("invalid_bbox", "bbox is too small after normalization")
     return PdfSelectionCropSpec(page=spec.page, bbox=canonical)
@@ -217,46 +418,65 @@ def _render_crop(
     except ImportError as exc:  # pragma: no cover - required project dependency.
         raise PdfSelectionCropError("renderer_unavailable", "PyMuPDF is unavailable") from exc
 
+    if not _is_pdf_page_sequence(document):
+        raise PdfSelectionCropError(
+            "invalid_document",
+            "PDF document handle is invalid",
+        )
     try:
-        page_count = len(document)  # type: ignore[arg-type]
+        page_count = len(document)
     except (TypeError, AttributeError) as exc:
         raise PdfSelectionCropError("invalid_document", "PDF document handle is invalid") from exc
     if spec.page > page_count:
         raise PdfSelectionCropError("page_out_of_range", "selection page is outside the PDF")
 
     try:
-        page = document[spec.page - 1]  # type: ignore[index]
-        page_rect = pymupdf.Rect(page.rect)
+        page_value = document[spec.page - 1]
+        if not _is_pdf_page(page_value):
+            raise TypeError("PyMuPDF document returned an incompatible page")
+        page = page_value
+        page_rect = _new_pymupdf_rect(pymupdf, page.rect)
         if page_rect.width <= 0 or page_rect.height <= 0:
             raise PdfSelectionCropError("invalid_page_geometry", "PDF page geometry is invalid")
         x, y, width, height = spec.bbox
-        clip = pymupdf.Rect(
+        clip = _new_pymupdf_rect(
+            pymupdf,
             page_rect.x0 + x * page_rect.width,
             page_rect.y0 + y * page_rect.height,
             page_rect.x0 + (x + width) * page_rect.width,
             page_rect.y0 + (y + height) * page_rect.height,
         )
-        clip &= page_rect
+        clip = clip & page_rect
         if clip.is_empty or clip.width <= 0 or clip.height <= 0:
             raise PdfSelectionCropError("empty_crop", "selection crop is empty")
         scale = min(2.0, max_edge / max(float(clip.width), float(clip.height)))
         if not math.isfinite(scale) or scale <= 0:
             raise PdfSelectionCropError("invalid_scale", "selection crop scale is invalid")
-        pixmap = page.get_pixmap(
-            matrix=pymupdf.Matrix(scale, scale),
-            colorspace=pymupdf.csRGB,
+        colorspace = getattr(pymupdf, "csRGB", None)
+        if colorspace is None:
+            raise TypeError("PyMuPDF csRGB colorspace is unavailable")
+        pixmap_value = page.get_pixmap(
+            matrix=_new_pymupdf_matrix(pymupdf, scale, scale),
+            colorspace=colorspace,
             alpha=False,
             clip=clip,
             annots=False,
         )
+        if not _is_pdf_pixmap(pixmap_value):
+            raise TypeError("PyMuPDF Page.get_pixmap() returned an incompatible pixmap")
+        pixmap = pixmap_value
         if pixmap.width < 1 or pixmap.height < 1:
             raise PdfSelectionCropError("empty_crop", "selection crop has no pixels")
         if max(pixmap.width, pixmap.height) > max_edge + 1:
             raise PdfSelectionCropError("render_bounds", "selection crop exceeded the pixel bound")
         data = pixmap.tobytes("png")
+        if not isinstance(data, bytes):
+            raise TypeError("PyMuPDF Pixmap.tobytes() must return bytes")
         mime: PdfSelectionCropMime = "image/png"
         if len(data) > max_bytes:
             data = pixmap.tobytes("jpeg", jpg_quality=90)
+            if not isinstance(data, bytes):
+                raise TypeError("PyMuPDF Pixmap.tobytes() must return bytes")
             mime = "image/jpeg"
     except PdfSelectionCropError:
         raise
@@ -354,33 +574,46 @@ def derive_pdf_selection_crops(
         raise PdfSelectionCropError("renderer_unavailable", "PyMuPDF is unavailable") from exc
 
     try:
-        with pymupdf.open(str(resolved_source)) as document:
-            for index, (spec, key) in enumerate(zip(normalized_specs, keys, strict=True)):
-                if results[index] is not None:
-                    continue
-                # A duplicate selection earlier in this batch may have populated
-                # the deterministic cache file after the initial cache scan.
-                cached = _read_cached_crop(cache_root, key, max_bytes=max_bytes)
-                if cached is not None:
-                    results[index] = cached
-                    continue
-                data, mime = _render_crop(
-                    document,
-                    spec,
-                    max_edge=max_edge,
-                    max_bytes=max_bytes,
+        opened_document = _open_pymupdf_document(pymupdf, str(resolved_source))
+        context_entered = False
+        try:
+            if not _is_pdf_document(opened_document):
+                raise TypeError(
+                    "PyMuPDF open() must return a context-managed page sequence"
                 )
-                suffix = ".png" if mime == "image/png" else ".jpg"
-                cache_path = cache_root / f"{key}{suffix}"
-                _atomic_write_bytes(cache_path, data)
-                results[index] = PdfSelectionCrop(
-                    data=data,
-                    mime=mime,
-                    size=len(data),
-                    cache_key=key,
-                    content_sha256=hashlib.sha256(data).hexdigest(),
-                    cache_hit=False,
-                )
+            with opened_document as document:
+                context_entered = True
+                for index, (spec, key) in enumerate(
+                    zip(normalized_specs, keys, strict=True)
+                ):
+                    if results[index] is not None:
+                        continue
+                    # A duplicate selection earlier in this batch may have populated
+                    # the deterministic cache file after the initial cache scan.
+                    cached = _read_cached_crop(cache_root, key, max_bytes=max_bytes)
+                    if cached is not None:
+                        results[index] = cached
+                        continue
+                    data, mime = _render_crop(
+                        document,
+                        spec,
+                        max_edge=max_edge,
+                        max_bytes=max_bytes,
+                    )
+                    suffix = ".png" if mime == "image/png" else ".jpg"
+                    cache_path = cache_root / f"{key}{suffix}"
+                    _atomic_write_bytes(cache_path, data)
+                    results[index] = PdfSelectionCrop(
+                        data=data,
+                        mime=mime,
+                        size=len(data),
+                        cache_key=key,
+                        content_sha256=hashlib.sha256(data).hexdigest(),
+                        cache_hit=False,
+                    )
+        finally:
+            if not context_entered:
+                opened_document.close()
     except PdfSelectionCropError:
         raise
     except (OSError, RuntimeError, TypeError, ValueError) as exc:

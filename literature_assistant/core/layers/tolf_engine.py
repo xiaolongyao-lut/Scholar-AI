@@ -55,6 +55,16 @@ RepresentativeReranker = Callable[[str, List["FishResult"]], List["FishResult"]]
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_一-鿿]+", re.UNICODE)
 
 
+def _coerce_page_number(value: object, *, default: int) -> int:
+    """Convert JSON-compatible page values while rejecting opaque objects."""
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        return default
+    try:
+        return int(value)
+    except (OverflowError, TypeError, ValueError):
+        return default
+
+
 # ============================================================
 # 数据结构
 # ============================================================
@@ -460,12 +470,8 @@ class SpreadingActivationEngine:
             edge_reason = "table_neighbor"
             source_field = "chunk_type+table_csv+embedding"
         elif left_material and left_material == right_material:
-            try:
-                left_page = int(left.get("page"))
-                right_page = int(right.get("page"))
-            except (TypeError, ValueError):
-                left_page = -1
-                right_page = -10
+            left_page = _coerce_page_number(left.get("page"), default=-1)
+            right_page = _coerce_page_number(right.get("page"), default=-10)
             if abs(left_page - right_page) <= 1 and left_page > 0 and right_page > 0:
                 edge_type = "citation_context"
                 edge_reason = "same_material_nearby_page"
@@ -582,7 +588,7 @@ class SpreadingActivationEngine:
             {node_id: [(neighbor_id, normalized_weight), ...]}
         """
         c = self.config.normalization_param  # 0.4
-        adj = {}
+        adj: Dict[str, List[Tuple[str, float]]] = {}
 
         for node in G.nodes():
             adj[node] = []
@@ -705,10 +711,7 @@ class EvidenceGate:
     def _locator_quality(chunk: Dict[str, Any]) -> float:
         """Return a bounded locator score so unlocatable chunks cannot dominate."""
         score = 0.0
-        try:
-            page = int(chunk.get("page"))
-        except (TypeError, ValueError):
-            page = 0
+        page = _coerce_page_number(chunk.get("page"), default=0)
         if page > 0:
             score += 0.45
         bbox = chunk.get("bbox")

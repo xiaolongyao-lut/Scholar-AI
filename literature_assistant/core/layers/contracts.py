@@ -69,14 +69,15 @@ def make_bound_contract(bound: dict[str, Any]) -> dict[str, Any]:
 
 
 def is_bound_contract_ready(bound: dict[str, Any]) -> bool:
-    required_keys = [
+    required_keys = (
         "chunks",
         "figures",
         "tables",
         "references",
         "relation_edges",
         "evidence_clusters",
-    ]
+    )
+    return all(key in bound for key in required_keys)
 
 import re
 from collections import defaultdict
@@ -118,8 +119,8 @@ def bind_evidence(extract: dict[str, Any]) -> dict[str, Any]:
     
     figure_by_num = {int(f['figure_number']): f for f in figures if 'figure_number' in f}
 
-    edges = []
-    seen = set()
+    edges: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str, str]] = set()
 
     # 1. 显式提及 (Explicit Mention)
     for chunk in chunks:

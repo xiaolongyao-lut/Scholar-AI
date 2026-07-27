@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -32,7 +33,7 @@ def get_cost_profile() -> str:
 
 
 @contextmanager
-def use_cost_profile(profile: str | None):
+def use_cost_profile(profile: str | None) -> Iterator[None]:
     token = _REQUEST_COST_PROFILE.set(normalize_cost_profile(profile))
     try:
         yield

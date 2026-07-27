@@ -164,7 +164,13 @@ def _build_cached(
             label=title,
             type="paper",
             status="trusted",
-            provenance_refs=[EvidenceGraphProvenanceRef(material_id=material_id)],
+            provenance_refs=[
+                EvidenceGraphProvenanceRef(
+                    material_id=material_id,
+                    bbox=None,
+                    bbox_unit=None,
+                )
+            ],
             metadata={
                 "project_id": project_id,
                 "title_en": title_en,
@@ -187,7 +193,11 @@ def _build_cached(
                 candidates.append((score, right_index))
         candidates.sort(key=lambda item: (-item[0], records[item[1]][0]))
         for score, right_index in candidates[:top_k]:
-            pair = tuple(sorted((left_index, right_index)))
+            pair = (
+                (left_index, right_index)
+                if left_index < right_index
+                else (right_index, left_index)
+            )
             selected_pairs[pair] = max(score, selected_pairs.get(pair, 0.0))
 
     ranked_pairs = sorted(

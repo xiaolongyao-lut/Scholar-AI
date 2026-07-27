@@ -3,8 +3,15 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from layers.v_layer_volume_bundle import build_volume_bundle, dump_volume_bundle
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.v_layer_volume_bundle import (
+        build_volume_bundle,
+        dump_volume_bundle,
+    )
+else:
+    from layers.v_layer_volume_bundle import build_volume_bundle, dump_volume_bundle
 
 
 def main() -> None:

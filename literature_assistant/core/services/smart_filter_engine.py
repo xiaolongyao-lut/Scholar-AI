@@ -9,9 +9,12 @@ import re
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from services.abstract_extractor import extract_abstract
+if TYPE_CHECKING:
+    from literature_assistant.core.services.abstract_extractor import extract_abstract
+else:
+    from services.abstract_extractor import extract_abstract
 
 
 EmbedTextsFn = Callable[[list[str]], Awaitable[list[list[float]]] | list[list[float]]]

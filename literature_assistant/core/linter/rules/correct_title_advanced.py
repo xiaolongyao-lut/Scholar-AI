@@ -7,7 +7,7 @@ from literature_assistant.core.linter.rule_base import FieldRule, ApplyContext, 
 class NoTitleCapitalization(FieldRule):
     """禁止全大写标题"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="no-title-capitalization",
             target_field="title",
@@ -40,7 +40,7 @@ class NoTitleCapitalization(FieldRule):
 class CorrectTitlePunctuation(FieldRule):
     """修复标题标点"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-title-punctuation",
             target_field="title",

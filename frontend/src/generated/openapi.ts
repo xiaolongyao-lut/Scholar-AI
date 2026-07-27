@@ -6027,7 +6027,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel Pipeline Task
-         * @description Mark a queued/running pipeline task as cancelled and stop its async wrapper.
+         * @description Cancel queued work immediately or request cancellation of active work.
          */
         post: operations["post_pipeline_task_task_id_cancel"];
         delete?: never;
@@ -13216,8 +13216,13 @@ export interface components {
         CreateFigureAssetRequest: {
             /** Asset Path */
             asset_path: string;
-            /** Bbox */
+            /**
+             * Bbox
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
+             */
             bbox?: number[] | null;
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Caption */
             caption: string;
             /** Format */
@@ -15575,8 +15580,13 @@ export interface components {
              * @description Path to extracted image/table file
              */
             asset_path: string;
-            /** Bbox */
+            /**
+             * Bbox
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
+             */
             bbox?: number[] | null;
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Caption */
             caption: string;
             /** Created At */
@@ -19439,8 +19449,12 @@ export interface components {
             asset_id: string;
             /** Asset Path */
             asset_path: string;
-            /** Bbox */
+            /**
+             * Bbox
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
+             */
             bbox?: number[] | null;
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
             bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Caption */
             caption: string;
@@ -22737,8 +22751,13 @@ export interface components {
         UpdateFigureAssetRequest: {
             /** Asset Path */
             asset_path?: string | null;
-            /** Bbox */
+            /**
+             * Bbox
+             * @description Four-number PDF region interpreted only by its explicit bbox_unit.
+             */
             bbox?: number[] | null;
+            /** @description Explicit coordinate unit for bbox; missing or unknown units remove the bbox. */
+            bbox_unit?: components["schemas"]["PdfBboxUnit"] | null;
             /** Caption */
             caption?: string | null;
             /** Format */
@@ -25551,7 +25570,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -26437,7 +26458,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -26472,7 +26495,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -26507,7 +26532,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -26538,7 +26565,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -26604,7 +26633,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -26639,7 +26670,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -26674,7 +26707,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -26746,7 +26781,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -26778,7 +26815,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -29934,9 +29973,9 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Filter by project */
-                project_id?: string;
+                project_id?: string | null;
                 /** @description Filter by material */
-                material_id?: string;
+                material_id?: string | null;
                 /** @description Filter by source labels */
                 source_labels?: string[];
                 page?: number;
@@ -35355,7 +35394,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
         };
@@ -35929,7 +35970,7 @@ export interface operations {
             content: {
                 "application/json": {
                     [key: string]: unknown;
-                };
+                } | null;
             };
         };
         responses: {
@@ -35966,7 +36007,7 @@ export interface operations {
             content: {
                 "application/json": {
                     [key: string]: unknown;
-                };
+                } | null;
             };
         };
         responses: {
@@ -36218,7 +36259,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

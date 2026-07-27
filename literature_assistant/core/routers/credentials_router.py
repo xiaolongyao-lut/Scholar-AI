@@ -25,25 +25,43 @@ import logging
 import threading
 import time
 from collections import deque
-from typing import Any, Deque
+from typing import TYPE_CHECKING, Any, Deque
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from pydantic import TypeAdapter
 
-from credential_store import (
-    CredentialNotFoundError,
-    CredentialSchemaError,
-    RuntimeCredentialStore,
-)
-from models.credentials import (
-    CredentialCategory,
-    CredentialProtocol,
-    CredentialStrategyHint,
-    RuntimeCredentialCreate,
-    RuntimeCredentialPublic,
-    RuntimeCredentialUpdate,
-    normalize_strategy_hint,
-)
-from provider_endpoint_policy import TrustSource, validate_endpoint
+if TYPE_CHECKING:
+    from literature_assistant.core.credential_store import (
+        CredentialNotFoundError,
+        CredentialSchemaError,
+        RuntimeCredentialStore,
+    )
+    from literature_assistant.core.models.credentials import (
+        CredentialCategory,
+        CredentialProtocol,
+        CredentialStrategyHint,
+        RuntimeCredentialCreate,
+        RuntimeCredentialPublic,
+        RuntimeCredentialUpdate,
+        normalize_strategy_hint,
+    )
+    from literature_assistant.core.provider_endpoint_policy import TrustSource, validate_endpoint
+else:
+    from credential_store import (
+        CredentialNotFoundError,
+        CredentialSchemaError,
+        RuntimeCredentialStore,
+    )
+    from models.credentials import (
+        CredentialCategory,
+        CredentialProtocol,
+        CredentialStrategyHint,
+        RuntimeCredentialCreate,
+        RuntimeCredentialPublic,
+        RuntimeCredentialUpdate,
+        normalize_strategy_hint,
+    )
+    from provider_endpoint_policy import TrustSource, validate_endpoint
 
 logger = logging.getLogger("CredentialsRouter")
 router = APIRouter(prefix="/api/credentials", tags=["Credentials"])
@@ -51,6 +69,7 @@ _TEST_RATE_LIMIT_WINDOW_SECONDS = 60.0
 _TEST_RATE_LIMIT_MAX_CALLS = 5
 _TEST_RATE_LIMIT_LOCK = threading.Lock()
 _TEST_RATE_LIMIT_BUCKETS: dict[str, Deque[float]] = {}
+_PUBLIC_CREDENTIAL_LIST_ADAPTER = TypeAdapter(list[RuntimeCredentialPublic])
 
 
 # Module-level store singleton, reset-able for tests.
@@ -128,7 +147,14 @@ async def list_credentials(
     enabled.
     """
     try:
-        return store.list_public(category=category, enabled_only=enabled_only)
+        raw_credentials: object = store.list_public(
+            category=category,
+            enabled_only=enabled_only,
+        )
+        return _PUBLIC_CREDENTIAL_LIST_ADAPTER.validate_python(
+            raw_credentials,
+            from_attributes=True,
+        )
     except CredentialSchemaError as exc:
         raise HTTPException(status_code=500, detail=f"credential store schema error: {exc}") from exc
 
@@ -185,7 +211,15 @@ async def delete_credential(
 
 def _mask_decision(decision: Any) -> dict[str, Any]:
     """Return PolicyDecision.as_log_dict() with sensitive values omitted."""
-    return decision.as_log_dict()
+    raw_decision: object = decision.as_log_dict()
+    if not isinstance(raw_decision, dict):
+        raise TypeError("PolicyDecision.as_log_dict() must return a mapping")
+    masked: dict[str, Any] = {}
+    for key, value in raw_decision.items():
+        if not isinstance(key, str):
+            raise TypeError("PolicyDecision.as_log_dict() keys must be strings")
+        masked[key] = value
+    return masked
 
 
 
@@ -197,14 +231,24 @@ def _mask_decision(decision: Any) -> dict[str, Any]:
 # they used to. New callers should import from `provider_probe` directly.
 # ---------------------------------------------------------------------------
 
-from provider_probe import (
-    _build_auth_headers as _build_auth_header,
-    _chat_probe_payload as _build_chat_probe_payload,
-    _chat_probe_url as _chat_completions_probe_url,
-    _extract_provider_error_message,
-    _redact_secrets,
-    probe_endpoint_reachability as _probe_endpoint_reachability,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.provider_probe import (
+        _build_auth_headers as _build_auth_header,
+        _chat_probe_payload as _build_chat_probe_payload,
+        _chat_probe_url as _chat_completions_probe_url,
+        _extract_provider_error_message,
+        _redact_secrets,
+        probe_endpoint_reachability as _probe_endpoint_reachability,
+    )
+else:
+    from provider_probe import (
+        _build_auth_headers as _build_auth_header,
+        _chat_probe_payload as _build_chat_probe_payload,
+        _chat_probe_url as _chat_completions_probe_url,
+        _extract_provider_error_message,
+        _redact_secrets,
+        probe_endpoint_reachability as _probe_endpoint_reachability,
+    )
 
 
 def _probe_https_endpoint(
@@ -303,25 +347,6 @@ def _probe_ocr_endpoint_config(
 
 
 
-def _build_auth_header(api_key: str, protocol: str) -> dict[str, str]:
-    """Map protocol to provider auth header shape.
-
-    Callers run endpoint trust checks before constructing these headers.
-    """
-    proto = (protocol or "").lower()
-    if proto == CredentialProtocol.ANTHROPIC_MESSAGES.value:
-        return {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
-    if proto in {
-        CredentialProtocol.OPENAI_CHAT_COMPLETIONS.value,
-        CredentialProtocol.OPENAI_RESPONSES.value,
-        CredentialProtocol.EMBEDDINGS.value,
-        CredentialProtocol.RERANK.value,
-    }:
-        return {"Authorization": f"Bearer {api_key}"}
-    # Unknown protocol: still use Bearer (most providers accept it).
-    return {"Authorization": f"Bearer {api_key}"}
-
-
 # ---------------------------------------------------------------------------
 # Credential sampling by category and strategy hint
 # ---------------------------------------------------------------------------
@@ -364,7 +389,7 @@ async def sample_credential(
     # Try exact strategy_hint match first (normalize both sides for legacy compatibility)
     exact_matches = [
         c for c in candidates
-        if normalize_strategy_hint(c.strategy_hint) == normalized_hint
+        if normalize_strategy_hint(c.strategy_hint.value) == normalized_hint
     ]
     if exact_matches:
         # Sort by priority (lower number = higher priority), then by created_at (newer first)

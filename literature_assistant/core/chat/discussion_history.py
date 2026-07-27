@@ -7,19 +7,29 @@ from datetime import datetime, timezone
 from pathlib import Path
 import re
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from project_paths import runtime_state_path
+if TYPE_CHECKING:
+    from literature_assistant.core.models.discussion import (
+        DiscussionAgentConfig,
+        DiscussionAgentTrace,
+        DiscussionEvidencePackPayload,
+        DiscussionRunConfig,
+        DiscussionRunResult,
+    )
+    from literature_assistant.core.project_paths import runtime_state_path
+else:
+    from models.discussion import (
+        DiscussionAgentConfig,
+        DiscussionAgentTrace,
+        DiscussionEvidencePackPayload,
+        DiscussionRunConfig,
+        DiscussionRunResult,
+    )
+    from project_paths import runtime_state_path
 
 from .history_store import ChatHistoryStore, default_chat_history_db_path
 from .pipeline import load_session_store, save_session_store
-from models.discussion import (
-    DiscussionAgentConfig,
-    DiscussionAgentTrace,
-    DiscussionEvidencePackPayload,
-    DiscussionRunConfig,
-    DiscussionRunResult,
-)
 
 
 SMART_READ_DISCUSSION_MODE = "literature_qa"
@@ -48,7 +58,7 @@ def _trace_label(trace: DiscussionAgentTrace) -> str:
     role = trace.role.strip() if isinstance(trace.role, str) else ""
     if role:
         return role
-    return trace.agent_id
+    return str(trace.agent_id)
 
 
 def _agent_config_by_id(config: DiscussionRunConfig | None) -> dict[str, DiscussionAgentConfig]:
@@ -104,8 +114,8 @@ def _evidence_refs_by_id(
 def _refs_for_ids(
     evidence_by_id: Mapping[str, Mapping[str, object]],
     evidence_ids: Sequence[str],
-) -> list[dict[str, object]]:
-    refs: list[dict[str, object]] = []
+) -> list[Mapping[str, Any]]:
+    refs: list[Mapping[str, Any]] = []
     seen: set[str] = set()
     for evidence_id in evidence_ids:
         normalized = str(evidence_id or "").strip()
@@ -123,8 +133,8 @@ def _fallback_refs(
     evidence_by_id: Mapping[str, Mapping[str, object]],
     *,
     limit: int = 8,
-) -> list[dict[str, object]]:
-    refs: list[dict[str, object]] = []
+) -> list[Mapping[str, Any]]:
+    refs: list[Mapping[str, Any]] = []
     for evidence_id in sorted(evidence_by_id.keys(), key=lambda item: int(item[1:]) if item[1:].isdigit() else 10_000):
         refs.append(dict(evidence_by_id[evidence_id]))
         if len(refs) >= limit:
@@ -152,7 +162,7 @@ def _message_for_trace(
     *,
     result: DiscussionRunResult,
     turn_index: int,
-    evidence_refs: list[dict[str, object]],
+    evidence_refs: Sequence[Mapping[str, Any]],
     timestamp: str,
 ) -> dict[str, object]:
     label = _trace_label(trace)
@@ -163,7 +173,7 @@ def _message_for_trace(
         "content": f"### {label} · 第 {turn_index + 1} 轮\n\n{trace.answer}{status}".strip(),
         "timestamp": timestamp,
         "tokens_used": {},
-        "evidence_refs": evidence_refs,
+        "evidence_refs": list(evidence_refs),
         "discussion": _agent_metadata(trace, turn_index=turn_index, result=result),
     }
 
@@ -349,10 +359,11 @@ def _persist_history_store(
                 },
             )
 
-    parent_node_id: str | None = f"{run_id}_query"
+    query_node_id = f"{run_id}_query"
+    parent_node_id: str | None = query_node_id
     store.append_node(
         conversation_id=run_id,
-        node_id=parent_node_id,
+        node_id=query_node_id,
         role="user",
         node_type="message",
         created_at=now_iso,
@@ -505,9 +516,10 @@ def persist_discussion_result_to_smart_read(
             archived=True,
             archived_at=str(session.get("archived_at") or "").strip() or None,
         )
+    session_messages = session.get("messages")
     return {
         "session_id": result.run_id,
-        "message_count": len(session.get("messages", [])) if isinstance(session.get("messages"), list) else 0,
+        "message_count": len(session_messages) if isinstance(session_messages, list) else 0,
         "node_count": node_count,
     }
 
@@ -661,7 +673,10 @@ def mirror_completed_discussion_runs_to_smart_read(
 ) -> dict[str, int]:
     """Mirror completed runs from the process-wide discussion task store."""
 
-    from discussion_task_store import get_discussion_task_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.discussion_task_store import get_discussion_task_store
+    else:
+        from discussion_task_store import get_discussion_task_store
 
     snapshots = get_discussion_task_store().list_runs(include_archived=True)
     return mirror_discussion_snapshots_to_smart_read(

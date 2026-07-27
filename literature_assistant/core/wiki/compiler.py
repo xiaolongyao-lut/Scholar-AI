@@ -19,6 +19,22 @@ from literature_assistant.core.wiki.source_registry import WikiRegistry
 from literature_assistant.core.prompts.identity_renderer import render_identity_header  # 2026-05-18 identity injection plan
 
 
+def _chunk_text(chunk: Mapping[str, object], index: int) -> str:
+    """Return one registry chunk's validated text value."""
+
+    text = chunk.get("text")
+    if not isinstance(text, str):
+        raise TypeError(f"chunks[{index}].text must be a string")
+    return text
+
+
+def _join_chunk_text(chunks: list[dict[str, object]]) -> str:
+    """Join non-empty registry chunk text after validating stored values."""
+
+    texts = (_chunk_text(chunk, index) for index, chunk in enumerate(chunks))
+    return "\n\n".join(text for text in texts if text)
+
+
 def _load_prompt_template(name: str) -> str:
     """Load a prompt template from the prompt_templates directory.
 
@@ -220,11 +236,11 @@ class WikiCompiler:
             "## Chunks",
             "",
         ]
-        for chunk in chunks[:10]:
+        for index, chunk in enumerate(chunks[:10]):
             body_lines.append(f"### Chunk {chunk['chunk_index']}")
             if chunk.get("page"):
                 body_lines.append(f"**Page:** {chunk['page']}")
-            text_preview = chunk["text"][:200]
+            text_preview = _chunk_text(chunk, index)[:200]
             body_lines.append(f"\n{text_preview}...\n")
         body = "\n".join(body_lines)
         if dry_run:
@@ -330,7 +346,7 @@ class WikiCompiler:
                 CompileResult(0, 0, 1, [budget_check.reason], budget_checks=[budget_check], cost_estimate=cost_estimate),
                 {"source_id": source_id, "dry_run": dry_run},
             )
-        source_text = "\n\n".join(chunk["text"] for chunk in chunks if chunk.get("text"))
+        source_text = _join_chunk_text(chunks)
         if not source_text.strip():
             return self._observe_compile_result(
                 "wiki.compiler.paper_llm",
@@ -344,10 +360,16 @@ class WikiCompiler:
             prompt = f"{_identity}\n\n{prompt}"
         llm_response = self.llm_gateway.generate(LLMRequest(prompt=prompt))
         parsed, parse_error = validate_json_response(llm_response.text)
-        if parse_error:
+        if parse_error or parsed is None:
             return self._observe_compile_result(
                 "wiki.compiler.paper_llm",
-                CompileResult(0, 0, 1, [f"LLM JSON parse error: {parse_error}"], cost_estimate=cost_estimate),
+                CompileResult(
+                    0,
+                    0,
+                    1,
+                    [f"LLM JSON parse error: {parse_error or 'response object missing'}"],
+                    cost_estimate=cost_estimate,
+                ),
                 {"source_id": source_id, "dry_run": dry_run},
             )
         slug = stable_slug(source.title)
@@ -421,7 +443,7 @@ class WikiCompiler:
                 {"source_id": source_id, "dry_run": dry_run},
             )
         chunks = self.registry.get_chunks_by_source(source_id)
-        source_text = "\n\n".join(chunk["text"] for chunk in chunks if chunk.get("text"))
+        source_text = _join_chunk_text(chunks)
         if not source_text.strip():
             return self._observe_compile_result(
                 "wiki.compiler.concepts_llm",
@@ -435,10 +457,10 @@ class WikiCompiler:
             prompt = f"{_identity}\n\n{prompt}"
         llm_response = self.llm_gateway.generate(LLMRequest(prompt=prompt))
         parsed, parse_error = validate_json_response(llm_response.text)
-        if parse_error:
+        if parse_error or parsed is None:
             return self._observe_compile_result(
                 "wiki.compiler.concepts_llm",
-                CompileResult(0, 0, 1, [f"LLM JSON parse error: {parse_error}"]),
+                CompileResult(0, 0, 1, [f"LLM JSON parse error: {parse_error or 'response object missing'}"]),
                 {"source_id": source_id, "dry_run": dry_run},
             )
         concepts = parsed.get("concepts", [])
@@ -502,7 +524,7 @@ class WikiCompiler:
                 {"source_id": source_id, "dry_run": dry_run},
             )
         chunks = self.registry.get_chunks_by_source(source_id)
-        source_text = "\n\n".join(chunk["text"] for chunk in chunks if chunk.get("text"))
+        source_text = _join_chunk_text(chunks)
         if not source_text.strip():
             return self._observe_compile_result(
                 "wiki.compiler.claims_llm",
@@ -516,10 +538,10 @@ class WikiCompiler:
             prompt = f"{_identity}\n\n{prompt}"
         llm_response = self.llm_gateway.generate(LLMRequest(prompt=prompt))
         parsed, parse_error = validate_json_response(llm_response.text)
-        if parse_error:
+        if parse_error or parsed is None:
             return self._observe_compile_result(
                 "wiki.compiler.claims_llm",
-                CompileResult(0, 0, 1, [f"LLM JSON parse error: {parse_error}"]),
+                CompileResult(0, 0, 1, [f"LLM JSON parse error: {parse_error or 'response object missing'}"]),
                 {"source_id": source_id, "dry_run": dry_run},
             )
         claims = parsed.get("claims", [])
@@ -540,7 +562,7 @@ class WikiCompiler:
             relative_path = Path(f"claims/{slug}.md")
             frontmatter = {
                 "id": f"claim-{slug}",
-                "kind": WikiPageKind.claim.value,
+                "kind": "claim",
                 "title": claim_text[:120],
                 "status": WikiPageStatus.draft.value,
                 "confidence": claim.get("confidence", "medium"),
@@ -595,8 +617,13 @@ class WikiCompiler:
             prompt = f"{_identity}\n\n{prompt}"
         llm_response = self.llm_gateway.generate(LLMRequest(prompt=prompt))
         parsed, parse_error = validate_json_response(llm_response.text)
-        if parse_error:
-            return CompileResult(0, 0, 1, [f"LLM JSON parse error: {parse_error}"])
+        if parse_error or parsed is None:
+            return CompileResult(
+                0,
+                0,
+                1,
+                [f"LLM JSON parse error: {parse_error or 'response object missing'}"],
+            )
         answer = parsed.get("answer", "")
         if not answer:
             return CompileResult(0, 0, 1, ["No answer in LLM response"])

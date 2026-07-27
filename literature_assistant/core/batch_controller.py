@@ -8,9 +8,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from layers.v_layer_volume_bundle import build_volume_bundle, dump_volume_bundle
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.v_layer_volume_bundle import (
+        build_volume_bundle,
+        dump_volume_bundle,
+    )
+else:
+    from layers.v_layer_volume_bundle import build_volume_bundle, dump_volume_bundle
 
 ProgressCallback = Callable[[float, str], None]
 
@@ -100,7 +106,8 @@ class BatchProcessController:
                 continue
             volume_id = f"V{volume_index:02d}"
             volume_dir = output_dir / f"volume_{volume_id}"
-            bundle = build_volume_bundle(chunk, volume_id=volume_id)
+            volume_inputs: list[str | Path] = list(chunk)
+            bundle = build_volume_bundle(volume_inputs, volume_id=volume_id)
             dump_volume_bundle(bundle, volume_dir / f"volume_bundle_{volume_id}.json")
             volumes_created += 1
             self._emit_progress(

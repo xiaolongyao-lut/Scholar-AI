@@ -31,8 +31,12 @@ Pure functions; no side effects; no LLM calls; deterministic.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
-from models.discussion import DiscussionTurnTrace
+if TYPE_CHECKING:
+    from literature_assistant.core.models.discussion import DiscussionTurnTrace
+else:
+    from models.discussion import DiscussionTurnTrace
 
 
 def turn_cited_set(turn: DiscussionTurnTrace) -> frozenset[str]:

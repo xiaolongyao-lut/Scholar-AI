@@ -72,6 +72,26 @@ class LatestHandoffRuntime:
         return _tool_stub
 
 
+class WorkflowProbeRuntime(LatestHandoffRuntime):
+    """Runtime double that records forbidden workflow probe dispatches."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.ocr_probe_calls = 0
+
+    def ocr_execution_probe(self, **_kwargs: Any) -> dict[str, Any]:
+        """Record an OCR execution request without calling a backend."""
+
+        self.ocr_probe_calls += 1
+        return {
+            "is_error": False,
+            "error_code": None,
+            "message": None,
+            "data": {"executed": True},
+            "truncated": False,
+        }
+
+
 def test_find_repo_root_accepts_public_source_tree_anchor(tmp_path: Path, monkeypatch) -> None:
     """Public clones do not include local-only AI workspace guides."""
 
@@ -388,6 +408,75 @@ def test_server_full_profile_hides_experimental_tools_without_opt_in(monkeypatch
     assert not EXPERIMENTAL_MCP_TOOL_NAMES.intersection(tool_names)
     assert "literature.outline_generate" in tool_names
     assert "workflow.run_json_workflow" in tool_names
+
+
+def test_server_workflow_cannot_dispatch_hidden_experimental_tools(monkeypatch) -> None:
+    """The experimental opt-in must gate indirect JSON workflow dispatch too."""
+
+    monkeypatch.delenv(EXPERIMENTAL_TOOLS_ENV, raising=False)
+    runtime = WorkflowProbeRuntime()
+    server = create_mcp_server(runtime_tools=runtime, tool_profile="full")
+
+    result = asyncio.run(
+        server.call_tool(
+            "workflow.run_json_workflow",
+            {
+                "workflow": {
+                    "id": "hidden-ocr-probe",
+                    "steps": [
+                        {
+                            "id": "probe",
+                            "tool": "literature.ocr_execution_probe",
+                            "args": {
+                                "confirm_execution": True,
+                                "image_base64": "aW1hZ2U=",
+                            },
+                        }
+                    ],
+                }
+            },
+        )
+    )
+
+    assert runtime.ocr_probe_calls == 0
+    assert isinstance(result, tuple)
+    structured_result = result[1]
+    assert structured_result["is_error"] is True
+    assert structured_result["error_code"] == "workflow_tool_not_allowed"
+
+
+def test_server_workflow_dispatches_experimental_tools_after_opt_in(monkeypatch) -> None:
+    """The same workflow tool remains available after explicit opt-in."""
+
+    monkeypatch.setenv(EXPERIMENTAL_TOOLS_ENV, "1")
+    runtime = WorkflowProbeRuntime()
+    server = create_mcp_server(runtime_tools=runtime, tool_profile="full")
+
+    result = asyncio.run(
+        server.call_tool(
+            "workflow.run_json_workflow",
+            {
+                "workflow": {
+                    "id": "enabled-ocr-probe",
+                    "steps": [
+                        {
+                            "id": "probe",
+                            "tool": "literature.ocr_execution_probe",
+                            "args": {
+                                "confirm_execution": True,
+                                "image_base64": "aW1hZ2U=",
+                            },
+                        }
+                    ],
+                }
+            },
+        )
+    )
+
+    assert runtime.ocr_probe_calls == 1
+    assert isinstance(result, tuple)
+    structured_result = result[1]
+    assert structured_result["is_error"] is False
 
 
 def test_server_registers_acquisition_tools_only_in_full_profile(monkeypatch) -> None:

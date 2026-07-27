@@ -385,19 +385,22 @@ def _generate_note_id(existing_ids: set[str]) -> str:
 # ---------------------------------------------------------------------------
 
 @router.get("/{material_id}")
-async def get_annotations(material_id: str):
+async def get_annotations(material_id: str) -> dict[str, object]:
     return _annotation_response_payload(_read_annotation_data(material_id))
 
 
 @router.post("/{material_id}")
-async def add_highlight(material_id: str, req: AddHighlightRequest):
+async def add_highlight(material_id: str, req: AddHighlightRequest) -> dict[str, object]:
     data = _read_annotation_data(material_id)
     data["highlights"] = list(data["highlights"]) + [_dump_highlight_for_storage(req.highlight)]
     return _annotation_response_payload(_persist(material_id, data))
 
 
 @router.put("/{material_id}")
-async def replace_highlights(material_id: str, req: ReplaceHighlightsRequest):
+async def replace_highlights(
+    material_id: str,
+    req: ReplaceHighlightsRequest,
+) -> dict[str, object]:
     """Replace the full highlight list. Preserves notes + last_page."""
     data = _read_annotation_data(material_id)
     data["highlights"] = [_dump_highlight_for_storage(h) for h in req.highlights]
@@ -405,7 +408,7 @@ async def replace_highlights(material_id: str, req: ReplaceHighlightsRequest):
 
 
 @router.delete("/{material_id}")
-async def clear_annotations(material_id: str):
+async def clear_annotations(material_id: str) -> dict[str, object]:
     """L1 contract: full reset. Removes notes + last_page too — destructive
     by design, matches the "scrap this material's annotations" intent.
     """
@@ -423,7 +426,7 @@ NOTES_PER_MATERIAL_LIMIT = 200
 
 
 @router.post("/{material_id}/notes")
-async def add_note(material_id: str, req: AddNoteRequest):
+async def add_note(material_id: str, req: AddNoteRequest) -> dict[str, object]:
     data = _read_annotation_data(material_id)
     notes = list(data["notes"])
     if len(notes) >= NOTES_PER_MATERIAL_LIMIT:
@@ -454,7 +457,11 @@ async def add_note(material_id: str, req: AddNoteRequest):
 
 
 @router.put("/{material_id}/notes/{note_id}")
-async def update_note(material_id: str, note_id: str, req: UpdateNoteRequest):
+async def update_note(
+    material_id: str,
+    note_id: str,
+    req: UpdateNoteRequest,
+) -> dict[str, object]:
     data = _read_annotation_data(material_id)
     notes = list(data["notes"])
     for i, raw in enumerate(notes):
@@ -611,7 +618,7 @@ async def list_eligible_notes(
 
 
 @router.delete("/{material_id}/notes/{note_id}")
-async def delete_note(material_id: str, note_id: str):
+async def delete_note(material_id: str, note_id: str) -> dict[str, object]:
     data = _read_annotation_data(material_id)
     notes = list(data["notes"])
     new_notes = [n for n in notes if not (isinstance(n, dict) and str(n.get("note_id")) == note_id)]
@@ -631,7 +638,7 @@ async def delete_note(material_id: str, note_id: str):
 # ---------------------------------------------------------------------------
 
 @router.put("/{material_id}/last-page")
-async def set_last_page(material_id: str, req: LastPageRequest):
+async def set_last_page(material_id: str, req: LastPageRequest) -> dict[str, object]:
     """Update read-progress. PUT shape — pair with the POST alias below
     for `navigator.sendBeacon()` clients (Beacon only sends POST).
     """
@@ -639,7 +646,10 @@ async def set_last_page(material_id: str, req: LastPageRequest):
 
 
 @router.post("/{material_id}/last-page")
-async def set_last_page_post(material_id: str, req: LastPageRequest):
+async def set_last_page_post(
+    material_id: str,
+    req: LastPageRequest,
+) -> dict[str, object]:
     """POST alias of PUT /last-page so frontend can use
     `navigator.sendBeacon()` for unload flush. Per amendment §0.1: Beacon
     only supports POST. Identical semantics to the PUT endpoint.
@@ -699,8 +709,9 @@ def _render_markdown(material_id: str, data: dict[str, Any]) -> str:
         lines.append("")
         by_page: dict[int, list[dict[str, Any]]] = {}
         for h in highlights:
-            page = h.get("page") if isinstance(h.get("page"), int) else 0
-            by_page.setdefault(int(page), []).append(h)
+            raw_page = h.get("page")
+            page = raw_page if isinstance(raw_page, int) else 0
+            by_page.setdefault(page, []).append(h)
         for page in sorted(by_page.keys()):
             lines.append(f"### Page {page}")
             lines.append("")
@@ -714,10 +725,11 @@ def _render_markdown(material_id: str, data: dict[str, Any]) -> str:
         lines.append("## Notes")
         lines.append("")
         for n in notes:
-            page = n.get("page") if isinstance(n.get("page"), int) else 0
+            raw_note_page = n.get("page")
+            note_page = raw_note_page if isinstance(raw_note_page, int) else 0
             anchor = _escape_markdown(str(n.get("anchor_text") or "")).strip()
             heading_tail = anchor if anchor else "页面笔记"
-            lines.append(f"### Page {page} — {heading_tail}")
+            lines.append(f"### Page {note_page} — {heading_tail}")
             lines.append("")
             body = _escape_markdown(str(n.get("body") or "")).strip()
             if body:

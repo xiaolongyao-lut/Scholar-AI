@@ -22,7 +22,7 @@ def normalize_doi(doi: str) -> str:
 class NoDOIPrefix(FieldRule):
     """去除 DOI 的 URL 前缀"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="no-doi-prefix",
             target_field="doi",
@@ -60,7 +60,7 @@ class NoDOIPrefix(FieldRule):
 class ValidateDOIFormat(FieldRule):
     """验证 DOI 格式是否规范"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="validate-doi-format",
             target_field="doi",

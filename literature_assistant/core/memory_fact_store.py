@@ -15,14 +15,20 @@ This module:
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
-from datetime_utils import utc_now
-from harness_canonical_events import CanonicalEvent
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now
+    from literature_assistant.core.harness_canonical_events import CanonicalEvent
+else:
+    from datetime_utils import utc_now
+    from harness_canonical_events import CanonicalEvent
 
 
 class FactNamespace(Enum):
@@ -64,6 +70,43 @@ class TemporalFact:
                 (self.valid_to is None or timestamp < self.valid_to))
 
 
+def _event_timestamp(event: CanonicalEvent) -> datetime:
+    """Parse the canonical event's required timezone-aware ISO timestamp."""
+
+    raw_timestamp = event.timestamp
+    if not isinstance(raw_timestamp, str) or not raw_timestamp.strip():
+        raise ValueError("canonical event timestamp must be non-empty ISO text")
+    try:
+        parsed = datetime.fromisoformat(raw_timestamp.strip().replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("canonical event timestamp must be valid ISO text") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("canonical event timestamp must include a timezone")
+    return parsed
+
+
+def _event_fact_id(
+    prefix: str,
+    event: CanonicalEvent,
+    *,
+    subject: object,
+    predicate: str,
+) -> str:
+    """Return a stable event-specific fact id without truncating time precision."""
+
+    material = "\0".join(
+        (
+            event.event_id,
+            event.timestamp,
+            prefix,
+            str(subject),
+            predicate,
+        )
+    )
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:32]
+    return f"fact_{prefix}_{digest}"
+
+
 class FactExtractionRule(ABC):
     """Base class for fact extraction rules."""
     
@@ -100,15 +143,21 @@ class ExecutionFactRule(FactExtractionRule):
         status = status_map.get(event.event_type)
         if not status:
             return []
-        
+
+        event_timestamp = _event_timestamp(event)
         return [TemporalFact(
-            fact_id=f"fact_exec_{event.job_id}_{int(event.timestamp.timestamp())}",
+            fact_id=_event_fact_id(
+                "exec",
+                event,
+                subject=event.job_id,
+                predicate="status",
+            ),
             namespace=FactNamespace.EXECUTION.value,
             subject=event.job_id,
             predicate="status",
             object=status,
             object_type="string",
-            valid_from=event.timestamp,
+            valid_from=event_timestamp,
             valid_to=None,
             source_event_id=event.event_id,
             created_at=utc_now(),
@@ -134,15 +183,21 @@ class SkillFactRule(FactExtractionRule):
         # Default to enabled on any capability event
         # In production, check payload for explicit enable/disable
         is_enabled = event.payload.get("enabled", True)
-        
+
+        event_timestamp = _event_timestamp(event)
         return [TemporalFact(
-            fact_id=f"fact_skill_{skill_name}_{int(event.timestamp.timestamp())}",
+            fact_id=_event_fact_id(
+                "skill",
+                event,
+                subject=skill_name,
+                predicate="enabled",
+            ),
             namespace=FactNamespace.SKILLS.value,
             subject=skill_name,
             predicate="enabled",
             object="true" if is_enabled else "false",
             object_type="bool",
-            valid_from=event.timestamp,
+            valid_from=event_timestamp,
             valid_to=None,
             source_event_id=event.event_id,
             created_at=utc_now(),
@@ -174,15 +229,21 @@ class ResourceFactRule(FactExtractionRule):
         status = status_map.get(event.event_type)
         if not status:
             return []
-        
+
+        event_timestamp = _event_timestamp(event)
         facts = [TemporalFact(
-            fact_id=f"fact_res_{event.aggregate_id}_{status}_{int(event.timestamp.timestamp())}",
+            fact_id=_event_fact_id(
+                "res",
+                event,
+                subject=event.aggregate_id,
+                predicate="status",
+            ),
             namespace=FactNamespace.RESOURCES.value,
             subject=event.aggregate_id,
             predicate="status",
             object=status,
             object_type="string",
-            valid_from=event.timestamp,
+            valid_from=event_timestamp,
             valid_to=None,
             source_event_id=event.event_id,
             created_at=utc_now(),
@@ -205,15 +266,21 @@ class ApprovalFactRule(FactExtractionRule):
             return []
         
         decision = "approved" if "approved" in event.event_type else "rejected"
-        
+
+        event_timestamp = _event_timestamp(event)
         return [TemporalFact(
-            fact_id=f"fact_appr_{approval_id}_{int(event.timestamp.timestamp())}",
+            fact_id=_event_fact_id(
+                "appr",
+                event,
+                subject=approval_id,
+                predicate="decision",
+            ),
             namespace=FactNamespace.APPROVALS.value,
             subject=approval_id,
             predicate="decision",
             object=decision,
             object_type="string",
-            valid_from=event.timestamp,
+            valid_from=event_timestamp,
             valid_to=None,
             source_event_id=event.event_id,
             created_at=utc_now(),
@@ -232,15 +299,21 @@ class PipelineFactRule(FactExtractionRule):
         strategy = event.payload.get("strategy")
         if not strategy:
             return []
-        
+
+        event_timestamp = _event_timestamp(event)
         return [TemporalFact(
-            fact_id=f"fact_pipe_{int(event.timestamp.timestamp())}",
+            fact_id=_event_fact_id(
+                "pipe",
+                event,
+                subject="strategy",
+                predicate="current_mode",
+            ),
             namespace=FactNamespace.PIPELINE.value,
             subject="strategy",
             predicate="current_mode",
             object=str(strategy),
             object_type="string",
-            valid_from=event.timestamp,
+            valid_from=event_timestamp,
             valid_to=None,
             source_event_id=event.event_id,
             created_at=utc_now(),
@@ -460,6 +533,40 @@ class MemoryFactStore:
             return facts
         finally:
             conn.close()
+
+    def get_current_fact(self, fact_id: str) -> TemporalFact | None:
+        """Return one currently valid fact by its stable identifier.
+
+        Args:
+            fact_id: Non-empty temporal fact identifier.
+
+        Returns:
+            The current fact, or ``None`` when it is missing or already invalid.
+
+        Raises:
+            ValueError: If ``fact_id`` is empty.
+        """
+        normalized_fact_id = fact_id.strip()
+        if not normalized_fact_id:
+            raise ValueError("fact_id must not be empty")
+
+        conn = self._open_conn()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT fact_id, namespace, subject, predicate, object, object_type,
+                       valid_from, valid_to, source_event_id, created_at
+                FROM temporal_facts
+                WHERE fact_id = ? AND valid_to IS NULL
+                LIMIT 1
+                """,
+                (normalized_fact_id,),
+            )
+            row = cursor.fetchone()
+            return self._row_to_fact(row) if row is not None else None
+        finally:
+            conn.close()
     
     def get_facts_at_time(
         self,
@@ -518,8 +625,8 @@ class MemoryFactStore:
     def get_fact_timeline(
         self,
         namespace: str,
-        subject: str,
-        predicate: str,
+        subject: str | None,
+        predicate: str | None,
     ) -> list[TemporalFact]:
         """
         Get complete history of how a fact changed over time.

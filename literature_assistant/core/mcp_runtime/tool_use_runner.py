@@ -29,38 +29,73 @@ import os
 import time
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
-from mcp_runtime import audit as mcp_audit
-from mcp_runtime.client_manager import McpClientManager
-from mcp_runtime.pending_calls import (
-    PENDING_CALL_TIMEOUT_SECONDS_DEFAULT,
-    PendingCallStore,
-    classify_action,
-    get_pending_call_store,
-)
-from mcp_runtime.provider_tool_adapter import (
-    NamespacedTool,
-    ToolNamespaceError,
-    build_provider_tool_name_map,
-    build_provider_tools,
-    build_slug_to_server_id,
-    parse_namespaced_tool,
-)
-from mcp_runtime.tool_catalog import McpToolCatalog
-from mcp_runtime.tool_dispatcher import DispatchInput, McpToolDispatcher
-from mcp_runtime.tool_result_formatter import (
-    ToolResultRecord,
-    build_tool_result_record,
-    format_for_claude,
-    format_for_openai,
-)
-from models.mcp import (
-    McpServerConfig,
-    McpToolCapability,
-    McpToolDescriptor,
-    PendingMcpToolCall,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.mcp_runtime import audit as mcp_audit
+    from literature_assistant.core.mcp_runtime.client_manager import McpClientManager
+    from literature_assistant.core.mcp_runtime.pending_calls import (
+        PENDING_CALL_TIMEOUT_SECONDS_DEFAULT,
+        PendingCallStore,
+        classify_action,
+        get_pending_call_store,
+    )
+    from literature_assistant.core.mcp_runtime.provider_tool_adapter import (
+        NamespacedTool,
+        ToolNamespaceError,
+        build_provider_tool_name_map,
+        build_provider_tools,
+        build_slug_to_server_id,
+        parse_namespaced_tool,
+    )
+    from literature_assistant.core.mcp_runtime.tool_catalog import McpToolCatalog
+    from literature_assistant.core.mcp_runtime.tool_dispatcher import (
+        DispatchInput,
+        McpToolDispatcher,
+    )
+    from literature_assistant.core.mcp_runtime.tool_result_formatter import (
+        ToolResultRecord,
+        build_tool_result_record,
+        format_for_claude,
+        format_for_openai,
+    )
+    from literature_assistant.core.models.mcp import (
+        McpServerConfig,
+        McpToolCapability,
+        McpToolDescriptor,
+        PendingMcpToolCall,
+    )
+else:
+    from mcp_runtime import audit as mcp_audit
+    from mcp_runtime.client_manager import McpClientManager
+    from mcp_runtime.pending_calls import (
+        PENDING_CALL_TIMEOUT_SECONDS_DEFAULT,
+        PendingCallStore,
+        classify_action,
+        get_pending_call_store,
+    )
+    from mcp_runtime.provider_tool_adapter import (
+        NamespacedTool,
+        ToolNamespaceError,
+        build_provider_tool_name_map,
+        build_provider_tools,
+        build_slug_to_server_id,
+        parse_namespaced_tool,
+    )
+    from mcp_runtime.tool_catalog import McpToolCatalog
+    from mcp_runtime.tool_dispatcher import DispatchInput, McpToolDispatcher
+    from mcp_runtime.tool_result_formatter import (
+        ToolResultRecord,
+        build_tool_result_record,
+        format_for_claude,
+        format_for_openai,
+    )
+    from models.mcp import (
+        McpServerConfig,
+        McpToolCapability,
+        McpToolDescriptor,
+        PendingMcpToolCall,
+    )
 
 
 logger = logging.getLogger("McpToolUseRunner")

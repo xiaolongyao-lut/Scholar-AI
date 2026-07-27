@@ -2,29 +2,39 @@
 """Agent API Router — AI 调度引擎 API"""
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("AgentRouter")
-router = APIRouter(prefix="/agent", tags=["Agent"])
+router: APIRouter = APIRouter(prefix="/agent", tags=["Agent"])
 
-_engine_instance = None
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.a_layer_agent_coordinator import AIEngine
 
 
-def _get_engine():
+_engine_instance: "AIEngine | None" = None
+
+
+def _get_engine() -> "AIEngine":
     """延迟初始化 AIEngine 并注册默认工具。"""
     global _engine_instance
     if _engine_instance is not None:
         return _engine_instance
 
-    from layers.a_layer_agent_coordinator import create_default_engine
+    if TYPE_CHECKING:
+        from literature_assistant.core.layers.a_layer_agent_coordinator import create_default_engine
+    else:
+        from layers.a_layer_agent_coordinator import create_default_engine
 
     # 收集可用组件
     mempalace = None
     try:
-        from python_adapter_server import get_memory_adapter
+        if TYPE_CHECKING:
+            from literature_assistant.core.python_adapter_server import get_memory_adapter
+        else:
+            from python_adapter_server import get_memory_adapter
         mem = get_memory_adapter()
         if mem is not None and mem.is_enabled():
             mempalace = mem
@@ -33,14 +43,20 @@ def _get_engine():
 
     inspiration_engine = None
     try:
-        from routers.inspiration_router import _get_engine as get_insp
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.inspiration_router import _get_engine as get_insp
+        else:
+            from routers.inspiration_router import _get_engine as get_insp
         inspiration_engine = get_insp()
     except Exception:
         pass
 
     conflict_detector = None
     try:
-        from layers.w_layer_cross_paper_analysis import ConflictDetector
+        if TYPE_CHECKING:
+            from literature_assistant.core.layers.w_layer_cross_paper_analysis import ConflictDetector
+        else:
+            from layers.w_layer_cross_paper_analysis import ConflictDetector
         conflict_detector = ConflictDetector()
     except Exception:
         pass
@@ -65,7 +81,7 @@ class DispatchResponse(BaseModel):
 
 
 @router.post("/dispatch", response_model=DispatchResponse)
-async def agent_dispatch(req: DispatchRequest):
+async def agent_dispatch(req: DispatchRequest) -> DispatchResponse:
     """AI 自由调度：根据用户意图调用合适的工具组合。"""
     engine = _get_engine()
     result = engine.dispatch(req.query)
@@ -73,7 +89,7 @@ async def agent_dispatch(req: DispatchRequest):
 
 
 @router.get("/tools")
-async def list_tools():
+async def list_tools() -> dict[str, object]:
     """列出所有已注册的工具及其描述。"""
     engine = _get_engine()
     return {

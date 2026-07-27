@@ -1,14 +1,17 @@
 """Writing resource API models used by the FastAPI adapter."""
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, PrivateAttr
 
-try:
+if TYPE_CHECKING:
     from literature_assistant.core.academic_writing_linter import AcademicWritingLintResponse
-except ModuleNotFoundError:
-    from academic_writing_linter import AcademicWritingLintResponse  # type: ignore[no-redef]
+else:
+    try:
+        from literature_assistant.core.academic_writing_linter import AcademicWritingLintResponse
+    except ModuleNotFoundError:
+        from academic_writing_linter import AcademicWritingLintResponse
 
-from .evidence import PdfAnchorFields, PdfBboxUnit
+from .evidence import PdfAnchorFields
 from .evidence import EvidenceLocatorCoveragePayload
 from .project_reasoning_bias import ProjectReasoningBiasPayload
 
@@ -318,7 +321,7 @@ class ProjectExportReviewFindingPayload(BaseModel):
     material_id: Optional[str] = None
 
 
-class ProjectExportFigureAssetPayload(BaseModel):
+class ProjectExportFigureAssetPayload(PdfAnchorFields):
     """Figure/table asset provenance included in writing export metadata.
 
     Args:
@@ -338,8 +341,6 @@ class ProjectExportFigureAssetPayload(BaseModel):
     numbering: str
     material_id: Optional[str] = None
     source_page: Optional[int] = None
-    bbox: Optional[List[float]] = None
-    bbox_unit: Optional[PdfBboxUnit] = None
     asset_path: str
     width: Optional[int] = None
     height: Optional[int] = None
@@ -475,17 +476,6 @@ class SaveDraftRequest(BaseModel):
     citation_anchors: List[CitationAnchorPayload] = Field(default_factory=list)
 
 
-class BuildAssociationRequest(BaseModel):
-    """Request to build writing associations."""
-
-    project_id: str
-    query: str
-    draft_id: Optional[str] = None
-    section_id: Optional[str] = None
-    mode: str = "default"
-    ai_enhanced: bool = True
-
-
 class OutlineItemPayload(BaseModel):
     """Outline item (section/subsection) in hierarchical structure."""
 
@@ -587,7 +577,7 @@ class SuggestCitationsRequest(BaseModel):
     max_suggestions: int = Field(5, ge=1, le=20)
 
 
-class FigureAssetPayload(BaseModel):
+class FigureAssetPayload(PdfAnchorFields):
     """Real figure/table asset (not text-derived candidate).
 
     Represents actual extracted or uploaded figure/table with asset file.
@@ -601,7 +591,6 @@ class FigureAssetPayload(BaseModel):
     numbering: str = Field(description="e.g., 'Figure 1', 'Table 2'")
     material_id: Optional[str] = None
     source_page: Optional[int] = None
-    bbox: Optional[List[float]] = None
     asset_path: str = Field(description="Path to extracted image/table file")
     width: Optional[int] = None
     height: Optional[int] = None
@@ -610,7 +599,7 @@ class FigureAssetPayload(BaseModel):
     updated_at: str
 
 
-class CreateFigureAssetRequest(BaseModel):
+class CreateFigureAssetRequest(PdfAnchorFields):
     """Request to create a figure/table asset."""
 
     project_id: str
@@ -619,14 +608,13 @@ class CreateFigureAssetRequest(BaseModel):
     numbering: str
     material_id: Optional[str] = None
     source_page: Optional[int] = None
-    bbox: Optional[List[float]] = None
     asset_path: str
     width: Optional[int] = None
     height: Optional[int] = None
     format: Optional[str] = None
 
 
-class UpdateFigureAssetRequest(BaseModel):
+class UpdateFigureAssetRequest(PdfAnchorFields):
     """Request to update persisted figure/table asset metadata."""
 
     kind: Optional[str] = Field(None, pattern="^(figure|table)$")
@@ -634,7 +622,6 @@ class UpdateFigureAssetRequest(BaseModel):
     numbering: Optional[str] = None
     material_id: Optional[str] = None
     source_page: Optional[int] = None
-    bbox: Optional[List[float]] = None
     asset_path: Optional[str] = None
     width: Optional[int] = None
     height: Optional[int] = None

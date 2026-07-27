@@ -161,7 +161,7 @@ class ExpressionEvaluator:
             raise ValueError("$filter.where must be a predicate object")
         if "equals" in payload:
             left, right = self._binary_operands(payload["equals"], context)
-            return left == right
+            return bool(left == right)
         if "contains" in payload:
             spec = payload["contains"]
             if not isinstance(spec, dict):
@@ -179,9 +179,9 @@ class ExpressionEvaluator:
         actual = self.evaluate(field, context)
         expected_value = self.evaluate(expected, context)
         if op == "==":
-            return actual == expected_value
+            return bool(actual == expected_value)
         if op == "!=":
-            return actual != expected_value
+            return bool(actual != expected_value)
         if op in {">", ">=", "<", "<="}:
             return self._compare(actual, expected_value, op)
         raise ValueError("unsupported predicate operator")

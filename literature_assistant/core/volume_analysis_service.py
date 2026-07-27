@@ -12,9 +12,12 @@ import json
 import logging
 from hashlib import sha1
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from layers.w_layer_cross_paper_analysis import CrossPaperAnalyzer
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.w_layer_cross_paper_analysis import CrossPaperAnalyzer
+else:
+    from layers.w_layer_cross_paper_analysis import CrossPaperAnalyzer
 
 logger = logging.getLogger("VolumeAnalysisService")
 
@@ -36,7 +39,10 @@ async def _get_volume_lock(volume_key: str) -> asyncio.Lock:
 
 
 def _load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"volume analysis JSON root must be an object: {path}")
+    return payload
 
 
 def _relative_to_repo(path: Path) -> str:

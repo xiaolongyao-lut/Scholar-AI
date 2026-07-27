@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from literature_assistant.core.models.evidence import (
-    PDF_URL_BBOX_UNIT,
     PdfBboxUnit,
     coerce_pdf_bbox,
     pdf_bbox_matches_unit,
@@ -701,7 +700,7 @@ def _node_from_page(page_path: Path, parsed: ParsedWikiPage, content: str) -> Wi
     frontmatter = parsed.frontmatter
     evidence_refs = _normalize_frontmatter_evidence_refs(frontmatter)
     source_ref = _source_ref_from_evidence_refs(evidence_refs)
-    metadata = {
+    metadata: dict[str, Any] = {
         "frontmatter_keys": sorted(str(key) for key in frontmatter.keys()),
     }
     if evidence_refs:
@@ -733,6 +732,7 @@ def _edges_from_body(
         target_id = _resolve_link_target(link.target, page_path, node_by_id, node_by_basename)
         if target_id is None or target_id == source_id:
             continue
+        target_node = node_by_id.get(target_id)
         edges.append(
             _make_edge(
                 source_id=source_id,
@@ -741,7 +741,7 @@ def _edges_from_body(
                 confidence="high",
                 evidence=link.target,
                 source_path=page_path.as_posix(),
-                target_path=node_by_id.get(target_id).page_path if target_id in node_by_id else None,
+                target_path=target_node.page_path if target_node is not None else None,
                 metadata={"display": link.display, "start": link.start, "end": link.end},
             )
         )
@@ -769,6 +769,7 @@ def _edges_from_frontmatter(
             edge_type = relation["edge_type"]
             edge_metadata: dict[str, Any] = {"frontmatter_field": field_name}
             edge_metadata.update(dict(relation.get("metadata") or {}))
+            target_node = node_by_id.get(target_id)
             edges.append(
                 _make_edge(
                     source_id=source_id,
@@ -777,7 +778,7 @@ def _edges_from_frontmatter(
                     confidence=relation["confidence"],
                     evidence=relation["evidence"],
                     source_path=page_path.as_posix(),
-                    target_path=node_by_id.get(target_id).page_path if target_id in node_by_id else None,
+                    target_path=target_node.page_path if target_node is not None else None,
                     metadata=edge_metadata,
                 )
             )
@@ -956,10 +957,10 @@ def _read_text_list(value: Any) -> list[str]:
 
 
 def _read_bbox_unit(value: Any, bbox: list[float] | None) -> str | None:
-    if bbox is None:
+    if bbox is None or value is None:
         return None
     try:
-        unit = PdfBboxUnit(str(value)) if value is not None else PDF_URL_BBOX_UNIT
+        unit = PdfBboxUnit(str(value))
     except ValueError:
         return None
     if not pdf_bbox_matches_unit(bbox, unit):

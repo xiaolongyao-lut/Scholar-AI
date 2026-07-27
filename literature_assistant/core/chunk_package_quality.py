@@ -544,11 +544,12 @@ def weighted_rrf_fuse(
     }
     if weights["project"] < 0.0 or weights["wiki"] < 0.0:
         raise ValueError("project_weight and wiki_weight must be non-negative")
-    caps = config.get("per_source_caps") if isinstance(config.get("per_source_caps"), dict) else {}
+    raw_caps = config.get("per_source_caps")
+    caps = raw_caps if isinstance(raw_caps, dict) else {}
+    raw_anti_drowning = config.get("anti_drowning")
+    anti_drowning = raw_anti_drowning if isinstance(raw_anti_drowning, dict) else {}
     max_wiki_share = float(
-        (config.get("anti_drowning") or {}).get("max_wiki_share_after_fusion", 0.7)
-        if isinstance(config.get("anti_drowning"), dict)
-        else 0.7
+        anti_drowning.get("max_wiki_share_after_fusion", 0.7)
     )
     scored: dict[str, dict[str, Any]] = {}
     _accumulate_rrf(scored, hits=project_hits, source="project", weight=weights["project"], rrf_k=rrf_k)

@@ -2,9 +2,14 @@
 """Default Scorer Implementation - Replicates the legacy scoring logic."""
 
 import logging
-from typing import List, Dict, Any
-from modules.scoring_interface import ScoringInterface
-from modules.scoring_registry import ScoringRegistry
+from typing import TYPE_CHECKING, List, Dict, Any
+
+if TYPE_CHECKING:
+    from literature_assistant.core.modules.scoring_interface import ScoringInterface
+    from literature_assistant.core.modules.scoring_registry import ScoringRegistry
+else:
+    from modules.scoring_interface import ScoringInterface
+    from modules.scoring_registry import ScoringRegistry
 
 logger = logging.getLogger(__name__)
 

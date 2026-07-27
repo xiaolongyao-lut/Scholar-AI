@@ -1,8 +1,13 @@
 import logging
 import datetime
-from typing import List, Dict, Any, Tuple
-from models.p2_logic_models import Claim, ClassifiedConflict, ConflictType
-from layers.p3_resolver import ConflictResolver, Resolution
+from typing import TYPE_CHECKING, List, Dict, Any, Tuple
+
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.p3_resolver import ConflictResolver, Resolution
+    from literature_assistant.core.models.p2_logic_models import Claim, ClassifiedConflict, ConflictType
+else:
+    from layers.p3_resolver import ConflictResolver, Resolution
+    from models.p2_logic_models import Claim, ClassifiedConflict, ConflictType
 
 logger = logging.getLogger("P3_DynamicUpdater")
 
@@ -11,7 +16,7 @@ class DynamicUpdater:
     P3 能力 7: 动态增量更新与知识淘汰
     """
 
-    def __init__(self, stale_year: int = 5, resolver: ConflictResolver = None):
+    def __init__(self, stale_year: int = 5, resolver: ConflictResolver | None = None):
         self.stale_year = stale_year
         self.current_year = datetime.datetime.now().year
         self.resolver = resolver or ConflictResolver()

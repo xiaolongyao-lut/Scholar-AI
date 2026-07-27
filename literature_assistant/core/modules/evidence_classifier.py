@@ -6,9 +6,19 @@ Classifies text snippets based on evidence quality and type
 import re
 import logging
 from collections import Counter
-from typing import Dict, List, Tuple, Optional, Set
-from modules.classifier_interface import EvidenceType, EvidenceScore, ClassifierInterface
-from modules.classifier_registry import register_classifier
+from typing import TYPE_CHECKING, Dict, List, Tuple, Optional, Set
+
+if TYPE_CHECKING:
+    from literature_assistant.core.modules.classifier_interface import (
+        ClassifierInterface,
+        EvidenceScore,
+        EvidenceType,
+    )
+    from literature_assistant.core.modules.classifier_registry import register_classifier
+    from literature_assistant.core.modules.configuration_manager import ConfigurationManager
+else:
+    from modules.classifier_interface import ClassifierInterface, EvidenceScore, EvidenceType
+    from modules.classifier_registry import register_classifier
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +70,7 @@ class EvidencePattern:
 class EvidenceClassifier(ClassifierInterface):
     """Classifies text evidence and assigns quality scores"""
 
-    def __init__(self, config_manager=None):
+    def __init__(self, config_manager: "ConfigurationManager | None" = None) -> None:
         """Initialize classifier with optional configuration"""
         self.config = config_manager
         self.stopwords: Set[str] = self._load_stopwords()

@@ -6,17 +6,28 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from skills.models import (
-    SkillDescriptor,
-    SkillKind,
-    SkillSource,
-    SkillTrustLevel,
-    SkillCompatibility,
-    ScriptPolicy,
-    UIVisibility,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.skills.models import (
+        ScriptPolicy,
+        SkillCompatibility,
+        SkillDescriptor,
+        SkillKind,
+        SkillSource,
+        SkillTrustLevel,
+        UIVisibility,
+    )
+else:
+    from skills.models import (
+        ScriptPolicy,
+        SkillCompatibility,
+        SkillDescriptor,
+        SkillKind,
+        SkillSource,
+        SkillTrustLevel,
+        UIVisibility,
+    )
 
 
 def get_ui_ux_pro_max_descriptor() -> SkillDescriptor:

@@ -20,23 +20,28 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from datetime_utils import utc_now_iso_z
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.harness_protocols import EventType, WritingEvent
+    from literature_assistant.core.skills.audit import AuditEvent, AuditEventType
+else:
+    from datetime_utils import utc_now_iso_z
 
-# Import from Phase A protocol layer
-try:
-    from harness_protocols import WritingEvent, EventType
-except ImportError:
-    WritingEvent = None
-    EventType = None
+    # Import from Phase A protocol layer
+    try:
+        from harness_protocols import WritingEvent, EventType
+    except ImportError:
+        WritingEvent = None
+        EventType = None
 
-try:
-    from skills.audit import AuditEvent, AuditEventType
-except ImportError:
-    AuditEvent = None
-    AuditEventType = None
+    try:
+        from skills.audit import AuditEvent, AuditEventType
+    except ImportError:
+        AuditEvent = None
+        AuditEventType = None
 
 
 class CanonicalEventType(str, Enum):

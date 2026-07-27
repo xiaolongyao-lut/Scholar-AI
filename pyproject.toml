@@ -16,6 +16,7 @@ dependencies = [
     "uvicorn[standard]>=0.30.0,<1.0.0",
     "pydantic>=2.8.0,<3.0.0",
     "httpx>=0.27.0,<1.0.0",
+    "httpcore>=1.0.0,<2.0.0",
     "requests>=2.31.0,<3.0.0",
     "PyYAML>=6.0.0,<7.0.0",
     "numpy>=1.26.0,<3.0.0",
@@ -51,12 +52,18 @@ desktop = [
 ]
 
 dev = [
+    "build>=1.2,<2.0",
+    "setuptools>=77.0.3,<84.0",
+    "wheel>=0.45,<1.0",
     "pytest>=7.0,<10.0",
     "pytest-asyncio>=0.23,<2.0",
     "pytest-cov>=4.0,<8.0",
     "pytest-mock>=3.12,<4.0",
     "pytest-xdist>=3.0,<4.0",
     "mypy>=1.8,<2.0",
+    "types-PyYAML>=6.0.12,<7.0",
+    "types-requests>=2.31,<3.0",
+    "types-python-dateutil>=2.8,<3.0",
     "black>=24.0,<27.0",
     "isort>=5.13,<6.0",
     "flake8>=7.0,<8.0",
@@ -79,6 +86,7 @@ version = {attr = "literature_assistant.version.__version__"}
 [tool.setuptools.packages.find]
 include = ["literature_assistant*"]
 exclude = [
+    "literature_assistant.core.skills.importers.ui-ux-pro-max*",
     "docs*",
     "extension_packages*",
     "frontend*",
@@ -96,13 +104,15 @@ exclude = [
 python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-disallow_untyped_calls = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
 check_untyped_defs = true
 no_implicit_optional = true
-ignore_missing_imports = true
-files = ["literature_assistant", "run_literature_assistant.py", "sitecustomize.py"]
+ignore_missing_imports = false
+mypy_path = ["agent_mcp_server/src"]
+explicit_package_bases = true
+files = ["literature_assistant", "agent_mcp_server/src", "run_literature_assistant.py", "sitecustomize.py"]
 exclude = [
     "tests/",
     "ui-ux-pro-max",
@@ -112,16 +122,20 @@ exclude = [
 
 [[tool.mypy.overrides]]
 module = [
-    "literature_assistant.core._atomic_io",
-    "literature_assistant.core.credential_store",
-    "literature_assistant.core.feature_flags",
-    "literature_assistant.core.model_config_store",
-    "literature_assistant.core.routers.credentials_router",
-    "literature_assistant.core.routers.settings_router",
-    "plotly.*",
+    "PyPDF2",
+    "fitz",
+    "graphrag",
+    "graphrag.*",
+    "networkx",
+    "pandas",
+    "pdfplumber",
+    "psutil",
+    "scipy",
     "scipy.*",
-    "sklearn.*",
-    "sentence_transformers.*",
+    "sentence_transformers",
+    "torch",
+    "transformers",
+    "umap",
 ]
 ignore_missing_imports = true
 

@@ -3,7 +3,17 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Protocol, TypedDict
+
+if TYPE_CHECKING:
+    from literature_assistant.core.inspiration_engine import InspirationEngine
+    from literature_assistant.core.layers.m_layer_mempalace_memory import (
+        MempalaceMemoryAdapter,
+    )
+    from literature_assistant.core.layers.p3_causal_engine import CausalEngine
+    from literature_assistant.core.layers.w_layer_cross_paper_analysis import (
+        ConflictDetector,
+    )
 
 logger = logging.getLogger("A_Layer_Agent")
 
@@ -23,6 +33,23 @@ OPEN_FOCUS_STOPWORDS = {
 }
 OPEN_FOCUS_TRIGGER_RE = re.compile(r'(?:围绕|关注|聚焦|针对|从|面向|关于)([^，。；;,\.\n]{2,48})')
 OPEN_FOCUS_TOKEN_RE = re.compile(r'[A-Za-z][A-Za-z0-9_\-]{2,24}|[一-鿿]{2,12}')
+
+
+class ToolDescription(TypedDict):
+    name: str
+    description: str
+    parameters: dict[str, str]
+
+
+class EvidenceRetriever(Protocol):
+    def hybrid_search(
+        self,
+        project_id: str | None,
+        *,
+        query: str,
+        top_k: int,
+    ) -> object:
+        ...
 
 
 def infer_open_focus_points(command: str, explicit_goal: str = '', known_focus_keywords: set[str] | None = None) -> list[str]:
@@ -121,15 +148,18 @@ class AIEngine:
     - 降级模式（无 LLM）：基于关键词匹配自动选择工具
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._tools: dict[str, ToolSpec] = {}
-        self._llm_adapter = None
+        self._llm_adapter: Any | None = None
 
         # 尝试加载 LLM
         try:
-            from layers.g_layer_academic_generator import AIAdapter
+            if TYPE_CHECKING:
+                from literature_assistant.core.layers.g_layer_academic_generator import AIAdapter
+            else:
+                from layers.g_layer_academic_generator import AIAdapter
             adapter = AIAdapter()
-            if adapter.available:
+            if adapter.enabled:
                 self._llm_adapter = adapter
         except Exception:
             pass
@@ -139,11 +169,11 @@ class AIEngine:
         return self._llm_adapter is not None
 
     def register_tool(self, name: str, fn: Callable[..., Any], description: str,
-                      param_hints: dict[str, str] | None = None):
+                      param_hints: dict[str, str] | None = None) -> None:
         """注册一个可被 AI 调度的工具函数"""
         self._tools[name] = ToolSpec(name, fn, description, param_hints)
 
-    def get_tool_descriptions(self) -> list[dict[str, str]]:
+    def get_tool_descriptions(self) -> list[ToolDescription]:
         """返回所有已注册工具的描述（供 LLM function-calling）"""
         return [
             {"name": t.name, "description": t.description, "parameters": t.param_hints}
@@ -222,7 +252,11 @@ class AIEngine:
         )
 
         try:
-            llm_response = self._llm_adapter.chat(system_prompt, query)
+            adapter = self._llm_adapter
+            chat = getattr(adapter, "chat", None) if adapter is not None else None
+            if not callable(chat):
+                return self._dispatch_keyword(query, response)
+            llm_response = chat(system_prompt, query)
             # 尝试解析 LLM 返回的工具调用计划
             plan = json.loads(llm_response)
             if isinstance(plan, list):
@@ -252,11 +286,11 @@ class AIEngine:
 
 
 def create_default_engine(
-    mempalace=None,
-    inspiration_engine=None,
-    causal_engine=None,
-    conflict_detector=None,
-    retriever=None,
+    mempalace: MempalaceMemoryAdapter | None = None,
+    inspiration_engine: InspirationEngine | None = None,
+    causal_engine: CausalEngine | None = None,
+    conflict_detector: ConflictDetector | None = None,
+    retriever: EvidenceRetriever | None = None,
 ) -> AIEngine:
     """创建并注册默认工具集的 AIEngine 实例。"""
     engine = AIEngine()
@@ -278,7 +312,7 @@ def create_default_engine(
         )
 
     if causal_engine and hasattr(causal_engine, "extract_chains"):
-        def find_causal(query, **_kw):
+        def find_causal(query: str, **_kw: object) -> dict[str, str]:
             # 简单查找：在已有 DAG 中搜索包含 query 关键词的链路
             return {"message": "因果链查询需要先加载 DAG 数据", "query": query}
         engine.register_tool(

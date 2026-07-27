@@ -11,18 +11,108 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from importlib import import_module
 from time import perf_counter
-from typing import Any
+from types import ModuleType, TracebackType
+from typing import TYPE_CHECKING, Callable, Literal, Protocol, runtime_checkable
 from uuid import uuid4
 
-from recovery_metrics_exporter import get_recovery_metrics_collector
+if TYPE_CHECKING:
+    from literature_assistant.core.recovery_metrics_exporter import (
+        RecoveryMetricsCollector,
+        get_recovery_metrics_collector,
+    )
+else:
+    from recovery_metrics_exporter import get_recovery_metrics_collector
 
 logger = logging.getLogger(__name__)
 
-try:  # pragma: no cover - optional dependency
-    from opentelemetry import trace as otel_trace
-except ImportError:  # pragma: no cover - optional dependency guard
-    otel_trace = None
+def _load_otel_trace_module() -> ModuleType | None:
+    """Load OpenTelemetry tracing without making it a hard dependency."""
+
+    try:  # pragma: no cover - optional dependency
+        return import_module("opentelemetry.trace")
+    except ImportError:  # pragma: no cover - optional dependency guard
+        return None
+
+
+otel_trace = _load_otel_trace_module()
+
+
+@runtime_checkable
+class _OpenTelemetrySpan(Protocol):
+    """Span methods used by the recovery tracing adapter."""
+
+    def set_attribute(self, key: str, value: object) -> None:
+        """Attach one attribute to the active span."""
+
+    def record_exception(self, exc: BaseException) -> None:
+        """Attach one application exception to the active span."""
+
+
+@runtime_checkable
+class _OpenTelemetrySpanScope(Protocol):
+    """Synchronous span context manager returned by a tracer."""
+
+    def __enter__(self) -> _OpenTelemetrySpan:
+        """Enter the span scope."""
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> object:
+        """Exit the span scope without controlling application propagation."""
+
+
+@runtime_checkable
+class _OpenTelemetryTracer(Protocol):
+    """Tracer method required by RecoveryTelemetry."""
+
+    def start_as_current_span(self, name: str) -> _OpenTelemetrySpanScope:
+        """Create a synchronous current-span scope."""
+
+
+def _require_callable_member(
+    target: object,
+    member_name: str,
+    owner_name: str,
+) -> Callable[..., object]:
+    """Return a required dynamic member after verifying it is callable."""
+
+    member: object = getattr(target, member_name, None)
+    if not callable(member):
+        raise TypeError(f"{owner_name} {member_name} is not callable")
+    return member
+
+
+def _resolve_otel_tracer(
+    trace_module: object,
+    service_name: str,
+) -> _OpenTelemetryTracer:
+    """Resolve and validate the dynamically imported OpenTelemetry tracer."""
+
+    if not hasattr(trace_module, "get_tracer"):
+        raise AttributeError("OpenTelemetry trace module has no get_tracer attribute")
+    get_tracer = _require_callable_member(
+        trace_module,
+        "get_tracer",
+        "OpenTelemetry trace module",
+    )
+
+    tracer: object = get_tracer(service_name)
+    if not isinstance(tracer, _OpenTelemetryTracer):
+        raise TypeError(
+            "OpenTelemetry get_tracer returned an object without "
+            "start_as_current_span"
+        )
+    _require_callable_member(
+        tracer,
+        "start_as_current_span",
+        "OpenTelemetry tracer",
+    )
+    return tracer
 
 
 @dataclass
@@ -31,15 +121,15 @@ class RecoveryTraceSpan:
 
     telemetry: "RecoveryTelemetry"
     name: str
-    attributes: dict[str, Any] = field(default_factory=dict)
+    attributes: dict[str, object] = field(default_factory=dict)
     trace_id: str = field(default_factory=lambda: uuid4().hex)
     span_id: str = field(default_factory=lambda: uuid4().hex[:16])
     duration_ms: float = 0.0
     error: str | None = None
     finished: bool = False
     _started_at: float | None = field(default=None, init=False, repr=False)
-    _otel_scope: Any = field(default=None, init=False, repr=False)
-    _otel_span: Any = field(default=None, init=False, repr=False)
+    _otel_scope: _OpenTelemetrySpanScope | None = field(default=None, init=False, repr=False)
+    _otel_span: _OpenTelemetrySpan | None = field(default=None, init=False, repr=False)
 
     def __enter__(self) -> "RecoveryTraceSpan":
         self._started_at = perf_counter()
@@ -52,14 +142,25 @@ class RecoveryTraceSpan:
         )
 
         if self.telemetry._otel_tracer is not None:  # pragma: no cover - optional dependency
-            self._otel_scope = self.telemetry._otel_tracer.start_as_current_span(self.name)
-            self._otel_span = self._otel_scope.__enter__()
+            scope = self.telemetry._otel_tracer.start_as_current_span(self.name)
+            if not isinstance(scope, _OpenTelemetrySpanScope):
+                raise TypeError("OpenTelemetry tracer returned an invalid span scope")
+            _require_callable_member(scope, "__enter__", "OpenTelemetry span scope")
+            _require_callable_member(scope, "__exit__", "OpenTelemetry span scope")
+            span = scope.__enter__()
+            if not isinstance(span, _OpenTelemetrySpan):
+                scope.__exit__(None, None, None)
+                raise TypeError("OpenTelemetry span scope returned an invalid span")
+            _require_callable_member(span, "set_attribute", "OpenTelemetry span")
+            _require_callable_member(span, "record_exception", "OpenTelemetry span")
+            self._otel_scope = scope
+            self._otel_span = span
             for key, value in self.attributes.items():
                 self._otel_span.set_attribute(key, value)
 
         return self
 
-    def set_attribute(self, key: str, value: Any) -> None:
+    def set_attribute(self, key: str, value: object) -> None:
         """Attach a new attribute to the span."""
         self.attributes[key] = value
         if self._otel_span is not None:  # pragma: no cover - optional dependency
@@ -73,7 +174,12 @@ class RecoveryTraceSpan:
             self._otel_span.record_exception(exc)
             self._otel_span.set_attribute("error", self.error)
 
-    def __exit__(self, exc_type, exc, tb) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> Literal[False]:
         if exc is not None:
             self.record_exception(exc)
 
@@ -108,20 +214,24 @@ class RecoveryTelemetry:
         self,
         service_name: str = "modular.recovery",
         enable_opentelemetry: bool = True,
-        metrics_collector=None,
+        metrics_collector: RecoveryMetricsCollector | None = None,
     ) -> None:
         self.service_name = service_name
         self.metrics = metrics_collector or get_recovery_metrics_collector()
-        self._otel_tracer = None
+        self._otel_tracer: _OpenTelemetryTracer | None = None
 
         if enable_opentelemetry and otel_trace is not None:  # pragma: no cover - optional dependency
-            self._otel_tracer = otel_trace.get_tracer(service_name)
+            self._otel_tracer = _resolve_otel_tracer(otel_trace, service_name)
 
-    def start_span(self, name: str, attributes: dict[str, Any] | None = None) -> RecoveryTraceSpan:
+    def start_span(
+        self,
+        name: str,
+        attributes: dict[str, object] | None = None,
+    ) -> RecoveryTraceSpan:
         """Create a new recovery trace span context manager."""
         return RecoveryTraceSpan(self, name, dict(attributes or {}))
 
-    def trace(self, name: str, **attributes: Any) -> RecoveryTraceSpan:
+    def trace(self, name: str, **attributes: object) -> RecoveryTraceSpan:
         """Convenience alias for start_span()."""
         return self.start_span(name, attributes)
 

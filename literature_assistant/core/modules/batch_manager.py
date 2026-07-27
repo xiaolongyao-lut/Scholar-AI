@@ -4,12 +4,22 @@ Orchestrates processing across multiple academic papers
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Callable
+from typing import TYPE_CHECKING, List, Dict, Any, Optional, Callable
 from pathlib import Path
 import os
 
-from modules.paper_processor import PaperProcessor, PaperProcessReport
-from modules.configuration_manager import get_configuration
+if TYPE_CHECKING:
+    from literature_assistant.core.modules.configuration_manager import (
+        ConfigurationManager,
+        get_configuration,
+    )
+    from literature_assistant.core.modules.paper_processor import (
+        PaperProcessReport,
+        PaperProcessor,
+    )
+else:
+    from modules.configuration_manager import get_configuration
+    from modules.paper_processor import PaperProcessReport, PaperProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +27,7 @@ logger = logging.getLogger(__name__)
 class BatchManager:
     """Manages the processing of a collection of academic papers"""
 
-    def __init__(self, config=None):
+    def __init__(self, config: "ConfigurationManager | None" = None) -> None:
         """Initialize batch manager"""
         self.config = config or get_configuration()
         self.processor = PaperProcessor(self.config)
@@ -78,7 +88,12 @@ class BatchManager:
                     logger.error(f"Failed to process {file_path}: {e}")
         else:
             # Parallel execution
-            from modules.parallel_processor import ParallelPaperProcessor
+            if TYPE_CHECKING:
+                from literature_assistant.core.modules.parallel_processor import (
+                    ParallelPaperProcessor,
+                )
+            else:
+                from modules.parallel_processor import ParallelPaperProcessor
             
             p_processor = ParallelPaperProcessor(self.config)
             tasks = [

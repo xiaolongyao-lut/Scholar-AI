@@ -17,14 +17,22 @@ Execution specifics are delegated to AutopilotExecutor.
 import logging
 from enum import Enum
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import TYPE_CHECKING, Optional, Dict, Any
 
-from harness_canonical_events import CanonicalEvent
-from datetime_utils import utc_now_iso_z
-from recovery_autopilot_policy import AutopilotPolicy
-from canonical_event_store import CanonicalEventStore
-from memory_fact_store import MemoryFactStore
-from recovery_telemetry import get_recovery_telemetry
+if TYPE_CHECKING:
+    from literature_assistant.core.canonical_event_store import CanonicalEventStore
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.harness_canonical_events import CanonicalEvent
+    from literature_assistant.core.memory_fact_store import MemoryFactStore
+    from literature_assistant.core.recovery_autopilot_policy import AutopilotPolicy
+    from literature_assistant.core.recovery_telemetry import get_recovery_telemetry
+else:
+    from canonical_event_store import CanonicalEventStore
+    from datetime_utils import utc_now_iso_z
+    from harness_canonical_events import CanonicalEvent
+    from memory_fact_store import MemoryFactStore
+    from recovery_autopilot_policy import AutopilotPolicy
+    from recovery_telemetry import get_recovery_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +76,8 @@ class AutopilotControlPlane:
         self._current_policy = initial_policy
         
         # Audit metadata
-        self._operator_enabled_by = None
-        self._operator_enabled_at = None
+        self._operator_enabled_by: str | None = None
+        self._operator_enabled_at: datetime | None = None
         
         logger.info("AutopilotControlPlane initialized in DISABLED state")
     

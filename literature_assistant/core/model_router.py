@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import List, Literal
+from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class ModelRouter:
         self.strong_model = strong_model
         self.trigger_re = re.compile("|".join(self.LOGIC_TRIGGER_PATTERNS), re.IGNORECASE)
 
-    def route(self, query: str, points: List[str] = None) -> str:
+    def route(self, query: str, points: Sequence[str] | None = None) -> str:
         """
         分流策略：
         1. 关键词正则匹配 (低延迟方案)

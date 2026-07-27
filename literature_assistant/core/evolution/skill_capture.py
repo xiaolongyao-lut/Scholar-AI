@@ -23,14 +23,22 @@ Promotion is handled by the promoter. This module only captures the draft propos
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from models.evolution import (
-    CandidateMemoryType,
-    CandidateRiskLevel,
-    CandidateSourceType,
-)
-from evolution._capture_args import CaptureCandidateArgs
+if TYPE_CHECKING:
+    from literature_assistant.core.evolution._capture_args import CaptureCandidateArgs
+    from literature_assistant.core.models.evolution import (
+        CandidateMemoryType,
+        CandidateRiskLevel,
+        CandidateSourceType,
+    )
+else:
+    from evolution._capture_args import CaptureCandidateArgs
+    from models.evolution import (
+        CandidateMemoryType,
+        CandidateRiskLevel,
+        CandidateSourceType,
+    )
 
 
 def extract_from_skill_run(

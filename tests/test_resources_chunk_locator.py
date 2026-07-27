@@ -9,7 +9,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
+import logging
 import os
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -65,6 +68,359 @@ def _save(project_id: str, store: dict[str, list[dict[str, object]]]) -> None:
     rr._save_chunk_store(project_id, store)  # type: ignore[attr-defined]
 
 
+def test_figure_asset_api_persists_explicit_bbox_unit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Figure assets must retain their declared coordinate unit after reload."""
+
+    from routers import writing_router
+    from writing_resources import WritingResourceStore
+
+    database_path = tmp_path / "writing-resources.db"
+    store = WritingResourceStore(database_path=database_path, autosave=True)
+    project = store.create_project(title="Figure bbox contract")
+    material = store.create_material(project_id=project.project_id, title="Microscope study")
+    monkeypatch.setattr(rr, "get_writing_resource_store", lambda: store)
+
+    app = FastAPI()
+    app.include_router(writing_router.router)
+    response = TestClient(app).post(
+        "/api/writing/figures",
+        json={
+            "project_id": project.project_id,
+            "kind": "figure",
+            "caption": "Microscope field",
+            "numbering": "Figure 1",
+            "material_id": material.material_id,
+            "source_page": 2,
+            "bbox": [0.2, 0.25, 0.5, 0.3],
+            "bbox_unit": "pdf_points",
+            "asset_path": "figure_assets/field.png",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["bbox"] == [0.2, 0.25, 0.5, 0.3]
+    assert payload["bbox_unit"] == "pdf_points"
+
+    reloaded = WritingResourceStore(database_path=database_path, autosave=True)
+    persisted = reloaded.get_figure_asset(payload["asset_id"])
+    assert persisted is not None
+    assert persisted.bbox == [0.2, 0.25, 0.5, 0.3]
+    assert persisted.bbox_unit == "pdf_points"
+
+
+def test_figure_asset_api_updates_bbox_and_unit_together(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Figure metadata updates must replace bbox provenance as one pair."""
+
+    from routers import writing_router
+    from writing_resources import WritingResourceStore
+
+    store = WritingResourceStore(database_path=tmp_path / "writing-resources.db", autosave=True)
+    project = store.create_project(title="Figure bbox update contract")
+    monkeypatch.setattr(rr, "get_writing_resource_store", lambda: store)
+
+    app = FastAPI()
+    app.include_router(writing_router.router)
+    client = TestClient(app)
+    created = client.post(
+        "/api/writing/figures",
+        json={
+            "project_id": project.project_id,
+            "kind": "figure",
+            "caption": "Initial field",
+            "numbering": "Figure 1",
+            "source_page": 2,
+            "bbox": [1, 2, 30, 40],
+            "bbox_unit": "pdf_points",
+            "asset_path": "figure_assets/field.png",
+        },
+    )
+    assert created.status_code == 200, created.text
+
+    updated = client.put(
+        f"/api/writing/figures/{created.json()['asset_id']}",
+        json={
+            "bbox": [12, 24, 120, 80],
+            "bbox_unit": "css_pixels",
+        },
+    )
+
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["bbox"] == [12.0, 24.0, 120.0, 80.0]
+    assert updated.json()["bbox_unit"] == "css_pixels"
+
+
+@pytest.mark.parametrize(
+    "update_payload",
+    (
+        {"bbox": None, "bbox_unit": None},
+        {"bbox": [0.1, 0.2, 0.3, 0.1]},
+    ),
+)
+def test_figure_asset_api_clears_bbox_when_update_has_no_usable_unit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    update_payload: dict[str, object],
+) -> None:
+    """An explicit unsafe or empty anchor update must not retain stale precision."""
+
+    from routers import writing_router
+    from writing_resources import WritingResourceStore
+
+    store = WritingResourceStore(database_path=tmp_path / "writing-resources.db", autosave=True)
+    project = store.create_project(title="Figure bbox clear contract")
+    monkeypatch.setattr(rr, "get_writing_resource_store", lambda: store)
+
+    app = FastAPI()
+    app.include_router(writing_router.router)
+    client = TestClient(app)
+    created = client.post(
+        "/api/writing/figures",
+        json={
+            "project_id": project.project_id,
+            "kind": "figure",
+            "caption": "Initial field",
+            "numbering": "Figure 1",
+            "bbox": [1, 2, 30, 40],
+            "bbox_unit": "pdf_points",
+            "asset_path": "figure_assets/field.png",
+        },
+    )
+    assert created.status_code == 200, created.text
+
+    updated = client.put(
+        f"/api/writing/figures/{created.json()['asset_id']}",
+        json=update_payload,
+    )
+
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["bbox"] is None
+    assert updated.json()["bbox_unit"] is None
+    persisted = store.get_figure_asset(created.json()["asset_id"])
+    assert persisted is not None
+    assert persisted.bbox is None
+    assert persisted.bbox_unit is None
+
+
+def test_figure_asset_repository_preserves_legacy_bbox_until_explicit_clear(
+    tmp_path: Path,
+) -> None:
+    """Unrelated autosaves retain opaque legacy bbox data until explicit clear."""
+
+    from writing_resources import WritingResourceStore
+
+    database_path = tmp_path / "legacy-writing-resources.db"
+    initial = WritingResourceStore(database_path=database_path, autosave=True)
+    project = initial.create_project(title="Legacy figure database")
+
+    with sqlite3.connect(database_path) as conn:
+        conn.execute("DROP TABLE figure_assets")
+        conn.execute(
+            """
+            CREATE TABLE figure_assets (
+                asset_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                caption TEXT NOT NULL,
+                numbering TEXT NOT NULL,
+                material_id TEXT,
+                source_page INTEGER,
+                bbox TEXT,
+                asset_path TEXT NOT NULL,
+                width INTEGER,
+                height INTEGER,
+                format TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO figure_assets (
+                asset_id, project_id, kind, caption, numbering, source_page,
+                bbox, asset_path, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "figure-legacy",
+                project.project_id,
+                "figure",
+                "Legacy field",
+                "Figure 1",
+                3,
+                "[0.1, 0.2, 0.3, 0.4]",
+                "figure_assets/legacy.png",
+                "2026-01-01T00:00:00Z",
+                "2026-01-01T00:00:00Z",
+            ),
+        )
+
+    reloaded = WritingResourceStore(database_path=database_path, autosave=True)
+    with sqlite3.connect(database_path) as conn:
+        columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(figure_assets)")}
+        row = conn.execute(
+            "SELECT bbox, bbox_unit FROM figure_assets WHERE asset_id = ?",
+            ("figure-legacy",),
+        ).fetchone()
+
+    assert "bbox_unit" in columns
+    assert row == ("[0.1, 0.2, 0.3, 0.4]", None)
+    legacy_asset = reloaded.get_figure_asset("figure-legacy")
+    assert legacy_asset is not None
+    assert legacy_asset.source_page == 3
+    assert legacy_asset.bbox is None
+    assert legacy_asset.bbox_unit is None
+
+    reloaded.create_material(
+        project_id=project.project_id,
+        title="Unrelated autosave trigger",
+    )
+    with sqlite3.connect(database_path) as conn:
+        preserved_row = conn.execute(
+            "SELECT bbox, bbox_unit FROM figure_assets WHERE asset_id = ?",
+            ("figure-legacy",),
+        ).fetchone()
+
+    assert preserved_row is not None
+    assert json.loads(str(preserved_row[0])) == [0.1, 0.2, 0.3, 0.4]
+    assert preserved_row[1] is None
+
+    updated = reloaded.update_figure_asset(
+        "figure-legacy",
+        bbox=None,
+        bbox_unit=None,
+        replace_bbox_anchor=True,
+    )
+    assert updated is not None
+    with sqlite3.connect(database_path) as conn:
+        cleared_row = conn.execute(
+            "SELECT bbox, bbox_unit FROM figure_assets WHERE asset_id = ?",
+            ("figure-legacy",),
+        ).fetchone()
+
+    assert cleared_row == (None, None)
+
+
+def test_candidate_asset_mapping_preserves_bbox_unit() -> None:
+    """Generated assets must inherit the candidate's declared coordinate unit."""
+
+    from models import FigureTableCandidatePayload, GenerateFigureAssetsRequest
+    from routers.writing_router import _candidate_to_create_asset_payload
+
+    candidate = FigureTableCandidatePayload(
+        id="candidate-pdf-points",
+        kind="figure",
+        label="Figure 1",
+        caption="Microscope field",
+        material_id="material-1",
+        material_title="Microscope study",
+        chunk_id="chunk-1",
+        page=2,
+        bbox=[12, 24, 120, 80],
+        bbox_unit="pdf_points",
+        asset_path="figure_assets/field.png",
+    )
+    payload = _candidate_to_create_asset_payload(
+        GenerateFigureAssetsRequest(project_id="project-1"),
+        candidate,
+    )
+
+    assert payload["bbox"] == [12.0, 24.0, 120.0, 80.0]
+    assert payload["bbox_unit"] == "pdf_points"
+
+
+def test_figure_asset_export_preserves_non_ratio_bbox_without_url_inference() -> None:
+    """Non-ratio asset coordinates remain provenance, not reader URL coordinates."""
+
+    from routers.resources_router._export_helpers import _build_project_figure_assets_export
+
+    rows = _build_project_figure_assets_export(
+        "project-1",
+        [
+            {
+                "asset_id": "figure-1",
+                "project_id": "project-1",
+                "kind": "figure",
+                "caption": "Microscope field",
+                "numbering": "Figure 1",
+                "material_id": "material-1",
+                "source_page": 2,
+                "bbox": [0.2, 0.25, 0.5, 0.3],
+                "bbox_unit": "pdf_points",
+                "asset_path": "figure_assets/field.png",
+            }
+        ],
+    )
+
+    assert rows[0]["bbox"] == [0.2, 0.25, 0.5, 0.3]
+    assert rows[0]["bbox_unit"] == "pdf_points"
+    assert rows[0]["source_anchor"]["bbox_unit"] == "pdf_points"
+    assert "bbox=" not in rows[0]["source_anchor"]["open_url"]
+
+
+def test_chunk_export_preserves_declared_non_ratio_bbox_unit() -> None:
+    """Chunk anchors keep explicit provenance while reader URLs stay ratio-only."""
+
+    from routers.resources_router._export_helpers import _first_material_source_anchor
+
+    anchor = _first_material_source_anchor(
+        None,
+        "material-1",
+        {
+            "material-1": [
+                {
+                    "chunk_id": "chunk-1",
+                    "chunk_index": 0,
+                    "page": 2,
+                    "bbox": [12, 24, 120, 80],
+                    "bbox_unit": "pdf_points",
+                    "content": "Microscope field",
+                }
+            ]
+        },
+    )
+
+    assert anchor is not None
+    assert anchor["bbox"] == [12.0, 24.0, 120.0, 80.0]
+    assert anchor["bbox_unit"] == "pdf_points"
+    assert "bbox=" not in anchor["open_url"]
+
+
+def test_figure_asset_export_drops_bbox_without_explicit_unit() -> None:
+    """Legacy unitless asset boxes must degrade to page-only provenance."""
+
+    from routers.resources_router._export_helpers import _build_project_figure_assets_export
+
+    rows = _build_project_figure_assets_export(
+        "project-1",
+        [
+            {
+                "asset_id": "figure-legacy",
+                "project_id": "project-1",
+                "kind": "figure",
+                "caption": "Legacy field",
+                "numbering": "Figure 2",
+                "material_id": "material-1",
+                "source_page": 3,
+                "bbox": [0.1, 0.2, 0.3, 0.4],
+                "asset_path": "figure_assets/legacy.png",
+            }
+        ],
+    )
+
+    assert rows[0]["bbox"] is None
+    assert rows[0]["bbox_unit"] is None
+    assert rows[0]["source_anchor"]["bbox"] is None
+    assert "bbox=" not in rows[0]["source_anchor"]["open_url"]
+
+
 class _UploadProject:
     def __init__(self, project_id: str) -> None:
         self.project_id = project_id
@@ -81,6 +437,7 @@ class _UploadStore:
     def __init__(self, project_id: str) -> None:
         self.project_id = project_id
         self.created: list[_UploadMaterial] = []
+        self.deleted: list[str] = []
 
     def get_project(self, project_id: str) -> _UploadProject | None:
         return _UploadProject(project_id) if project_id == self.project_id else None
@@ -98,6 +455,10 @@ class _UploadStore:
         material = _UploadMaterial(f"mat-upload-{len(self.created) + 1}", project_id, title)
         self.created.append(material)
         return material
+
+    def delete_material(self, material_id: str) -> bool:
+        self.deleted.append(material_id)
+        return True
 
 
 class _FirstReadBarrier:
@@ -1274,6 +1635,310 @@ async def test_same_content_different_filename_leaves_no_orphan_source(
     assert (source_root / referenced_name).read_bytes() == raw
     assert {path.name for path in source_root.iterdir() if path.is_file()} == {referenced_name}
     assert list(source_root.glob("*.part")) == []
+
+
+@pytest.mark.asyncio
+async def test_pdf_pending_publication_failure_removes_new_material_and_source(
+    project_id: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed pending publication must compensate both durable side effects."""
+
+    store = _UploadStore(project_id)
+    source_root = tmp_path / "project_data" / project_id / "source_files"
+    monkeypatch.setattr(
+        rr,
+        "project_data_path",
+        lambda pid, *parts: tmp_path / "project_data" / pid / Path(*parts),
+    )
+    publication_error = OSError("synthetic pending publication failure")
+    original_update = rr._update_project_stores_atomic
+    publication_failed = False
+
+    def _fail_publication(current_project_id: str, updater: object) -> None:
+        nonlocal publication_failed
+        assert current_project_id == project_id
+        assert callable(updater)
+        if getattr(updater, "__name__", "") != "_queue_material":
+            original_update(current_project_id, updater)
+            return
+        assert publication_failed is False
+        publication_failed = True
+        updater({}, {})
+        raise publication_error
+
+    monkeypatch.setattr(rr, "_update_project_stores_atomic", _fail_publication)
+    monkeypatch.setattr(rr, "_load_doc_store", lambda _project_id: {})
+
+    with pytest.raises(OSError, match="synthetic pending publication failure") as raised:
+        await rr._ingest_uploaded_document(
+            project_id,
+            _MemoryUpload("failed.pdf", b"%PDF-1.4\nfailed publication\n%%EOF"),  # type: ignore[arg-type]
+            store=store,
+        )
+
+    assert raised.value is publication_error
+    assert store.deleted == ["mat-upload-1"]
+    assert not list(source_root.glob("*.pdf"))
+
+
+@pytest.mark.asyncio
+async def test_pdf_pending_material_cleanup_failure_preserves_publication_error(
+    project_id: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A failed material compensation must not replace the publication error."""
+
+    store = _UploadStore(project_id)
+    monkeypatch.setattr(
+        rr,
+        "project_data_path",
+        lambda pid, *parts: tmp_path / "project_data" / pid / Path(*parts),
+    )
+    publication_error = OSError("primary publication failure")
+    delete_calls: list[str] = []
+    original_update = rr._update_project_stores_atomic
+    publication_failed = False
+
+    def _fail_publication(current_project_id: str, updater: object) -> None:
+        nonlocal publication_failed
+        assert callable(updater)
+        if getattr(updater, "__name__", "") != "_queue_material":
+            original_update(current_project_id, updater)
+            return
+        assert publication_failed is False
+        publication_failed = True
+        updater({}, {})
+        raise publication_error
+
+    def _fail_delete(material_id: str) -> bool:
+        delete_calls.append(material_id)
+        raise RuntimeError("synthetic material cleanup failure")
+
+    monkeypatch.setattr(rr, "_update_project_stores_atomic", _fail_publication)
+    monkeypatch.setattr(rr, "_load_doc_store", lambda _project_id: {})
+    monkeypatch.setattr(store, "delete_material", _fail_delete)
+
+    with caplog.at_level(logging.ERROR, logger=rr.logger.name):
+        with pytest.raises(OSError, match="primary publication failure") as raised:
+            await rr._ingest_uploaded_document(
+                project_id,
+                _MemoryUpload("cleanup-fails.pdf", b"%PDF-1.4\ncleanup failure\n%%EOF"),  # type: ignore[arg-type]
+                store=store,
+            )
+
+    assert raised.value is publication_error
+    assert delete_calls == ["mat-upload-1"]
+    cleanup_records = [
+        record
+        for record in caplog.records
+        if "pending_material_compensation_failed" in record.getMessage()
+    ]
+    assert len(cleanup_records) == 1
+    assert cleanup_records[0].exc_info is not None
+
+
+@pytest.mark.asyncio
+async def test_pdf_pending_publication_cancellation_is_cleaned_and_re_raised(
+    project_id: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancellation keeps task semantics while compensating owned side effects."""
+
+    store = _UploadStore(project_id)
+    source_root = tmp_path / "project_data" / project_id / "source_files"
+    monkeypatch.setattr(
+        rr,
+        "project_data_path",
+        lambda pid, *parts: tmp_path / "project_data" / pid / Path(*parts),
+    )
+    cancellation = asyncio.CancelledError("synthetic publication cancellation")
+    original_update = rr._update_project_stores_atomic
+    publication_failed = False
+
+    def _cancel_publication(current_project_id: str, updater: object) -> None:
+        nonlocal publication_failed
+        assert callable(updater)
+        if getattr(updater, "__name__", "") != "_queue_material":
+            original_update(current_project_id, updater)
+            return
+        assert publication_failed is False
+        publication_failed = True
+        updater({}, {})
+        raise cancellation
+
+    monkeypatch.setattr(rr, "_update_project_stores_atomic", _cancel_publication)
+    monkeypatch.setattr(rr, "_load_doc_store", lambda _project_id: {})
+
+    with pytest.raises(asyncio.CancelledError) as raised:
+        await rr._ingest_uploaded_document(
+            project_id,
+            _MemoryUpload("cancelled.pdf", b"%PDF-1.4\ncancelled publication\n%%EOF"),  # type: ignore[arg-type]
+            store=store,
+        )
+
+    assert raised.value is cancellation
+    assert store.deleted == ["mat-upload-1"]
+    assert not list(source_root.glob("*.pdf"))
+
+
+@pytest.mark.asyncio
+async def test_pdf_pending_source_cleanup_failure_preserves_publication_error(
+    project_id: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Source cleanup is best-effort and cannot mask publication failure."""
+
+    store = _UploadStore(project_id)
+    monkeypatch.setattr(
+        rr,
+        "project_data_path",
+        lambda pid, *parts: tmp_path / "project_data" / pid / Path(*parts),
+    )
+    publication_error = OSError("primary source publication failure")
+    original_update = rr._update_project_stores_atomic
+    publication_failed = False
+
+    def _fail_publication(current_project_id: str, updater: object) -> None:
+        nonlocal publication_failed
+        assert callable(updater)
+        if getattr(updater, "__name__", "") != "_queue_material":
+            original_update(current_project_id, updater)
+            return
+        assert publication_failed is False
+        publication_failed = True
+        updater({}, {})
+        raise publication_error
+
+    def _fail_source_cleanup(_project_id: str, _uploaded: object) -> bool:
+        raise RuntimeError("synthetic source cleanup failure")
+
+    monkeypatch.setattr(rr, "_update_project_stores_atomic", _fail_publication)
+    monkeypatch.setattr(rr, "_load_doc_store", lambda _project_id: {})
+    monkeypatch.setattr(rr, "_remove_unreferenced_uploaded_source", _fail_source_cleanup)
+
+    with caplog.at_level(logging.ERROR, logger=rr.logger.name):
+        with pytest.raises(OSError, match="primary source publication failure") as raised:
+            await rr._ingest_uploaded_document(
+                project_id,
+                _MemoryUpload("source-cleanup-fails.pdf", b"%PDF-1.4\nsource cleanup\n%%EOF"),  # type: ignore[arg-type]
+                store=store,
+            )
+
+    assert raised.value is publication_error
+    assert store.deleted == ["mat-upload-1"]
+    cleanup_records = [
+        record
+        for record in caplog.records
+        if "pending_source_compensation_failed" in record.getMessage()
+    ]
+    assert len(cleanup_records) == 1
+    assert cleanup_records[0].exc_info is not None
+
+
+def test_pdf_duplicate_publication_failure_never_deletes_existing_material(
+    project_id: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compensation ownership excludes a duplicate material from an earlier call."""
+
+    store = _UploadStore(project_id)
+    source_root = tmp_path / "project_data" / project_id / "source_files"
+    source_root.mkdir(parents=True)
+    source_path = source_root / "duplicate.pdf"
+    source_bytes = b"%PDF-1.4\nexisting publication\n%%EOF"
+    source_path.write_bytes(source_bytes)
+    fingerprint = f"sha256:{hashlib.sha256(source_bytes).hexdigest()}"
+    existing_material_id = "mat-existing"
+    existing_docs = {
+        existing_material_id: {
+            "title": "existing.pdf",
+            "content": "existing",
+            "source_relative_path": "duplicate.pdf",
+            "source_fingerprint": fingerprint,
+            "source_size": len(source_bytes),
+        }
+    }
+
+    monkeypatch.setattr(
+        rr,
+        "project_data_path",
+        lambda pid, *parts: tmp_path / "project_data" / pid / Path(*parts),
+    )
+
+    def _fail_duplicate_publication(_project_id: str, updater: object) -> None:
+        assert callable(updater)
+        updater(existing_docs, {existing_material_id: []})
+        raise OSError("synthetic duplicate publication failure")
+
+    monkeypatch.setattr(
+        rr,
+        "_update_project_stores_atomic",
+        _fail_duplicate_publication,
+    )
+
+    with pytest.raises(OSError, match="synthetic duplicate publication failure"):
+        rr._create_pending_uploaded_document(
+            project_id,
+            "duplicate.pdf",
+            store=store,
+            source_relative_path="duplicate.pdf",
+            source_fingerprint=fingerprint,
+            source_size=len(source_bytes),
+        )
+
+    assert store.created == []
+    assert store.deleted == []
+
+
+def test_pdf_pending_post_commit_reload_failure_preserves_published_material(
+    project_id: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An ambiguous post-commit error must not create a document dangling reference."""
+
+    store = _UploadStore(project_id)
+    source_root = tmp_path / "project_data" / project_id / "source_files"
+    source_root.mkdir(parents=True)
+    source_path = source_root / "published.pdf"
+    source_bytes = b"%PDF-1.4\npublished before reload failure\n%%EOF"
+    source_path.write_bytes(source_bytes)
+    fingerprint = f"sha256:{hashlib.sha256(source_bytes).hexdigest()}"
+    monkeypatch.setattr(
+        rr,
+        "project_data_path",
+        lambda pid, *parts: tmp_path / "project_data" / pid / Path(*parts),
+    )
+
+    def _commit_then_fail(current_project_id: str, updater: object) -> None:
+        assert callable(updater)
+        docs, _chunks = updater({}, {})
+        rr._save_doc_store(current_project_id, docs)  # type: ignore[attr-defined]
+        raise OSError("synthetic post-commit reload failure")
+
+    monkeypatch.setattr(rr, "_update_project_stores_atomic", _commit_then_fail)
+
+    with pytest.raises(OSError, match="synthetic post-commit reload failure"):
+        rr._create_pending_uploaded_document(
+            project_id,
+            "published.pdf",
+            store=store,
+            source_relative_path="published.pdf",
+            source_fingerprint=fingerprint,
+            source_size=len(source_bytes),
+        )
+
+    assert len(store.created) == 1
+    assert store.deleted == []
+    assert store.created[0].material_id in rr._load_doc_store(project_id)  # type: ignore[attr-defined]
 
 
 def test_upload_rejects_file_over_configured_limit_before_material_creation(

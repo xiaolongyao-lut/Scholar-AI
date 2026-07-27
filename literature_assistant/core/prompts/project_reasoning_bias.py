@@ -10,9 +10,14 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Literal, Mapping
+from typing import TYPE_CHECKING, Any, Literal, Mapping
 
-from models.project_reasoning_bias import ProjectReasoningBiasPayload
+if TYPE_CHECKING:
+    from literature_assistant.core.models.project_reasoning_bias import (
+        ProjectReasoningBiasPayload,
+    )
+else:
+    from models.project_reasoning_bias import ProjectReasoningBiasPayload
 
 BiasLocale = Literal["zh", "en", "auto"]
 BiasSurfaceGroup = Literal["analysis_chain", "chat_generation", "discussion"]
@@ -196,7 +201,10 @@ def load_project_reasoning_bias(project_id: str) -> ProjectReasoningBiasPayload 
     if not normalized_project_id:
         raise ValueError("project_id must be a non-empty string")
 
-    from writing_resources import get_writing_resource_store
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_resources import get_writing_resource_store
+    else:
+        from writing_resources import get_writing_resource_store
 
     project = get_writing_resource_store().get_project(normalized_project_id)
     if project is None:

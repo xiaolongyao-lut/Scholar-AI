@@ -15,6 +15,7 @@ import hashlib
 import sys
 import types
 import importlib.util
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,7 @@ if _CORE not in sys.path:
 
 import routers.resources_router as resources_router  # noqa: E402
 from routers.resources_router import _document_extraction as document_extraction  # noqa: E402
+import pdf_selection_crop as crop_module  # noqa: E402
 from pdf_backends import (  # noqa: E402
     ENV_VAR,
     PDFParserProvenance,
@@ -37,6 +39,12 @@ from pdf_backends import (  # noqa: E402
     parse_pdf_with_provenance,
 )
 from pdf_backends.pymupdf_backend import PyMuPDFBackend  # noqa: E402
+from pdf_backends.multimodal_ocr_backend import MultimodalOcrBackend  # noqa: E402
+from pdf_selection_crop import (  # noqa: E402
+    PdfSelectionCropError,
+    PdfSelectionCropSpec,
+    derive_pdf_selection_crops,
+)
 from python_adapter_server import app  # noqa: E402
 
 
@@ -81,6 +89,403 @@ def test_external_backend_module_not_in_core_source() -> None:
 # --------------------------------------------------------------------- #
 # PyMuPDFBackend — byte-level identity contract
 # --------------------------------------------------------------------- #
+
+
+def test_pymupdf_backend_uses_document_page_api(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The parser must work with PyMuPDF's documented page-count API."""
+
+    loaded_pages: list[int] = []
+    closed: list[bool] = []
+
+    class _TextPage:
+        def __init__(self, page_number: int) -> None:
+            self.page_number = page_number
+
+        def get_text(self) -> str:
+            return f"page-{self.page_number}"
+
+    class _TextDocument:
+        page_count = 2
+
+        def load_page(self, page_number: int) -> _TextPage:
+            loaded_pages.append(page_number)
+            return _TextPage(page_number)
+
+        def close(self) -> None:
+            closed.append(True)
+
+    fake_pymupdf = types.ModuleType("pymupdf")
+    fake_pymupdf.__version__ = "9.8.7-page-api"
+    fake_pymupdf.open = lambda _path: _TextDocument()
+    monkeypatch.setitem(sys.modules, "pymupdf", fake_pymupdf)
+
+    pdf = tmp_path / "page-api.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    result = PyMuPDFBackend().parse_with_provenance(pdf)
+
+    assert result.text == "page-0\n\npage-1"
+    assert loaded_pages == [0, 1]
+    assert closed == [True]
+
+
+def test_pymupdf_backend_prefers_loader_over_broken_iterator(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    loaded_pages: list[int] = []
+    iterator_calls: list[bool] = []
+    closed: list[bool] = []
+
+    class _TextPage:
+        def __init__(self, page_number: int) -> None:
+            self.page_number = page_number
+
+        def get_text(self) -> str:
+            return f"page-{self.page_number}"
+
+    class _HybridDocument:
+        page_count = 2
+
+        def load_page(self, page_number: int) -> _TextPage:
+            loaded_pages.append(page_number)
+            return _TextPage(page_number)
+
+        def __iter__(self) -> Iterator[_TextPage]:
+            iterator_calls.append(True)
+            raise RuntimeError("broken compatibility iterator")
+
+        def close(self) -> None:
+            closed.append(True)
+
+    fake_pymupdf = types.ModuleType("pymupdf")
+    fake_pymupdf.__version__ = "9.8.7-hybrid"
+    fake_pymupdf.open = lambda _path: _HybridDocument()
+    monkeypatch.setitem(sys.modules, "pymupdf", fake_pymupdf)
+
+    pdf = tmp_path / "hybrid-page-api.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    result = PyMuPDFBackend().parse_with_provenance(pdf)
+
+    assert result.text == "page-0\n\npage-1"
+    assert loaded_pages == [0, 1]
+    assert iterator_calls == []
+    assert closed == [True]
+
+
+def test_multimodal_pdf_render_uses_document_page_api(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """OCR rendering must not depend on an untyped Document iterator."""
+
+    loaded_pages: list[int] = []
+    closed: list[bool] = []
+
+    class _Pixmap:
+        def __init__(self, page_number: int) -> None:
+            self.page_number = page_number
+
+        def tobytes(self, image_format: str) -> bytes:
+            assert image_format == "png"
+            return f"png-{self.page_number}".encode("ascii")
+
+    class _Page:
+        def __init__(self, page_number: int) -> None:
+            self.page_number = page_number
+
+        def get_pixmap(self, *, dpi: int) -> _Pixmap:
+            assert dpi == 144
+            return _Pixmap(self.page_number)
+
+    class _Document:
+        page_count = 2
+
+        def load_page(self, page_number: int) -> _Page:
+            loaded_pages.append(page_number)
+            return _Page(page_number)
+
+        def close(self) -> None:
+            closed.append(True)
+
+    fake_pymupdf = types.ModuleType("pymupdf")
+    fake_pymupdf.open = lambda _path: _Document()
+    monkeypatch.setitem(sys.modules, "pymupdf", fake_pymupdf)
+
+    pdf = tmp_path / "render-page-api.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    images = MultimodalOcrBackend._pdf_to_images(pdf, dpi=144)
+
+    assert images == [b"png-0", b"png-1"]
+    assert loaded_pages == [0, 1]
+    assert closed == [True]
+
+
+def test_multimodal_pdf_render_prefers_loader_over_broken_iterator(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    loaded_pages: list[int] = []
+    iterator_calls: list[bool] = []
+    closed: list[bool] = []
+
+    class _Pixmap:
+        def __init__(self, page_number: int) -> None:
+            self.page_number = page_number
+
+        def tobytes(self, image_format: str) -> bytes:
+            assert image_format == "png"
+            return f"png-{self.page_number}".encode("ascii")
+
+    class _Page:
+        def __init__(self, page_number: int) -> None:
+            self.page_number = page_number
+
+        def get_pixmap(self, *, dpi: int) -> _Pixmap:
+            assert dpi == 144
+            return _Pixmap(self.page_number)
+
+    class _HybridDocument:
+        page_count = 2
+
+        def load_page(self, page_number: int) -> _Page:
+            loaded_pages.append(page_number)
+            return _Page(page_number)
+
+        def __iter__(self) -> Iterator[_Page]:
+            iterator_calls.append(True)
+            raise RuntimeError("broken compatibility iterator")
+
+        def close(self) -> None:
+            closed.append(True)
+
+    fake_pymupdf = types.ModuleType("pymupdf")
+    fake_pymupdf.open = lambda _path: _HybridDocument()
+    monkeypatch.setitem(sys.modules, "pymupdf", fake_pymupdf)
+
+    pdf = tmp_path / "render-hybrid-page-api.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    images = MultimodalOcrBackend._pdf_to_images(pdf, dpi=144)
+
+    assert images == [b"png-0", b"png-1"]
+    assert loaded_pages == [0, 1]
+    assert iterator_calls == []
+    assert closed == [True]
+
+
+@pytest.mark.parametrize("document_api", ["iterator", "sequence", "loader"])
+def test_multimodal_pdf_render_supports_all_document_page_apis(
+    document_api: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    rendered_pages: list[int] = []
+    closed: list[bool] = []
+
+    class _Pixmap:
+        def __init__(self, page_number: int) -> None:
+            self.page_number = page_number
+
+        def tobytes(self, image_format: str) -> bytes:
+            assert image_format == "png"
+            return f"png-{self.page_number}".encode("ascii")
+
+    class _Page:
+        def __init__(self, page_number: int) -> None:
+            self.page_number = page_number
+
+        def get_pixmap(self, *, dpi: int) -> _Pixmap:
+            assert dpi == 144
+            rendered_pages.append(self.page_number)
+            return _Pixmap(self.page_number)
+
+    pages = (_Page(0), _Page(1))
+
+    class _IteratorDocument:
+        def __iter__(self) -> Iterator[_Page]:
+            return iter(pages)
+
+        def close(self) -> None:
+            closed.append(True)
+
+    class _SequenceDocument:
+        def __len__(self) -> int:
+            return len(pages)
+
+        def __getitem__(self, index: int) -> _Page:
+            return pages[index]
+
+        def close(self) -> None:
+            closed.append(True)
+
+    class _LoaderDocument:
+        page_count = len(pages)
+
+        def load_page(self, page_number: int) -> _Page:
+            return pages[page_number]
+
+        def close(self) -> None:
+            closed.append(True)
+
+    documents = {
+        "iterator": _IteratorDocument,
+        "sequence": _SequenceDocument,
+        "loader": _LoaderDocument,
+    }
+    fake_pymupdf = types.ModuleType("pymupdf")
+    fake_pymupdf.open = lambda _path: documents[document_api]()
+    monkeypatch.setitem(sys.modules, "pymupdf", fake_pymupdf)
+
+    pdf = tmp_path / f"render-{document_api}.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    images = MultimodalOcrBackend._pdf_to_images(pdf, dpi=144)
+
+    assert images == [b"png-0", b"png-1"]
+    assert rendered_pages == [0, 1]
+    assert closed == [True]
+
+
+def test_multimodal_pdf_render_closes_incomplete_document(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    closed: list[bool] = []
+
+    class _CloseOnlyDocument:
+        def close(self) -> None:
+            closed.append(True)
+
+    fake_pymupdf = types.ModuleType("pymupdf")
+    fake_pymupdf.open = lambda _path: _CloseOnlyDocument()
+    monkeypatch.setitem(sys.modules, "pymupdf", fake_pymupdf)
+
+    pdf = tmp_path / "render-incomplete.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    with pytest.raises(TypeError, match="supported page contract"):
+        MultimodalOcrBackend._pdf_to_images(pdf)
+
+    assert closed == [True]
+
+
+def test_crop_open_closes_document_when_required_capabilities_are_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[bool] = []
+
+    class _CloseOnlyDocument:
+        def close(self) -> None:
+            closed.append(True)
+
+    def _project_data_path(_project_id: str, *parts: str) -> Path:
+        return tmp_path / "project" / Path(*parts)
+
+    fake_pymupdf = types.ModuleType("pymupdf")
+    fake_pymupdf.open = lambda _path: _CloseOnlyDocument()
+    monkeypatch.setitem(sys.modules, "pymupdf", fake_pymupdf)
+    monkeypatch.setattr(crop_module, "project_data_path", _project_data_path)
+
+    source_path = tmp_path / "incomplete-crop.pdf"
+    source_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    with pytest.raises(PdfSelectionCropError) as exc_info:
+        derive_pdf_selection_crops(
+            project_id="project-1",
+            material_id="material-1",
+            source_path=source_path,
+            specs=[PdfSelectionCropSpec(page=1, bbox=(0.1, 0.1, 0.5, 0.5))],
+        )
+
+    assert exc_info.value.code == "pdf_open_failed"
+    assert closed == [True]
+
+
+@pytest.mark.parametrize("document_api", ["iterator", "sequence", "loader"])
+@pytest.mark.parametrize(
+    ("page_shape", "expected_detail"),
+    [
+        ("missing_get_text", "must expose callable get_text"),
+        ("non_string_text", "get_text() must return a string"),
+    ],
+)
+def test_pymupdf_backend_rejects_invalid_pages_with_controlled_failure(
+    document_api: str,
+    page_shape: str,
+    expected_detail: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    closed: list[bool] = []
+
+    class _MissingTextPage:
+        pass
+
+    class _NonStringTextPage:
+        def get_text(self) -> object:
+            return {"text": "not-a-string"}
+
+    page: object
+    if page_shape == "missing_get_text":
+        page = _MissingTextPage()
+    else:
+        page = _NonStringTextPage()
+
+    class _IteratorDocument:
+        def __iter__(self) -> Iterator[object]:
+            return iter((page,))
+
+        def close(self) -> None:
+            closed.append(True)
+
+    class _SequenceDocument:
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, index: int) -> object:
+            if index != 0:
+                raise IndexError(index)
+            return page
+
+        def close(self) -> None:
+            closed.append(True)
+
+    class _LoaderDocument:
+        page_count = 1
+
+        def load_page(self, page_number: int) -> object:
+            if page_number != 0:
+                raise IndexError(page_number)
+            return page
+
+        def close(self) -> None:
+            closed.append(True)
+
+    documents = {
+        "iterator": _IteratorDocument,
+        "sequence": _SequenceDocument,
+        "loader": _LoaderDocument,
+    }
+    fake_pymupdf = types.ModuleType("pymupdf")
+    fake_pymupdf.__version__ = "9.8.7-invalid-page"
+    fake_pymupdf.open = lambda _path: documents[document_api]()
+    monkeypatch.setitem(sys.modules, "pymupdf", fake_pymupdf)
+
+    pdf = tmp_path / f"invalid-{document_api}-{page_shape}.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    result = PyMuPDFBackend().parse_with_provenance(pdf)
+
+    assert result.text.startswith("[PDF 解析失败: ")
+    assert expected_detail in result.text
+    assert closed == [True]
 
 
 def test_pymupdf_backend_returns_text_no_blocks_no_md(tmp_path: Path) -> None:

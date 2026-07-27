@@ -6,13 +6,18 @@ import logging
 import os
 import re
 from hashlib import sha256
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from ai_cost_profile import is_aggressive_cost_save
-from llm.gateway import invoke as invoke_llm_gateway
-from runtime_env import resolve_llm_config
+if TYPE_CHECKING:
+    from literature_assistant.core.ai_cost_profile import is_aggressive_cost_save
+    from literature_assistant.core.llm.gateway import invoke as invoke_llm_gateway
+    from literature_assistant.core.runtime_env import resolve_llm_config
+else:
+    from ai_cost_profile import is_aggressive_cost_save
+    from llm.gateway import invoke as invoke_llm_gateway
+    from runtime_env import resolve_llm_config
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +37,12 @@ def _strip_list_marker(text: str) -> str:
 
 
 def _resolve_api_key(api_key: str | None) -> str | None:
-    return resolve_llm_config(
+    resolved_api_key = resolve_llm_config(
         api_key,
         default_base_url=DEFAULT_ARK_URL,
         default_model=DEFAULT_ARK_MODEL,
     )[0]
+    return resolved_api_key if isinstance(resolved_api_key, str) else None
 
 
 def _extract_output_text(payload: Any) -> str:
@@ -63,10 +69,12 @@ def _extract_output_text(payload: Any) -> str:
             return "\n".join(texts)
 
     # Fallback schema variants
-    if isinstance(payload.get("output_text"), str):
-        return payload["output_text"]
-    if isinstance(payload.get("text"), str):
-        return payload["text"]
+    output_text = payload.get("output_text")
+    if isinstance(output_text, str):
+        return output_text
+    text = payload.get("text")
+    if isinstance(text, str):
+        return text
     return ""
 
 

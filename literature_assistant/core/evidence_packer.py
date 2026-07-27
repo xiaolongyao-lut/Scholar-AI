@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional, TypedDict, Union
+from typing import TYPE_CHECKING, Any, Optional, TypedDict, Union
 
 try:
     from typing import NotRequired
 except ImportError:  # pragma: no cover - Python 3.8 compatibility
     from typing_extensions import NotRequired
 
-from text_utils import cjk_aware_tokenize
-from token_utils import count_tokens
+if TYPE_CHECKING:
+    from literature_assistant.core.text_utils import cjk_aware_tokenize
+    from literature_assistant.core.token_utils import count_tokens
+else:
+    from text_utils import cjk_aware_tokenize
+    from token_utils import count_tokens
 
 
 class EvidenceReference(TypedDict):

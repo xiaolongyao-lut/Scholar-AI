@@ -9,10 +9,14 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from chunk_hashing import compute_chunk_hashes
-from chunk_index_consistency_gate import IndexedChunkRecord
+if TYPE_CHECKING:
+    from literature_assistant.core.chunk_hashing import compute_chunk_hashes
+    from literature_assistant.core.chunk_index_consistency_gate import IndexedChunkRecord
+else:
+    from chunk_hashing import compute_chunk_hashes
+    from chunk_index_consistency_gate import IndexedChunkRecord
 
 
 CHUNK_CHROMA_INDEX_SCHEMA_VERSION = "scholar-ai-chunk-chroma-index/v1"
@@ -116,8 +120,10 @@ def _bounded_text(value: object, *, max_chars: int = 5000) -> str:
 def _coerce_page(value: object) -> int:
     if isinstance(value, bool):
         return 0
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        return 0
     try:
-        page = int(value)  # type: ignore[arg-type]
+        page = int(value)
     except (TypeError, ValueError):
         return 0
     return page if page > 0 else 0

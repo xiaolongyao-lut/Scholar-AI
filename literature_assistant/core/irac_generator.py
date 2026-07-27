@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from inspiration_generator import InspirationGenerator, build_inspiration_generator
-from routers.inspiration_router import GenerateSparksRequest, SparkResponse
+if TYPE_CHECKING:
+    from literature_assistant.core.inspiration_generator import (
+        InspirationGenerator,
+        build_inspiration_generator,
+    )
+    from literature_assistant.core.routers.inspiration_router import (
+        GenerateSparksRequest,
+        SparkResponse,
+    )
+else:
+    from inspiration_generator import InspirationGenerator, build_inspiration_generator
+    from routers.inspiration_router import GenerateSparksRequest, SparkResponse
 
 
 IRACFrame = Literal["irac"]

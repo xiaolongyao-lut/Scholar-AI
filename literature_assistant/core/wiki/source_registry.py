@@ -6,22 +6,30 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
-try:  # pragma: no cover - package/flat import compatibility.
+if TYPE_CHECKING:
     from literature_assistant.core.source_vault import (
         SourceChunkInput as VaultChunkInput,
         SourceVault,
         derive_chunk_id as derive_vault_chunk_id,
         derive_source_id as derive_vault_source_id,
     )
-except ImportError:  # pragma: no cover
-    from source_vault import (
-        SourceChunkInput as VaultChunkInput,
-        SourceVault,
-        derive_chunk_id as derive_vault_chunk_id,
-        derive_source_id as derive_vault_source_id,
-    )
+else:
+    try:  # pragma: no cover - package/flat import compatibility.
+        from literature_assistant.core.source_vault import (
+            SourceChunkInput as VaultChunkInput,
+            SourceVault,
+            derive_chunk_id as derive_vault_chunk_id,
+            derive_source_id as derive_vault_source_id,
+        )
+    except ImportError:  # pragma: no cover
+        from source_vault import (
+            SourceChunkInput as VaultChunkInput,
+            SourceVault,
+            derive_chunk_id as derive_vault_chunk_id,
+            derive_source_id as derive_vault_source_id,
+        )
 
 
 SCHEMA_SQL = """
@@ -428,7 +436,10 @@ class WikiRegistry:
             chunk_inputs: list[ChunkInput] = []
             legacy_to_index: dict[str, int] = {}
             for row in chunk_rows:
-                chunk_index = int(row["chunk_index"])
+                raw_chunk_index = row["chunk_index"]
+                if not isinstance(raw_chunk_index, int):
+                    raise ValueError("stored chunk_index must be an integer")
+                chunk_index = raw_chunk_index
                 legacy_chunk_id = str(row["chunk_id"])
                 chunk_inputs.append(
                     ChunkInput(

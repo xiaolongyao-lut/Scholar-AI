@@ -4,6 +4,7 @@ import json
 import os
 import re
 import time
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal, Protocol
 from urllib.parse import quote, urlencode, urlparse
@@ -2372,7 +2373,10 @@ class RuntimeTools:
         request_data = wrapped_request.get("data")
         if not isinstance(request_data, dict):
             raise ValueError("agent request response must be an object")
-        job_id = self._bounded_text(request_data.get("job_id"), "job_id", max_chars=160)
+        job_id_value = request_data.get("job_id")
+        if not isinstance(job_id_value, str):
+            raise ValueError("agent request response must contain a string job_id")
+        job_id = self._bounded_text(job_id_value, "job_id", max_chars=160)
         endpoint = f"/runtime/job/{job_id}/agent-handoff-card"
         backend_result = self.backend.get(endpoint)
         result = self._wrap_backend_result(backend_result)
@@ -2833,26 +2837,38 @@ class RuntimeTools:
         }
         return safe_result(projected)
 
-    def _compact_acquisition_candidate(self, candidate: dict[str, Any]) -> dict[str, Any]:
+    def _compact_acquisition_candidate(self, candidate: Mapping[str, object]) -> dict[str, object]:
         """Return one bounded, actionable candidate projection for MCP callers."""
 
-        authors = candidate.get("authors") if isinstance(candidate.get("authors"), list) else []
-        landing_urls = (
-            candidate.get("landing_urls") if isinstance(candidate.get("landing_urls"), list) else []
+        authors_value = candidate.get("authors")
+        authors: Sequence[object] = (
+            authors_value
+            if isinstance(authors_value, Sequence)
+            and not isinstance(authors_value, (str, bytes, bytearray))
+            else ()
         )
-        pdf_candidates = (
-            candidate.get("pdf_candidates")
-            if isinstance(candidate.get("pdf_candidates"), list)
-            else []
+        landing_urls_value = candidate.get("landing_urls")
+        landing_urls: Sequence[object] = (
+            landing_urls_value
+            if isinstance(landing_urls_value, Sequence)
+            and not isinstance(landing_urls_value, (str, bytes, bytearray))
+            else ()
+        )
+        pdf_candidates_value = candidate.get("pdf_candidates")
+        pdf_candidates: Sequence[object] = (
+            pdf_candidates_value
+            if isinstance(pdf_candidates_value, Sequence)
+            and not isinstance(pdf_candidates_value, (str, bytes, bytearray))
+            else ()
         )
         evidence_refs: list[dict[str, Any]] = []
         pdf_previews: list[dict[str, str]] = []
         seen_evidence_ids: set[str] = set()
         for pdf in pdf_candidates:
-            if not isinstance(pdf, dict):
+            if not isinstance(pdf, Mapping):
                 continue
             evidence = pdf.get("access_evidence")
-            if not isinstance(evidence, dict):
+            if not isinstance(evidence, Mapping):
                 continue
             evidence_id = self._preview_text(evidence.get("evidence_id"), 256)
             if evidence_id and evidence_id not in seen_evidence_ids and len(evidence_refs) < 8:
@@ -2881,7 +2897,7 @@ class RuntimeTools:
         evidence_count = sum(
             1
             for pdf in pdf_candidates
-            if isinstance(pdf, dict) and isinstance(pdf.get("access_evidence"), dict)
+            if isinstance(pdf, Mapping) and isinstance(pdf.get("access_evidence"), Mapping)
         )
         return {
             "candidate_id": candidate.get("candidate_id"),
@@ -2955,20 +2971,25 @@ class RuntimeTools:
     ) -> dict[str, Any]:
         """Return the bounded Markdown receipt projection for prompt/tool hosts."""
 
-        receipt = data.get("receipt") if isinstance(data.get("receipt"), dict) else {}
-        staleness = data.get("staleness") if isinstance(data.get("staleness"), dict) else {}
-        top_refs = receipt.get("top_evidence_refs")
-        evidence_refs = top_refs if isinstance(top_refs, list) else []
-        qrels = receipt.get("qrels_status") if isinstance(receipt.get("qrels_status"), dict) else {}
-        gate = (
-            receipt.get("evidence_gate_status")
-            if isinstance(receipt.get("evidence_gate_status"), dict)
-            else {}
+        receipt_value: object = data.get("receipt")
+        receipt: Mapping[object, object] = receipt_value if isinstance(receipt_value, Mapping) else {}
+        staleness_value: object = data.get("staleness")
+        staleness: Mapping[object, object] = (
+            staleness_value if isinstance(staleness_value, Mapping) else {}
         )
-        diagnostics = (
-            receipt.get("retrieval_diagnostics")
-            if isinstance(receipt.get("retrieval_diagnostics"), dict)
-            else {}
+        top_refs: object = receipt.get("top_evidence_refs")
+        evidence_refs: Sequence[object] = (
+            top_refs
+            if isinstance(top_refs, Sequence) and not isinstance(top_refs, (str, bytes, bytearray))
+            else ()
+        )
+        qrels_value: object = receipt.get("qrels_status")
+        qrels: Mapping[object, object] = qrels_value if isinstance(qrels_value, Mapping) else {}
+        gate_value: object = receipt.get("evidence_gate_status")
+        gate: Mapping[object, object] = gate_value if isinstance(gate_value, Mapping) else {}
+        diagnostics_value: object = receipt.get("retrieval_diagnostics")
+        diagnostics: Mapping[object, object] = (
+            diagnostics_value if isinstance(diagnostics_value, Mapping) else {}
         )
         answer = self._markdown_block_text(data.get("answer"), fallback="No saved answer text returned.")
         evidence_pack_ref = self._markdown_inline(receipt.get("evidence_pack_ref") or "none", max_chars=220)
@@ -3024,13 +3045,12 @@ class RuntimeTools:
             "source_receipt": data,
         }
 
-    def _answer_receipt_runtime_refs_markdown(self, receipt: dict[str, Any]) -> list[str]:
+    def _answer_receipt_runtime_refs_markdown(self, receipt: Mapping[object, object]) -> list[str]:
         """Return compact runtime lookup refs when the receipt carries them."""
 
-        workflow_refs = (
-            receipt.get("workflow_refs")
-            if isinstance(receipt.get("workflow_refs"), dict)
-            else {}
+        workflow_refs_value: object = receipt.get("workflow_refs")
+        workflow_refs: Mapping[object, object] = (
+            workflow_refs_value if isinstance(workflow_refs_value, Mapping) else {}
         )
         ref_sources = {
             "workflow passport": receipt.get("workflow_passport_ref") or workflow_refs.get("workflow_passport_ref"),
@@ -3046,9 +3066,9 @@ class RuntimeTools:
             "replay index": receipt.get("workflow_replay_index_ref") or workflow_refs.get("workflow_replay_index_ref"),
         }
         lines: list[str] = []
-        job_id = workflow_refs.get("runtime_job_id") if isinstance(workflow_refs, dict) else None
-        request_id = workflow_refs.get("agent_request_id") if isinstance(workflow_refs, dict) else None
-        project_id = workflow_refs.get("project_id") if isinstance(workflow_refs, dict) else None
+        job_id = workflow_refs.get("runtime_job_id")
+        request_id = workflow_refs.get("agent_request_id")
+        project_id = workflow_refs.get("project_id")
         if job_id or request_id or project_id:
             parts = []
             if request_id:
@@ -3060,7 +3080,7 @@ class RuntimeTools:
             lines.append("### Runtime Refs")
             lines.append(f"- scope: {'; '.join(parts)}")
         for label, ref in ref_sources.items():
-            if not isinstance(ref, dict):
+            if not isinstance(ref, Mapping):
                 continue
             endpoint = self._markdown_inline(ref.get("endpoint") or "", max_chars=180, allow_empty=True)
             if not endpoint:
@@ -3069,12 +3089,12 @@ class RuntimeTools:
             lines.append(f"- {label}: `{endpoint}`; read_only={read_only}")
         return lines
 
-    def _answer_receipt_evidence_markdown(self, evidence_refs: list[Any]) -> list[str]:
+    def _answer_receipt_evidence_markdown(self, evidence_refs: Sequence[object]) -> list[str]:
         """Return compact evidence rows without expanding raw chunks."""
 
         lines: list[str] = []
         for index, item in enumerate(evidence_refs[:10], start=1):
-            if not isinstance(item, dict):
+            if not isinstance(item, Mapping):
                 continue
             title = self._markdown_inline(
                 item.get("source_title") or item.get("title") or item.get("material_id") or "untitled source",
@@ -3091,7 +3111,11 @@ class RuntimeTools:
             lines.append(f"- [E{index}] {title}, {locator}")
         return lines or ["- No bounded evidence refs were returned with this receipt."]
 
-    def _answer_receipt_next_actions(self, receipt: dict[str, Any], evidence_refs: list[Any]) -> list[str]:
+    def _answer_receipt_next_actions(
+        self,
+        receipt: Mapping[object, object],
+        evidence_refs: Sequence[object],
+    ) -> list[str]:
         """Return safe prompt/tool bridge follow-ups from the existing receipt."""
 
         actions = ["- Revalidate this answer by re-reading the receipt and rerunning evidence/gate checks if stale."]
@@ -3102,14 +3126,22 @@ class RuntimeTools:
         actions.append("- Send this bounded receipt markdown to the main column when handing off context.")
         return actions
 
-    def _receipt_staleness_detail(self, staleness: dict[str, Any]) -> str:
+    def _receipt_staleness_detail(self, staleness: Mapping[object, object]) -> str:
         """Return a one-line staleness trigger summary."""
 
         mismatches = staleness.get("mismatches")
         warnings = staleness.get("warnings")
-        if isinstance(mismatches, list) and mismatches:
+        if (
+            isinstance(mismatches, Sequence)
+            and not isinstance(mismatches, (str, bytes, bytearray))
+            and mismatches
+        ):
             return "mismatches=" + ", ".join(self._markdown_inline(item, max_chars=80) for item in mismatches[:4])
-        if isinstance(warnings, list) and warnings:
+        if (
+            isinstance(warnings, Sequence)
+            and not isinstance(warnings, (str, bytes, bytearray))
+            and warnings
+        ):
             return "warnings=" + ", ".join(self._markdown_inline(item, max_chars=80) for item in warnings[:4])
         return ""
 
@@ -3277,6 +3309,7 @@ class RuntimeTools:
             required_data_key=required_data_key,
         )
         duration_ms = int((time.perf_counter() - started) * 1000)
+        next_action: Mapping[str, object]
         if result.get("is_error") is True:
             status = "failed"
             quality = "none"

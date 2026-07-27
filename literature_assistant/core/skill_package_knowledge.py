@@ -8,18 +8,26 @@ import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-try:  # pragma: no cover - package import path used by the running app.
+if TYPE_CHECKING:
     from literature_assistant.core.project_paths import REPO_ROOT
     from literature_assistant.core.skills.user_manifest import (
         ManifestValidationError,
         parse_skill_md_frontmatter,
         validate_manifest,
     )
-except ImportError:  # pragma: no cover - flat import path used by legacy tests.
-    from project_paths import REPO_ROOT
-    from skills.user_manifest import ManifestValidationError, parse_skill_md_frontmatter, validate_manifest
+else:
+    try:  # pragma: no cover - package import path used by the running app.
+        from literature_assistant.core.project_paths import REPO_ROOT
+        from literature_assistant.core.skills.user_manifest import (
+            ManifestValidationError,
+            parse_skill_md_frontmatter,
+            validate_manifest,
+        )
+    except ImportError:  # pragma: no cover - flat import path used by legacy tests.
+        from project_paths import REPO_ROOT
+        from skills.user_manifest import ManifestValidationError, parse_skill_md_frontmatter, validate_manifest
 
 
 SKILL_PACKAGE_KNOWLEDGE_SCHEMA_VERSION = "scholar-ai-skill-package-knowledge/v1"

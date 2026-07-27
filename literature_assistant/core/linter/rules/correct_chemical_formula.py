@@ -26,7 +26,7 @@ def add_chemical_subscripts(text: str) -> str:
     # 使用 \b 单词边界可能不工作，改用更精确的模式
     pattern = rf'({elements_pattern})(\d+)'
 
-    def replace_subscript(match: re.Match) -> str:
+    def replace_subscript(match: re.Match[str]) -> str:
         element = match.group(1)
         number = match.group(2)
         # 检查是否已经有下标标签
@@ -56,7 +56,7 @@ def add_chemical_superscripts(text: str) -> str:
     # 例如：Fe3+, Co2+
     pattern = rf'\b({elements_pattern}(?:<sub>\d+</sub>)?)(\d+)([+-])\b'
 
-    def replace_superscript(match: re.Match) -> str:
+    def replace_superscript(match: re.Match[str]) -> str:
         element = match.group(1)
         number = match.group(2)
         charge = match.group(3)
@@ -70,7 +70,7 @@ def add_chemical_superscripts(text: str) -> str:
 class CorrectTitleChemicalFormula(FieldRule):
     """为标题中的化学式添加上下标"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-title-chemical-formula",
             target_field="title_en",

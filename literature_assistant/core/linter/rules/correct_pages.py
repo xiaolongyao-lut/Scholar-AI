@@ -14,7 +14,7 @@ class CorrectPagesRange(FieldRule):
     - "100 -- 110" → "100–110"
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="correct-pages-range",
             target_field="pages",
@@ -56,7 +56,7 @@ class ValidatePagesFormat(FieldRule):
     - 起始页必须小于结束页
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="validate-pages-format",
             target_field="pages",

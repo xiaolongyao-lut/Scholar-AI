@@ -7,15 +7,21 @@ stores and is exposed only through masked public fields.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-import rerank_runtime_config
-from feature_flags import FEATURE_FLAGS, list_flags, set_flag
-from model_config_store import chat_store, embedding_store
-from routers.credentials_router import get_credential_store
+if TYPE_CHECKING:
+    from literature_assistant.core import rerank_runtime_config
+    from literature_assistant.core.feature_flags import FEATURE_FLAGS, list_flags, set_flag
+    from literature_assistant.core.model_config_store import chat_store, embedding_store
+    from literature_assistant.core.routers.credentials_router import get_credential_store
+else:
+    import rerank_runtime_config
+    from feature_flags import FEATURE_FLAGS, list_flags, set_flag
+    from model_config_store import chat_store, embedding_store
+    from routers.credentials_router import get_credential_store
 
 
 router = APIRouter(prefix="/api/settings", tags=["Settings"])

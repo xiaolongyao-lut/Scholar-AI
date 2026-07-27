@@ -595,7 +595,7 @@ class HarnessStore:
         events = self.get_events(job_id=job_id)
         
         # Start with job metadata
-        state = {
+        state: dict[str, Any] = {
             "job_id": job_id,
             "session_id": job.session_id,
             "status": job.status,
@@ -629,7 +629,7 @@ class HarnessStore:
         jobs = self.list_jobs(session_id=session_id)
         
         # Collect all approvals across all jobs in this session
-        all_approvals = []
+        all_approvals: list[DurableApproval] = []
         for job in jobs:
             all_approvals.extend(self.list_approvals(job.job_id))
         
@@ -637,7 +637,7 @@ class HarnessStore:
         events_objs = self.get_events(session_id=session_id)
         events_dicts = [e.to_dict() for e in events_objs]
         
-        exported = {
+        exported: dict[str, Any] = {
             "session": session.to_dict(),
             "jobs": [],
             "events": events_dicts,

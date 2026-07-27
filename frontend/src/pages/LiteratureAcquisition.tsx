@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BookDown,
@@ -59,6 +59,11 @@ interface ProjectOption {
 interface Feedback {
   tone: 'success' | 'danger' | 'info';
   message: string;
+}
+
+interface ProjectStatusSnapshot {
+  projectId: string;
+  value: AcquisitionStatus;
 }
 
 const JOB_LABELS: Record<DownloadJobStatus, string> = {
@@ -242,7 +247,7 @@ export function LiteratureAcquisition() {
   const { activeProjectId, setActiveProjectId } = useWriting();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
-  const [status, setStatus] = useState<AcquisitionStatus | null>(null);
+  const [statusSnapshot, setStatusSnapshot] = useState<ProjectStatusSnapshot | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusError, setStatusError] = useState('');
   const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
@@ -261,11 +266,74 @@ export function LiteratureAcquisition() {
 
   const routeProjectId = (searchParams.get('project_id') ?? '').trim();
   const selectedProjectId = routeProjectId || activeProjectId;
+  const status = statusSnapshot?.projectId === selectedProjectId ? statusSnapshot.value : null;
+  const selectedProjectIdRef = useRef(selectedProjectId);
+  const projectStateIdRef = useRef(selectedProjectId);
+  const projectGenerationRef = useRef(0);
+  const projectsRequestGenerationRef = useRef(0);
+  const statusAuthorityGenerationRef = useRef(0);
+  const statusSnapshotRef = useRef<ProjectStatusSnapshot | null>(null);
+  const visibleJobsRef = useRef<Map<string, DownloadJob>>(new Map());
+
+  const isCurrentProjectGeneration = useCallback((projectId: string, generation: number): boolean => (
+    Boolean(projectId)
+    && selectedProjectIdRef.current === projectId
+    && projectGenerationRef.current === generation
+  ), []);
+
+  const commitStatus = useCallback((
+    projectId: string,
+    generation: number,
+    nextStatus: AcquisitionStatus,
+  ): boolean => {
+    if (!isCurrentProjectGeneration(projectId, generation)) return false;
+    const scopedStatus: AcquisitionStatus = {
+      ...nextStatus,
+      download_jobs: nextStatus.download_jobs.filter((job) => job.project_id === projectId),
+      gates: nextStatus.gates.filter((gate) => gate.project_id === projectId),
+    };
+    const nextSnapshot: ProjectStatusSnapshot = { projectId, value: scopedStatus };
+    statusSnapshotRef.current = nextSnapshot;
+    visibleJobsRef.current = new Map(scopedStatus.download_jobs.map((job) => [job.job_id, job]));
+    setStatusSnapshot(nextSnapshot);
+    return true;
+  }, [isCurrentProjectGeneration]);
+
+  const invalidateStatusReads = useCallback((): void => {
+    statusAuthorityGenerationRef.current += 1;
+    setStatusLoading(false);
+  }, []);
+
+  const resetProjectState = useCallback((projectId: string): number => {
+    selectedProjectIdRef.current = projectId;
+    projectStateIdRef.current = projectId;
+    projectGenerationRef.current += 1;
+    invalidateStatusReads();
+    statusSnapshotRef.current = null;
+    visibleJobsRef.current = new Map();
+    setStatusSnapshot(null);
+    setStatusLoading(Boolean(projectId));
+    setStatusError('');
+    setSelectedSources(new Set());
+    setSearchRun(null);
+    setSearchError('');
+    setSearching(false);
+    setBusyAction(null);
+    setFeedback(null);
+    setReceiptsByJob({});
+    setGateModal(null);
+    setGateConfirmed(false);
+    return projectGenerationRef.current;
+  }, [invalidateStatusReads]);
 
   const loadProjects = useCallback(async (): Promise<void> => {
+    const requestGeneration = projectsRequestGenerationRef.current + 1;
+    projectsRequestGenerationRef.current = requestGeneration;
+    const requestIsCurrent = (): boolean => projectsRequestGenerationRef.current === requestGeneration;
     setProjectsLoading(true);
     try {
       const list = await getWritingBackendService().listProjects();
+      if (!requestIsCurrent()) return;
       const options = list.map((project: WritingProject): ProjectOption => ({
         id: project.project_id,
         title: project.title || '未命名项目',
@@ -283,26 +351,45 @@ export function LiteratureAcquisition() {
         setSearchParams(next, { replace: true });
       }
     } catch {
-      setProjects([]);
+      if (requestIsCurrent()) setProjects([]);
     } finally {
-      setProjectsLoading(false);
+      if (requestIsCurrent()) setProjectsLoading(false);
     }
   }, [activeProjectId, routeProjectId, searchParams, setActiveProjectId, setSearchParams]);
 
   useEffect(() => {
     void loadProjects();
+    return () => {
+      projectsRequestGenerationRef.current += 1;
+    };
   }, [loadProjects]);
 
-  const refreshStatus = useCallback(async (): Promise<void> => {
-    if (!selectedProjectId) {
-      setStatus(null);
+  const refreshStatusForProject = useCallback(async (
+    projectId: string,
+    projectGeneration: number,
+  ): Promise<void> => {
+    const requestGeneration = statusAuthorityGenerationRef.current + 1;
+    statusAuthorityGenerationRef.current = requestGeneration;
+    const requestIsCurrent = (): boolean => (
+      statusAuthorityGenerationRef.current === requestGeneration
+      && isCurrentProjectGeneration(projectId, projectGeneration)
+    );
+    if (!projectId) {
+      if (projectStateIdRef.current === projectId) {
+        statusSnapshotRef.current = null;
+        visibleJobsRef.current = new Map();
+        setStatusSnapshot(null);
+        setStatusLoading(false);
+      }
       return;
     }
-    setStatusLoading(true);
-    setStatusError('');
+    if (requestIsCurrent()) {
+      setStatusLoading(true);
+      setStatusError('');
+    }
     try {
-      const nextStatus = await getAcquisitionStatus(selectedProjectId, 100);
-      setStatus(nextStatus);
+      const nextStatus = await getAcquisitionStatus(projectId, 100);
+      if (!requestIsCurrent() || !commitStatus(projectId, projectGeneration, nextStatus)) return;
       setSelectedSources((current) => {
         const allowed = new Set(
           nextStatus.sources
@@ -313,15 +400,25 @@ export function LiteratureAcquisition() {
         return new Set(preserved.length > 0 ? preserved : allowed);
       });
     } catch (error: unknown) {
-      setStatusError(acquisitionErrorMessage(error, '文献获取服务暂时不可用，请稍后刷新。'));
+      if (requestIsCurrent()) {
+        setStatusError(acquisitionErrorMessage(error, '文献获取服务暂时不可用，请稍后刷新。'));
+      }
     } finally {
-      setStatusLoading(false);
+      if (requestIsCurrent()) setStatusLoading(false);
     }
-  }, [selectedProjectId]);
+  }, [commitStatus, isCurrentProjectGeneration]);
+
+  const refreshStatus = useCallback(async (): Promise<void> => {
+    await refreshStatusForProject(selectedProjectIdRef.current, projectGenerationRef.current);
+  }, [refreshStatusForProject]);
 
   useEffect(() => {
-    void refreshStatus();
-  }, [refreshStatus]);
+    const projectGeneration = projectStateIdRef.current === selectedProjectId
+      ? projectGenerationRef.current
+      : resetProjectState(selectedProjectId);
+    selectedProjectIdRef.current = selectedProjectId;
+    void refreshStatusForProject(selectedProjectId, projectGeneration);
+  }, [refreshStatusForProject, resetProjectState, selectedProjectId]);
 
   const enabledSearchSources = useMemo(
     () => status?.sources.filter((source) => source.enabled && source.capabilities.includes('search')) ?? [],
@@ -341,13 +438,12 @@ export function LiteratureAcquisition() {
   );
 
   const handleProjectChange = (projectId: string): void => {
+    projectsRequestGenerationRef.current += 1;
+    if (projectId !== projectStateIdRef.current) resetProjectState(projectId);
     setActiveProjectId(projectId);
     const next = new URLSearchParams(searchParams);
     next.set('project_id', projectId);
     setSearchParams(next, { replace: true });
-    setSearchRun(null);
-    setReceiptsByJob({});
-    setFeedback(null);
   };
 
   const toggleSource = (sourceId: string): void => {
@@ -362,6 +458,9 @@ export function LiteratureAcquisition() {
   const handleSearch = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (!selectedProjectId || !query.trim() || selectedSources.size === 0 || searching) return;
+    const requestProjectId = selectedProjectIdRef.current;
+    const projectGeneration = projectGenerationRef.current;
+    if (!isCurrentProjectGeneration(requestProjectId, projectGeneration)) return;
     const parsedYearFrom = yearFrom ? Number(yearFrom) : null;
     const parsedYearTo = yearTo ? Number(yearTo) : null;
     if (
@@ -377,13 +476,14 @@ export function LiteratureAcquisition() {
     setFeedback(null);
     try {
       const run = await searchAcquisition({
-        projectId: selectedProjectId,
+        projectId: requestProjectId,
         query,
         sources: [...selectedSources],
         maxResults: Number(maxResults),
         yearFrom: parsedYearFrom,
         yearTo: parsedYearTo,
       });
+      if (!isCurrentProjectGeneration(requestProjectId, projectGeneration)) return;
       setSearchRun(run);
       if (run.candidates.length === 0) {
         setFeedback({ tone: 'info', message: '检索已完成，没有找到符合条件的候选文献。' });
@@ -393,63 +493,114 @@ export function LiteratureAcquisition() {
         setFeedback({ tone: 'success', message: `检索完成，共找到 ${run.candidates.length} 条候选文献。` });
       }
     } catch (error: unknown) {
-      setSearchError(acquisitionErrorMessage(error, '文献检索失败，请稍后重试。'));
+      if (isCurrentProjectGeneration(requestProjectId, projectGeneration)) {
+        setSearchError(acquisitionErrorMessage(error, '文献检索失败，请稍后重试。'));
+      }
     } finally {
-      setSearching(false);
+      if (isCurrentProjectGeneration(requestProjectId, projectGeneration)) setSearching(false);
     }
   };
 
-  const updateJob = useCallback((job: DownloadJob): void => {
-    setStatus((current) => current ? { ...current, download_jobs: upsertJob(current.download_jobs, job) } : current);
+  const updateJob = useCallback((
+    job: DownloadJob,
+    projectId: string,
+    projectGeneration: number,
+  ): boolean => {
+    const current = statusSnapshotRef.current;
+    if (
+      job.project_id !== projectId
+      || !current
+      || current.projectId !== projectId
+      || !isCurrentProjectGeneration(projectId, projectGeneration)
+    ) {
+      return false;
+    }
+    invalidateStatusReads();
+    return commitStatus(projectId, projectGeneration, {
+      ...current.value,
+      download_jobs: upsertJob(current.value.download_jobs, job),
+    });
+  }, [commitStatus, invalidateStatusReads, isCurrentProjectGeneration]);
+
+  const isCurrentVisibleJob = useCallback((job: DownloadJob): boolean => {
+    const projectId = selectedProjectIdRef.current;
+    return Boolean(
+      projectId
+      && job.project_id === projectId
+      && visibleJobsRef.current.get(job.job_id) === job,
+    );
   }, []);
 
   const handleQueue = async (candidate: CandidateManifest, evidence: AccessEvidence): Promise<void> => {
-    if (evidence.access_route !== 'open_access' || busyAction) return;
+    const projectId = selectedProjectIdRef.current;
+    const projectGeneration = projectGenerationRef.current;
+    if (
+      evidence.access_route !== 'open_access'
+      || busyAction
+      || candidate.project_id !== projectId
+      || !isCurrentProjectGeneration(projectId, projectGeneration)
+    ) return;
+    invalidateStatusReads();
     const actionKey = `queue:${evidence.evidence_id}`;
     setBusyAction(actionKey);
     setFeedback(null);
     try {
-      const job = await queueAcquisitionDownload(candidate.project_id, candidate.candidate_id, evidence.evidence_id);
-      updateJob(job);
+      const job = await queueAcquisitionDownload(projectId, candidate.candidate_id, evidence.evidence_id);
+      if (!updateJob(job, projectId, projectGeneration)) return;
       setFeedback({ tone: 'success', message: '已加入队列。下载不会自动开始，请在任务栏显式点击“开始”。' });
     } catch (error: unknown) {
-      setFeedback({ tone: 'danger', message: acquisitionErrorMessage(error, '下载任务创建失败。') });
+      if (isCurrentProjectGeneration(projectId, projectGeneration)) {
+        setFeedback({ tone: 'danger', message: acquisitionErrorMessage(error, '下载任务创建失败。') });
+      }
     } finally {
-      setBusyAction(null);
+      if (isCurrentProjectGeneration(projectId, projectGeneration)) {
+        setBusyAction((current) => current === actionKey ? null : current);
+      }
     }
   };
 
   const handleRun = async (job: DownloadJob): Promise<void> => {
-    if (busyAction) return;
+    if (busyAction || !isCurrentVisibleJob(job)) return;
+    const projectId = job.project_id;
+    const projectGeneration = projectGenerationRef.current;
+    invalidateStatusReads();
     const actionKey = `run:${job.job_id}`;
     setBusyAction(actionKey);
     setFeedback(null);
     try {
       const nextJob = await runAcquisitionDownload(job.job_id);
-      updateJob(nextJob);
+      if (!updateJob(nextJob, projectId, projectGeneration)) return;
       if (nextJob.status === 'completed') {
         setFeedback({ tone: 'success', message: 'PDF 已完成大小、格式、可读性和完整性校验，可以导入项目。' });
       } else if (nextJob.status === 'human_required') {
         await refreshStatus();
+        if (!isCurrentProjectGeneration(projectId, projectGeneration)) return;
         setFeedback({ tone: 'info', message: '来源要求人工处理。系统已停止自动访问，请在访问要求中继续。' });
       } else if (nextJob.status === 'failed') {
         setFeedback({ tone: 'danger', message: '本次下载未完成。可检查来源状态后显式重试。' });
       }
     } catch (error: unknown) {
-      setFeedback({ tone: 'danger', message: acquisitionErrorMessage(error, '下载执行失败。') });
+      if (isCurrentProjectGeneration(projectId, projectGeneration)) {
+        setFeedback({ tone: 'danger', message: acquisitionErrorMessage(error, '下载执行失败。') });
+      }
     } finally {
-      setBusyAction(null);
+      if (isCurrentProjectGeneration(projectId, projectGeneration)) {
+        setBusyAction((current) => current === actionKey ? null : current);
+      }
     }
   };
 
   const handleControl = async (job: DownloadJob, action: DownloadControlAction): Promise<void> => {
-    if (busyAction) return;
+    if (busyAction || !isCurrentVisibleJob(job)) return;
+    const projectId = job.project_id;
+    const projectGeneration = projectGenerationRef.current;
+    invalidateStatusReads();
     const actionKey = `${action}:${job.job_id}`;
     setBusyAction(actionKey);
     setFeedback(null);
     try {
       const nextJob = await controlAcquisitionDownload(job.job_id, action);
-      updateJob(nextJob);
+      if (!updateJob(nextJob, projectId, projectGeneration)) return;
       const labels: Record<DownloadControlAction, string> = {
         pause: '任务已暂停，已下载的分段会保留。',
         resume: '任务已恢复到等待状态，仍需显式点击“开始”。',
@@ -462,19 +613,29 @@ export function LiteratureAcquisition() {
           : labels[action],
       });
     } catch (error: unknown) {
-      setFeedback({ tone: 'danger', message: acquisitionErrorMessage(error, '任务状态更新失败。') });
+      if (isCurrentProjectGeneration(projectId, projectGeneration)) {
+        setFeedback({ tone: 'danger', message: acquisitionErrorMessage(error, '任务状态更新失败。') });
+      }
     } finally {
-      setBusyAction(null);
+      if (isCurrentProjectGeneration(projectId, projectGeneration)) {
+        setBusyAction((current) => current === actionKey ? null : current);
+      }
     }
   };
 
   const handleImport = async (job: DownloadJob): Promise<void> => {
-    if (!job.artifact_id || job.status !== 'completed' || busyAction) return;
+    if (!job.artifact_id || job.status !== 'completed' || busyAction || !isCurrentVisibleJob(job)) return;
+    const projectId = job.project_id;
+    const projectGeneration = projectGenerationRef.current;
     const actionKey = `import:${job.job_id}`;
     setBusyAction(actionKey);
     setFeedback(null);
     try {
       const receipt = await importAcquisitionArtifact(job.artifact_id);
+      if (
+        receipt.project_id !== projectId
+        || !isCurrentProjectGeneration(projectId, projectGeneration)
+      ) return;
       setReceiptsByJob((current) => ({ ...current, [job.job_id]: receipt }));
       if (receipt.status === 'failed' || receipt.publication_state === 'failed') {
         setFeedback({ tone: 'danger', message: '导入未完成，请稍后重试。' });
@@ -486,27 +647,48 @@ export function LiteratureAcquisition() {
         setFeedback({ tone: 'info', message: '旧版导入回执未包含发布校验证据。' });
       }
     } catch (error: unknown) {
-      setFeedback({ tone: 'danger', message: acquisitionErrorMessage(error, '文献导入失败。') });
+      if (isCurrentProjectGeneration(projectId, projectGeneration)) {
+        setFeedback({ tone: 'danger', message: acquisitionErrorMessage(error, '文献导入失败。') });
+      }
     } finally {
-      setBusyAction(null);
+      if (isCurrentProjectGeneration(projectId, projectGeneration)) {
+        setBusyAction((current) => current === actionKey ? null : current);
+      }
     }
   };
 
-  const handleReceiptRefresh = async (jobId: string, receipt: ImportReceipt): Promise<void> => {
-    if (busyAction) return;
+  const handleReceiptRefresh = async (job: DownloadJob, receipt: ImportReceipt): Promise<void> => {
+    if (busyAction || !isCurrentVisibleJob(job) || receipt.project_id !== job.project_id) return;
+    const projectId = job.project_id;
+    const projectGeneration = projectGenerationRef.current;
     const actionKey = `receipt:${receipt.receipt_id}`;
     setBusyAction(actionKey);
     try {
       const nextReceipt = await getAcquisitionImportReceipt(receipt.receipt_id);
-      setReceiptsByJob((current) => ({ ...current, [jobId]: nextReceipt }));
+      if (
+        nextReceipt.project_id !== projectId
+        || !isCurrentProjectGeneration(projectId, projectGeneration)
+      ) return;
+      setReceiptsByJob((current) => ({ ...current, [job.job_id]: nextReceipt }));
     } catch (error: unknown) {
-      setFeedback({ tone: 'danger', message: acquisitionErrorMessage(error, '导入状态读取失败。') });
+      if (isCurrentProjectGeneration(projectId, projectGeneration)) {
+        setFeedback({ tone: 'danger', message: acquisitionErrorMessage(error, '导入状态读取失败。') });
+      }
     } finally {
-      setBusyAction(null);
+      if (isCurrentProjectGeneration(projectId, projectGeneration)) {
+        setBusyAction((current) => current === actionKey ? null : current);
+      }
     }
   };
 
   const openGateModal = (gate: HumanAccessGate): void => {
+    const projectId = selectedProjectIdRef.current;
+    const current = statusSnapshotRef.current;
+    if (
+      gate.project_id !== projectId
+      || current?.projectId !== projectId
+      || !current.value.gates.some((visibleGate) => visibleGate === gate)
+    ) return;
     setGateModal(gate);
     setGateConfirmed(false);
   };
@@ -519,25 +701,47 @@ export function LiteratureAcquisition() {
 
   const handleGateResolve = async (): Promise<void> => {
     if (!gateModal || !gateConfirmed || busyAction) return;
+    const projectId = selectedProjectIdRef.current;
+    const projectGeneration = projectGenerationRef.current;
+    const current = statusSnapshotRef.current;
+    if (
+      gateModal.project_id !== projectId
+      || current?.projectId !== projectId
+      || !current.value.gates.some((gate) => gate === gateModal)
+    ) return;
+    invalidateStatusReads();
     const actionKey = `gate:${gateModal.gate_id}`;
     setBusyAction(actionKey);
     setFeedback(null);
     try {
       const resolved = await resolveAcquisitionGate(gateModal.gate_id);
-      setStatus((current) => current ? {
-        ...current,
-        gates: current.gates.map((gate) => gate.gate_id === resolved.gate.gate_id ? resolved.gate : gate),
+      const latest = statusSnapshotRef.current;
+      if (
+        resolved.gate.project_id !== projectId
+        || (resolved.download_job !== null && resolved.download_job.project_id !== projectId)
+        || latest?.projectId !== projectId
+        || !isCurrentProjectGeneration(projectId, projectGeneration)
+      ) return;
+      invalidateStatusReads();
+      const nextStatus: AcquisitionStatus = {
+        ...latest.value,
+        gates: latest.value.gates.map((gate) => gate.gate_id === resolved.gate.gate_id ? resolved.gate : gate),
         download_jobs: resolved.download_job
-          ? upsertJob(current.download_jobs, resolved.download_job)
-          : current.download_jobs,
-      } : current);
+          ? upsertJob(latest.value.download_jobs, resolved.download_job)
+          : latest.value.download_jobs,
+      };
+      if (!commitStatus(projectId, projectGeneration, nextStatus)) return;
       setGateModal(null);
       setGateConfirmed(false);
       setFeedback({ tone: 'success', message: '人工访问步骤已确认。任务已回到等待状态，不会自动继续下载。' });
     } catch (error: unknown) {
-      setFeedback({ tone: 'danger', message: acquisitionErrorMessage(error, '访问确认失败。') });
+      if (isCurrentProjectGeneration(projectId, projectGeneration)) {
+        setFeedback({ tone: 'danger', message: acquisitionErrorMessage(error, '访问确认失败。') });
+      }
     } finally {
-      setBusyAction(null);
+      if (isCurrentProjectGeneration(projectId, projectGeneration)) {
+        setBusyAction((currentAction) => currentAction === actionKey ? null : currentAction);
+      }
     }
   };
 
@@ -841,7 +1045,7 @@ export function LiteratureAcquisition() {
                           {receipt ? (
                             <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-outline-variant/45 pt-3">
                               <StatusPill tone={receiptTone(receipt)} icon={receiptVerified ? <CheckCircle2 size={10} /> : receipt.status === 'failed' || receipt.publication_state === 'failed' ? <AlertTriangle size={10} /> : <Clock3 size={10} />}>{receiptLabel(receipt)}</StatusPill>
-                              {isPublicationRetryableReceipt(receipt) ? <button type="button" onClick={() => void handleReceiptRefresh(job.job_id, receipt)} disabled={Boolean(busyAction)} title={receipt.status === 'queued' ? '刷新导入状态' : '重试发布校验'} className="inline-flex h-7 items-center gap-1 rounded-md border border-outline-variant/60 px-2 text-[11px] text-foreground/60 hover:border-primary/35 hover:text-primary disabled:opacity-45">{busyAction === `receipt:${receipt.receipt_id}` ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}{receipt.status === 'queued' ? '刷新导入' : '刷新发布校验'}</button> : null}
+                              {isPublicationRetryableReceipt(receipt) ? <button type="button" onClick={() => void handleReceiptRefresh(job, receipt)} disabled={Boolean(busyAction)} title={receipt.status === 'queued' ? '刷新导入状态' : '重试发布校验'} className="inline-flex h-7 items-center gap-1 rounded-md border border-outline-variant/60 px-2 text-[11px] text-foreground/60 hover:border-primary/35 hover:text-primary disabled:opacity-45">{busyAction === `receipt:${receipt.receipt_id}` ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}{receipt.status === 'queued' ? '刷新导入' : '刷新发布校验'}</button> : null}
                               {receiptVerified ? <button type="button" onClick={() => navigate(receipt.open_url)} className="inline-flex h-7 items-center gap-1 rounded-md border border-outline-variant/60 px-2 text-[11px] text-foreground/60 hover:border-primary/35 hover:text-primary"><ExternalLink size={11} />打开文献</button> : null}
                             </div>
                           ) : null}

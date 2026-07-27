@@ -25,10 +25,14 @@ import math
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Protocol, Sequence, Union, cast
 
-from project_paths import CORE_ROOT
-from text_utils import cjk_aware_tokenize
+if TYPE_CHECKING:
+    from literature_assistant.core.project_paths import CORE_ROOT
+    from literature_assistant.core.text_utils import cjk_aware_tokenize
+else:
+    from project_paths import CORE_ROOT
+    from text_utils import cjk_aware_tokenize
 
 # ─── YAML 解析 (pyyaml 可选, 内置 fallback) ─────────────────────
 try:
@@ -59,15 +63,32 @@ JsonValue = Union[None, bool, int, float, str, List["JsonValue"], Dict[str, "Jso
 
 
 class _RAGResultLike(Protocol):
-    query: str
-    focused_points: Sequence[str]
-    memory_hits: Sequence[Mapping[str, object]]
-    rag_evidence: Sequence[Mapping[str, object]]
-    evidence_refs: Sequence[Mapping[str, object]]
-    generated_answer: str
-    confidence_score: float
-    trace: Mapping[str, object]
-    association_bundle: Optional[Mapping[str, object]]
+    @property
+    def query(self) -> str: ...
+
+    @property
+    def focused_points(self) -> Sequence[str]: ...
+
+    @property
+    def memory_hits(self) -> Sequence[object]: ...
+
+    @property
+    def rag_evidence(self) -> Sequence[object]: ...
+
+    @property
+    def evidence_refs(self) -> Sequence[object]: ...
+
+    @property
+    def generated_answer(self) -> str: ...
+
+    @property
+    def confidence_score(self) -> float: ...
+
+    @property
+    def trace(self) -> Mapping[str, object]: ...
+
+    @property
+    def association_bundle(self) -> Optional[Mapping[str, object]]: ...
 
 
 def _json_safe(value: object) -> JsonValue:
@@ -286,7 +307,10 @@ def _init_ragflow_adapter(cfg: Dict[str, Any]) -> Optional[Any]:
         return None
 
     try:
-        from layers.e_ragflow_retrieval_adapter import RAGFlowAdapter
+        if TYPE_CHECKING:
+            from literature_assistant.core.layers.e_ragflow_retrieval_adapter import RAGFlowAdapter
+        else:
+            from layers.e_ragflow_retrieval_adapter import RAGFlowAdapter
 
         api_key = os.environ.get("RAGFLOW_API_KEY")
         if not api_key:
@@ -316,7 +340,10 @@ def _init_graphrag_bridge(cfg: Dict[str, Any]) -> Optional[Any]:
         return None
 
     try:
-        from layers.g_synthesis_graphrag_bridge import GraphRAGBridge
+        if TYPE_CHECKING:
+            from literature_assistant.core.layers.g_synthesis_graphrag_bridge import GraphRAGBridge
+        else:
+            from layers.g_synthesis_graphrag_bridge import GraphRAGBridge
 
         index_path = graphrag_cfg.get("index_path", "./output/artifacts")
         bridge = GraphRAGBridge(index_path=index_path)
@@ -335,7 +362,10 @@ def _init_autorag_runner(cfg: Dict[str, Any]) -> Optional[Any]:
         return None
 
     try:
-        from layers.v_eval_autorag_runner import AutoRAGRunner
+        if TYPE_CHECKING:
+            from literature_assistant.core.layers.v_eval_autorag_runner import AutoRAGRunner
+        else:
+            from layers.v_eval_autorag_runner import AutoRAGRunner
 
         runner = AutoRAGRunner(
             data_path=autorag_cfg.get("data_path", "./data"),
@@ -377,7 +407,10 @@ async def cmd_ask(
     adapter = _init_ragflow_adapter(cfg)
 
     # 导入并初始化工作流
-    from main_rag_workflow import RAGWorkflow
+    if TYPE_CHECKING:
+        from literature_assistant.core.main_rag_workflow import RAGWorkflow
+    else:
+        from main_rag_workflow import RAGWorkflow
 
     workflow = RAGWorkflow(
         semantic_router=router,
@@ -503,7 +536,11 @@ def _create_passthrough_router(cfg: Optional[Dict[str, Any]] = None) -> Any:
     直接将查询关键词作为 focus points 返回。
     """
     try:
-        from layers.semantic_router import SemanticRouter
+        if TYPE_CHECKING:
+            from literature_assistant.core.layers.semantic_router import SemanticRouter
+        else:
+            from layers.semantic_router import SemanticRouter
+
         embedding_settings = _get_embedding_settings(cfg or {})
         api_key = embedding_settings["api_key"]
         if api_key and Path("focus_points.json").exists():

@@ -10,19 +10,35 @@ import time
 import weakref
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, NotRequired, TypeAlias, TypedDict
 
 import httpx
-import model_call_gateway as gateway_mod
-import provider_rate_limit
 
-from ai_cost_profile import rerank_cache_enabled, rerank_short_circuit_score_gap, rerank_telemetry_enabled
-from chunk_size_guard import hard_max_chars, hard_max_tokens, inspect_text
-from model_call_gateway import _compute_corpus_version, get_cached_call
-from project_paths import output_path
-from rerank_cache import candidate_cache_id
-from runtime_env import _dotenv_disabled, env_value
-from token_utils import count_tokens, truncate_to_tokens
+if TYPE_CHECKING:
+    import literature_assistant.core.model_call_gateway as gateway_mod
+    import literature_assistant.core.provider_rate_limit as provider_rate_limit
+    from literature_assistant.core.ai_cost_profile import (
+        rerank_cache_enabled,
+        rerank_short_circuit_score_gap,
+        rerank_telemetry_enabled,
+    )
+    from literature_assistant.core.chunk_size_guard import hard_max_chars, hard_max_tokens, inspect_text
+    from literature_assistant.core.model_call_gateway import _compute_corpus_version, get_cached_call
+    from literature_assistant.core.project_paths import output_path
+    from literature_assistant.core.rerank_cache import candidate_cache_id
+    from literature_assistant.core.runtime_env import _dotenv_disabled, env_value
+    from literature_assistant.core.token_utils import count_tokens, truncate_to_tokens
+else:
+    import model_call_gateway as gateway_mod
+    import provider_rate_limit
+
+    from ai_cost_profile import rerank_cache_enabled, rerank_short_circuit_score_gap, rerank_telemetry_enabled
+    from chunk_size_guard import hard_max_chars, hard_max_tokens, inspect_text
+    from model_call_gateway import _compute_corpus_version, get_cached_call
+    from project_paths import output_path
+    from rerank_cache import candidate_cache_id
+    from runtime_env import _dotenv_disabled, env_value
+    from token_utils import count_tokens, truncate_to_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +78,34 @@ _RERANK_WARMED_CANDIDATES: set[tuple[str, str, str]] = set()
 _RERANK_WARMED_CANDIDATES_LOCK = threading.Lock()
 
 
+RerankTimingValue: TypeAlias = float | int | str | None
+RerankTimings: TypeAlias = dict[str, RerankTimingValue]
+
+
+class _RerankBudgetDecision(TypedDict):
+    allowed: bool
+    event: str | None
+    reason: str | None
+    warning: str | None
+    cap_dim: NotRequired[str | None]
+    estimated_tokens: int
+    estimated_cost_usd: float
+    state: dict[str, Any]
+
+
+class _RerankInvokeState(TypedDict):
+    attempts: int
+    api_ms: float
+    budget_event: str | None
+    budget_reason: str | None
+    budget_warning: str | None
+    budget_cap_dim: str | None
+    estimated_tokens: int | None
+    estimated_cost_usd: float | None
+    last_phase: str
+    last_status_code: int | None
+
+
 class _RerankGatewayStatusError(Exception):
     def __init__(self, response: Any, message: str | None = None) -> None:
         self.response = response
@@ -69,7 +113,7 @@ class _RerankGatewayStatusError(Exception):
 
 
 class _RerankBudgetBlocked(Exception):
-    def __init__(self, decision: dict[str, Any]) -> None:
+    def __init__(self, decision: _RerankBudgetDecision) -> None:
         self.decision = decision
         super().__init__(str(decision.get("reason") or "budget_capped"))
 
@@ -94,10 +138,16 @@ def _probe_rerank_key(
 
     # Security gate: validate endpoint before sending credentials
     try:
-        from provider_endpoint_policy import (
-            TrustSource,
-            validate_endpoint,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.provider_endpoint_policy import (
+                TrustSource,
+                validate_endpoint,
+            )
+        else:
+            from provider_endpoint_policy import (
+                TrustSource,
+                validate_endpoint,
+            )
 
         decision = validate_endpoint(
             base_url,
@@ -124,6 +174,7 @@ def _probe_rerank_key(
     if cached is not None:
         return cached
 
+    payload: dict[str, Any]
     if is_dashscope_rerank_url(base_url):
         payload = {
             "model": model,
@@ -471,7 +522,12 @@ def _resolve_rerank_targets(
     # account from the UI. The override file is small (4 fields) and
     # read once per resolve — see literature_assistant.core.rerank_runtime_config.
     try:
-        from rerank_runtime_config import get_resolved_field as _rerank_override
+        if TYPE_CHECKING:
+            from literature_assistant.core.rerank_runtime_config import (
+                get_resolved_field as _rerank_override,
+            )
+        else:
+            from rerank_runtime_config import get_resolved_field as _rerank_override
 
         override_provider = _rerank_override("provider")
         override_base_url = _rerank_override("base_url")
@@ -486,7 +542,13 @@ def _resolve_rerank_targets(
     # bucketed by the override provider hint so SiliconFlow / DashScope
     # selection downstream still picks the right candidate.
     try:
-        from rerank_runtime_config import get_resolved_field as _rerank_override
+        if TYPE_CHECKING:
+            from literature_assistant.core.rerank_runtime_config import (
+                get_resolved_field as _rerank_override,
+            )
+        else:
+            from rerank_runtime_config import get_resolved_field as _rerank_override
+
         override_api_key = _rerank_override("api_key")
     except Exception:
         override_api_key = None
@@ -582,7 +644,10 @@ def _rerank_candidates_from_key_pool(
     if _dotenv_disabled():
         return []
     try:
-        from key_pool import get_pool
+        if TYPE_CHECKING:
+            from literature_assistant.core.key_pool import get_pool
+        else:
+            from key_pool import get_pool
     except ImportError:
         return []
 
@@ -918,7 +983,7 @@ class RerankBudgetGuard:
         tmp_path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp_path, self.state_path)
 
-    def try_acquire(self, query: str, documents: list[str], *, model: str) -> dict[str, Any]:
+    def try_acquire(self, query: str, documents: list[str], *, model: str) -> _RerankBudgetDecision:
         estimated_tokens = max(0, count_tokens(query)) + sum(max(0, count_tokens(doc)) for doc in documents)
         estimated_cost_usd = round(_estimated_rerank_cost_usd(estimated_tokens, model), 6)
 
@@ -1063,7 +1128,10 @@ def _apply_scores_by_candidate_id(
         updated = dict(item)
         updated["rerank_score"] = float(score_by_candidate_id.get(cid, _fallback_score(item)))
         try:
-            from retrieval_provenance import attach_source_labels
+            if TYPE_CHECKING:
+                from literature_assistant.core.retrieval_provenance import attach_source_labels
+            else:
+                from retrieval_provenance import attach_source_labels
 
             updated = attach_source_labels(updated, ["rerank"])
         except (ImportError, TypeError, ValueError):
@@ -1105,9 +1173,9 @@ def _parse_retry_after(headers: Any) -> float | None:
 
 def _compute_backoff(attempt: int, retry_after: float | None) -> float:
     if retry_after is not None:
-        return retry_after + random.uniform(0.0, 0.1)
+        return float(retry_after + random.uniform(0.0, 0.1))
     delay = min(BASE_BACKOFF_SECONDS * (2 ** attempt), MAX_BACKOFF_SECONDS)
-    return delay + random.uniform(0.0, delay)
+    return float(delay + random.uniform(0.0, delay))
 
 
 def _normalize_text(text: str) -> str:
@@ -1149,7 +1217,10 @@ def _apply_fallback(
         updated["rerank_score"] = _fallback_score(item)
         updated["rerank_fallback"] = True
         try:
-            from retrieval_provenance import attach_source_labels
+            if TYPE_CHECKING:
+                from literature_assistant.core.retrieval_provenance import attach_source_labels
+            else:
+                from retrieval_provenance import attach_source_labels
 
             updated = attach_source_labels(updated, ["rerank_fallback"])
         except (ImportError, TypeError, ValueError):
@@ -1205,7 +1276,7 @@ async def rerank_async(
     base_url: str | None = None,
     model: str | None = None,
     semaphore: asyncio.Semaphore | None = None,
-    timings: dict[str, float] | None = None,
+    timings: RerankTimings | None = None,
 ) -> list[dict[str, Any]]:
     """Rerank retrieval candidates via SiliconFlow, with graceful fallback.
 
@@ -1417,7 +1488,7 @@ async def rerank_async(
             payload = dict(prepared["payload"])
             headers = dict(prepared["headers"])
             cache_key_parts = dict(prepared["cache_key_parts"])
-            invoke_state: dict[str, float | int | str | None] = {
+            invoke_state: _RerankInvokeState = {
                 "attempts": 0,
                 "api_ms": 0.0,
                 "budget_event": None,
@@ -1443,7 +1514,7 @@ async def rerank_async(
                 _headers: dict[str, str] = headers,
                 _payload: dict[str, Any] = payload,
                 _is_dashscope_candidate: bool = is_dashscope_candidate,
-                _invoke_state: dict[str, float | int | str | None] = invoke_state,
+                _invoke_state: _RerankInvokeState = invoke_state,
             ) -> dict[str, float]:
                 budget_decision = _get_rerank_budget_guard().try_acquire(
                     query,
@@ -1462,9 +1533,9 @@ async def rerank_async(
                 if not budget_decision["allowed"]:
                     raise _RerankBudgetBlocked(budget_decision)
 
-                _invoke_state["attempts"] = int(_invoke_state["attempts"]) + 1
+                _invoke_state["attempts"] += 1
                 if timings is not None:
-                    timings["attempts"] = int(_invoke_state["attempts"])
+                    timings["attempts"] = _invoke_state["attempts"]
                     timings["last_phase"] = "provider_wait"
                 await provider_rate_limit.maybe_wait_for_rate_limit_async(
                     _candidate_base_url,
@@ -1475,10 +1546,16 @@ async def rerank_async(
 
                 # Security gate: validate endpoint before POST
                 try:
-                    from provider_endpoint_policy import (
-                        TrustSource,
-                        validate_endpoint,
-                    )
+                    if TYPE_CHECKING:
+                        from literature_assistant.core.provider_endpoint_policy import (
+                            TrustSource,
+                            validate_endpoint,
+                        )
+                    else:
+                        from provider_endpoint_policy import (
+                            TrustSource,
+                            validate_endpoint,
+                        )
 
                     decision = validate_endpoint(
                         _candidate_base_url,
@@ -1507,8 +1584,8 @@ async def rerank_async(
                 _invoke_state["last_status_code"] = int(getattr(response, "status_code", 0) or 0)
                 _invoke_state["last_phase"] = "response_received"
                 if timings is not None:
-                    timings["api_ms"] = float(_invoke_state["api_ms"])
-                    timings["last_status_code"] = int(_invoke_state["last_status_code"])
+                    timings["api_ms"] = _invoke_state["api_ms"]
+                    timings["last_status_code"] = _invoke_state["last_status_code"]
                     timings["last_phase"] = "response_received"
 
                 if response.status_code != 200:
@@ -1632,11 +1709,11 @@ async def rerank_async(
                 continue
 
             if timings is not None:
-                timings["api_ms"] = float(invoke_state["api_ms"])
-                timings["attempts"] = int(invoke_state["attempts"])
+                timings["api_ms"] = invoke_state["api_ms"]
+                timings["attempts"] = invoke_state["attempts"]
                 timings["last_phase"] = "done"
                 timings["last_status_code"] = invoke_state["last_status_code"]
-            if int(invoke_state["attempts"]) == 0:
+            if invoke_state["attempts"] == 0:
                 _rerank_log_call(
                     model=candidate_model or "",
                     n_docs=len(candidates),
@@ -1649,7 +1726,7 @@ async def rerank_async(
                 )
             else:
                 log_extra: dict[str, Any] = {
-                    "attempts": int(invoke_state["attempts"]),
+                    "attempts": invoke_state["attempts"],
                     "candidate_source": candidate_source,
                     "base_url": candidate_base_url,
                 }
@@ -1667,7 +1744,7 @@ async def rerank_async(
                 _rerank_log_call(
                     model=candidate_model or "",
                     n_docs=len(candidates),
-                    latency_ms=float(invoke_state["api_ms"]),
+                    latency_ms=invoke_state["api_ms"],
                     extra=log_extra,
                 )
             return _apply_scores_by_candidate_id(

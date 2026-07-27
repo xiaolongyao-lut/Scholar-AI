@@ -1,9 +1,13 @@
 import logging
 import numpy as np
 from collections import defaultdict
-from typing import List, Dict, Any, Tuple
-from models.p2_logic_models import Claim
+from typing import TYPE_CHECKING, List, Dict, Any, Tuple
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from literature_assistant.core.models.p2_logic_models import Claim
+else:
+    from models.p2_logic_models import Claim
 
 logger = logging.getLogger("P3_Triangulator")
 

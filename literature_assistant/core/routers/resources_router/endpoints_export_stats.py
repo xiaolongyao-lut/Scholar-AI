@@ -6,18 +6,26 @@ monkeypatch.setattr(rr, X, ...) keeps affecting the live endpoint behaviour.
 """
 
 from datetime import datetime, timezone
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 import re
 import zipfile
 
-from fastapi import HTTPException, Query
-from pydantic import Field
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
-from models import ProjectExportPayload
+if TYPE_CHECKING:
+    from literature_assistant.core.csl_style_store import csl_style_store
+    from literature_assistant.core.models import ProjectExportPayload
+    from literature_assistant.core.routers import resources_router as _rr
+    _router: APIRouter
+else:
+    from csl_style_store import csl_style_store
+    from models import ProjectExportPayload
 
-import routers.resources_router as _rr
-from csl_style_store import csl_style_store
+    import routers.resources_router as _rr
+    _router = _rr.router
 from literature_assistant.core.knowledge_graph.reviewed_knowledge_source_sync import (
     mark_material_deleted,
 )
@@ -25,18 +33,38 @@ from literature_assistant.core.knowledge_graph.reviewed_knowledge_store import (
     ReviewedKnowledgeStoreError,
 )
 
-try:
+if TYPE_CHECKING:
     from literature_assistant.core.academic_writing_linter import (
         AcademicWritingAuditContext,
         AcademicWritingLintRequest,
         lint_academic_writing,
     )
-except ModuleNotFoundError:
-    from academic_writing_linter import (  # type: ignore[no-redef]
-        AcademicWritingAuditContext,
-        AcademicWritingLintRequest,
-        lint_academic_writing,
-    )
+else:
+    try:
+        from literature_assistant.core.academic_writing_linter import (
+            AcademicWritingAuditContext,
+            AcademicWritingLintRequest,
+            lint_academic_writing,
+        )
+    except ModuleNotFoundError:
+        from academic_writing_linter import (
+            AcademicWritingAuditContext,
+            AcademicWritingLintRequest,
+            lint_academic_writing,
+        )
+
+
+def _validated_export_payload(value: object) -> dict[str, Any]:
+    """Validate the dynamically dispatched export helper response."""
+
+    if not isinstance(value, Mapping):
+        raise RuntimeError("Project export payload must be an object")
+    payload: dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise RuntimeError("Project export payload keys must be strings")
+        payload[key] = item
+    return payload
 
 
 def _invalidate_material_before_delete(project_id: str, material_id: str) -> None:
@@ -217,7 +245,7 @@ def _build_rendered_docx_writing_audit(
     return lint_academic_writing(request).model_dump(mode="json")
 
 
-@_rr.router.get(
+@_router.get(
     "/project/{project_id}/export",
     tags=["Export"],
     response_model=ProjectExportPayload,
@@ -323,7 +351,10 @@ async def export_project(
         }
     if format == _rr.ProjectExportFormat.WORD:
         if style_profile:
-            from routers.export_router import _html_to_docx
+            if TYPE_CHECKING:
+                from literature_assistant.core.routers.export_router import _html_to_docx
+            else:
+                from routers.export_router import _html_to_docx
 
             output_dir = _rr.output_path("writing_exports", project_id)
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -343,21 +374,27 @@ async def export_project(
             except Exception as exc:
                 _rr.logger.error("Styled project DOCX export failed: %s", exc, exc_info=True)
                 raise HTTPException(status_code=500, detail="Failed to render styled Word export") from exc
-            return _rr._build_file_export_payload(
-                project_id=project_id,
-                format_name="word",
-                filename=filename,
-                file_path=path,
-                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                content=manuscript_content,
-                writing_audit=writing_audit,
-                rendered_writing_audit=_build_rendered_docx_writing_audit(
-                    project_id,
-                    path,
-                    figure_assets=figure_assets,
-                    style_profile=style_profile,
-                ),
-                **response_academic_export,
+            return _validated_export_payload(
+                _rr._build_file_export_payload(
+                    project_id=project_id,
+                    format_name="word",
+                    filename=filename,
+                    file_path=path,
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    content=manuscript_content,
+                    evidence_rows=response_academic_export.get("evidence_rows"),
+                    citation_chain=response_academic_export.get("citation_chain"),
+                    bibliography_entries=response_academic_export.get("bibliography_entries"),
+                    review_findings=response_academic_export.get("review_findings"),
+                    figure_assets=response_academic_export.get("figure_assets"),
+                    writing_audit=writing_audit,
+                    rendered_writing_audit=_build_rendered_docx_writing_audit(
+                        project_id,
+                        path,
+                        figure_assets=figure_assets,
+                        style_profile=style_profile,
+                    ),
+                )
             )
 
         output_dir = _rr.output_path("writing_exports", project_id)
@@ -378,21 +415,27 @@ async def export_project(
                 _rr.logger.warning("CSL docx export via pandoc failed; falling back to python-docx: %s", exc)
         if not used_csl:
             _rr._build_project_docx_export(project, sections, drafts, materials, academic_export, path)
-        return _rr._build_file_export_payload(
-            project_id=project_id,
-            format_name="word",
-            filename=filename,
-            file_path=path,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            content=manuscript_content,
-            writing_audit=writing_audit,
-            rendered_writing_audit=_build_rendered_docx_writing_audit(
-                project_id,
-                path,
-                figure_assets=figure_assets,
-                style_profile=style_profile,
-            ),
-            **response_academic_export,
+        return _validated_export_payload(
+            _rr._build_file_export_payload(
+                project_id=project_id,
+                format_name="word",
+                filename=filename,
+                file_path=path,
+                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                content=manuscript_content,
+                evidence_rows=response_academic_export.get("evidence_rows"),
+                citation_chain=response_academic_export.get("citation_chain"),
+                bibliography_entries=response_academic_export.get("bibliography_entries"),
+                review_findings=response_academic_export.get("review_findings"),
+                figure_assets=response_academic_export.get("figure_assets"),
+                writing_audit=writing_audit,
+                rendered_writing_audit=_build_rendered_docx_writing_audit(
+                    project_id,
+                    path,
+                    figure_assets=figure_assets,
+                    style_profile=style_profile,
+                ),
+            )
         )
     if format == _rr.ProjectExportFormat.PDF:
         output_dir = _rr.output_path("writing_exports", project_id)
@@ -413,15 +456,21 @@ async def export_project(
                 _rr.logger.warning("CSL pdf export via pandoc failed; falling back to PyMuPDF: %s", exc)
         if not used_csl:
             _rr._build_project_pdf_export(manuscript_content, path, str(project.title))
-        return _rr._build_file_export_payload(
-            project_id=project_id,
-            format_name="pdf",
-            filename=filename,
-            file_path=path,
-            media_type="application/pdf",
-            content=manuscript_content,
-            writing_audit=writing_audit,
-            **response_academic_export,
+        return _validated_export_payload(
+            _rr._build_file_export_payload(
+                project_id=project_id,
+                format_name="pdf",
+                filename=filename,
+                file_path=path,
+                media_type="application/pdf",
+                content=manuscript_content,
+                evidence_rows=response_academic_export.get("evidence_rows"),
+                citation_chain=response_academic_export.get("citation_chain"),
+                bibliography_entries=response_academic_export.get("bibliography_entries"),
+                review_findings=response_academic_export.get("review_findings"),
+                figure_assets=response_academic_export.get("figure_assets"),
+                writing_audit=writing_audit,
+            )
         )
     return {
         "project_id": project_id,
@@ -462,7 +511,7 @@ def _markdown_manuscript_to_minimal_html(markdown_text: str) -> str:
 # =========================================================================
 
 
-@_rr.router.get("/stats/overview", tags=["Statistics"])
+@_router.get("/stats/overview", tags=["Statistics"])
 async def get_global_stats() -> dict[str, Any]:
     """Get global statistics across all projects."""
     store = _rr.get_writing_resource_store()
@@ -494,18 +543,18 @@ async def get_global_stats() -> dict[str, Any]:
 # Batch Operations (learned from openhanako / open-webui bulk endpoints)
 # =========================================================================
 
-class BatchDeleteRequest(__import__("pydantic").BaseModel):
-    material_ids: list[str] = __import__("pydantic").Field(..., min_length=1, max_length=50, description="要删除的素材 ID 列表")
+class BatchDeleteRequest(BaseModel):
+    material_ids: list[str] = Field(..., min_length=1, max_length=50, description="要删除的素材 ID 列表")
 
 
-class CleanupRequest(__import__("pydantic").BaseModel):
+class CleanupRequest(BaseModel):
     dry_run: bool = True
     include_test_fixture_projects: bool = False
     remove_orphan_project_dirs: bool = False
     keep_project_ids: list[str] = Field(default_factory=list)
 
 
-@_rr.router.post("/maintenance/cleanup", tags=["Resources"])
+@_router.post("/maintenance/cleanup", tags=["Resources"])
 async def cleanup_historical_dirty_data(request: CleanupRequest) -> dict[str, Any]:
     """Preview or execute cleanup for duplicate projects and non-extractable materials."""
     store = _rr.get_writing_resource_store()
@@ -641,7 +690,7 @@ async def cleanup_historical_dirty_data(request: CleanupRequest) -> dict[str, An
     }
 
 
-@_rr.router.post("/materials/batch-delete", tags=["Resources"])
+@_router.post("/materials/batch-delete", tags=["Resources"])
 async def batch_delete_materials(request: BatchDeleteRequest) -> dict[str, Any]:
     """Batch delete materials from a project."""
     store = _rr.get_writing_resource_store()

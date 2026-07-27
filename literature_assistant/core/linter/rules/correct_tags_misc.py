@@ -7,7 +7,7 @@ from literature_assistant.core.linter.rule_base import ItemRule, FieldRule, Appl
 class NormalizeTags(ItemRule):
     """标签标准化"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="normalize-tags",
             name="标签标准化",
@@ -47,7 +47,7 @@ class NormalizeTags(ItemRule):
 class ValidateIssnIsbn(FieldRule):
     """验证 ISSN/ISBN"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="validate-issn-isbn",
             target_field="issn",

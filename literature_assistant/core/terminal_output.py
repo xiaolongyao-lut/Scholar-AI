@@ -286,6 +286,8 @@ def _task_progress(value: object) -> str:
 
     if value is None or isinstance(value, bool):
         return progress_bar(None)
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        return progress_bar(None)
     try:
         progress = max(0, min(100, int(value)))
     except (TypeError, ValueError, OverflowError):

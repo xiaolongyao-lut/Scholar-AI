@@ -28,16 +28,14 @@ import logging
 import os
 import re
 import numpy as np
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-try:
-    import httpx
-except ImportError:
-    httpx = None
+import httpx
 
 # 配置日志
 logging.basicConfig(
@@ -47,34 +45,82 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # 导入适配层
-from runtime_env import env_value, resolve_embedding_config, resolve_llm_config, wiki_first_retrieval_enabled
+if TYPE_CHECKING or __package__ == "literature_assistant.core":
+    from literature_assistant.core.runtime_env import (
+        env_value,
+        resolve_embedding_config,
+        resolve_llm_config,
+        wiki_first_retrieval_enabled,
+    )
+else:
+    from runtime_env import (
+        env_value,
+        resolve_embedding_config,
+        resolve_llm_config,
+        wiki_first_retrieval_enabled,
+    )
 
-DEFAULT_LLM_BASE_URL = env_value("ARK_BASE_URL", "OPENAI_BASE_URL", "BASE_URL", default="https://ark.cn-beijing.volces.com/api/v3")
-DEFAULT_LLM_MODEL = env_value("ARK_MODEL", "OPENAI_MODEL", "MODEL", default="ep-your-ark-endpoint")
+DEFAULT_LLM_BASE_URL = env_value(
+    "ARK_BASE_URL",
+    "OPENAI_BASE_URL",
+    "BASE_URL",
+    default="https://ark.cn-beijing.volces.com/api/v3",
+) or "https://ark.cn-beijing.volces.com/api/v3"
+DEFAULT_LLM_MODEL = env_value(
+    "ARK_MODEL",
+    "OPENAI_MODEL",
+    "MODEL",
+    default="ep-your-ark-endpoint",
+) or "ep-your-ark-endpoint"
 LEGACY_LLM_API_ENV_NAMES = ("SILICONFLOW_API_KEY",)
-from layers.e_ragflow_retrieval_adapter import RAGFlowAdapter
-from layers.r_layer_hybrid_retriever import hybrid_search
-from evidence_packer import EvidenceReference, _token_set, build_evidence_references, format_evidence_item, pack_evidence
-from llm.gateway import invoke as invoke_llm_gateway
-from model_call_gateway import _compute_corpus_version
-from query_expander import decompose_query_async
-from retrieval_provenance import attach_source_labels, merge_source_labels
-from llm_defaults import resolve_llm_params
-from project_paths import output_path, wiki_generated_root, wiki_query_index_path
-
-# Sprint 4: 高级缓存与路由
-from semantic_cache import SemanticCache
-from model_router import get_router
-from conversation_manager import get_conv_manager
-from citation_auditor import get_auditor # 新增
-from prompts.identity_renderer import render_identity_header  # 2026-05-18 identity injection plan
+if TYPE_CHECKING or __package__ == "literature_assistant.core":
+    from literature_assistant.core.evidence_packer import (
+        EvidenceReference,
+        _token_set,
+        build_evidence_references,
+        format_evidence_item,
+        pack_evidence,
+    )
+    from literature_assistant.core.citation_auditor import get_auditor
+    from literature_assistant.core.conversation_manager import get_conv_manager
+    from literature_assistant.core.layers.e_ragflow_retrieval_adapter import RAGFlowAdapter
+    from literature_assistant.core.layers.r_layer_hybrid_retriever import hybrid_search
+    from literature_assistant.core.llm.gateway import invoke as invoke_llm_gateway
+    from literature_assistant.core.llm_defaults import resolve_llm_params
+    from literature_assistant.core.model_call_gateway import _compute_corpus_version
+    from literature_assistant.core.model_router import get_router
+    from literature_assistant.core.project_paths import (
+        output_path,
+        wiki_generated_root,
+        wiki_query_index_path,
+    )
+    from literature_assistant.core.prompts.identity_renderer import render_identity_header
+    from literature_assistant.core.query_expander import decompose_query_async
+    from literature_assistant.core.retrieval_provenance import (
+        attach_source_labels,
+        merge_source_labels,
+    )
+    from literature_assistant.core.semantic_cache import SemanticCache
+else:
+    from evidence_packer import EvidenceReference, _token_set, build_evidence_references, format_evidence_item, pack_evidence
+    from citation_auditor import get_auditor
+    from conversation_manager import get_conv_manager
+    from layers.e_ragflow_retrieval_adapter import RAGFlowAdapter
+    from layers.r_layer_hybrid_retriever import hybrid_search
+    from llm.gateway import invoke as invoke_llm_gateway
+    from llm_defaults import resolve_llm_params
+    from model_call_gateway import _compute_corpus_version
+    from model_router import get_router
+    from project_paths import output_path, wiki_generated_root, wiki_query_index_path
+    from prompts.identity_renderer import render_identity_header
+    from query_expander import decompose_query_async
+    from retrieval_provenance import attach_source_labels, merge_source_labels
+    from semantic_cache import SemanticCache
 
 try:
     from literature_assistant.core.wiki.page_store import WikiPageStore
     from literature_assistant.core.wiki.query import (
-        WikiContextPack,
         WikiQueryIndex,
-        WikiQueryResult,
         build_query_trace,
         build_wiki_index,
         render_context_pack,
@@ -82,15 +128,27 @@ try:
         write_query_trace,
     )
 except Exception:  # pragma: no cover - wiki integration remains default-off.
-    WikiContextPack = None  # type: ignore[assignment]
-    WikiPageStore = None  # type: ignore[assignment]
-    WikiQueryIndex = None  # type: ignore[assignment]
-    WikiQueryResult = None  # type: ignore[assignment]
-    build_query_trace = None  # type: ignore[assignment]
-    build_wiki_index = None  # type: ignore[assignment]
-    render_context_pack = None  # type: ignore[assignment]
-    wiki_query_with_fallback = None  # type: ignore[assignment]
-    write_query_trace = None  # type: ignore[assignment]
+    _WIKI_INTEGRATION_AVAILABLE = False
+else:
+    _WIKI_INTEGRATION_AVAILABLE = True
+
+
+async def _await_response(response: Awaitable[Any]) -> Any:
+    """Resolve an arbitrary awaitable through ``asyncio.run`` compatibility."""
+    return await response
+
+
+def _require_string_key_dict(value: object, *, source: str) -> dict[str, Any]:
+    """Validate a dynamic mapping before it enters the workflow contract."""
+    if not isinstance(value, dict):
+        raise TypeError(f"{source} must return a dictionary")
+
+    result: dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise TypeError(f"{source} dictionary keys must be strings")
+        result[key] = item
+    return result
 
 
 @dataclass
@@ -197,14 +255,11 @@ class RAGWorkflow:
         # 防卡死 HTTP 客户端
         if llm_client is not None:
             self.client = llm_client
-        elif httpx:
+        else:
             self.client = httpx.AsyncClient(
                 timeout=60.0,
                 limits=httpx.Limits(max_connections=5, max_keepalive_connections=2)
             )
-        else:
-            logger.warning("httpx 未安装，LLM 调用功能不可用")
-            self.client = None
 
     def _invoke_generation_once(
         self,
@@ -219,13 +274,13 @@ class RAGWorkflow:
             try:
                 response = self.client.post(endpoint, headers=headers, json=payload)
                 if inspect.isawaitable(response):
-                    response = asyncio.run(response)
+                    response = asyncio.run(_await_response(response))
                 return self._extract_generation_content(response)
             except Exception as exc:
                 last_error = exc
                 logger.error("LLM API (client) 异常: %s", exc)
 
-        if self.enable_requests_fallback and httpx:
+        if self.enable_requests_fallback:
             try:
                 with httpx.Client(timeout=60.0) as fallback_client:
                     response = fallback_client.post(endpoint, headers=headers, json=payload)
@@ -258,7 +313,8 @@ class RAGWorkflow:
             cache is an optimization, so missing embedding support must not
             prevent the retrieve-then-generate path from running.
         """
-        if self.rag_adapter is None or not hasattr(self.rag_adapter, "_embed_query"):
+        rag_adapter = self.rag_adapter
+        if rag_adapter is None or not hasattr(rag_adapter, "_embed_query"):
             return None
 
         embedding_params = resolve_llm_params("embedding")
@@ -272,7 +328,7 @@ class RAGWorkflow:
                     "task": "semantic_cache_lookup",
                 },
                 payload={"input": [user_query]},
-                invoke_fn=lambda: self.rag_adapter._embed_query(user_query),
+                invoke_fn=lambda: rag_adapter._embed_query(user_query),
                 validate_result=lambda value: isinstance(value, list) and len(value) > 0,
             )
         except Exception as exc:  # noqa: BLE001
@@ -319,7 +375,7 @@ class RAGWorkflow:
         """
         完整的查询流程 (Sprint 4: 整合语义缓存与模型路由)
         """
-        trace = {
+        trace: Dict[str, Any] = {
             'step_0_memory': None,
             'step_1_routing': None,
             'step_2_rag_search': None,
@@ -579,14 +635,7 @@ class RAGWorkflow:
             return [], None
         if not user_query or not user_query.strip():
             return [], None
-        if (
-            WikiPageStore is None
-            or WikiQueryIndex is None
-            or build_wiki_index is None
-            or wiki_query_with_fallback is None
-            or render_context_pack is None
-            or build_query_trace is None
-        ):
+        if not _WIKI_INTEGRATION_AVAILABLE:
             return [], {
                 "enabled": True,
                 "fallback_used": True,
@@ -622,7 +671,7 @@ class RAGWorkflow:
                 context_pack,
                 enabled=True,
             )
-            trace_path = write_query_trace(query_trace) if write_query_trace is not None else None
+            trace_path = write_query_trace(query_trace)
             trace_payload: Dict[str, Any] = {
                 "enabled": True,
                 "wiki_hits": len(query_result.wiki_hits),
@@ -745,7 +794,7 @@ class RAGWorkflow:
                     score = res.get("rerank_score", res.get("hybrid_score", 0.0))
                     source_labels = merge_source_labels(res.get("source_labels"), "local_fallback")
                     source_hint = str(res.get("source_hint") or "+".join(source_labels)).strip()
-                    metadata = {
+                    metadata: dict[str, Any] = {
                         "type": "local_fallback",
                         "source_labels": source_labels,
                         "source_hint": source_hint,
@@ -952,7 +1001,7 @@ class RAGWorkflow:
         }
 
         try:
-            answer_text = await asyncio.to_thread(
+            answer_value = await asyncio.to_thread(
                 invoke_llm_gateway,
                 kind="llm",
                 cache_key_parts={
@@ -972,6 +1021,9 @@ class RAGWorkflow:
                 invoke_fn=lambda: self._invoke_generation_once(payload=payload, headers=headers),
                 validate_result=lambda value: isinstance(value, str),
             )
+            if not isinstance(answer_value, str):
+                raise TypeError("LLM gateway must return a string")
+            answer_text = answer_value
 
             # ------------------------------------------------------------------
             # 第 5 步：质量门控与结果后处理 (Sprint 4 Quality Gate)
@@ -1102,10 +1154,16 @@ class RAGWorkflow:
 
         self._memory_adapter_resolved = True
         try:
-            from layers.m_layer_mempalace_memory import (
-                MempalaceMemoryAdapter,
-                load_mempalace_settings,
-            )
+            if TYPE_CHECKING or __package__ == "literature_assistant.core":
+                from literature_assistant.core.layers.m_layer_mempalace_memory import (
+                    MempalaceMemoryAdapter,
+                    load_mempalace_settings,
+                )
+            else:
+                from layers.m_layer_mempalace_memory import (
+                    MempalaceMemoryAdapter,
+                    load_mempalace_settings,
+                )
 
             adapter = MempalaceMemoryAdapter(load_mempalace_settings())
             if adapter.is_enabled():
@@ -1124,7 +1182,10 @@ class RAGWorkflow:
 
         self._association_ai_adapter_resolved = True
         try:
-            from layers.ai_adapter import AIAdapter
+            if TYPE_CHECKING or __package__ == "literature_assistant.core":
+                from literature_assistant.core.layers.ai_adapter import AIAdapter
+            else:
+                from layers.ai_adapter import AIAdapter
 
             self._association_ai_adapter = AIAdapter(
                 api_key=env_value("ARK_API_KEY", "OPENAI_API_KEY", "SILICONFLOW_API_KEY"),
@@ -1151,10 +1212,16 @@ class RAGWorkflow:
     ) -> Optional[Dict[str, Any]]:
         """Build a writing association bundle from either project state or ephemeral context."""
         try:
-            from writing_resources import (
-                build_association_bundle_from_runtime_context,
-                apply_analysis_enrichment_to_bundle,
-            )
+            if TYPE_CHECKING or __package__ == "literature_assistant.core":
+                from literature_assistant.core.writing_resources import (
+                    apply_analysis_enrichment_to_bundle,
+                    build_association_bundle_from_runtime_context,
+                )
+            else:
+                from writing_resources import (
+                    apply_analysis_enrichment_to_bundle,
+                    build_association_bundle_from_runtime_context,
+                )
         except Exception as exc:  # pragma: no cover - defensive boundary
             logger.warning("Writing resource layer unavailable for workflow association: %s", exc)
             return None
@@ -1190,12 +1257,15 @@ class RAGWorkflow:
                 base_bundle, analysis_payloads=analysis_payloads
             )
 
-            bundle_dict = enriched_bundle.to_dict()
+            bundle_dict = _require_string_key_dict(
+                enriched_bundle.to_dict(),
+                source="association bundle",
+            )
             bundle_dict["ephemeral_project"] = ephemeral_store
             bundle_dict["analysis_enriched"] = was_enriched
             return bundle_dict
 
-        except ValueError as exc:
+        except (TypeError, ValueError) as exc:
             logger.warning("Association bundle build failed in workflow: %s", exc)
             return None
 
@@ -1302,7 +1372,7 @@ class RAGWorkflow:
                 search_terms.append(focus_query)
 
         hits: List[Dict[str, Any]] = []
-        seen_keys: set[tuple[str, str, str]] = set()
+        seen_keys: set[tuple[str, str, str, str]] = set()
         for term in search_terms:
             try:
                 search_result = adapter.search(query=term, wing=self._memory_wing)
@@ -1314,7 +1384,10 @@ class RAGWorkflow:
                 continue
 
             for hit in getattr(search_result, "results", []):
-                hit_dict = hit.to_dict() if hasattr(hit, "to_dict") else dict(hit)
+                hit_dict = _require_string_key_dict(
+                    hit.to_dict() if hasattr(hit, "to_dict") else dict(hit),
+                    source="memory search hit",
+                )
                 normalized_text = " ".join(str(hit_dict.get("text", "")).split())
                 dedupe_key = (
                     str(hit_dict.get("wing", "")).strip(),
@@ -1376,9 +1449,12 @@ class RAGWorkflow:
 # 演示和测试
 # ============================================================================
 
-async def demo():
+async def demo() -> None:
     """演示 RAG 工作流"""
-    from layers.semantic_router import SemanticRouter
+    if TYPE_CHECKING or __package__ == "literature_assistant.core":
+        from literature_assistant.core.layers.semantic_router import SemanticRouter
+    else:
+        from layers.semantic_router import SemanticRouter
     
     print("=" * 60)
     print("RAG 工作流演示")

@@ -16,14 +16,20 @@ import logging
 import os
 from collections import defaultdict, Counter
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple
 from datetime import datetime
 
 # P1 核心组件导入
-from layers.p1_entity_indexer import EntityIndexer
-from layers.p1_index_versioner import IndexVersionManager
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.p1_entity_indexer import EntityIndexer
+    from literature_assistant.core.layers.p1_index_versioner import IndexVersionManager
+else:
+    from layers.p1_entity_indexer import EntityIndexer
+    from layers.p1_index_versioner import IndexVersionManager
 
 logger = logging.getLogger("WLayer_CrossPaperAnalysis")
+
+LLMClient = Callable[[str], Awaitable[object]]
 
 
 class ConflictDetector:
@@ -32,12 +38,12 @@ class ConflictDetector:
     分析同一参数在不同文献中的结论是否存在矛盾。
     """
 
-    def __init__(self):
-        self.parameter_claims = defaultdict(list)  # {param: [{source, claim, confidence}, ...]}
-        self.consensus_map = {}  # {param: {consensus, disagreement_count, papers}}
+    def __init__(self) -> None:
+        self.parameter_claims: defaultdict[str, List[Dict[str, Any]]] = defaultdict(list)
+        self.consensus_map: Dict[str, Dict[str, Any]] = {}
 
     def register_parameter_claim(self, paper_id: str, parameter: str, claim: str, 
-                                 confidence: float, writing_point_id: str):
+                                 confidence: float, writing_point_id: str) -> None:
         """注册一篇文献对某参数的结论。"""
         self.parameter_claims[parameter].append({
             'paper_id': paper_id,
@@ -53,7 +59,7 @@ class ConflictDetector:
         检测参数级别的冲突。
         返回冲突矩阵和共识评估。
         """
-        conflicts = {
+        conflicts: Dict[str, Any] = {
             'parameter_consensus': {},
             'high_conflict_parameters': [],
             'consensus_parameters': [],
@@ -117,7 +123,7 @@ class ConflictDetector:
         生成技术趋势表。
         展示各参数在不同文献中的变化趋势。
         """
-        trend_table = {
+        trend_table: Dict[str, Any] = {
             'generated_at': datetime.now().isoformat(),
             'parameter_trends': {},
             'consensus_summary': {
@@ -154,18 +160,18 @@ class GlobalIndexBuilder:
     升级点 (P1): 支持 Contextual Chunking 和异步实体提取。
     """
 
-    def __init__(self, llm_client: Optional[Callable] = None):
-        self.parameters_index = defaultdict(list)  # {parameter: [writing_points]}
-        self.figures_index = defaultdict(list)     # {figure_id: {claims, papers}}
-        self.paper_map = {}                        # {paper_id: metadata}
-        self.claim_index = []                      # All claims in searchable format
+    def __init__(self, llm_client: Optional[LLMClient] = None) -> None:
+        self.parameters_index: defaultdict[str, List[Dict[str, Any]]] = defaultdict(list)
+        self.figures_index: Dict[Any, Dict[str, Any]] = {}
+        self.paper_map: Dict[str, Dict[str, Any]] = {}
+        self.claim_index: List[Dict[str, Any]] = []
         self.llm_client = llm_client
         self.semaphore = asyncio.Semaphore(10)      # 限制并发
         
         # P1 增强模块
         self.entity_indexer = EntityIndexer()
         self.version_manager = IndexVersionManager()
-        self.version_history = []
+        self.version_history: List[Dict[str, Any]] = []
 
     async def _generate_context_summary(self, paper_title: str, claim: str) -> str:
         """
@@ -181,12 +187,20 @@ class GlobalIndexBuilder:
         )
         try:
             async with self.semaphore:
-                return await self.llm_client(prompt)
+                summary = await self.llm_client(prompt)
+                if not isinstance(summary, str) or not summary.strip():
+                    raise TypeError("context summary must be a non-empty string")
+                return summary.strip()
         except Exception as e:
             logger.warning(f"Context summary generation failed: {e}")
             return f"Context: {paper_title}"
 
-    async def index_volume_bundle(self, bundle: Dict[str, Any], bundle_path: Path, enable_context: bool = True):
+    async def index_volume_bundle(
+        self,
+        bundle: Dict[str, Any],
+        bundle_path: Path,
+        enable_context: bool = True,
+    ) -> None:
         """
         索引卷级数据包。升级为异步以支持并发 LLM 调用。
         """
@@ -229,10 +243,17 @@ class GlobalIndexBuilder:
             'stats': bundle.get('stats', {})
         }
 
-    async def _process_writing_point(self, wp: Dict[str, Any], bundle_id: str, volume_title: str, enable_context: bool):
+    async def _process_writing_point(
+        self,
+        wp: Dict[str, Any],
+        bundle_id: str,
+        volume_title: str,
+        enable_context: bool,
+    ) -> Dict[str, Any]:
         """处理单条 Writing Point，包含可能的上下文生成。"""
         claim = wp.get('claim', '')
         context_summary = ""
+        entities_info: Dict[str, List[str]] = {}
         
         if enable_context:
             # P1: 生成上下文摘要
@@ -275,31 +296,10 @@ class GlobalIndexBuilder:
         # 实际逻辑应调用 LLM
         return {"materials": [], "processes": [], "properties": [], "anomalies": []}
 
-        # 索引图表
-        for fig in bundle.get('figures', []):
-            fig_id = fig.get('figure_id')
-            self.figures_index[fig_id] = {
-                'figure_number': fig.get('figure_number'),
-                'caption': fig.get('caption'),
-                'papers': list(set(wp.get('source_paper_id') for wp in bundle.get('writing_points', [])
-                                  if fig_id in wp.get('linked_figures', []))),
-                'volume_id': bundle_id,
-                'reference_count': len([wp for wp in bundle.get('writing_points', [])
-                                       if fig_id in wp.get('linked_figures', [])])
-            }
-
-        # 记录卷信息
-        self.paper_map[bundle_id] = {
-            'bundle_path': str(bundle_path),
-            'paper_count': bundle.get('paper_count', 0),
-            'created_at': bundle.get('created_at'),
-            'stats': bundle.get('stats', {})
-        }
-
     @staticmethod
     def _extract_parameters(text: str) -> Set[str]:
         """从文本中提取工艺参数。"""
-        parameters = set()
+        parameters: Set[str] = set()
         param_keywords = [
             'power', 'speed', 'frequency', 'temperature', 'pressure',
             'laser power', 'scan speed', 'heat input', 'cooling rate',
@@ -355,7 +355,7 @@ class CrossPaperAnalyzer:
     整合冲突检测和全局索引构建。
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.conflict_detector = ConflictDetector()
         self.index_builder = GlobalIndexBuilder()
 
@@ -426,7 +426,7 @@ class CrossPaperAnalyzer:
             return False
 
 
-def main():
+def main() -> None:
     """示例用法。"""
     import argparse
 

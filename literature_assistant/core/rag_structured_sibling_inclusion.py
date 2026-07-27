@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
 __all__ = [
     "is_sibling_inclusion_enabled",
@@ -87,7 +87,11 @@ def is_sibling_inclusion_enabled() -> bool:
     do for tolf_context / hybrid_retrieval.
     """
     try:
-        from feature_flags import is_enabled
+        if TYPE_CHECKING:
+            from literature_assistant.core.feature_flags import is_enabled
+        else:
+            from feature_flags import is_enabled
+
         return is_enabled("rag_structured_sibling_inclusion")
     except (ImportError, KeyError):
         # External-cwd / legacy snapshot path: fall back to env var.

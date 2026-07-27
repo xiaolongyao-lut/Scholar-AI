@@ -8,7 +8,7 @@ from literature_assistant.core.linter.rule_base import FieldRule, ApplyContext, 
 class RequirePublicationDate(FieldRule):
     """要求发布日期"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="require-publication-date",
             target_field="date",
@@ -30,7 +30,7 @@ class RequirePublicationDate(FieldRule):
 class ValidateDateRange(FieldRule):
     """验证日期范围"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             rule_id="validate-date-range",
             target_field="date",

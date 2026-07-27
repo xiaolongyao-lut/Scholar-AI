@@ -1,14 +1,36 @@
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import re
 import math
 import json
 import logging
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Set, Tuple
 
 from .ai_adapter import AIAdapter
+
+
+_ACADEMIC_SCORING_CACHE_VERSION = "academic-scoring-v2"
+
+
+class CacheManagerProtocol(Protocol):
+    """Async cache boundary used by the academic scoring layer."""
+
+    async def fetch(self, *, query: str, domain: str) -> object:
+        """Return a cached payload, or a falsey value on a cache miss."""
+
+    async def commit(
+        self,
+        *,
+        query: str,
+        result: object,
+        domain: str,
+        confidence: float,
+    ) -> object:
+        """Persist a cache payload and return provider-specific metadata."""
 
 EN_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9\-']+")
 CN_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]{2,}")
@@ -94,20 +116,156 @@ class AcademicScorer:
     Now integrated with AIAdapter for LLM-powered semantic understanding.
     """
 
-    def __init__(self, goal: str, enable_llm: bool = True, api_key: Optional[str] = None, base_url: Optional[str] = None, model: str = "gpt-4o-mini", cache_manager=None):
+    def __init__(
+        self,
+        goal: str,
+        enable_llm: bool = True,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model: str = "gpt-4o-mini",
+        cache_manager: Optional[CacheManagerProtocol] = None,
+    ) -> None:
+        """Initialize goal-aware academic scoring.
+
+        Args:
+            goal: Research goal used to rank and group claims.
+            enable_llm: Whether semantic enhancement may use the configured LLM.
+            api_key: Optional explicit provider credential passed to ``AIAdapter``.
+            base_url: Optional OpenAI-compatible provider endpoint.
+            model: Provider model identifier.
+            cache_manager: Optional async cache implementing the local fetch/commit
+                contract. Cache payloads remain untrusted until validated here.
+        """
         self.goal = goal
+        self.ai_adapter: Optional[AIAdapter]
         if enable_llm:
             self.ai_adapter = AIAdapter(api_key=api_key, base_url=base_url, model=model)
-            if self.ai_adapter and self.ai_adapter.enabled:
+            if self.ai_adapter.enabled:
                 self.llm_status = "enabled"
             else:
-                self.llm_status = getattr(self.ai_adapter, "llm_status", "disabled_unavailable")
+                self.llm_status = self.ai_adapter.llm_status
         else:
             self.ai_adapter = None
             self.llm_status = "disabled_by_config"
 
         self.use_llm = self.llm_status == "enabled"
         self.cache_manager = cache_manager
+
+    @staticmethod
+    def _finite_score(value: object, default: float = 0.5) -> float:
+        """Normalize an external score while rejecting booleans and non-finite values."""
+        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            return default
+        try:
+            score = float(value)
+        except ValueError:
+            return default
+        return score if math.isfinite(score) else default
+
+    @staticmethod
+    def _chat_response_text(response: object) -> str:
+        """Extract non-empty text from an OpenAI-compatible chat response."""
+        choices = getattr(response, "choices", None)
+        if not isinstance(choices, list) or not choices:
+            raise ValueError("chat response does not contain choices")
+
+        choice = choices[0]
+        message = (
+            choice.get("message")
+            if isinstance(choice, dict)
+            else getattr(choice, "message", None)
+        )
+        content = (
+            message.get("content")
+            if isinstance(message, dict)
+            else getattr(message, "content", None)
+        )
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("chat response content must be a non-empty string")
+        return content.strip()
+
+    @staticmethod
+    def _theme_name(writing_point: Dict[str, Any]) -> str:
+        """Return a stable string theme from scalar or structured mechanisms."""
+        enhancements = writing_point.get("llm_enhancements")
+        if isinstance(enhancements, dict):
+            mechanisms = enhancements.get("mechanisms")
+            if isinstance(mechanisms, list) and mechanisms:
+                primary = mechanisms[0]
+                if isinstance(primary, str) and primary.strip():
+                    return primary.strip()
+                if isinstance(primary, dict):
+                    for field in ("mechanism_type", "mechanism"):
+                        candidate = primary.get(field)
+                        if isinstance(candidate, str) and candidate.strip():
+                            return candidate.strip()
+
+        point_type = writing_point.get("point_type")
+        if isinstance(point_type, str) and point_type.strip():
+            return point_type.strip()
+        return "discussion"
+
+    def _validated_analysis_cache(self, value: object) -> Optional[Dict[str, Any]]:
+        """Validate the minimum shape required of a cached full analysis result."""
+        if not isinstance(value, dict) or not all(
+            isinstance(key, str) for key in value
+        ):
+            return None
+        if value.get("status") != "analysis_complete":
+            return None
+        if value.get("goal") != self.goal:
+            return None
+        required_lists = (
+            "writing_points",
+            "selected_writing_points",
+            "semantic_themes",
+            "selected_figures",
+            "selected_tables",
+        )
+        if any(not isinstance(value.get(field), list) for field in required_lists):
+            return None
+        return {
+            key: item
+            for key, item in value.items()
+            if isinstance(key, str)
+        }
+
+    def _analysis_cache_key(
+        self,
+        bound_data: Dict[str, Any],
+        *,
+        topk: int,
+    ) -> str | None:
+        """Return a versioned content key, or ``None`` for unsafe input shapes."""
+
+        model: str | None = None
+        if self.use_llm and self.ai_adapter is not None:
+            raw_model = getattr(self.ai_adapter, "model", None)
+            if isinstance(raw_model, str) and raw_model.strip():
+                model = raw_model.strip()
+        payload = {
+            "version": _ACADEMIC_SCORING_CACHE_VERSION,
+            "goal": self.goal,
+            "topk": topk,
+            "use_llm": self.use_llm,
+            "model": model,
+            "bound_data": bound_data,
+        }
+        try:
+            canonical = json.dumps(
+                payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+        except (TypeError, ValueError):
+            logging.getLogger(__name__).debug(
+                "G-Layer input is not canonical JSON; bypassing full-analysis cache."
+            )
+            return None
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return f"{_ACADEMIC_SCORING_CACHE_VERSION}:{digest}"
 
     @staticmethod
     def normalize_text(text: str) -> str:
@@ -239,7 +397,8 @@ class AcademicScorer:
         """
         使用 LLM 增强 Claim 分析：添加机制提取、边界分类、创新点识别。
         """
-        if not self.use_llm:
+        adapter = self.ai_adapter
+        if not self.use_llm or adapter is None:
             return {
                 'claim': claim,
                 'mechanisms': [],
@@ -249,7 +408,7 @@ class AcademicScorer:
                 'evidence_strength': 'unknown'
             }
 
-        enhancements = {
+        enhancements: Dict[str, Any] = {
             'claim': claim,
             'mechanisms': [],
             'boundary_type': 'unknown',
@@ -260,14 +419,14 @@ class AcademicScorer:
 
         try:
             # 1. 提取机制
-            mechanisms = self.ai_adapter.extract_mechanisms(source_text, self.goal)
+            mechanisms = adapter.extract_mechanisms(source_text, self.goal)
             enhancements['mechanisms'] = mechanisms[:2] if mechanisms else []
         except Exception as e:
             logging.getLogger(__name__).debug(f"机制提取失败: {e}")
 
         try:
             # 2. 边界分类
-            boundary_result = self.ai_adapter.classify_claim_boundary(claim, source_text)
+            boundary_result = adapter.classify_claim_boundary(claim, source_text)
             enhancements['boundary_type'] = boundary_result.get('boundary_type', 'unknown')
             enhancements['boundary_confidence'] = boundary_result.get('confidence', 0.0)
         except Exception as e:
@@ -275,8 +434,11 @@ class AcademicScorer:
 
         try:
             # 3. 提取创新点（如果是结果类型的 claim）
-            if 'result' in enhancements['boundary_type'] or 'explanation' in enhancements['boundary_type']:
-                innovations = self.ai_adapter.extract_innovation_points(source_text, self.goal)
+            boundary_type = enhancements.get('boundary_type')
+            if isinstance(boundary_type, str) and (
+                'result' in boundary_type or 'explanation' in boundary_type
+            ):
+                innovations = adapter.extract_innovation_points(source_text, self.goal)
                 enhancements['innovation_points'] = innovations[:1] if innovations else []
         except Exception as e:
             logging.getLogger(__name__).debug(f"创新点提取失败: {e}")
@@ -290,38 +452,48 @@ class AcademicScorer:
         if not selected_points: return []
         
         # 简单聚类：基于 LLM 提取的 mechanism 标签进行分组
-        from collections import defaultdict
-        theme_map = defaultdict(list)
+        theme_map: defaultdict[str, List[Dict[str, Any]]] = defaultdict(list)
         for wp in selected_points:
-            mechs = wp.get('llm_enhancements', {}).get('mechanisms', [])
-            if mechs:
-                primary_theme = mechs[0]
-            else:
-                primary_theme = wp.get('point_type', 'discussion')
-            theme_map[primary_theme].append(wp)
+            theme_map[self._theme_name(wp)].append(wp)
             
-        themes = []
+        themes: List[Dict[str, Any]] = []
         for theme_name, points in theme_map.items():
             # 为每个主题生成合成叙述
             combined_text = "\n".join([p['claim'] for p in points])
-            summary = ""
-            if self.use_llm:
+            summary = combined_text[:300] + "..."
+            adapter = self.ai_adapter
+            if self.use_llm and adapter is not None:
                 prompt_text = f"基于以下关于'{theme_name}'的研究论点合成学术综述:\n{combined_text}"
                 try:
-                    summary = None
                     if self.cache_manager:
-                        summary = await self.cache_manager.fetch(query=prompt_text, domain="academic_summary")
-                    if not summary:
-                        summary = self.ai_adapter.complete(prompt_text)
+                        cached_summary = await self.cache_manager.fetch(
+                            query=prompt_text,
+                            domain="academic_summary",
+                        )
+                        if isinstance(cached_summary, str) and cached_summary.strip():
+                            summary = cached_summary.strip()
+                    if summary == combined_text[:300] + "...":
+                        response = await asyncio.to_thread(
+                            adapter._chat,
+                            prompt_text,
+                            task="summarize",
+                        )
+                        summary = self._chat_response_text(response)
                         if self.cache_manager and summary:
-                            await self.cache_manager.commit(query=prompt_text, result=summary, domain="academic_summary", confidence=0.9)
-                except:
-                    summary = combined_text[:300] + "..."
-            else:
-                summary = combined_text[:300] + "..."
+                            await self.cache_manager.commit(
+                                query=prompt_text,
+                                result=summary,
+                                domain="academic_summary",
+                                confidence=0.9,
+                            )
+                except Exception as exc:
+                    logging.getLogger(__name__).debug(
+                        "主题摘要生成失败: %s",
+                        exc,
+                    )
                 
             themes.append({
-                'theme_title': theme_name.capitalize(),
+                'theme_title': theme_name.title(),
                 'summary': summary,
                 'writing_points': points,
                 'linked_figure_ids': sorted({fid for p in points for fid in p.get('linked_figures', [])}),
@@ -335,26 +507,31 @@ class AcademicScorer:
         多模态增强校验：利用 LLM 验证图表是否支撑该 Writing Point。
         返回增强的相关性分数。
         """
-        if not self.use_llm or not writing_point.get('linked_figures'):
-            return writing_point.get('relevance_score', 0.5)
+        base_score = self._finite_score(writing_point.get('relevance_score'), 0.5)
+        adapter = self.ai_adapter
+        if not self.use_llm or adapter is None or not writing_point.get('linked_figures'):
+            return base_score
 
         claim = writing_point.get('claim', '')
         fig_ids = writing_point.get('linked_figures', [])
 
-        if not claim or not fig_ids:
-            return writing_point.get('relevance_score', 0.5)
+        if not isinstance(claim, str) or not claim or not isinstance(fig_ids, list) or not fig_ids:
+            return base_score
 
         try:
-            base_score = writing_point.get('relevance_score', 0.5)
-            support_scores = []
+            support_scores: List[float] = []
 
             for fig_id in fig_ids[:2]:  # 只检查前两个图
                 fig = next((f for f in figures if f.get('figure_id') == fig_id), None)
                 if not fig:
                     continue
 
-                caption = fig.get('caption', '')
-                support_score = self.ai_adapter.verify_multimodal_support(claim, caption)
+                caption_value = fig.get('caption', '')
+                caption = caption_value if isinstance(caption_value, str) else ''
+                support_score = self._finite_score(
+                    adapter.verify_multimodal_support(claim, caption),
+                    0.5,
+                )
                 support_scores.append(support_score)
 
             if support_scores:
@@ -365,20 +542,23 @@ class AcademicScorer:
             return base_score
         except Exception as e:
             logging.getLogger(__name__).debug(f"多模态校验失败: {e}")
-            return writing_point.get('relevance_score', 0.5)
+            return base_score
 
     async def analyze_bound_data(self, bound_data: Dict[str, Any], topk: int = 12) -> Dict[str, Any]:
         """
         Core analysis pipeline: scores and ranks all entities based on the goal.
         Now with LLM-powered semantic analysis, multimodal verification and Multi-layer caching.
         """
-        if self.cache_manager:
-            # 建立整体分析指纹
-            doc_info = str(len(bound_data.get('chunks', []))) + str(len(bound_data.get('figures', [])))
-            cached_res = await self.cache_manager.fetch(query=self.goal + "|" + doc_info, domain="academic_scoring")
-            if cached_res:
+        cache_key = self._analysis_cache_key(bound_data, topk=topk)
+        if self.cache_manager and cache_key is not None:
+            cached_res = await self.cache_manager.fetch(
+                query=cache_key,
+                domain="academic_scoring",
+            )
+            validated_cache = self._validated_analysis_cache(cached_res)
+            if validated_cache is not None:
                 logging.getLogger(__name__).info("⚡ G-Layer 命中整体学术打分缓存，跳过高能耗分析。")
-                return cached_res
+                return validated_cache
 
         raw_terms, phrase_terms, goal_weights = self.expand_goal(self.goal)
         profile = self.infer_goal_profile(self.goal)
@@ -491,8 +671,13 @@ class AcademicScorer:
             'status': 'analysis_complete'
         }
 
-        if self.cache_manager:
+        if self.cache_manager and cache_key is not None:
             # 学术打分极高价值，触发强沉淀
-            await self.cache_manager.commit(query=self.goal + "|" + doc_info, result=final_res, domain="academic_scoring", confidence=0.88)
+            await self.cache_manager.commit(
+                query=cache_key,
+                result=final_res,
+                domain="academic_scoring",
+                confidence=0.88,
+            )
             
         return final_res

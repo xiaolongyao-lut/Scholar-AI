@@ -116,6 +116,7 @@ def setup_logging(
         )
         file_handler.setLevel(file_level)
 
+        file_formatter: logging.Formatter
         if json_logs:
             file_formatter = JSONFormatter()
         else:
@@ -144,7 +145,10 @@ batch_logger = get_logger("scoring_system.batch")
 exporter_logger = get_logger("scoring_system.exporter")
 
 
-def add_context_to_log(logger: logging.Logger, **context_data):
+def add_context_to_log(
+    logger: logging.Logger,
+    **context_data: object,
+) -> logging.Logger:
     """
     Create a logger adapter with context information
 
@@ -154,8 +158,8 @@ def add_context_to_log(logger: logging.Logger, **context_data):
         # Output: ... paper_id=paper_001, goal=工艺参数 - Processing started
     """
     class ContextFilter(logging.Filter):
-        def filter(self, record):
-            record.extra_data = context_data
+        def filter(self, record: logging.LogRecord) -> bool:
+            setattr(record, "extra_data", context_data)
             return True
 
     logger.addFilter(ContextFilter())

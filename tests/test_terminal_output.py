@@ -87,13 +87,13 @@ def test_task_console_formatter_sanitizes_untrusted_values() -> None:
         scholar_task={
             "task_type": "resource_ingest\r\nforged",
             "status": "failed",
-            "title": "\x1b[31mC:\\Users\\xiao\\private\\paper.pdf\x1b[0m",
+            "title": "\x1b[31mC:\\Users\\example-user\\private\\paper.pdf\x1b[0m",
             "stage": "extract_text\nforged",
             "message": (
                 "Authorization: Bearer super-secret-token\r\n"
                 "api_key=sk-live-secret client_secret=client-private "
                 "token=token-private access_token=access-private password=pwd-private "
-                "/home/xiao/private/source.pdf /secret /tmp "
+                "/home/example-user/private/source.pdf /secret /tmp "
                 + "x" * 1000
             ),
             "metrics": {
@@ -116,8 +116,8 @@ def test_task_console_formatter_sanitizes_untrusted_values() -> None:
     assert "token-private" not in output
     assert "access-private" not in output
     assert "pwd-private" not in output
-    assert "C:\\Users\\xiao\\private\\paper.pdf" not in output
-    assert "/home/xiao/private/source.pdf" not in output
+    assert "C:\\Users\\example-user\\private\\paper.pdf" not in output
+    assert "/home/example-user/private/source.pdf" not in output
     assert "/secret" not in output
     assert "/tmp" not in output
     assert "must-not-render" not in output
@@ -318,7 +318,7 @@ async def test_writing_runtime_attaches_safe_task_context_without_changing_messa
             "batch_id": "batch-private",
             "batch_index": 2,
             "batch_total": 3,
-            "source_path": r"C:\Users\xiao\private\paper.pdf",
+            "source_path": r"C:\Users\example-user\private\paper.pdf",
             "project_id": "private-project",
         },
     )
@@ -334,7 +334,7 @@ async def test_writing_runtime_attaches_safe_task_context_without_changing_messa
                 "total_chunks": 7,
                 "content_length": 4096,
                 "indexed": 6,
-                "path": r"C:\Users\xiao\private\paper.pdf",
+                "path": r"C:\Users\example-user\private\paper.pdf",
                 "result": "private result body",
             },
         )
@@ -382,7 +382,7 @@ async def test_writing_runtime_attaches_safe_task_context_without_changing_messa
         assert session.session_id not in serialized
         assert "private-project" not in serialized
         assert "private prompt body" not in serialized
-        assert r"C:\Users\xiao\private\paper.pdf" not in serialized
+        assert r"C:\Users\example-user\private\paper.pdf" not in serialized
         assert "private result body" not in serialized
 
     assert task_records[1].scholar_task["metrics"] == {
@@ -459,7 +459,7 @@ async def test_writing_runtime_failure_log_exposes_only_bounded_error_detail() -
             "batch_total": "not-an-integer",
         },
     )
-    error = "api_key=sk-live-secret at C:\\Users\\xiao\\private\\source.pdf " + "x" * 1000
+    error = "api_key=sk-live-secret at C:\\Users\\example-user\\private\\source.pdf " + "x" * 1000
 
     records: list[logging.LogRecord] = []
 
@@ -486,7 +486,7 @@ async def test_writing_runtime_failure_log_exposes_only_bounded_error_detail() -
     assert task_record.getMessage().startswith(f"Failed job {job.job_id}: ")
     assert task_record.scholar_task["status"] == "failed"
     assert "sk-live-secret" not in task_record.scholar_task["message"]
-    assert r"C:\Users\xiao\private\source.pdf" not in task_record.scholar_task["message"]
+    assert r"C:\Users\example-user\private\source.pdf" not in task_record.scholar_task["message"]
     assert len(task_record.scholar_task["message"]) <= 320
     assert "title-private" not in repr(task_record.scholar_task)
     assert "client-private" not in repr(task_record.scholar_task)

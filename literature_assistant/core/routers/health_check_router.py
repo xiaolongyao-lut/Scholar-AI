@@ -5,20 +5,29 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from models import ToolAttempt, ToolNextAction, ToolOutcome
-from project_paths import WORKSPACE_OUTPUT_ROOT, WORKSPACE_RUNTIME_STATE_ROOT
+if TYPE_CHECKING:
+    from literature_assistant.core.models import ToolAttempt, ToolNextAction, ToolOutcome
+    from literature_assistant.core.project_paths import (
+        WORKSPACE_OUTPUT_ROOT,
+        WORKSPACE_RUNTIME_STATE_ROOT,
+    )
+else:
+    from models import ToolAttempt, ToolNextAction, ToolOutcome
+    from project_paths import WORKSPACE_OUTPUT_ROOT, WORKSPACE_RUNTIME_STATE_ROOT
 
 
-HEALTH_CHECK_SCHEMA_VERSION = "scholar-ai-health-check/v1"
+HEALTH_CHECK_SCHEMA_VERSION: Literal["scholar-ai-health-check/v1"] = (
+    "scholar-ai-health-check/v1"
+)
 HealthStatus = Literal["ok", "degraded", "blocked"]
 
-router = APIRouter(prefix="/api/health", tags=["System"])
+router: APIRouter = APIRouter(prefix="/api/health", tags=["System"])
 
 
 class HealthCheckItem(BaseModel):
@@ -121,7 +130,10 @@ def _resource_index_check() -> HealthCheckItem:
     """Inspect project/material/chunk readiness without reading full text."""
 
     try:
-        from writing_resources import get_writing_resource_store
+        if TYPE_CHECKING:
+            from literature_assistant.core.writing_resources import get_writing_resource_store
+        else:
+            from writing_resources import get_writing_resource_store
 
         store = get_writing_resource_store()
         projects = store.list_projects()
@@ -134,7 +146,10 @@ def _resource_index_check() -> HealthCheckItem:
             materials = store.list_materials(project_id)
             material_count += len(materials)
             try:
-                import routers.resources_router as resources_router
+                if TYPE_CHECKING:
+                    from literature_assistant.core.routers import resources_router
+                else:
+                    import routers.resources_router as resources_router
 
                 chunk_store = resources_router._load_chunk_store(project_id)
             except (ImportError, AttributeError, OSError, ValueError):
@@ -194,8 +209,18 @@ def _provider_capability_check() -> HealthCheckItem:
     """Read provider tool-call capability records without probing the network."""
 
     try:
-        from provider_capabilities import CAPABILITY_STATUS_AUTH_REQUIRED, CAPABILITY_STATUS_TOOL_CALL_OK
-        from provider_capabilities import provider_capability_store
+        if TYPE_CHECKING:
+            from literature_assistant.core.provider_capabilities import (
+                CAPABILITY_STATUS_AUTH_REQUIRED,
+                CAPABILITY_STATUS_TOOL_CALL_OK,
+                provider_capability_store,
+            )
+        else:
+            from provider_capabilities import (
+                CAPABILITY_STATUS_AUTH_REQUIRED,
+                CAPABILITY_STATUS_TOOL_CALL_OK,
+                provider_capability_store,
+            )
 
         payload = _read_json_file(provider_capability_store.path)
         records = payload.get("records") if isinstance(payload, dict) else {}
@@ -219,11 +244,11 @@ def _provider_capability_check() -> HealthCheckItem:
     for raw in record_values:
         if not isinstance(raw, dict):
             continue
-        status = str(raw.get("status") or "unknown")
-        status_counts[status] = status_counts.get(status, 0) + 1
-        if status == CAPABILITY_STATUS_TOOL_CALL_OK and bool(raw.get("forced_tool_choice_ok")):
+        record_status = str(raw.get("status") or "unknown")
+        status_counts[record_status] = status_counts.get(record_status, 0) + 1
+        if record_status == CAPABILITY_STATUS_TOOL_CALL_OK and bool(raw.get("forced_tool_choice_ok")):
             ok_records += 1
-        if status == CAPABILITY_STATUS_AUTH_REQUIRED:
+        if record_status == CAPABILITY_STATUS_AUTH_REQUIRED:
             auth_required += 1
     details = {
         "record_count": len(record_values),
@@ -238,14 +263,14 @@ def _provider_capability_check() -> HealthCheckItem:
             details=details,
         )
     if auth_required > 0:
-        status: HealthStatus = "blocked"
+        health_status: HealthStatus = "blocked"
         reason = "Provider capability records require authentication."
     else:
-        status = "degraded"
+        health_status = "degraded"
         reason = "No provider tool-call capability record is proven yet."
     return HealthCheckItem(
         name="provider_tool_capability",
-        status=status,
+        status=health_status,
         reason=reason,
         details=details,
         next_action=ToolNextAction(
@@ -260,7 +285,10 @@ def _rerank_check() -> HealthCheckItem:
     """Inspect rerank override state without sending credentials to a provider."""
 
     try:
-        import rerank_runtime_config
+        if TYPE_CHECKING:
+            from literature_assistant.core import rerank_runtime_config
+        else:
+            import rerank_runtime_config
 
         public_config = rerank_runtime_config.get_public_config()
     except Exception as exc:  # pragma: no cover - defensive startup guard
@@ -304,7 +332,10 @@ def _agent_bridge_check() -> HealthCheckItem:
     """Check whether the agent-bridge router can persist runtime jobs."""
 
     try:
-        from writing_runtime import get_writing_runtime
+        if TYPE_CHECKING:
+            from literature_assistant.core.writing_runtime import get_writing_runtime
+        else:
+            from writing_runtime import get_writing_runtime
 
         runtime_result = get_writing_runtime()
         runtime = runtime_result[0] if isinstance(runtime_result, tuple) else runtime_result

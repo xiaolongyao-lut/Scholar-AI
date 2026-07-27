@@ -13,33 +13,75 @@ import struct
 from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import quote
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
-from fastapi import HTTPException, Query, Request, UploadFile, File, Form
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from models import (
-    ChunkSearchRefMetadataPayload,
-    ChunkSearchRefPayload,
-    ChunkSearchRefsResponse,
-    EvidenceLocatorCoveragePayload,
-    FigureTableCandidatePayload,
-    PdfBboxUnit,
-    coerce_pdf_bbox,
-    pdf_bbox_matches_unit,
+from ._pymupdf_dynamic import (
+    include_pymupdf_rect,
+    new_pymupdf_matrix,
+    new_pymupdf_rect,
+    open_pymupdf_document,
+    pymupdf_rect_area,
 )
 
-import routers.resources_router as _rr
-from routers.resources_router.path_guard import assert_bound_source_folder, assert_safe_source_folder
-from routers.resources_router._chunk_store_internals import (
-    _chunk_fts_index_path,
-    _chunk_store_hash_version,
-)
-from chunk_fts_index import search_chunk_fts_index
-from chunk_hashing import compute_chunk_store_version
-from evidence_packer import _select_query_quote
-from retrieval_gateway import retrieve_candidates
-from text_utils import cjk_aware_tokenize
+if TYPE_CHECKING:
+    from literature_assistant.core.chunk_fts_index import search_chunk_fts_index
+    from literature_assistant.core.chunk_hashing import compute_chunk_store_version
+    from literature_assistant.core.evidence_packer import _select_query_quote
+    from literature_assistant.core.models import (
+        ChunkSearchRefMetadataPayload,
+        ChunkSearchRefPayload,
+        ChunkSearchRefsResponse,
+        EvidenceLocatorCoveragePayload,
+        FigureTableCandidatePayload,
+        PdfBboxUnit,
+        coerce_pdf_bbox,
+        pdf_bbox_matches_unit,
+    )
+    from literature_assistant.core.retrieval_gateway import retrieve_candidates
+    from literature_assistant.core.routers import resources_router as _rr
+    from literature_assistant.core.routers.resources_router._chunk_store_internals import (
+        _chunk_fts_index_path,
+        _chunk_store_hash_version,
+    )
+    from literature_assistant.core.routers.resources_router.path_guard import (
+        assert_bound_source_folder,
+        assert_safe_source_folder,
+    )
+    from literature_assistant.core.text_utils import cjk_aware_tokenize
+
+    _router: APIRouter
+else:
+    from chunk_fts_index import search_chunk_fts_index
+    from chunk_hashing import compute_chunk_store_version
+    from evidence_packer import _select_query_quote
+    from models import (
+        ChunkSearchRefMetadataPayload,
+        ChunkSearchRefPayload,
+        ChunkSearchRefsResponse,
+        EvidenceLocatorCoveragePayload,
+        FigureTableCandidatePayload,
+        PdfBboxUnit,
+        coerce_pdf_bbox,
+        pdf_bbox_matches_unit,
+    )
+    from retrieval_gateway import retrieve_candidates
+    from routers.resources_router._chunk_store_internals import (
+        _chunk_fts_index_path,
+        _chunk_store_hash_version,
+    )
+    from routers.resources_router.path_guard import (
+        assert_bound_source_folder,
+        assert_safe_source_folder,
+    )
+    from text_utils import cjk_aware_tokenize
+
+    import routers.resources_router as _rr
+
+    _router = _rr.router
 
 
 _FIGURE_TABLE_PREFIX_RE = re.compile(
@@ -236,7 +278,7 @@ class FormulaCandidatesResponse(BaseModel):
 # Upload Endpoints
 # =========================================================================
 
-@_rr.router.post("/upload")
+@_router.post("/upload")
 async def upload_document(
     project_id: str = Form(...),
     file: UploadFile = File(...),
@@ -244,12 +286,20 @@ async def upload_document(
     """Upload a document file, extract text content, and store as a material."""
     store = _rr._ensure_upload_project(project_id)
     try:
-        return await _rr._ingest_uploaded_document(project_id, file, store=store)
+        result: object = await _rr._ingest_uploaded_document(project_id, file, store=store)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not isinstance(result, Mapping):
+        raise HTTPException(status_code=500, detail="Upload result must be an object")
+    payload: dict[str, Any] = {}
+    for key, value in result.items():
+        if not isinstance(key, str):
+            raise HTTPException(status_code=500, detail="Upload result keys must be strings")
+        payload[key] = value
+    return payload
 
 
-@_rr.router.post("/upload/batch")
+@_router.post("/upload/batch")
 async def upload_documents_batch(
     project_id: str = Form(...),
     files: list[UploadFile] = File(...),
@@ -350,7 +400,7 @@ async def upload_documents_batch(
 # Documents / Chunks Read Endpoints
 # =========================================================================
 
-@_rr.router.get("/documents")
+@_router.get("/documents")
 async def get_project_documents(project_id: str = Query(...)) -> list[dict[str, str]]:
     """Get all document contents for a project (for RAG context)."""
     doc_store = _rr._load_doc_store(project_id)
@@ -360,7 +410,7 @@ async def get_project_documents(project_id: str = Query(...)) -> list[dict[str, 
     ]
 
 
-@_rr.router.get("/chunks")
+@_router.get("/chunks")
 async def get_project_chunks(
     project_id: str = Query(...),
     material_id: str | None = Query(None, description="Filter by material"),
@@ -523,12 +573,26 @@ def _coerce_internal_normalized_ratio_bbox(
         return None
     if raw_unit not in {"", PdfBboxUnit.NORMALIZED_RATIO.value}:
         return None
-    normalized_bbox = coerce_pdf_bbox(bbox)
+    normalized_bbox = _validated_pdf_bbox(bbox)
     if normalized_bbox is None:
         return None
     if not pdf_bbox_matches_unit(normalized_bbox, PdfBboxUnit.NORMALIZED_RATIO):
         return None
     return normalized_bbox
+
+
+def _validated_pdf_bbox(value: Any) -> list[float] | None:
+    """Copy the shared bbox coercion result into a concrete typed list."""
+
+    raw_bbox: object = coerce_pdf_bbox(value)
+    if not isinstance(raw_bbox, list) or len(raw_bbox) != 4:
+        return None
+    bbox: list[float] = []
+    for item in raw_bbox:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            return None
+        bbox.append(float(item))
+    return bbox
 
 
 def _chunk_image_paths(
@@ -1017,7 +1081,9 @@ def _locator_coverage_state(
     return "layout_complete"
 
 
-def _locator_coverage_risk(coverage_state: str) -> str:
+def _locator_coverage_risk(
+    coverage_state: str,
+) -> Literal["none", "warn", "block"]:
     """Map locator state to an integrity-gate-friendly risk level."""
 
     if coverage_state in {"missing", "material_only"}:
@@ -1486,10 +1552,10 @@ def _select_search_ref_chunks_via_gateway(
 
     selected: list[tuple[float, dict[str, Any]]] = []
     for candidate in gateway_result.candidates:
-        chunk = chunk_by_key.get((candidate.material_id, candidate.chunk_id))
-        if chunk is None:
+        selected_chunk = chunk_by_key.get((candidate.material_id, candidate.chunk_id))
+        if selected_chunk is None:
             continue
-        selected.append((candidate.score, chunk))
+        selected.append((candidate.score, selected_chunk))
     if not selected:
         return None
     if _search_refs_visual_query_enabled(normalized_query):
@@ -1556,7 +1622,7 @@ def _select_search_ref_chunks_fts_first(
 def _coerce_bbox(value: Any) -> list[float] | None:
     """Return a four-number bbox only when chunk metadata already provides one."""
 
-    return coerce_pdf_bbox(value)
+    return _validated_pdf_bbox(value)
 
 
 def _coerce_pdf_anchor_bbox(value: Any) -> list[float] | None:
@@ -1658,7 +1724,10 @@ def _collect_existing_project_asset_paths(project_id: str) -> set[str]:
     if not normalized_project_id:
         return set()
 
-    from project_paths import project_data_path
+    if TYPE_CHECKING:
+        from literature_assistant.core.project_paths import project_data_path
+    else:
+        from project_paths import project_data_path
 
     try:
         project_root = project_data_path(normalized_project_id)
@@ -1702,7 +1771,10 @@ def _existing_candidate_project_asset_path(
     if not normalized_project_id or not normalized_material_id or not normalized_chunk_id or not normalized_label:
         return None
 
-    from project_paths import project_data_path
+    if TYPE_CHECKING:
+        from literature_assistant.core.project_paths import project_data_path
+    else:
+        from project_paths import project_data_path
 
     relative_path = _candidate_crop_path(
         normalized_project_id,
@@ -1808,8 +1880,14 @@ def _page_crop_target_rect(page: Any, bbox: list[float] | None) -> Any | None:
         if width <= 0 or height <= 0:
             return None
         x, y, w, h = normalized_bbox
-        rect = pymupdf.Rect(x * width, y * height, (x + w) * width, (y + h) * height)
-        if rect.get_area() <= 0:
+        rect = new_pymupdf_rect(
+            pymupdf,
+            x * width,
+            y * height,
+            (x + w) * width,
+            (y + h) * height,
+        )
+        if pymupdf_rect_area(rect) <= 0:
             return None
         return rect
     except (TypeError, ValueError, AttributeError):
@@ -1951,12 +2029,16 @@ def _render_pdf_crop(source_path: Path, page_number: int, bbox: list[float] | No
         return None
 
     try:
-        with pymupdf.open(str(source_path)) as doc:
+        with open_pymupdf_document(pymupdf, str(source_path)) as doc:
             if page_number > len(doc):
                 return None
             page = doc[page_number - 1]
             clip_rect = _page_crop_target_rect(page, bbox) if _bbox_is_plausible_figure_region(bbox) else None
-            pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False, clip=clip_rect)
+            pixmap = page.get_pixmap(
+                matrix=new_pymupdf_matrix(pymupdf, 2, 2),
+                alpha=False,
+                clip=clip_rect,
+            )
             output_path.parent.mkdir(parents=True, exist_ok=True)
             pixmap.save(str(output_path))
             return str(output_path)
@@ -2174,7 +2256,10 @@ def _project_source_roots(project_id: str) -> list[Path]:
     if source_folder:
         roots.append(Path(source_folder).expanduser())
 
-    from project_paths import project_data_path
+    if TYPE_CHECKING:
+        from literature_assistant.core.project_paths import project_data_path
+    else:
+        from project_paths import project_data_path
 
     roots.append(project_data_path(project_id, "source_files"))
     return roots
@@ -2343,7 +2428,13 @@ def _bbox_from_text_blocks(page: Any, target_text: str, snippets: list[str]) -> 
         if score <= best_score:
             continue
         try:
-            best_rect = pymupdf.Rect(float(block[0]), float(block[1]), float(block[2]), float(block[3]))
+            best_rect = new_pymupdf_rect(
+                pymupdf,
+                float(block[0]),
+                float(block[1]),
+                float(block[2]),
+                float(block[3]),
+            )
             best_score = score
         except (TypeError, ValueError):
             continue
@@ -2366,9 +2457,9 @@ def _bbox_from_text_search(page: Any, snippets: list[str]) -> list[float] | None
             rects = []
         if not rects:
             continue
-        union = pymupdf.Rect(rects[0])
+        union = new_pymupdf_rect(pymupdf, rects[0])
         for rect in rects[1:]:
-            union.include_rect(rect)
+            include_pymupdf_rect(union, rect)
         bbox = _normalized_bbox_from_rect(union, page.rect)
         if bbox is not None:
             return bbox
@@ -2393,7 +2484,7 @@ def _locate_chunk_text_in_pdf(
         return None
 
     try:
-        with pymupdf.open(str(source_path)) as doc:
+        with open_pymupdf_document(pymupdf, str(source_path)) as doc:
             page_count = len(doc)
             if page_count <= 0:
                 return None
@@ -2665,7 +2756,10 @@ def _derive_project_figure_asset_candidates(
     if not isinstance(limit, int) or limit < 1 or limit > 200:
         raise ValueError("limit must be between 1 and 200")
 
-    from project_paths import project_data_path
+    if TYPE_CHECKING:
+        from literature_assistant.core.project_paths import project_data_path
+    else:
+        from project_paths import project_data_path
 
     project_root = project_data_path(normalized_project_id)
     asset_root = project_data_path(normalized_project_id, "figure_assets")
@@ -2965,7 +3059,10 @@ def _enrich_candidate_layout(
 ) -> tuple[int | None, list[float] | None, PdfBboxUnit | None, str | None, str]:
     """Return page, atomic bbox/unit, asset path, and source label."""
 
-    from project_paths import project_data_path
+    if TYPE_CHECKING:
+        from literature_assistant.core.project_paths import project_data_path
+    else:
+        from project_paths import project_data_path
 
     page = existing_page
     existing_anchor = _coerce_declared_bbox_anchor(
@@ -3203,7 +3300,7 @@ def derive_figure_table_candidates(
     return ranked[:limit]
 
 
-@_rr.router.get(
+@_router.get(
     "/material/{material_id}/formula-candidates",
     response_model=FormulaCandidatesResponse,
     tags=["Resources"],
@@ -3301,7 +3398,7 @@ def list_material_formula_candidates(
     )
 
 
-@_rr.router.get("/figure-table-candidates", response_model=list[FigureTableCandidatePayload])
+@_router.get("/figure-table-candidates", response_model=list[FigureTableCandidatePayload])
 async def list_figure_table_candidates(
     project_id: str = Query(..., min_length=1),
     limit: int = Query(_MAX_FIGURE_TABLE_CANDIDATES, ge=1, le=200),
@@ -3376,7 +3473,7 @@ def find_chunk_locator(
     return None
 
 
-@_rr.router.get("/chunks/{chunk_id}/locator", tags=["Resources"])
+@_router.get("/chunks/{chunk_id}/locator", tags=["Resources"])
 async def locate_chunk(
     chunk_id: str,
     project_id: str = Query(..., min_length=1, description="Project that owns the chunk"),
@@ -3398,7 +3495,7 @@ async def locate_chunk(
     return enrich_chunk_locator_with_pdf(project_id, chunk_store, locator)
 
 
-@_rr.router.get("/chunks/search-refs", response_model=ChunkSearchRefsResponse, tags=["Resources"])
+@_router.get("/chunks/search-refs", response_model=ChunkSearchRefsResponse, tags=["Resources"])
 async def search_chunk_refs(
     request: Request,
     project_id: str = Query(..., min_length=1),
@@ -3481,7 +3578,7 @@ async def search_chunk_refs(
     )
 
 
-@_rr.router.get("/chunks/search")
+@_router.get("/chunks/search")
 async def search_chunks(
     project_id: str = Query(...),
     query: str = Query(..., min_length=1, description="搜索词"),
@@ -3605,8 +3702,11 @@ async def search_chunks(
 # Document File Serving
 # =========================================================================
 
-@_rr.router.get("/document/{material_id}/file", tags=["Resources"])
-async def serve_document_file(material_id: str, as_: str = Query("", alias="as")):
+@_router.get("/document/{material_id}/file", tags=["Resources"])
+async def serve_document_file(
+    material_id: str,
+    as_: str = Query("", alias="as"),
+) -> FileResponse:
     """Serve the original file for a material (e.g. PDF for in-app viewing).
 
     ``?as=bin`` returns the bytes with media_type=application/octet-stream so
@@ -3651,8 +3751,6 @@ async def serve_document_file(material_id: str, as_: str = Query("", alias="as")
         )
         raise HTTPException(status_code=404, detail=f"文件不存在: {Path(source_relative).name}")
 
-    from fastapi.responses import FileResponse
-
     media_types = {
         ".pdf": "application/pdf",
         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -3684,7 +3782,7 @@ async def serve_document_file(material_id: str, as_: str = Query("", alias="as")
     return response
 
 
-@_rr.router.get("/document/{material_id}/file_b64", tags=["Resources"])
+@_router.get("/document/{material_id}/file_b64", tags=["Resources"])
 async def serve_document_file_base64(material_id: str) -> dict[str, Any]:
     """Return small original files as base64 inside a JSON envelope.
 

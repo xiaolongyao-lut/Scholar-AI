@@ -7,33 +7,57 @@ isolated stores while the application keeps a shared default service.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from evolution import EvolutionService, get_evolution_service
-from evolution.config import (
-    is_candidate_capture_enabled,
-    is_promotion_enabled,
-    is_review_ui_enabled,
-    load_evolution_config,
-)
-from evolution.store import default_db_path
-from models.evolution import (
-    CandidateDecisionPayload,
-    CandidateDecisionRequest,
-    CandidateListPayload,
-    CandidateMemoryType,
-    CandidatePromotionPayload,
-    CandidateRiskLevel,
-    CandidateSourceType,
-    CandidateStatus,
-    CuratorRunPayload,
-    EvolutionAuditPayload,
-    EvolutionStatusPayload,
-    ExperienceCandidate,
-)
+if TYPE_CHECKING:
+    from literature_assistant.core.evolution import EvolutionService, get_evolution_service
+    from literature_assistant.core.evolution.config import (
+        is_candidate_capture_enabled,
+        is_promotion_enabled,
+        is_review_ui_enabled,
+        load_evolution_config,
+    )
+    from literature_assistant.core.evolution.store import default_db_path
+    from literature_assistant.core.models.evolution import (
+        CandidateDecisionPayload,
+        CandidateDecisionRequest,
+        CandidateListPayload,
+        CandidateMemoryType,
+        CandidatePromotionPayload,
+        CandidateRiskLevel,
+        CandidateSourceType,
+        CandidateStatus,
+        CuratorRunPayload,
+        EvolutionAuditPayload,
+        EvolutionStatusPayload,
+        ExperienceCandidate,
+    )
+else:
+    from evolution import EvolutionService, get_evolution_service
+    from evolution.config import (
+        is_candidate_capture_enabled,
+        is_promotion_enabled,
+        is_review_ui_enabled,
+        load_evolution_config,
+    )
+    from evolution.store import default_db_path
+    from models.evolution import (
+        CandidateDecisionPayload,
+        CandidateDecisionRequest,
+        CandidateListPayload,
+        CandidateMemoryType,
+        CandidatePromotionPayload,
+        CandidateRiskLevel,
+        CandidateSourceType,
+        CandidateStatus,
+        CuratorRunPayload,
+        EvolutionAuditPayload,
+        EvolutionStatusPayload,
+        ExperienceCandidate,
+    )
 
 logger = logging.getLogger("EvolutionRouter")
 router = APIRouter(prefix="/evolution", tags=["Evolution"])
@@ -227,7 +251,10 @@ async def run_curator(
 ) -> CuratorRunPayload:
     """Run one local organizer pass over pending experience items."""
 
-    from evolution import EvolutionCurator, is_curator_enabled
+    if TYPE_CHECKING:
+        from literature_assistant.core.evolution import EvolutionCurator, is_curator_enabled
+    else:
+        from evolution import EvolutionCurator, is_curator_enabled
 
     if not is_curator_enabled():
         return CuratorRunPayload(

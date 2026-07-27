@@ -21,7 +21,7 @@ class AdaptiveBatchProcessor:
     支持 100+ 篇论文的规模化处理，具备内存实时防护与断点续传能力。
     """
 
-    def __init__(self, checkpoint_dir: str = ".cache/batch_checkpoints"):
+    def __init__(self, checkpoint_dir: str = ".cache/batch_checkpoints") -> None:
         self.checkpoint_dir = checkpoint_dir
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
@@ -43,7 +43,7 @@ class AdaptiveBatchProcessor:
         
         return ProcConfig(batch_size=max(batch_size, 1), num_workers=max(num_workers, 1))
 
-    def _save_checkpoint(self, file_path: str, result: Any):
+    def _save_checkpoint(self, file_path: str, result: object) -> None:
         """记录已完成的文件进度。"""
         filename = os.path.basename(file_path)
         cp_path = os.path.join(self.checkpoint_dir, f"{filename}.done")
@@ -54,7 +54,11 @@ class AdaptiveBatchProcessor:
         filename = os.path.basename(file_path)
         return os.path.exists(os.path.join(self.checkpoint_dir, f"{filename}.done"))
 
-    def process_all(self, file_paths: List[str], worker_func: Callable):
+    def process_all(
+        self,
+        file_paths: List[str],
+        worker_func: Callable[[str], object],
+    ) -> None:
         """
         全量批处理入口。
         """
@@ -91,7 +95,7 @@ class AdaptiveBatchProcessor:
         
         logger.info("✅ 全量批处理任务完成。")
 
-def mock_worker(file_path):
+def mock_worker(file_path: str) -> Dict[str, str]:
     """模拟 Worker."""
     time.sleep(0.1)
     return {"status": "ok"}

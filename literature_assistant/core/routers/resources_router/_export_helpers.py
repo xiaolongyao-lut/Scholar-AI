@@ -10,11 +10,27 @@ import shutil
 import subprocess
 import tempfile
 import uuid
+from enum import Enum
 from pathlib import Path
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 from urllib.parse import quote
 
-from models import PdfBboxUnit, coerce_pdf_bbox, pdf_bbox_matches_unit
+if TYPE_CHECKING:
+    from literature_assistant.core.models import (
+        PDF_URL_BBOX_UNIT,
+        PdfAnchorFields,
+        PdfBboxUnit,
+        coerce_pdf_bbox,
+        pdf_bbox_matches_unit,
+    )
+else:
+    from models import (
+        PDF_URL_BBOX_UNIT,
+        PdfAnchorFields,
+        PdfBboxUnit,
+        coerce_pdf_bbox,
+        pdf_bbox_matches_unit,
+    )
 
 __all__ = [
     "ProjectExportFormat",
@@ -42,7 +58,7 @@ __all__ = [
 ]
 
 
-class ProjectExportFormat(str, __import__("enum").Enum):
+class ProjectExportFormat(str, Enum):
     MARKDOWN = "markdown"
     JSON = "json"
     WORD = "word"
@@ -108,6 +124,24 @@ def _coerce_normalized_export_bbox(value: Any) -> list[float] | None:
     return bbox if pdf_bbox_matches_unit(bbox, PdfBboxUnit.NORMALIZED_RATIO) else None
 
 
+def _coerce_declared_export_bbox_anchor(
+    bbox: Any,
+    bbox_unit: Any,
+) -> tuple[list[float] | None, PdfBboxUnit | None]:
+    """Return a validated bbox/unit pair without inferring a coordinate system."""
+
+    try:
+        anchor = PdfAnchorFields.model_validate(
+            {
+                "bbox": bbox,
+                "bbox_unit": bbox_unit,
+            }
+        )
+    except ValueError:
+        return None, None
+    return anchor.bbox, anchor.bbox_unit
+
+
 def _format_export_bbox_param(bbox: list[float]) -> str:
     """Return the compact bbox query-string value used by PDF deep links."""
 
@@ -144,6 +178,7 @@ def _build_project_source_anchor(
     chunk_id: Any = None,
     page: Any = None,
     bbox: Any = None,
+    bbox_unit: Any = None,
     text_preview: Any = "",
 ) -> dict[str, Any] | None:
     """Return a PDF-first source anchor for export appendices."""
@@ -153,19 +188,26 @@ def _build_project_source_anchor(
         return None
     normalized_chunk_id = str(chunk_id or "").strip() or None
     normalized_page = _coerce_export_positive_int(page)
-    normalized_bbox = _coerce_normalized_export_bbox(bbox) if normalized_page is not None else None
+    normalized_bbox, normalized_bbox_unit = _coerce_declared_export_bbox_anchor(
+        bbox,
+        bbox_unit,
+    )
+    if normalized_page is None:
+        normalized_bbox = None
+        normalized_bbox_unit = None
+    url_bbox = normalized_bbox if normalized_bbox_unit == PDF_URL_BBOX_UNIT else None
     anchor = {
         "material_id": normalized_material_id,
         "chunk_id": normalized_chunk_id,
         "page": normalized_page,
         "bbox": normalized_bbox,
-        "bbox_unit": PdfBboxUnit.NORMALIZED_RATIO.value if normalized_bbox is not None else None,
+        "bbox_unit": normalized_bbox_unit.value if normalized_bbox_unit is not None else None,
         "text_preview": _shorten_export_text(str(text_preview or ""), 180),
         "open_url": _build_source_open_url(
             normalized_material_id,
             page=normalized_page,
             chunk_id=normalized_chunk_id,
-            bbox=normalized_bbox,
+            bbox=url_bbox,
         ),
     }
     return anchor
@@ -217,10 +259,16 @@ def _first_material_source_anchor(
         locator: dict[str, Any] | None = None
         if project_id:
             try:
-                from routers.resources_router.endpoints_search_upload import (
-                    enrich_chunk_locator_with_pdf,
-                    find_chunk_locator,
-                )
+                if TYPE_CHECKING:
+                    from literature_assistant.core.routers.resources_router.endpoints_search_upload import (
+                        enrich_chunk_locator_with_pdf,
+                        find_chunk_locator,
+                    )
+                else:
+                    from routers.resources_router.endpoints_search_upload import (
+                        enrich_chunk_locator_with_pdf,
+                        find_chunk_locator,
+                    )
 
                 located = find_chunk_locator(dict(chunk_store), chunk_id)
                 if located is not None:
@@ -233,12 +281,14 @@ def _first_material_source_anchor(
                 "chunk_id": chunk_id,
                 "page": chunk.get("page"),
                 "bbox": chunk.get("bbox"),
+                "bbox_unit": chunk.get("bbox_unit"),
             }
         return _build_project_source_anchor(
             str(locator.get("material_id") or normalized_material_id),
             chunk_id=locator.get("chunk_id") or chunk_id,
             page=locator.get("page"),
             bbox=locator.get("bbox"),
+            bbox_unit=locator.get("bbox_unit"),
             text_preview=locator.get("text_preview") or _chunk_export_preview(chunk),
         )
 
@@ -275,9 +325,17 @@ def _source_anchor_label(anchor: Mapping[str, Any] | None) -> str:
     chunk_id = str(anchor.get("chunk_id") or "").strip()
     if chunk_id:
         parts.append(chunk_id)
-    bbox = _coerce_normalized_export_bbox(anchor.get("bbox"))
-    if bbox is not None:
-        parts.append(f"bbox={_format_export_bbox_param(bbox)}")
+    bbox, bbox_unit = _coerce_declared_export_bbox_anchor(
+        anchor.get("bbox"),
+        anchor.get("bbox_unit"),
+    )
+    if bbox is not None and bbox_unit is not None:
+        bbox_label = f"bbox={_format_export_bbox_param(bbox)}"
+        parts.append(
+            bbox_label
+            if bbox_unit == PDF_URL_BBOX_UNIT
+            else f"{bbox_label} [{bbox_unit.value}]"
+        )
     open_url = str(anchor.get("open_url") or "").strip()
     suffix = f" ({'; '.join(parts)})" if parts else ""
     return f"{open_url}{suffix}" if open_url else "; ".join(parts)
@@ -304,6 +362,7 @@ def _asset_to_mapping(asset: Any) -> dict[str, Any]:
             "material_id",
             "source_page",
             "bbox",
+            "bbox_unit",
             "asset_path",
             "width",
             "height",
@@ -332,13 +391,16 @@ def _build_project_figure_assets_export(
             continue
         material_id = str(payload.get("material_id") or "").strip() or None
         page = _coerce_export_positive_int(payload.get("source_page"))
-        bbox = coerce_pdf_bbox(payload.get("bbox"))
-        normalized_bbox = _coerce_normalized_export_bbox(bbox) if page is not None else None
+        bbox, bbox_unit = _coerce_declared_export_bbox_anchor(
+            payload.get("bbox"),
+            payload.get("bbox_unit"),
+        )
         source_anchor = (
             _build_project_source_anchor(
                 material_id,
                 page=page,
-                bbox=normalized_bbox,
+                bbox=bbox,
+                bbox_unit=bbox_unit,
                 text_preview=caption,
             )
             if material_id
@@ -354,7 +416,7 @@ def _build_project_figure_assets_export(
                 "material_id": material_id,
                 "source_page": page,
                 "bbox": bbox,
-                "bbox_unit": PdfBboxUnit.NORMALIZED_RATIO.value if normalized_bbox is not None else None,
+                "bbox_unit": bbox_unit.value if bbox_unit is not None else None,
                 "asset_path": asset_path,
                 "width": _coerce_export_positive_int(payload.get("width")),
                 "height": _coerce_export_positive_int(payload.get("height")),
@@ -541,7 +603,7 @@ def _build_project_academic_export(
             material_id = anchor.get("materialId")
             anchor_id = str(anchor.get("id", "")).strip()
             if material_id:
-                anchors_by_material.setdefault(str(material_id), []).append(anchor)
+                anchors_by_material.setdefault(str(material_id), []).append(dict(anchor))
             paragraph = next(
                 (
                     item

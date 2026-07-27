@@ -10,18 +10,26 @@ Provides in-memory caching with:
 
 import hashlib
 import time
-from typing import Any, Dict, Optional, Callable
+from functools import wraps
+from typing import Any, Callable, Dict, Generic, Optional, ParamSpec, TYPE_CHECKING, TypeVar
 from collections import OrderedDict
 from threading import Lock
-from modules.logger_config import get_logger
+if TYPE_CHECKING:
+    from literature_assistant.core.modules.logger_config import get_logger
+else:
+    from modules.logger_config import get_logger
 
 logger = get_logger("scoring_system.cache")
 
+CacheValueT = TypeVar("CacheValueT")
+P = ParamSpec("P")
+R = TypeVar("R")
 
-class CacheEntry:
+
+class CacheEntry(Generic[CacheValueT]):
     """Internal cache entry with metadata"""
 
-    def __init__(self, value: Any, ttl: Optional[int] = None):
+    def __init__(self, value: CacheValueT, ttl: Optional[int] = None) -> None:
         """
         Initialize cache entry
 
@@ -41,15 +49,15 @@ class CacheEntry:
         elapsed = time.time() - self.created_at
         return elapsed > self.ttl
 
-    def touch(self):
+    def touch(self) -> None:
         """Record access for LRU tracking"""
         self.access_count += 1
 
 
-class CacheManager:
+class CacheManager(Generic[CacheValueT]):
     """Simple in-memory cache with TTL and statistics"""
 
-    def __init__(self, max_size: int = 10000, ttl_seconds: Optional[int] = 3600):
+    def __init__(self, max_size: int = 10000, ttl_seconds: Optional[int] = 3600) -> None:
         """
         Initialize cache manager
 
@@ -59,11 +67,11 @@ class CacheManager:
         """
         self.max_size = max_size
         self.default_ttl = ttl_seconds
-        self.cache: OrderedDict[str, CacheEntry] = OrderedDict()
+        self.cache: OrderedDict[str, CacheEntry[CacheValueT]] = OrderedDict()
         self.lock = Lock()
         self.stats = {"hits": 0, "misses": 0, "evictions": 0, "sets": 0}
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Optional[CacheValueT]:
         """
         Retrieve value from cache
 
@@ -94,7 +102,7 @@ class CacheManager:
 
             return entry.value
 
-    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+    def set(self, key: str, value: CacheValueT, ttl: Optional[int] = None) -> None:
         """
         Store value in cache
 
@@ -174,7 +182,7 @@ class HashableCache:
     """Helper for caching with complex keys"""
 
     @staticmethod
-    def make_key(*args, **kwargs) -> str:
+    def make_key(*args: object, **kwargs: object) -> str:
         """
         Create consistent hashable key from arguments
 
@@ -199,7 +207,10 @@ class HashableCache:
         return hashlib.md5(normalized.encode()).hexdigest()
 
 
-def cached(cache: CacheManager, ttl: Optional[int] = None):
+def cached(
+    cache: CacheManager[R],
+    ttl: Optional[int] = None,
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator for caching function results
 
@@ -209,8 +220,9 @@ def cached(cache: CacheManager, ttl: Optional[int] = None):
             return classify_evidence(text)
     """
 
-    def decorator(func: Callable) -> Callable:
-        def wrapper(*args, **kwargs) -> Any:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             # Create cache key
             key = HashableCache.make_key(*args, **kwargs)
 
@@ -225,17 +237,16 @@ def cached(cache: CacheManager, ttl: Optional[int] = None):
 
             return result
 
-        wrapper.__wrapped__ = func
         return wrapper
 
     return decorator
 
 
 # Global cache instance
-_default_cache: Optional[CacheManager] = None
+_default_cache: Optional[CacheManager[object]] = None
 
 
-def get_cache() -> CacheManager:
+def get_cache() -> CacheManager[object]:
     """Get or create global cache instance"""
     global _default_cache
     if _default_cache is None:

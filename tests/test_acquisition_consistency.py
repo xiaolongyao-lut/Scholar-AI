@@ -10,6 +10,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import BaseModel, ConfigDict
 from pypdf import PdfWriter
 
 from harness_protocols import JobKind, SessionMode
@@ -75,6 +76,12 @@ from routers import acquisition_router
 from writing_runtime import WritingRuntime
 
 
+class _ForeignPublicationEvidence(BaseModel):
+    """Pydantic evidence carrier with an intentionally unrelated class identity."""
+
+    model_config = ConfigDict(extra="allow")
+
+
 def _pdf_bytes() -> bytes:
     buffer = BytesIO()
     writer = PdfWriter()
@@ -118,6 +125,120 @@ def _publication_evidence(
         revision_applied_at=timestamp,
         verified_at=timestamp,
     )
+
+
+def _call_publication_verifier_through_flat_router(
+    monkeypatch: pytest.MonkeyPatch,
+    evidence: object,
+) -> object:
+    from literature_assistant.core.acquisition.service import (
+        _default_verify_material_publication,
+    )
+
+    expected_fingerprint = f"sha256:{'a' * 64}"
+
+    def return_evidence(
+        project_id: str,
+        material_id: str,
+        *,
+        expected_source_fingerprint: str,
+        expected_source_size: int,
+    ) -> object:
+        assert project_id == "project_fixture"
+        assert material_id == "material_fixture"
+        assert expected_source_fingerprint == expected_fingerprint
+        assert expected_source_size == 4096
+        return evidence
+
+    monkeypatch.setattr(
+        resources_router,
+        "verify_material_publication",
+        return_evidence,
+    )
+    return _default_verify_material_publication(
+        "project_fixture",
+        "material_fixture",
+        expected_source_fingerprint=expected_fingerprint,
+        expected_source_size=4096,
+    )
+
+
+def test_package_service_accepts_publication_evidence_from_flat_router(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the real flat-router import boundary compatible with package service."""
+
+    from literature_assistant.core.acquisition.models import (
+        ImportPublicationEvidence as CanonicalImportPublicationEvidence,
+    )
+
+    expected_fingerprint = f"sha256:{'a' * 64}"
+    flat_evidence = _publication_evidence(
+        "project_fixture",
+        "material_fixture",
+        expected_source_fingerprint=expected_fingerprint,
+        expected_source_size=4096,
+    )
+    normalized = _call_publication_verifier_through_flat_router(
+        monkeypatch,
+        flat_evidence,
+    )
+
+    assert isinstance(normalized, CanonicalImportPublicationEvidence)
+    assert normalized.model_dump(mode="json") == flat_evidence.model_dump(mode="json")
+
+
+def test_package_service_normalizes_foreign_pydantic_publication_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Revalidate a structurally valid Pydantic model with a foreign identity."""
+
+    from literature_assistant.core.acquisition.models import (
+        ImportPublicationEvidence as CanonicalImportPublicationEvidence,
+    )
+
+    expected_fingerprint = f"sha256:{'a' * 64}"
+    expected = _publication_evidence(
+        "project_fixture",
+        "material_fixture",
+        expected_source_fingerprint=expected_fingerprint,
+        expected_source_size=4096,
+    )
+    foreign_evidence = _ForeignPublicationEvidence.model_validate(
+        expected.model_dump(mode="python")
+    )
+
+    assert not isinstance(foreign_evidence, CanonicalImportPublicationEvidence)
+    normalized = _call_publication_verifier_through_flat_router(
+        monkeypatch,
+        foreign_evidence,
+    )
+
+    assert isinstance(normalized, CanonicalImportPublicationEvidence)
+    assert normalized.model_dump(mode="json") == expected.model_dump(mode="json")
+
+
+@pytest.mark.parametrize(
+    "invalid_evidence",
+    (
+        pytest.param(object(), id="non-pydantic-object"),
+        pytest.param(
+            _ForeignPublicationEvidence(project_id="project_fixture"),
+            id="pydantic-model-missing-fields",
+        ),
+    ),
+)
+def test_package_service_rejects_invalid_publication_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_evidence: object,
+) -> None:
+    """Reject untyped and incomplete verifier results at the service boundary."""
+
+    with pytest.raises(
+        TypeError,
+        match="material publication verifier returned invalid evidence",
+    ):
+        _call_publication_verifier_through_flat_router(monkeypatch, invalid_evidence)
 
 
 def test_legacy_import_receipt_remains_explicitly_unverified() -> None:

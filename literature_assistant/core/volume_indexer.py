@@ -19,6 +19,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,8 +28,15 @@ logging.basicConfig(
 logger = logging.getLogger("VolumeDeepAnalysis")
 
 try:
-    from layers.v_layer_volume_bundle import build_volume_bundle, dump_volume_bundle
-    from layers.w_layer_cross_paper_analysis import CrossPaperAnalyzer
+    if TYPE_CHECKING:
+        from literature_assistant.core.layers.v_layer_volume_bundle import (
+            build_volume_bundle,
+            dump_volume_bundle,
+        )
+        from literature_assistant.core.layers.w_layer_cross_paper_analysis import CrossPaperAnalyzer
+    else:
+        from layers.v_layer_volume_bundle import build_volume_bundle, dump_volume_bundle
+        from layers.w_layer_cross_paper_analysis import CrossPaperAnalyzer
 except ImportError as e:
     logger.error(f"导入失败: {e}")
     sys.exit(1)
@@ -143,7 +151,7 @@ async def analyze_volume_bundle(bundle_path: Path, output_dir: Path) -> dict:
 
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description='卷级深度分析与全局索引构建脚本 (第三阶段)'
     )

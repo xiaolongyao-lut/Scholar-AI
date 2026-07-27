@@ -25,8 +25,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
+from typing import TYPE_CHECKING
 
-from harness_canonical_events import CanonicalEvent
+if TYPE_CHECKING:
+    from literature_assistant.core.harness_canonical_events import CanonicalEvent
+else:
+    from harness_canonical_events import CanonicalEvent
 
 
 class MemoryAction(str, Enum):
@@ -113,7 +117,7 @@ class MemoryPolicyEngine:
     - AI memory best practices
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the policy engine with default rules."""
         self._rules: list[MemoryPolicyRule] = []
         self._historical_facts: dict[str, int] = {}  # For pattern detection
@@ -177,7 +181,8 @@ class MemoryPolicyEngine:
             priority=85,
             condition=lambda e, c: (
                 e.event_type == 'error_occurred' and
-                e.error_code and
+                e.error_code is not None and
+                e.error_code != '' and
                 not self._is_known_error(e.error_code)
             ),
             action=MemoryAction.BOTH,

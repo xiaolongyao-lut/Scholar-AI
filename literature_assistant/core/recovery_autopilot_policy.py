@@ -19,10 +19,14 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Optional, Protocol
 
-from recovery_recommendation_engine import RecoveryActionType
-from datetime_utils import utc_now_iso_z
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.recovery_recommendation_engine import RecoveryActionType
+else:
+    from datetime_utils import utc_now_iso_z
+    from recovery_recommendation_engine import RecoveryActionType
 
 logger = logging.getLogger(__name__)
 

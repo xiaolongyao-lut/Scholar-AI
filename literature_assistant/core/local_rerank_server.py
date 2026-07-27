@@ -36,7 +36,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 # Make the adapter importable when run as `python <file>`
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -46,11 +46,15 @@ logger = logging.getLogger("local_rerank_server")
 
 # Pydantic schemas at module scope — pydantic v2 ForwardRef resolution requires
 # this when used as FastAPI body parameters (in-function definitions fail).
-try:
+if TYPE_CHECKING:
+    from fastapi import FastAPI
     from pydantic import BaseModel, Field
-except ImportError:
-    BaseModel = None  # type: ignore[assignment]
-    Field = None  # type: ignore[assignment]
+else:
+    try:
+        from pydantic import BaseModel, Field
+    except ImportError:
+        BaseModel = None
+        Field = None
 
 
 if BaseModel is not None:
@@ -74,7 +78,7 @@ if BaseModel is not None:
         meta: dict[str, Any] | None = None
 
 
-def _build_app():
+def _build_app() -> FastAPI:
     """Build the FastAPI app lazily so this module can be imported for tests
     without forcing the FastAPI dep to load."""
     try:
@@ -85,7 +89,10 @@ def _build_app():
             "Install with: pip install fastapi uvicorn pydantic"
         ) from exc
 
-    import local_rerank_adapter as lra
+    if TYPE_CHECKING:
+        import literature_assistant.core.local_rerank_adapter as lra
+    else:
+        import local_rerank_adapter as lra
 
     app = FastAPI(
         title="Local Rerank Server",

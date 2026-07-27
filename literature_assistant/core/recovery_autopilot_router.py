@@ -14,37 +14,95 @@ This router is designed to be included in the main FastAPI adapter application.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
 from argparse import Namespace
+from typing import TYPE_CHECKING, Any, Dict, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
+from typing_extensions import TypedDict
 
-# Import models from centralized models package
-from models import (
-    AutopilotStatusResponse,
-    AutopilotEnableRequest,
-    AutopilotPolicySetRequest,
-    AutopilotEmergencyActionRequest,
-    PolicyInfo,
-    EventLogEntry,
-)
-
-# Recovery stack imports
-from recovery_autopilot_control_plane import ControlPlaneState
-from recovery_autopilot_policy import (
-    create_conservative_policy,
-    create_standard_policy,
-    create_permissive_policy,
-)
-from recovery_store_provider import get_event_store, get_fact_store
-from recovery_metrics_exporter import get_recovery_metrics_collector
-from datetime_utils import utc_now_iso_z
+if TYPE_CHECKING:
+    from literature_assistant.core.datetime_utils import utc_now_iso_z
+    from literature_assistant.core.models import (
+        AutopilotEmergencyActionRequest,
+        AutopilotEnableRequest,
+        AutopilotPolicySetRequest,
+        AutopilotStatusResponse,
+        EventLogEntry,
+        PolicyInfo,
+    )
+    from literature_assistant.core.recovery_autopilot_control_plane import ControlPlaneState
+    from literature_assistant.core.recovery_autopilot_policy import (
+        create_conservative_policy,
+        create_permissive_policy,
+        create_standard_policy,
+    )
+    from literature_assistant.core.recovery_metrics_exporter import (
+        get_recovery_metrics_collector,
+    )
+    from literature_assistant.core.recovery_store_provider import get_event_store, get_fact_store
+else:
+    from datetime_utils import utc_now_iso_z
+    from models import (
+        AutopilotEmergencyActionRequest,
+        AutopilotEnableRequest,
+        AutopilotPolicySetRequest,
+        AutopilotStatusResponse,
+        EventLogEntry,
+        PolicyInfo,
+    )
+    from recovery_autopilot_control_plane import ControlPlaneState
+    from recovery_autopilot_policy import (
+        create_conservative_policy,
+        create_permissive_policy,
+        create_standard_policy,
+    )
+    from recovery_metrics_exporter import get_recovery_metrics_collector
+    from recovery_store_provider import get_event_store, get_fact_store
 
 logger = logging.getLogger("RecoveryAutopilotRouter")
 
 _API_OPERATOR_ID = "api-client"
+
+
+class AutopilotEnableResult(TypedDict):
+    """Successful autopilot enable response."""
+
+    status: Literal["enabled"]
+    policy: str
+    timestamp: str
+    reason: str | None
+
+
+class AutopilotDisableResult(TypedDict):
+    """Successful autopilot disable response."""
+
+    status: Literal["disabled"]
+    timestamp: str
+
+
+class AutopilotEmergencyStopResult(TypedDict):
+    """Successful emergency-stop response."""
+
+    status: Literal["emergency_stopped"]
+    reason: str
+    timestamp: str
+
+
+class AutopilotEmergencyResumeResult(TypedDict):
+    """Successful emergency-resume response."""
+
+    status: Literal["resumed"]
+    timestamp: str
+
+
+class AutopilotPolicySetResult(TypedDict):
+    """Successful policy-change response."""
+
+    status: Literal["policy_set"]
+    policy: str
+    timestamp: str
 
 # ---
 # Create APIRouter
@@ -67,10 +125,15 @@ router = APIRouter(
     summary="Get autopilot status",
     tags=["Autopilot"],
 )
-async def get_autopilot_status():
+async def get_autopilot_status() -> AutopilotStatusResponse:
     """Get current autopilot control plane state."""
     try:
-        from recovery_autopilot_cli import get_autopilot_control_plane
+        if TYPE_CHECKING:
+            from literature_assistant.core.recovery_autopilot_cli import (
+                get_autopilot_control_plane,
+            )
+        else:
+            from recovery_autopilot_cli import get_autopilot_control_plane
 
         cp = get_autopilot_control_plane()
         policy = cp.get_current_policy() if cp.is_enabled() else None
@@ -78,8 +141,8 @@ async def get_autopilot_status():
         # Prefer public accessor when available (legacy callers may still rely
         # on ``_state``); fall back to the underscored attribute for backwards
         # compatibility but coerce to its ``value`` for the response payload.
-        raw_state = getattr(cp, "state", None) or getattr(cp, "_state", None)
-        state_val = raw_state.value if hasattr(raw_state, "value") else str(raw_state)
+        raw_state: object = getattr(cp, "state", None) or getattr(cp, "_state", None)
+        state_val = str(getattr(raw_state, "value", raw_state))
         is_emergency = raw_state == ControlPlaneState.EMERGENCY_STOPPED
 
         return AutopilotStatusResponse(
@@ -114,13 +177,19 @@ async def get_autopilot_status():
     summary="Enable autopilot",
     tags=["Autopilot"],
 )
-async def enable_autopilot(req: AutopilotEnableRequest):
+async def enable_autopilot(req: AutopilotEnableRequest) -> AutopilotEnableResult:
     """Enable autopilot with specified policy."""
     try:
-        from recovery_autopilot_cli import (
-            cmd_autopilot_enable,
-            get_autopilot_control_plane,
-        )
+        if TYPE_CHECKING:
+            from literature_assistant.core.recovery_autopilot_cli import (
+                cmd_autopilot_enable,
+                get_autopilot_control_plane,
+            )
+        else:
+            from recovery_autopilot_cli import (
+                cmd_autopilot_enable,
+                get_autopilot_control_plane,
+            )
 
         # Operator id passed via Namespace so concurrent requests don't race on
         # a process-wide env var (RECOVERY_OPERATOR_ID).
@@ -158,10 +227,15 @@ async def enable_autopilot(req: AutopilotEnableRequest):
     summary="Disable autopilot",
     tags=["Autopilot"],
 )
-async def disable_autopilot(req: Dict[str, Any] = None):
+async def disable_autopilot(
+    req: Dict[str, Any] | None = None,
+) -> AutopilotDisableResult:
     """Disable autopilot."""
     try:
-        from recovery_autopilot_cli import cmd_autopilot_disable
+        if TYPE_CHECKING:
+            from literature_assistant.core.recovery_autopilot_cli import cmd_autopilot_disable
+        else:
+            from recovery_autopilot_cli import cmd_autopilot_disable
 
         reason = req.get("reason") if req else None
         args = Namespace(reason=reason or "Disabled via REST API", operator_id=_API_OPERATOR_ID)
@@ -191,10 +265,17 @@ async def disable_autopilot(req: Dict[str, Any] = None):
     summary="Emergency stop autopilot",
     tags=["Autopilot"],
 )
-async def emergency_stop(req: AutopilotEmergencyActionRequest):
+async def emergency_stop(
+    req: AutopilotEmergencyActionRequest,
+) -> AutopilotEmergencyStopResult:
     """Trigger emergency stop."""
     try:
-        from recovery_autopilot_cli import cmd_autopilot_emergency_stop
+        if TYPE_CHECKING:
+            from literature_assistant.core.recovery_autopilot_cli import (
+                cmd_autopilot_emergency_stop,
+            )
+        else:
+            from recovery_autopilot_cli import cmd_autopilot_emergency_stop
 
         args = Namespace(reason=req.reason, operator_id=_API_OPERATOR_ID)
         result = cmd_autopilot_emergency_stop(args)
@@ -223,10 +304,17 @@ async def emergency_stop(req: AutopilotEmergencyActionRequest):
     summary="Resume from emergency stop",
     tags=["Autopilot"],
 )
-async def emergency_resume(req: Dict[str, Any] = None):
+async def emergency_resume(
+    req: Dict[str, Any] | None = None,
+) -> AutopilotEmergencyResumeResult:
     """Resume from emergency stop."""
     try:
-        from recovery_autopilot_cli import cmd_autopilot_emergency_resume
+        if TYPE_CHECKING:
+            from literature_assistant.core.recovery_autopilot_cli import (
+                cmd_autopilot_emergency_resume,
+            )
+        else:
+            from recovery_autopilot_cli import cmd_autopilot_emergency_resume
 
         reason = req.get("reason") if req else None
         args = Namespace(reason=reason or "Resumed via REST API", operator_id=_API_OPERATOR_ID)
@@ -252,11 +340,11 @@ async def emergency_resume(req: Dict[str, Any] = None):
 
 @router.get(
     "/autopilot/policies",
-    response_model=List[PolicyInfo],
+    response_model=list[PolicyInfo],
     summary="List available policies",
     tags=["Autopilot"],
 )
-async def list_policies():
+async def list_policies() -> list[PolicyInfo]:
     """Get list of available autopilot policies."""
     try:
         policies = [
@@ -291,10 +379,13 @@ async def list_policies():
     summary="Change autopilot policy",
     tags=["Autopilot"],
 )
-async def set_policy(req: AutopilotPolicySetRequest):
+async def set_policy(req: AutopilotPolicySetRequest) -> AutopilotPolicySetResult:
     """Change the autopilot policy."""
     try:
-        from recovery_autopilot_cli import cmd_autopilot_policy_set
+        if TYPE_CHECKING:
+            from literature_assistant.core.recovery_autopilot_cli import cmd_autopilot_policy_set
+        else:
+            from recovery_autopilot_cli import cmd_autopilot_policy_set
 
         args = Namespace(
             policy=req.policy,

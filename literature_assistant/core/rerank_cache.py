@@ -8,9 +8,12 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from threading import Lock
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from project_paths import output_path
+if TYPE_CHECKING:
+    from literature_assistant.core.project_paths import output_path
+else:
+    from project_paths import output_path
 
 CacheMode = Literal["ttl", "corpus_version"]
 

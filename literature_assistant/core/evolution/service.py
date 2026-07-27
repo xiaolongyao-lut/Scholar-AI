@@ -18,19 +18,41 @@ import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from models.evolution import (
-    CandidateMemoryType,
-    CandidateRiskLevel,
-    CandidateSourceType,
-    CandidateStatus,
-    ExperienceCandidate,
-)
-from evolution.config import is_recall_enabled, load_evolution_config
-from evolution.promotion import EvolutionPromoter, PromotionResult
-from evolution.secret_scan import scan_candidate_fields
-from evolution.store import EvolutionCandidateStore, StoreWriteResult
+if TYPE_CHECKING:
+    from literature_assistant.core.evolution.config import (
+        is_recall_enabled,
+        load_evolution_config,
+    )
+    from literature_assistant.core.evolution.promotion import (
+        EvolutionPromoter,
+        PromotionResult,
+    )
+    from literature_assistant.core.evolution.secret_scan import scan_candidate_fields
+    from literature_assistant.core.evolution.store import (
+        EvolutionCandidateStore,
+        StoreWriteResult,
+    )
+    from literature_assistant.core.models.evolution import (
+        CandidateMemoryType,
+        CandidateRiskLevel,
+        CandidateSourceType,
+        CandidateStatus,
+        ExperienceCandidate,
+    )
+else:
+    from evolution.config import is_recall_enabled, load_evolution_config
+    from evolution.promotion import EvolutionPromoter, PromotionResult
+    from evolution.secret_scan import scan_candidate_fields
+    from evolution.store import EvolutionCandidateStore, StoreWriteResult
+    from models.evolution import (
+        CandidateMemoryType,
+        CandidateRiskLevel,
+        CandidateSourceType,
+        CandidateStatus,
+        ExperienceCandidate,
+    )
 
 
 def _utc_now_iso() -> str:
@@ -338,7 +360,12 @@ class EvolutionService:
             return EvolutionPromoter(memory_adapter=None)
         # Lazy resolve shared MemPalace adapter
         try:
-            from python_adapter_server import get_memory_adapter
+            if TYPE_CHECKING:
+                from literature_assistant.core.python_adapter_server import (
+                    get_memory_adapter,
+                )
+            else:
+                from python_adapter_server import get_memory_adapter
             adapter = get_memory_adapter()
         except Exception:
             adapter = None
@@ -346,7 +373,12 @@ class EvolutionService:
         # promotion path. Failures degrade silently to the pre-6.5 proposal-only
         # fallback so the rest of promotion still works in minimal envs / tests.
         try:
-            from skills.service import get_writing_skill_service
+            if TYPE_CHECKING:
+                from literature_assistant.core.skills.service import (
+                    get_writing_skill_service,
+                )
+            else:
+                from skills.service import get_writing_skill_service
             skill_service = get_writing_skill_service()
         except Exception:
             skill_service = None

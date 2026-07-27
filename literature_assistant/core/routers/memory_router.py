@@ -2,19 +2,32 @@
 """Memory API Router - Bridge to MemPalace and runtime sync services."""
 
 import logging
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from models import (
-    MemoryStatusPayload,
-    MemorySearchRequest,
-    MemorySearchResponsePayload,
-    MemoryWakeupPayload,
-    MemorySyncPayload,
-)
+
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.m_layer_mempalace_memory import MempalaceMemoryAdapter
+    from literature_assistant.core.models import (
+        MemorySearchRequest,
+        MemorySearchResponsePayload,
+        MemoryStatusPayload,
+        MemorySyncPayload,
+        MemoryWakeupPayload,
+    )
+else:
+    from models import (
+        MemorySearchRequest,
+        MemorySearchResponsePayload,
+        MemoryStatusPayload,
+        MemorySyncPayload,
+        MemoryWakeupPayload,
+    )
 
 logger = logging.getLogger("MemoryRouter")
-router = APIRouter(prefix="/memory", tags=["Memory"])
-compat_router = APIRouter(prefix="/api/memory_palace", tags=["Memory"])
+router: APIRouter = APIRouter(prefix="/memory", tags=["Memory"])
+compat_router: APIRouter = APIRouter(prefix="/api/memory_palace", tags=["Memory"])
 
 
 class MemoryCreateRequest(BaseModel):
@@ -65,9 +78,12 @@ class MemoryDeleteResponsePayload(BaseModel):
     memory_id: str
 
 
-def get_memory_adapter():
+def get_memory_adapter() -> "MempalaceMemoryAdapter | None":
     """Import and return the shared MemPalace adapter instance."""
-    from python_adapter_server import get_memory_adapter as get_adapter
+    if TYPE_CHECKING:
+        from literature_assistant.core.python_adapter_server import get_memory_adapter as get_adapter
+    else:
+        from python_adapter_server import get_memory_adapter as get_adapter
     return get_adapter()
 
 
@@ -206,7 +222,10 @@ async def sync_runtime_job_to_memory(
     room: str | None = Query(None),
 ) -> MemorySyncPayload:
     """Synchronize evidence from a completed job into long-term memory."""
-    from writing_runtime import get_writing_runtime
+    if TYPE_CHECKING:
+        from literature_assistant.core.writing_runtime import get_writing_runtime
+    else:
+        from writing_runtime import get_writing_runtime
     runtime = get_writing_runtime()
     try:
         result = runtime.sync_job_to_memory(job_id, wing=wing, room=room)

@@ -26,12 +26,21 @@ import tempfile
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
-from _atomic_io import CrossProcessFileLock
-from credential_store import CredentialSecretBackend, _select_secret_backend
-from models.credentials import mask_api_key
-from project_paths import runtime_state_path
+if TYPE_CHECKING or __package__ == "literature_assistant.core":
+    from literature_assistant.core._atomic_io import CrossProcessFileLock
+    from literature_assistant.core.credential_store import (
+        CredentialSecretBackend,
+        _select_secret_backend,
+    )
+    from literature_assistant.core.models.credentials import mask_api_key
+    from literature_assistant.core.project_paths import runtime_state_path
+else:
+    from _atomic_io import CrossProcessFileLock
+    from credential_store import CredentialSecretBackend, _select_secret_backend
+    from models.credentials import mask_api_key
+    from project_paths import runtime_state_path
 
 
 MODEL_OVERRIDE_SECRET_REF_FIELD = "api_key_secret_ref"
@@ -175,7 +184,12 @@ class ModelConfigStore:
         return _select_secret_backend(self._path)
 
     def _new_secret_ref(self) -> str:
-        return self._active_secret_backend.create_secret_ref(f"model_override_{self._subsystem}")
+        secret_ref = _coerce_string(
+            self._active_secret_backend.create_secret_ref(f"model_override_{self._subsystem}")
+        )
+        if not secret_ref:
+            raise RuntimeError("credential backend returned an invalid secret reference")
+        return secret_ref
 
     def _read_api_key_from_raw(self, raw: dict[str, Any]) -> str | None:
         legacy_key = _coerce_string(raw.get("api_key"))

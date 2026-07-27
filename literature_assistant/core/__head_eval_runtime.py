@@ -5,31 +5,63 @@ import argparse
 import json
 import os
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
-try:
-    from layers.r_layer_hybrid_retriever import hybrid_search as hybrid_search_async
-except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
-    hybrid_search_async = None
+AsyncHitProvider: TypeAlias = Callable[..., Awaitable[list[dict[str, Any]]]]
+KeywordGraphBuilder: TypeAlias = Callable[..., dict[str, Any]]
+KeywordGraphSearcher: TypeAlias = Callable[..., list[dict[str, Any]]]
 
-try:
-    from graph_keyword_retriever import build_keyword_graph, graph_keyword_search
-except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
-    build_keyword_graph = None
-    graph_keyword_search = None
+hybrid_search_async: AsyncHitProvider | None
+build_keyword_graph: KeywordGraphBuilder | None
+graph_keyword_search: KeywordGraphSearcher | None
+rerank_async: AsyncHitProvider | None
 
-try:
-    from chunk_vector_store import ChunkVectorStore
-except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
-    ChunkVectorStore = None
+if TYPE_CHECKING:
+    from literature_assistant.core.chunk_vector_store import (
+        ChunkVectorStore as _ChunkVectorStore,
+    )
+    from literature_assistant.core.graph_keyword_retriever import (
+        build_keyword_graph as _build_keyword_graph,
+        graph_keyword_search as _graph_keyword_search,
+    )
+    from literature_assistant.core.layers.r_layer_hybrid_retriever import (
+        hybrid_search as _hybrid_search_async,
+    )
+    from literature_assistant.core.reranker_client import rerank_async as _rerank_async
 
-try:
-    from reranker_client import rerank_async
-except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
-    rerank_async = None
+    hybrid_search_async = _hybrid_search_async
+    build_keyword_graph = _build_keyword_graph
+    graph_keyword_search = _graph_keyword_search
+    rerank_async = _rerank_async
+    ChunkVectorStore: type[_ChunkVectorStore] | None = _ChunkVectorStore
+else:
+    try:
+        from layers.r_layer_hybrid_retriever import hybrid_search as hybrid_search_async
+    except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
+        hybrid_search_async = None
 
-from project_paths import output_path
+    try:
+        from graph_keyword_retriever import build_keyword_graph, graph_keyword_search
+    except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
+        build_keyword_graph = None
+        graph_keyword_search = None
+
+    try:
+        from chunk_vector_store import ChunkVectorStore
+    except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
+        ChunkVectorStore = None
+
+    try:
+        from reranker_client import rerank_async
+    except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
+        rerank_async = None
+
+if TYPE_CHECKING:
+    from literature_assistant.core.project_paths import output_path
+else:
+    from project_paths import output_path
 
 
 def _calculate_mrr(relevance_list: list[bool]) -> float:
@@ -180,9 +212,11 @@ async def _retrieve(
     merged_hits = _rrf_fuse([hybrid_hits, graph_hits, dense_hits], top_k=max(top_k, rerank_top_n))
     if use_rerank and rerank_async and merged_hits:
         try:
-            return await rerank_async(
+            reranked = await rerank_async(
                 query_text, merged_hits[:rerank_top_n], top_k=top_k, semaphore=rerank_semaphore
             )
+            if isinstance(reranked, list) and all(isinstance(item, dict) for item in reranked):
+                return [dict(item) for item in reranked]
         except (RuntimeError, TypeError, ValueError):
             pass
     return merged_hits[:top_k]
@@ -194,7 +228,10 @@ async def _dense_retrieve_precomputed(
     """Dense retrieval with a pre-computed query vector (no API call)."""
     if query_vec is None:
         return []
-    return vector_store.cosine_search(query_vec, top_k=top_k)
+    hits = vector_store.cosine_search(query_vec, top_k=top_k)
+    if not isinstance(hits, list) or not all(isinstance(item, dict) for item in hits):
+        raise TypeError("vector store cosine_search must return a list of objects")
+    return [dict(item) for item in hits]
 
 
 def _rrf_fuse(rank_lists: list[list[dict[str, Any]]], top_k: int, rrf_k: int = 60) -> list[dict[str, Any]]:

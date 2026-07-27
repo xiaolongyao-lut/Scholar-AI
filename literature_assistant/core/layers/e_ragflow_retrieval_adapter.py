@@ -41,7 +41,7 @@ import threading
 import time
 import uuid
 import hashlib
-from typing import Dict, Any, List, Optional, Type
+from typing import Dict, Any, List, Literal, Optional, Type
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -660,7 +660,7 @@ class RAGFlowAdapter:
         exc_type: Optional[Type[BaseException]], 
         exc_val: Optional[BaseException], 
         exc_tb: Optional[Any]
-    ) -> bool:
+    ) -> Literal[False]:
         """自动关闭资源。"""
         self.close()
         return False

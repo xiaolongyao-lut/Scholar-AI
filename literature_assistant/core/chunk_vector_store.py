@@ -14,26 +14,43 @@ import logging
 import os
 import random
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import numpy as np
 
-import provider_rate_limit
-from chunk_size_guard import inspect_text
-from llm.gateway import invoke as invoke_model_gateway
-from model_call_gateway import CHUNKING_VERSION
-from runtime_env import (
-    build_embedding_request_payload,
-    env_value,
-    extract_embedding_vectors,
-    is_dashscope_multimodal_embedding_config,
-    resolve_embedding_candidates,
-    resolve_embedding_config,
-    resolve_embedding_request_url,
-)
-from retrieval_provenance import attach_source_labels
-from token_utils import count_tokens, split_by_tokens
+if TYPE_CHECKING or __package__ == "literature_assistant.core":
+    import literature_assistant.core.provider_rate_limit as provider_rate_limit
+    from literature_assistant.core.chunk_size_guard import inspect_text
+    from literature_assistant.core.llm.gateway import invoke as invoke_model_gateway
+    from literature_assistant.core.model_call_gateway import CHUNKING_VERSION
+    from literature_assistant.core.retrieval_provenance import attach_source_labels
+    from literature_assistant.core.runtime_env import (
+        build_embedding_request_payload,
+        env_value,
+        extract_embedding_vectors,
+        is_dashscope_multimodal_embedding_config,
+        resolve_embedding_candidates,
+        resolve_embedding_config,
+        resolve_embedding_request_url,
+    )
+    from literature_assistant.core.token_utils import count_tokens, split_by_tokens
+else:
+    import provider_rate_limit
+    from chunk_size_guard import inspect_text
+    from llm.gateway import invoke as invoke_model_gateway
+    from model_call_gateway import CHUNKING_VERSION
+    from retrieval_provenance import attach_source_labels
+    from runtime_env import (
+        build_embedding_request_payload,
+        env_value,
+        extract_embedding_vectors,
+        is_dashscope_multimodal_embedding_config,
+        resolve_embedding_candidates,
+        resolve_embedding_config,
+        resolve_embedding_request_url,
+    )
+    from token_utils import count_tokens, split_by_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +73,23 @@ DASHSCOPE_MULTIMODAL_MAX_BATCH_SIZE = 20
 
 class EmbeddingAPIError(RuntimeError):
     """Raised when the embedding API cannot produce a usable vector."""
+
+
+def _require_embedding_vector(value: object) -> list[float]:
+    if not isinstance(value, list):
+        raise EmbeddingAPIError("embedding vector must be a list")
+    vector: list[float] = []
+    for component in value:
+        if isinstance(component, bool) or not isinstance(component, (int, float)):
+            raise EmbeddingAPIError("embedding vector components must be numeric")
+        vector.append(float(component))
+    return vector
+
+
+def _require_embedding_vectors(value: object) -> list[list[float]]:
+    if not isinstance(value, list):
+        raise EmbeddingAPIError("embedding result must be a list of vectors")
+    return [_require_embedding_vector(vector) for vector in value]
 
 
 def _normalize_embedding_vector(vector: list[float], *, expected_dim: int = EMBEDDING_DIM) -> list[float]:
@@ -252,11 +286,14 @@ def _l2_normalize(vec: np.ndarray) -> np.ndarray:
 
 def _compute_embed_backoff(attempt: int) -> float:
     delay = min(BASE_EMBED_BACKOFF * (2 ** attempt), MAX_EMBED_BACKOFF)
-    return delay + random.uniform(0.0, delay)
+    return float(delay + random.uniform(0.0, delay))
 
 
 def _embedding_endpoint(base_url: str, model: str | None = None) -> str:
-    return resolve_embedding_request_url(base_url, model)
+    endpoint: object = resolve_embedding_request_url(base_url, model)
+    if not isinstance(endpoint, str):
+        raise EmbeddingAPIError("embedding endpoint resolver must return a string")
+    return endpoint
 
 
 def _embedding_request_token_count(texts: list[str]) -> int:
@@ -297,10 +334,16 @@ def _embed_dimensions_arg(model: str | None) -> int | None:
 def _invoke_embedding_http(text: str, api_key: str, base_url: str, model: str) -> list[float]:
     # Security gate: validate endpoint before sending credentials
     try:
-        from provider_endpoint_policy import (
-            TrustSource,
-            validate_endpoint,
-        )
+        if TYPE_CHECKING or __package__ == "literature_assistant.core":
+            from literature_assistant.core.provider_endpoint_policy import (
+                TrustSource,
+                validate_endpoint,
+            )
+        else:
+            from provider_endpoint_policy import (
+                TrustSource,
+                validate_endpoint,
+            )
 
         decision = validate_endpoint(
             base_url,
@@ -361,9 +404,12 @@ def _make_embedding_failover_pool(
     model: str | None = None,
     default_base_url: str = DEFAULT_BASE_URL,
     default_model: str = DEFAULT_MODEL,
-):
+) -> object | None:
     try:
-        from key_pool import Credential, KeyPool
+        if TYPE_CHECKING or __package__ == "literature_assistant.core":
+            from literature_assistant.core.key_pool import Credential, KeyPool
+        else:
+            from key_pool import Credential, KeyPool
     except Exception:
         return None
 
@@ -405,10 +451,16 @@ async def _post_embed_batch(
 
     # Security gate: validate endpoint before sending credentials
     try:
-        from provider_endpoint_policy import (
-            TrustSource,
-            validate_endpoint,
-        )
+        if TYPE_CHECKING or __package__ == "literature_assistant.core":
+            from literature_assistant.core.provider_endpoint_policy import (
+                TrustSource,
+                validate_endpoint,
+            )
+        else:
+            from provider_endpoint_policy import (
+                TrustSource,
+                validate_endpoint,
+            )
 
         decision = validate_endpoint(
             base_url,
@@ -507,7 +559,7 @@ async def _embed_single_long(
     sub_arr = np.array(sub_raw, dtype=np.float32)
     normed = np.stack([_l2_normalize(row) for row in sub_arr], axis=0)
     pooled = _l2_normalize(normed.mean(axis=0))
-    return pooled.tolist()
+    return _require_embedding_vector(pooled.tolist())
 
 
 async def _batch_embed_api_only(
@@ -546,11 +598,12 @@ async def _batch_embed_api_only(
                 credential_pool=None,
             )
 
-        return await credential_pool.try_call_async(
+        pooled_result: object = await credential_pool.try_call_async(
             "embedding",
             _invoke_with_credential,
             cooldown_on=lambda _exc: True,
         )
+        return _require_embedding_vectors(pooled_result)
 
     batch_size = _effective_embed_batch_size(base_url, model, batch_size)
     concurrency = int(os.getenv("EMBED_CONCURRENCY", str(concurrency or DEFAULT_EMBED_CONCURRENCY)))
@@ -689,7 +742,13 @@ async def _batch_embed(
         if strict_contract:
             raise api_exc
         try:
-            from local_embedding_adapter import aencode_texts, is_available
+            if TYPE_CHECKING or __package__ == "literature_assistant.core":
+                from literature_assistant.core.local_embedding_adapter import (
+                    aencode_texts,
+                    is_available,
+                )
+            else:
+                from local_embedding_adapter import aencode_texts, is_available
         except ImportError as import_exc:
             logger.warning(
                 "embed: local fallback adapter not importable (%s); re-raising API error",

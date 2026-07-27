@@ -8,12 +8,15 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import TYPE_CHECKING, Any, Iterable, Mapping
 
-try:  # pragma: no cover - package import path used by the running app.
+if TYPE_CHECKING:
     from literature_assistant.core.project_paths import output_path
-except ImportError:  # pragma: no cover - flat import path used by legacy tests.
-    from project_paths import output_path
+else:
+    try:  # pragma: no cover - package import path used by the running app.
+        from literature_assistant.core.project_paths import output_path
+    except ImportError:  # pragma: no cover - flat import path used by legacy tests.
+        from project_paths import output_path
 
 
 SCHEMA_VERSION = "scholar-ai-academic-english-runtime/v1"
@@ -169,19 +172,27 @@ def _artifact_status(root: Path, manifest: Mapping[str, Any]) -> dict[str, dict[
     artifacts: dict[str, dict[str, Any]] = {}
     for key, filename in ALLOWED_ARTIFACTS.items():
         raw = manifest_artifacts.get(key) if isinstance(manifest_artifacts, Mapping) else None
-        has_manifest_record = isinstance(raw, Mapping) and any(
-            field in raw for field in ("exists", "bytes", "sha256", "status", "rows")
-        )
         artifact_path = root / filename
+        if isinstance(raw, Mapping) and any(
+            field in raw for field in ("exists", "bytes", "sha256", "status", "rows")
+        ):
+            artifacts[key] = {
+                "relative_path": f"english_discourse/{filename}",
+                "exists": bool(raw.get("exists")),
+                "bytes": _safe_int(raw.get("bytes")),
+                "sha256": _safe_hash(raw.get("sha256")),
+                "status": _safe_status(raw.get("status")),
+            }
+            if "rows" in raw:
+                artifacts[key]["rows"] = _safe_int(raw.get("rows"))
+            continue
         artifacts[key] = {
             "relative_path": f"english_discourse/{filename}",
-            "exists": bool(raw.get("exists")) if has_manifest_record else artifact_path.exists(),
-            "bytes": _safe_int(raw.get("bytes")) if has_manifest_record else _file_size(artifact_path),
-            "sha256": _safe_hash(raw.get("sha256")) if has_manifest_record else _sha256_file(artifact_path),
-            "status": _safe_status(raw.get("status")) if has_manifest_record else _derived_status(artifact_path),
+            "exists": artifact_path.exists(),
+            "bytes": _file_size(artifact_path),
+            "sha256": _sha256_file(artifact_path),
+            "status": _derived_status(artifact_path),
         }
-        if has_manifest_record and "rows" in raw:
-            artifacts[key]["rows"] = _safe_int(raw.get("rows"))
     return artifacts
 
 

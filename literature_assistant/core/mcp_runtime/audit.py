@@ -33,11 +33,16 @@ import threading
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from project_paths import runtime_state_path
+from literature_assistant.core.project_paths import runtime_state_path
 
-from mcp_runtime.tool_result_formatter import ToolResultRecord
+if TYPE_CHECKING:
+    from literature_assistant.core.mcp_runtime.tool_result_formatter import (
+        ToolResultRecord,
+    )
+else:
+    from mcp_runtime.tool_result_formatter import ToolResultRecord
 
 
 logger = logging.getLogger("McpAuditLogger")

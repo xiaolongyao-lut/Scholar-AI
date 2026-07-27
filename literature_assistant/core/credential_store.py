@@ -18,17 +18,26 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Protocol
+from typing import TYPE_CHECKING, Any, Iterable, Protocol
 
-from _atomic_io import CrossProcessFileLock, atomic_write_json
-from project_paths import runtime_state_path
-
-from models.credentials import (
-    RuntimeCredential,
-    RuntimeCredentialCreate,
-    RuntimeCredentialPublic,
-    RuntimeCredentialUpdate,
-)
+if TYPE_CHECKING or __package__ == "literature_assistant.core":
+    from literature_assistant.core._atomic_io import CrossProcessFileLock, atomic_write_json
+    from literature_assistant.core.models.credentials import (
+        RuntimeCredential,
+        RuntimeCredentialCreate,
+        RuntimeCredentialPublic,
+        RuntimeCredentialUpdate,
+    )
+    from literature_assistant.core.project_paths import runtime_state_path
+else:
+    from _atomic_io import CrossProcessFileLock, atomic_write_json
+    from models.credentials import (
+        RuntimeCredential,
+        RuntimeCredentialCreate,
+        RuntimeCredentialPublic,
+        RuntimeCredentialUpdate,
+    )
+    from project_paths import runtime_state_path
 
 
 SCHEMA_VERSION = 2

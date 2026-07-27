@@ -3,13 +3,24 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from layers.r_layer_hybrid_retriever import bm25_rank
+if TYPE_CHECKING:
+    from literature_assistant.core.layers.r_layer_hybrid_retriever import bm25_rank
+else:
+    from layers.r_layer_hybrid_retriever import bm25_rank
 
 
 def load_json(path: str | Path) -> dict[str, Any]:
-    return json.loads(Path(path).read_text(encoding='utf-8'))
+    payload: object = json.loads(Path(path).read_text(encoding='utf-8'))
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected a JSON object in {path}")
+    normalized: dict[str, Any] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            raise ValueError(f"expected string keys in JSON object: {path}")
+        normalized[key] = value
+    return normalized
 
 
 def dump_json(obj: Any, path: str | Path) -> None:
@@ -53,7 +64,10 @@ class HybridSearchRuntime:
         if not isinstance(top_k, int) or top_k < 1:
             raise ValueError("top_k must be a positive integer")
 
-        from routers.resources_router import _search_chunks_hybrid
+        if TYPE_CHECKING:
+            from literature_assistant.core.routers.resources_router import _search_chunks_hybrid
+        else:
+            from routers.resources_router import _search_chunks_hybrid
 
         hits = _search_chunks_hybrid(
             query=normalized_query,
