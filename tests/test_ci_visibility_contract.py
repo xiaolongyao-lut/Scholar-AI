@@ -173,7 +173,7 @@ def _promoted_tests() -> set[str]:
         frontend_match = FRONTEND_PROMOTION_RE.match(stripped)
         if frontend_match is not None:
             promoted.add(_normalize_path(f"frontend/src/{frontend_match.group('path')}"))
-    return promoted
+    return {path for path in promoted if not path.endswith("/__init__.py")}
 
 
 def _focused_ci_exemptions() -> set[str]:
@@ -359,6 +359,23 @@ def test_distribution_manifest_is_tracked_for_clean_checkout() -> None:
     )
 
     assert result.returncode == 0, "MANIFEST.in must be present in the Git index"
+
+
+def test_wiki_test_package_marker_is_tracked_for_clean_checkout() -> None:
+    """The public wiki tests must not rely on an ignored local package marker."""
+
+    path = "tests/wiki/__init__.py"
+    _require_git_worktree()
+    result = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", path],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert not _is_git_ignored(path)
+    assert result.returncode == 0, f"{path} must be present in the Git index"
 
 
 def test_backend_ci_condition_covers_all_python_test_roots() -> None:

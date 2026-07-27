@@ -190,10 +190,14 @@ def test_harness_tool_capability_preflight_uses_local_capability_header() -> Non
     assert summary["forced_tool_choice_ok"] is True
 
 
-def test_evolution_secret_scan_import_survives_direct_script_test_path_shadowing() -> None:
-    """Protect live-smoke imports when `tests/` is first on `sys.path`."""
+def test_evolution_secret_scan_import_survives_direct_script_test_path_shadowing(tmp_path: Path) -> None:
+    """Protect live-smoke imports when an isolated test package shadows `wiki`."""
 
-    tests_path = str(_ROOT / "tests")
+    shadow_package = tmp_path / "wiki"
+    shadow_package.mkdir()
+    shadow_init = shadow_package / "__init__.py"
+    shadow_init.write_text("# isolated test-path shadow package\n", encoding="utf-8")
+    tests_path = str(tmp_path)
     original_path = list(sys.path)
     module_names = (
         "wiki",
@@ -207,8 +211,8 @@ def test_evolution_secret_scan_import_survives_direct_script_test_path_shadowing
         sys.path[:] = [tests_path, *[path for path in original_path if path != tests_path]]
         spec = importlib.util.find_spec("wiki")
         if spec is None or spec.origin is None:
-            raise AssertionError("expected tests/wiki to be importable")
-        assert Path(spec.origin).resolve() == (_ROOT / "tests" / "wiki" / "__init__.py").resolve()
+            raise AssertionError("expected isolated wiki shadow package to be importable")
+        assert Path(spec.origin).resolve() == shadow_init.resolve()
 
         module = importlib.import_module("literature_assistant.core.evolution.secret_scan")
 
