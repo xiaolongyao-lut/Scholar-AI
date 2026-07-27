@@ -115,6 +115,64 @@ def test_detect_secrets_missing_object_report_is_blocking(
     assert findings[0]["severity"] == "blocker"
 
 
+@pytest.mark.parametrize("hits", [None, {}])
+def test_detect_secrets_non_list_file_findings_are_blocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hits: object,
+) -> None:
+    scan_root = tmp_path / "payload"
+    scan_root.mkdir()
+    completed = subprocess.CompletedProcess(
+        args=["python", "-m", "detect_secrets", "scan"],
+        returncode=0,
+        stdout=json.dumps({"results": {"example.py": hits}}),
+        stderr="",
+    )
+
+    monkeypatch.setattr(
+        release_secret_scan.subprocess,
+        "run",
+        lambda *args, **kwargs: completed,
+    )
+
+    findings, stderr = release_secret_scan.run_detect_secrets(scan_root)
+
+    assert stderr == ""
+    assert len(findings) == 1
+    assert findings[0]["rule_id"] == "detect_secrets_bad_output"
+    assert findings[0]["severity"] == "blocker"
+
+
+@pytest.mark.parametrize("hit", [None, "not-an-object"])
+def test_detect_secrets_non_object_hit_is_blocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hit: object,
+) -> None:
+    scan_root = tmp_path / "payload"
+    scan_root.mkdir()
+    completed = subprocess.CompletedProcess(
+        args=["python", "-m", "detect_secrets", "scan"],
+        returncode=0,
+        stdout=json.dumps({"results": {"example.py": [hit]}}),
+        stderr="",
+    )
+
+    monkeypatch.setattr(
+        release_secret_scan.subprocess,
+        "run",
+        lambda *args, **kwargs: completed,
+    )
+
+    findings, stderr = release_secret_scan.run_detect_secrets(scan_root)
+
+    assert stderr == ""
+    assert len(findings) == 1
+    assert findings[0]["rule_id"] == "detect_secrets_bad_output"
+    assert findings[0]["severity"] == "blocker"
+
+
 def test_detect_secrets_line_allowlist_matches_reviewed_keyword_false_positives(
     tmp_path: Path,
 ) -> None:

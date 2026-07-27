@@ -91,6 +91,56 @@ def _isolated_python_env(root: Path) -> dict[str, str]:
     return env
 
 
+def test_hybrid_retriever_defers_provider_resolution_until_first_use(
+    tmp_path: Path,
+) -> None:
+    """Importing retrieval helpers must not initialize provider configuration."""
+
+    repo_root = Path(__file__).resolve().parents[1]
+    script = r"""
+import sys
+import types
+from pathlib import Path
+
+repo_root = Path(sys.argv[1]).resolve()
+core_root = repo_root / "literature_assistant" / "core"
+sys.path.insert(0, str(core_root))
+sys.path.insert(1, str(repo_root))
+
+fake_reranker = types.ModuleType("reranker_client")
+
+async def unused_async(*args, **kwargs):
+    del args, kwargs
+    return []
+
+def forbidden_resolution(*args, **kwargs):
+    del args, kwargs
+    raise AssertionError("rerank provider configuration resolved during import")
+
+fake_reranker.rerank_async = unused_async
+fake_reranker.resolve_rerank_config = forbidden_resolution
+fake_reranker.warm_rerank_live_candidate = unused_async
+sys.modules["reranker_client"] = fake_reranker
+
+import layers.r_layer_hybrid_retriever as retriever
+
+assert retriever._retriever_instance is None
+"""
+    completed = subprocess.run(
+        (sys.executable, "-I", "-c", script, str(repo_root)),
+        cwd=tmp_path,
+        env=_isolated_python_env(tmp_path / "subprocess-env"),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
 @pytest.mark.parametrize("import_mode", ["canonical", "flat"])
 def test_strict_boundary_types_remain_compatible_in_each_import_mode(
     import_mode: str,

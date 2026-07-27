@@ -86,6 +86,7 @@ jobs:
             tests/test_terminal_output.py \
             tests/test_pyproject_runtime_metadata.py \
             tests/test_ci_visibility_contract.py \
+            tests/test_release_secret_scan.py \
             tests/test_wiki_crud.py \
             tests/test_wiki_bbox_unit_contract.py \
             tests/wiki/test_query.py \

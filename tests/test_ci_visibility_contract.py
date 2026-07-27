@@ -79,7 +79,6 @@ PYTEST_FOCUSED_CI_EXEMPTIONS: dict[str, str] = {
     "tests/test_provider_endpoint_policy_loopback.py": "provider endpoint loopback regression outside the current KRT/N33 focused gate",
     "tests/test_rag_ablation_evaluator.py": "RAG ablation evaluator regression outside the current KRT/N33 focused gate",
     "tests/test_rag_structured_sibling_inclusion.py": "RAG sibling inclusion regression outside the current KRT/N33 focused gate",
-    "tests/test_release_secret_scan.py": "release secret-scan regression outside the current KRT/N33 focused gate",
     "tests/test_search_refs_contract.py": "search refs contract outside the current KRT/N33 focused gate",
     "tests/test_skill_export.py": "skill export regression outside the current KRT/N33 focused gate",
     "tests/test_start_launchers_security.py": "launcher security regression outside the current KRT/N33 focused gate",
@@ -150,6 +149,15 @@ def _focused_ci_tests() -> set[str]:
         for match in FRONTEND_TEST_RE.finditer(workflow)
     }
     return python_paths | frontend_paths
+
+
+def test_release_secret_scan_regression_runs_in_focused_ci() -> None:
+    """Security-gate regressions must not rely on a local-only exemption."""
+
+    test_path = "tests/test_release_secret_scan.py"
+
+    assert test_path in _focused_ci_tests()
+    assert test_path not in _focused_ci_exemptions()
 
 
 def _promoted_tests() -> set[str]:

@@ -11,6 +11,8 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+ROOT_PYPROJECT = REPO_ROOT / "pyproject.toml"
+MCP_PYPROJECT = REPO_ROOT / "agent_mcp_server" / "pyproject.toml"
 WRAPPER = REPO_ROOT / "agent_mcp_server" / "bin" / "lit-assistant-mcp.ps1"
 CODEX_CONFIG = REPO_ROOT / "agent_mcp_server" / "packaging" / "codex" / "config.example.toml"
 CODEX_PACKAGING = REPO_ROOT / "agent_mcp_server" / "packaging" / "codex"
@@ -26,6 +28,27 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise AssertionError(f"{path} must contain a JSON object")
     return payload
+
+
+def _project_dependency(path: Path, package_name: str) -> str:
+    """Return one exact dependency declaration from project metadata."""
+    payload = tomllib.loads(path.read_text(encoding="utf-8"))
+    dependencies = payload["project"]["dependencies"]
+    pattern = re.compile(
+        rf"^{re.escape(package_name)}(?=[<>=!~;\[\s]|$)",
+        re.IGNORECASE,
+    )
+    matches = [dependency for dependency in dependencies if pattern.match(dependency)]
+    assert len(matches) == 1, f"expected one {package_name} dependency in {path}"
+    return matches[0]
+
+
+def test_standalone_mcp_dependency_matches_validated_runtime_range() -> None:
+    """The standalone wheel must not resolve an MCP SDK lacking tool annotations."""
+    expected = "mcp>=1.13.0,<2.0.0"
+
+    assert _project_dependency(ROOT_PYPROJECT, "mcp") == expected
+    assert _project_dependency(MCP_PYPROJECT, "mcp") == expected
 
 
 def test_codex_config_example_points_to_shared_wrapper() -> None:

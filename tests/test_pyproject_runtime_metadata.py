@@ -18,6 +18,7 @@ from packaging.version import Version
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
+MCP_PYPROJECT_PATH = REPO_ROOT / "agent_mcp_server" / "pyproject.toml"
 RAG_INTEGRATION_CONFIG_PATH = (
     REPO_ROOT / "literature_assistant" / "core" / "config" / "rag_integration_config.yaml"
 )
@@ -237,6 +238,50 @@ def test_type_check_dependencies_cover_the_local_and_ci_gate() -> None:
 
     assert required_type_packages <= dev_dependencies
     assert required_type_packages <= ci_dependencies
+
+
+def test_release_secret_scanner_dependency_is_declared_locally_and_in_ci() -> None:
+    """Documented release scans must work after supported dev or CI setup."""
+
+    data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    dev_requirements = {
+        requirement.name.lower(): requirement
+        for raw_requirement in data["project"]["optional-dependencies"]["dev"]
+        if (requirement := Requirement(raw_requirement))
+    }
+    ci_requirements = {
+        requirement.name.lower(): requirement
+        for line in (REPO_ROOT / "requirements-ci.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+        if (requirement := Requirement(line.strip()))
+    }
+
+    assert "detect-secrets" in dev_requirements
+    assert "detect-secrets" in ci_requirements
+    ci_specifiers = tuple(ci_requirements["detect-secrets"].specifier)
+    assert len(ci_specifiers) == 1
+    assert ci_specifiers[0].operator == "=="
+    assert Version(ci_specifiers[0].version) in dev_requirements["detect-secrets"].specifier
+
+
+def test_root_and_standalone_mcp_dependency_ranges_match() -> None:
+    """CI must reject an MCP wheel that resolves an unvalidated SDK range."""
+
+    expected = Requirement("mcp>=1.13.0,<2.0.0")
+    requirements: list[Requirement] = []
+    for metadata_path in (PYPROJECT_PATH, MCP_PYPROJECT_PATH):
+        data = tomllib.loads(metadata_path.read_text(encoding="utf-8"))
+        matches = [
+            Requirement(raw_requirement)
+            for raw_requirement in data["project"]["dependencies"]
+            if Requirement(raw_requirement).name.lower() == "mcp"
+        ]
+        assert len(matches) == 1, f"expected one MCP dependency in {metadata_path}"
+        requirements.append(matches[0])
+
+    assert requirements == [expected, expected]
 
 
 def test_httpcore_transport_dependency_is_declared_locally_and_in_ci() -> None:

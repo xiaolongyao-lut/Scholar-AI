@@ -321,10 +321,25 @@ def run_detect_secrets(scan_root: Path, force_rescan: bool = False) -> tuple[lis
         }], proc.stderr
 
     for filename, hits in results.items():
+        if (
+            not isinstance(filename, str)
+            or not isinstance(hits, list)
+            or any(not isinstance(hit, dict) for hit in hits)
+        ):
+            return [{
+                "rule_id": "detect_secrets_bad_output",
+                "detector": "detect-secrets",
+                "matched_path": str(scan_root),
+                "masked_snippet": proc.stdout[:200],
+                "file_sha256_prefix": "",
+                "severity": "blocker",
+            }], proc.stderr
+
+    for filename, hits in results.items():
         rel_posix = _to_rel_posix(filename, scan_root)
         if is_path_allowlisted(rel_posix, force_rescan=force_rescan):
             continue
-        for hit in hits or []:
+        for hit in hits:
             secret_type = str(hit.get("type", "unknown"))
             try:
                 line_number = int(hit.get("line_number", 0))

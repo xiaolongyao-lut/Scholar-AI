@@ -492,7 +492,15 @@ class HybridRetrieverWithRerank:
             for item in sorted(candidates, key=lambda x: x.get('hybrid_score', 0), reverse=True)
         ]
 
-_retriever_instance = HybridRetrieverWithRerank()
+_retriever_instance: HybridRetrieverWithRerank | None = None
+
+
+def _get_retriever_instance() -> HybridRetrieverWithRerank:
+    """Create the process-wide retriever only when retrieval is first used."""
+    global _retriever_instance
+    if _retriever_instance is None:
+        _retriever_instance = HybridRetrieverWithRerank()
+    return _retriever_instance
 
 def _require_candidate_records(value: object, *, source: str) -> list[dict[str, Any]]:
     """Validate candidate records crossing a cache or provider boundary."""
@@ -518,4 +526,10 @@ async def hybrid_search(
     top_k: int = 12,
     focus_keywords: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    return await _retriever_instance.search(raw_data=raw_extract, query=query, top_k=top_k, focus_keywords=focus_keywords)
+    retriever = _get_retriever_instance()
+    return await retriever.search(
+        raw_data=raw_extract,
+        query=query,
+        top_k=top_k,
+        focus_keywords=focus_keywords,
+    )
