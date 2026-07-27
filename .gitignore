@@ -314,7 +314,6 @@ htmlcov/
 !/tests/conftest.py
 !/tests/wiki/
 /tests/wiki/*
-!/tests/wiki/__init__.py
 !/tests/wiki/test_query.py
 !/tests/wiki/test_wiki_router.py
 !/tests/wiki/test_doctor.py
