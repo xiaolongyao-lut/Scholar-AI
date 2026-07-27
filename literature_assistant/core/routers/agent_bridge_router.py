@@ -183,7 +183,7 @@ def _is_loopback_http_url(value: str) -> bool:
 def _pid_exists(pid: int) -> bool:
     if pid <= 0:
         return False
-    if os.name == "nt":
+    if sys.platform == "win32":
         try:
             import ctypes
 
@@ -344,6 +344,11 @@ def _launch_desktop_if_needed() -> dict[str, Any]:
     log_root.mkdir(parents=True, exist_ok=True)
     stdout_path = log_root / "agent_sidebar_desktop_open.stdout.log"
     stderr_path = log_root / "agent_sidebar_desktop_open.stderr.log"
+    creation_flags = (
+        int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if sys.platform == "win32"
+        else 0
+    )
     with stdout_path.open("ab") as stdout_file, stderr_path.open("ab") as stderr_file:
         subprocess.Popen(
             command,
@@ -352,7 +357,7 @@ def _launch_desktop_if_needed() -> dict[str, Any]:
             stdin=subprocess.DEVNULL,
             stdout=stdout_file,
             stderr=stderr_file,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+            creationflags=creation_flags,
             close_fds=False,
         )
 

@@ -114,7 +114,7 @@ def _env_flag(name: str) -> str:
 def _enable_windows_virtual_terminal() -> None:
     """Best-effort ANSI enablement for classic Windows consoles."""
 
-    if os.name != "nt":
+    if sys.platform != "win32":
         return
     try:
         import ctypes

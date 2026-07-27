@@ -358,10 +358,11 @@ def _convert_image_bytes_to_png(image_bytes: bytes) -> bytes | None:
         from PIL import Image
 
         with Image.open(io.BytesIO(image_bytes)) as image:
+            normalized_image: Image.Image = image
             if image.mode not in {"RGB", "RGBA", "L"}:
-                image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+                normalized_image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
             output = io.BytesIO()
-            image.save(output, format="PNG")
+            normalized_image.save(output, format="PNG")
             return output.getvalue()
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         _LOGGER.warning("pdf_visual_image_transcode_failed err=%s", exc)

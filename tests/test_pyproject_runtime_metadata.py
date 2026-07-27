@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import re
 import shutil
 import subprocess
@@ -152,12 +153,13 @@ def test_mypy_checks_internal_imports_and_resolves_local_mcp_source() -> None:
 
     data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
     mypy_config = data["tool"]["mypy"]
-    approved_third_party_modules = {
+    approved_missing_import_modules = {
         "PyPDF2",
         "fitz",
         "graphrag",
         "graphrag.*",
         "networkx",
+        "openai",
         "pandas",
         "pdfplumber",
         "psutil",
@@ -167,6 +169,11 @@ def test_mypy_checks_internal_imports_and_resolves_local_mcp_source() -> None:
         "torch",
         "transformers",
         "umap",
+        "webview",
+    }
+    required_clean_checkout_optional_modules = {
+        "openai",
+        "webview",
     }
 
     assert mypy_config["ignore_missing_imports"] is False
@@ -182,7 +189,28 @@ def test_mypy_checks_internal_imports_and_resolves_local_mcp_source() -> None:
         if override.get("ignore_missing_imports") is True:
             ignored_modules.update(override["module"])
     assert ignored_modules
-    assert ignored_modules <= approved_third_party_modules
+    assert required_clean_checkout_optional_modules <= ignored_modules
+    assert ignored_modules <= approved_missing_import_modules
+
+
+def test_gateb_pool_export_uses_a_tracked_runtime_boundary() -> None:
+    """Published evaluation code must not import an ignored workspace-only module."""
+
+    exporter_path = (
+        PYPROJECT_PATH.parent
+        / "literature_assistant"
+        / "core"
+        / "gateb_phase_b_pool_export.py"
+    )
+    tree = ast.parse(exporter_path.read_text(encoding="utf-8"), filename=str(exporter_path))
+    imported_modules = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+
+    assert "eval_retrieval_runtime" not in imported_modules
+    assert "literature_assistant.core.__head_eval_runtime" in imported_modules
 
 
 def test_type_check_dependencies_cover_the_local_and_ci_gate() -> None:
@@ -310,7 +338,7 @@ def test_package_exposes_current_four_part_product_version() -> None:
 
     from literature_assistant import __version__
 
-    assert __version__ == "0.1.9.2"
+    assert __version__ == "0.1.9.3"
 
 
 @pytest.mark.asyncio
@@ -388,7 +416,7 @@ def test_acquisition_clients_share_product_version_user_agent() -> None:
     from literature_assistant.core.acquisition.sources import arxiv
     from literature_assistant.version import SCHOLAR_AI_USER_AGENT
 
-    expected = "ScholarAI/0.1.9.2 compliant-open-access-client"
+    expected = "ScholarAI/0.1.9.3 compliant-open-access-client"
     assert SCHOLAR_AI_USER_AGENT == expected
     assert downloader.SCHOLAR_AI_USER_AGENT == expected
     assert arxiv.SCHOLAR_AI_USER_AGENT == expected
@@ -431,7 +459,7 @@ async def test_default_downloader_client_sends_product_version_user_agent(
         )
 
     assert captured["headers"] == {
-        "User-Agent": "ScholarAI/0.1.9.2 compliant-open-access-client"
+        "User-Agent": "ScholarAI/0.1.9.3 compliant-open-access-client"
     }
 
 
@@ -474,5 +502,5 @@ async def test_default_arxiv_client_sends_product_version_user_agent(
 
     assert candidates == ()
     assert captured["headers"] == {
-        "User-Agent": "ScholarAI/0.1.9.2 compliant-open-access-client"
+        "User-Agent": "ScholarAI/0.1.9.3 compliant-open-access-client"
     }

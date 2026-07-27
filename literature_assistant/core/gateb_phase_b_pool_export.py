@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from eval_retrieval_runtime import (
+from literature_assistant.core.__head_eval_runtime import (
     ChunkVectorStore,
     _extract_candidate_doc_ids,
     _load_queries,
@@ -21,6 +21,7 @@ from eval_retrieval_runtime import (
     hybrid_search_async,
     rerank_async,
 )
+
 if TYPE_CHECKING:
     from literature_assistant.core.project_paths import output_path
 else:

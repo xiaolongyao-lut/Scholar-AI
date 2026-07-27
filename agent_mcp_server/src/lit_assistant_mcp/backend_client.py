@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import sys
 import time
 from enum import Enum
 from pathlib import Path
@@ -668,7 +669,7 @@ def _coerce_pid(value: Any) -> int | None:
 def _pid_exists(pid: int) -> bool:
     if pid <= 0:
         return False
-    if os.name == "nt":
+    if sys.platform == "win32":
         try:
             import ctypes
 

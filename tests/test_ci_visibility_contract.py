@@ -359,12 +359,13 @@ def test_backend_ci_condition_covers_all_python_test_roots() -> None:
     assert "hashFiles('tests/**/*.py', 'agent_mcp_server/tests/**/*.py')" in workflow
 
 
-def test_backend_ci_runs_the_configured_mypy_gate() -> None:
-    """CI must execute the same repository-configured mypy command as local checks."""
+def test_backend_ci_runs_explicit_linux_and_windows_mypy_gates() -> None:
+    """CI must type-check both supported platform branches from one clean checkout."""
 
     workflow = _read_text(CI_WORKFLOW)
 
-    assert "python -X utf8 -m mypy" in workflow
+    assert "python -X utf8 -m mypy --platform linux" in workflow
+    assert "python -X utf8 -m mypy --platform win32" in workflow
 
 
 def test_promoted_tests_are_classified_for_focused_ci() -> None:

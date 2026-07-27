@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 
-__version__ = "0.1.9.2"
+__version__ = "0.1.9.3"
 SCHOLAR_AI_USER_AGENT = f"ScholarAI/{__version__} compliant-open-access-client"
 VersionChange = Literal["bugfix", "feature", "major"]
 

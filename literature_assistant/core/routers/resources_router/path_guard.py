@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -89,7 +90,7 @@ def _has_reparse_point(path: Path) -> bool:
     except OSError:
         # Lstat failed — treat as unsafe rather than silently allowing.
         return True
-    if os.name != "nt":
+    if sys.platform != "win32":
         return False
     try:
         import ctypes

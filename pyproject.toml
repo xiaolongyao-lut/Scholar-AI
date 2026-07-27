@@ -139,6 +139,13 @@ module = [
 ]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = [
+    "openai",
+    "webview",
+]
+ignore_missing_imports = true
+
 [tool.black]
 line-length = 100
 target-version = ["py311"]

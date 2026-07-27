@@ -406,7 +406,7 @@ def _coerce_optional_path(value: Any) -> Path | None:
 def _pid_exists(pid: int) -> bool:
     if pid <= 0:
         return False
-    if os.name == "nt":
+    if sys.platform == "win32":
         try:
             import ctypes
 

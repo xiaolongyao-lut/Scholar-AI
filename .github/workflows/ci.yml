@@ -49,9 +49,10 @@ jobs:
         run: |
           python -X utf8 -m compileall -q literature_assistant run_literature_assistant.py sitecustomize.py
 
-      - name: Type Check Workspace
+      - name: Type Check Workspace Platforms
         run: |
-          python -X utf8 -m mypy
+          python -X utf8 -m mypy --platform linux
+          python -X utf8 -m mypy --platform win32
 
       - name: Run Focused Contract Tests
         if: ${{ hashFiles('tests/**/*.py', 'agent_mcp_server/tests/**/*.py') != '' }}

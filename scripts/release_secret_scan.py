@@ -261,16 +261,17 @@ def is_detect_secrets_line_allowlisted(
 
 def run_detect_secrets(scan_root: Path, force_rescan: bool = False) -> tuple[list[dict[str, Any]], str]:
     findings: list[dict[str, Any]] = []
+    scan_root = scan_root.resolve()
     cmd = [
         sys.executable, "-m", "detect_secrets", "scan",
         "--all-files",
         # NOT passing --baseline. R1 enforcement: bare scan only.
-        str(scan_root),
+        ".",
     ]
     try:
         proc = subprocess.run(
             cmd, capture_output=True, text=True,
-            encoding="utf-8", errors="replace", check=False,
+            encoding="utf-8", errors="replace", check=False, cwd=scan_root,
         )
     except FileNotFoundError as exc:
         return [{
@@ -282,9 +283,23 @@ def run_detect_secrets(scan_root: Path, force_rescan: bool = False) -> tuple[lis
             "severity": "blocker",
         }], str(exc)
 
-    try:
-        report = json.loads(proc.stdout) if proc.stdout.strip() else {}
-    except json.JSONDecodeError:
+    if proc.returncode != 0:
+        return [{
+            "rule_id": "detect_secrets_failed",
+            "detector": "detect-secrets",
+            "matched_path": "",
+            "masked_snippet": f"<exit_code:{proc.returncode}>",
+            "file_sha256_prefix": "",
+            "severity": "blocker",
+        }], proc.stderr
+
+    report: Any = None
+    if proc.stdout.strip():
+        try:
+            report = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            report = None
+    if not isinstance(report, dict):
         return [{
             "rule_id": "detect_secrets_bad_output",
             "detector": "detect-secrets",
@@ -294,7 +309,17 @@ def run_detect_secrets(scan_root: Path, force_rescan: bool = False) -> tuple[lis
             "severity": "blocker",
         }], proc.stderr
 
-    results = report.get("results", {}) or {}
+    results = report.get("results")
+    if not isinstance(results, dict):
+        return [{
+            "rule_id": "detect_secrets_bad_output",
+            "detector": "detect-secrets",
+            "matched_path": str(scan_root),
+            "masked_snippet": proc.stdout[:200],
+            "file_sha256_prefix": "",
+            "severity": "blocker",
+        }], proc.stderr
+
     for filename, hits in results.items():
         rel_posix = _to_rel_posix(filename, scan_root)
         if is_path_allowlisted(rel_posix, force_rescan=force_rescan):
@@ -315,7 +340,7 @@ def run_detect_secrets(scan_root: Path, force_rescan: bool = False) -> tuple[lis
             findings.append({
                 "rule_id": f"detect_secrets:{secret_type}",
                 "detector": "detect-secrets",
-                "matched_path": filename,
+                "matched_path": rel_posix,
                 "masked_snippet": "<not_extracted>",
                 "file_sha256_prefix": "",
                 "line_number": line_number,

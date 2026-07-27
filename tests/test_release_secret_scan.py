@@ -1,4 +1,8 @@
+import json
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from scripts import release_secret_scan
 
@@ -8,6 +12,107 @@ def _write_payload_file(scan_root: Path, rel_path: str, text: str) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(text, encoding="utf-8")
     return target
+
+
+def test_detect_secrets_findings_use_scan_root_relative_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scan_root = tmp_path / "external-staging" / "payload"
+    secret_file = _write_payload_file(
+        scan_root,
+        "tests/test_redaction.py",
+        'token = "secret-value"\n',
+    )
+    completed = subprocess.CompletedProcess(
+        args=["detect-secrets", "scan"],
+        returncode=0,
+        stdout=json.dumps(
+            {
+                "results": {
+                    str(secret_file): [
+                        {
+                            "type": "Secret Keyword",
+                            "line_number": 1,
+                            "is_verified": False,
+                        }
+                    ]
+                }
+            }
+        ),
+        stderr="",
+    )
+    run_command: list[str] = []
+    run_kwargs: dict[str, object] = {}
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        run_command.extend(command)
+        run_kwargs.update(kwargs)
+        return completed
+
+    monkeypatch.setattr(release_secret_scan.subprocess, "run", fake_run)
+
+    findings, stderr = release_secret_scan.run_detect_secrets(scan_root)
+
+    assert stderr == ""
+    assert len(findings) == 1
+    assert run_command[-1] == "."
+    assert run_kwargs.get("cwd") == scan_root.resolve()
+    assert findings[0]["matched_path"] == "tests/test_redaction.py"
+
+
+def test_detect_secrets_nonzero_exit_is_blocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scan_root = tmp_path / "payload"
+    scan_root.mkdir()
+    completed = subprocess.CompletedProcess(
+        args=["python", "-m", "detect_secrets", "scan"],
+        returncode=1,
+        stdout="",
+        stderr="No module named detect_secrets",
+    )
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return completed
+
+    monkeypatch.setattr(release_secret_scan.subprocess, "run", fake_run)
+
+    findings, stderr = release_secret_scan.run_detect_secrets(scan_root)
+
+    assert stderr == completed.stderr
+    assert len(findings) == 1
+    assert findings[0]["rule_id"] == "detect_secrets_failed"
+    assert findings[0]["severity"] == "blocker"
+
+
+@pytest.mark.parametrize("stdout", ["", "[]", "null", "{}", '{"results": []}'])
+def test_detect_secrets_missing_object_report_is_blocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stdout: str,
+) -> None:
+    scan_root = tmp_path / "payload"
+    scan_root.mkdir()
+    completed = subprocess.CompletedProcess(
+        args=["python", "-m", "detect_secrets", "scan"],
+        returncode=0,
+        stdout=stdout,
+        stderr="",
+    )
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return completed
+
+    monkeypatch.setattr(release_secret_scan.subprocess, "run", fake_run)
+
+    findings, stderr = release_secret_scan.run_detect_secrets(scan_root)
+
+    assert stderr == ""
+    assert len(findings) == 1
+    assert findings[0]["rule_id"] == "detect_secrets_bad_output"
+    assert findings[0]["severity"] == "blocker"
 
 
 def test_detect_secrets_line_allowlist_matches_reviewed_keyword_false_positives(

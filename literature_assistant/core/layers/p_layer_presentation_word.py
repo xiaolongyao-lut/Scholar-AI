@@ -79,7 +79,7 @@ class WordWriter:
         """初始化文档并设置基础样式"""
         if not HAS_DOCX:
             raise RuntimeError("Missing 'python-docx' library. Please install it to use WordWriter.")
-        
+
         self._doc = create_document()
         sec = self.doc.sections[0]
         # 设置标准页边距
@@ -87,7 +87,7 @@ class WordWriter:
         sec.bottom_margin = Cm(2.0)
         sec.left_margin = Cm(2.2)
         sec.right_margin = Cm(2.2)
-        
+
         # 默认字体与对齐
         styles = self.doc.styles
         normal_font = styles['Normal'].font
@@ -188,15 +188,16 @@ class WordWriter:
         key = str(image_path.resolve())
         if key in self.image_cache:
             return Path(self.image_cache[key])
-            
+
         try:
             with Image.open(image_path) as img:
+                normalized_image: Image.Image = img
                 if img.mode not in ("RGB", "RGBA"):
-                    img = img.convert("RGB")
+                    normalized_image = img.convert("RGB")
                     out_dir = Path(tempfile.gettempdir()) / "p_layer_word_cache"
                     out_dir.mkdir(parents=True, exist_ok=True)
                     out_path = out_dir / f"{image_path.stem}_fixed.png"
-                    img.save(out_path, format="PNG")
+                    normalized_image.save(out_path, format="PNG")
                     self.image_cache[key] = str(out_path)
                     return out_path
         except Exception as e:
