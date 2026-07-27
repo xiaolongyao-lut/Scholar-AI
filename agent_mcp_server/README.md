@@ -18,6 +18,22 @@ Claude/Codex should use this server to call Scholar AI tools and inspect safe
 source code. If a capability is missing, add an MCP tool or backend HTTP
 endpoint instead of creating an installer path.
 
+## Versioning
+
+This toolbox carries its own version, independent of the Scholar AI product
+version. `agent_mcp_server` is distributed as a standalone MCP package, so its
+version tracks the tool contract — tool names, argument shapes, and result
+schemas — not the backend release it happens to be checked out beside. A
+product bugfix bump does not imply an MCP bump, and vice versa.
+
+Version metadata lives in exactly two places, which must stay equal:
+
+- `pyproject.toml` → `version`
+- `src/lit_assistant_mcp/__init__.py` → `__version__`
+
+Compatibility with the backend is negotiated at runtime through the HTTP
+endpoints and the MCP protocol version, not through matching version strings.
+
 ## Tools
 
 Use MCP `list_tools` for the live registry. For the public toolbox overview,

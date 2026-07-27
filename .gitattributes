@@ -31,6 +31,11 @@
 *.env text eol=lf
 *.example text eol=lf
 
+# Generated API contracts. Tracked on purpose as public interface and build
+# input, but collapsed in review UIs so hand-written diffs stay visible.
+frontend/openapi/modular-pipeline-openapi.json linguist-generated=true
+frontend/src/generated/openapi.ts linguist-generated=true
+
 # Binary assets and local state. These should never get text normalization.
 *.png binary
 *.jpg binary
