@@ -108,19 +108,19 @@ def _write_goal_state_fixture(root: Path, requirement_id: str) -> Path:
                     "checkpoint_id": "20260623-022555-n57-agent-workspace-requirement-contract-parity",
                     "latest_checkpoint_id": "20260626-061743-n201-agent-workspace-latest-checkpoint",
                     "latest_goal_state_checkpoint_id": "20260626-061744-n201-goal-state-latest-checkpoint",
-                    "checkpoint_path": "C:/Users/xiao/.codex/rollback-checkpoints/private",
-                    "restore_command": "restore C:/Users/xiao/private",
+                    "checkpoint_path": "C:/Users/example-user/.codex/rollback-checkpoints/private",
+                    "restore_command": "restore C:/Users/example-user/private",
                 },
                 "requirements": [
                     {
                         "id": requirement_id,
                         "status": "incomplete",
-                        "requirement": "REST and MCP drilldowns must stay in parity at C:/Users/xiao/private/app",
+                        "requirement": "REST and MCP drilldowns must stay in parity at C:/Users/example-user/private/app",
                         "residual_risk": "A payload field drift would hide browser-visible recovery evidence.",
                         "evidence": [
                             {
                                 "id": "router-contract",
-                                "file": "C:/Users/xiao/private/router.json",
+                                "file": "C:/Users/example-user/private/router.json",
                                 "command": "pytest tests/test_agent_workspace_mcp_contract.py",
                             },
                             {
@@ -170,11 +170,11 @@ def _write_goal_summary_fixture(root: Path) -> Path:
                 "rollback": {
                     "latest_goal_state_checkpoint_id": "20260629-020000-n305-mcp-summary-parity",
                     "latest_checkpoint_caveat": (
-                        "Rollback checkpoint for C:/Users/xiao/private N305 MCP summary parity; "
+                        "Rollback checkpoint for C:/Users/example-user/private N305 MCP summary parity; "
                         "restore only with explicit user intent."
                     ),
-                    "checkpoint_path": "C:/Users/xiao/.codex/rollback-checkpoints/private",
-                    "restore_command": "Restore-Item C:/Users/xiao/private",
+                    "checkpoint_path": "C:/Users/example-user/.codex/rollback-checkpoints/private",
+                    "restore_command": "Restore-Item C:/Users/example-user/private",
                 },
                 "requirements": [
                     {
@@ -195,7 +195,7 @@ def _write_goal_summary_fixture(root: Path) -> Path:
                     "this_slice": "N305 proves MCP Agent Workspace status preserves completion blockers.",
                     "full_goal": "not_complete: live model proof remains authorization gated.",
                     "can_mark_goal_complete": False,
-                    "why_not_complete": "C:/Users/xiao/private provider proof is still missing.",
+                    "why_not_complete": "C:/Users/example-user/private provider proof is still missing.",
                 },
                 "goal_lifecycle_rollup": {
                     "schema_version": "scholar_ai_goal_lifecycle_rollup/v1",
@@ -214,7 +214,7 @@ def _write_goal_summary_fixture(root: Path) -> Path:
                             "id": "actual_loading_gate_live_model_proof_auth_required_current_provider",
                             "status": "blocked",
                             "requirement_surface": (
-                                "Knowledge Runtime Pipeline QA at C:/Users/xiao/private"
+                                "Knowledge Runtime Pipeline QA at C:/Users/example-user/private"
                             ),
                             "missing_evidence": "Authorized live provider/model context-loading proof.",
                             "current_boundary": "Deterministic MCP parity tests are local proof only.",
@@ -225,7 +225,7 @@ def _write_goal_summary_fixture(root: Path) -> Path:
                         }
                     ],
                     "machine_readable_completion_rule": "Goal completes only when blockers are empty.",
-                    "why_not_complete": "C:/Users/xiao/private provider proof gates remain.",
+                    "why_not_complete": "C:/Users/example-user/private provider proof gates remain.",
                 },
                 "next_authorized_local_actions": [
                     "Create rollback checkpoint.",
@@ -358,7 +358,7 @@ def test_agent_workspace_status_rest_and_mcp_goal_summary_stay_in_parity(
     ]
     mcp_goal_state = mcp_result["data"]["workspace_state"]["goal_state"]
     serialized_goal_state = json.dumps(mcp_goal_state, ensure_ascii=False)
-    assert "C:/Users/xiao" not in serialized_goal_state
+    assert "C:/Users/example-user" not in serialized_goal_state
     assert "rollback-checkpoints" not in serialized_goal_state
     assert "Restore-Item" not in serialized_goal_state
     assert "checkpoint_path" not in serialized_goal_state
@@ -415,7 +415,7 @@ def test_agent_workspace_requirement_rest_and_mcp_payloads_stay_in_parity(
     assert mcp_result["data"] == rest_payload
     assert backend.calls == [("json", encoded_endpoint, None)]
     serialized = json.dumps(mcp_result["data"], ensure_ascii=False)
-    assert "C:/Users/xiao" not in serialized
+    assert "C:/Users/example-user" not in serialized
     assert "restore_command" not in serialized
     assert "checkpoint_path" not in serialized
     assert "This fourth action must be omitted." not in serialized

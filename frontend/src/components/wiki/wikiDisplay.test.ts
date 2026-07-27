@@ -9,7 +9,7 @@ import {
 
 describe('wiki display sanitization', () => {
   it('shows page names instead of full local paths', () => {
-    expect(formatWikiPageLabel('C:\\Users\\xiao\\wiki\\claims\\paper-a.md')).toBe('paper-a');
+    expect(formatWikiPageLabel('C:\\Users\\example-user\\wiki\\claims\\paper-a.md')).toBe('paper-a');
     expect(formatWikiPageLabel('notes/source-b.markdown')).toBe('source-b');
   });
 

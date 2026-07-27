@@ -3,6 +3,7 @@
 import json
 import os
 import platform
+import re
 import subprocess
 import tomllib
 from pathlib import Path
@@ -67,16 +68,21 @@ def test_distribution_templates_do_not_embed_local_absolute_paths() -> None:
     forbidden_fragments = [
         str(REPO_ROOT),
         str(REPO_ROOT).replace("\\", "\\\\"),
-        "C:\\Users\\xiao",
-        "C:\\\\Users\\\\xiao",
         "Desktop\\tools\\Modular-Pipeline-Script",
         "Desktop\\\\tools\\\\Modular-Pipeline-Script",
     ]
+    forbidden_patterns = (
+        re.compile(r"[A-Za-z]:/Users/[^/\r\n]+", re.IGNORECASE),
+        re.compile(r"[A-Za-z]:\\Users\\[^\\\r\n]+", re.IGNORECASE),
+        re.compile(r"[A-Za-z]:\\\\Users\\\\[^\\\r\n]+", re.IGNORECASE),
+    )
 
     for path in template_paths:
         text = path.read_text(encoding="utf-8")
         for fragment in forbidden_fragments:
             assert fragment not in text, f"{path} embeds local path fragment: {fragment}"
+        for pattern in forbidden_patterns:
+            assert pattern.search(text) is None, f"{path} embeds a user-profile path"
 
 
 def test_legacy_local_plugin_packages_are_not_published() -> None:

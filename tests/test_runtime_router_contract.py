@@ -1532,7 +1532,7 @@ def test_runtime_workflow_passport_projects_stage_gates(monkeypatch, tmp_path) -
                 "artifact_type": "chunk_index",
                 "output_target": "chunks",
                 "count": 2,
-                "path": "C:\\Users\\xiao\\private\\chunks.jsonl",
+                "path": "C:\\Users\\example-user\\private\\chunks.jsonl",
             },
             {
                 "artifact_type": "locator_index",
@@ -1684,7 +1684,7 @@ def test_runtime_workflow_passport_projects_stage_gates(monkeypatch, tmp_path) -
     assert passport["gate_summary"]["blocking_stage_ids"] == ["agent_handoff"]
     assert "runtime.research_projection" in passport["provenance"]["derived_from"]
     serialized = str(passport)
-    assert "C:\\Users\\xiao\\private" not in serialized
+    assert "C:\\Users\\example-user\\private" not in serialized
     assert "workspace_artifacts/private" not in serialized
 
     gate_response = client.get("/runtime/evidence-integrity-gate", params={"project_id": "project-passport"})
@@ -2003,7 +2003,7 @@ def test_runtime_evidence_integrity_gate_route_exposes_invalid_bbox_drilldown(mo
     assert any("invalid bbox" in item.lower() for item in locator_signal["next_actions"])
     serialized_gate = str(gate)
     assert "[-25, 0, 10, 10]" not in serialized_gate
-    assert "C:\\Users\\xiao\\private" not in serialized_gate
+    assert "C:\\Users\\example-user\\private" not in serialized_gate
 
 
 def test_runtime_behavior_eval_pack_route_exposes_read_only_canary_projection(tmp_path, monkeypatch) -> None:
@@ -2268,7 +2268,7 @@ def test_runtime_research_action_lifecycle_route_projects_actions_effects_and_ga
                 "wiki": {
                     "status": "candidate_created",
                     "wiki_slug": "action-life",
-                    "path": "C:\\Users\\xiao\\private\\wiki.md",
+                    "path": "C:\\Users\\example-user\\private\\wiki.md",
                 },
                 "graph": {
                     "status": "candidate_created",
@@ -2294,14 +2294,14 @@ def test_runtime_research_action_lifecycle_route_projects_actions_effects_and_ga
             "schema_version": "scholar_ai_agent_result_v1",
             "project_id": "project-action-life",
             "agent_request_id": "agentreq-action-life",
-            "path": "C:\\Users\\xiao\\private\\agent-result.json",
+            "path": "C:\\Users\\example-user\\private\\agent-result.json",
         },
     )
     runtime.request_approval(
         job_id=agent_job.job_id,
         session_id=session.session_id,
         reason="Confirm wiki and graph candidates before any write.",
-        metadata={"project_id": "project-action-life", "path": "C:\\Users\\xiao\\private\\approval.txt"},
+        metadata={"project_id": "project-action-life", "path": "C:\\Users\\example-user\\private\\approval.txt"},
     )
     runtime.build_action_preflight(
         action_id="agent.handoff_card",
@@ -2356,7 +2356,7 @@ def test_runtime_research_action_lifecycle_route_projects_actions_effects_and_ga
     assert "private agent result" not in serialized
     assert "private wiki draft" not in serialized
     assert "private artifact content" not in serialized
-    assert "C:\\Users\\xiao\\private" not in serialized
+    assert "C:\\Users\\example-user\\private" not in serialized
 
     job_response = client.get(
         "/runtime/research-action-lifecycle",

@@ -92,7 +92,7 @@ describe('DesktopAcceptanceAgentWorkspace', () => {
     expect(within(workspaceStateRegion).getByText('slice completion N74 completed desktop Wiki Import Recovery acceptance with screenshot and UIA host-tree evidence.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('full goal The long-running Scholar AI research workflow spine remains active, not complete.')).toBeInTheDocument();
     expect(within(workspaceStateRegion).getByText('checkpoint 20260623-194244-n74-main-wiki-import-desktop-acceptance')).toBeInTheDocument();
-    expect(within(workspaceStateRegion).queryByText(/C:\\Users\\xiao\\/)).not.toBeInTheDocument();
+    expect(within(workspaceStateRegion).queryByText(/C:\\Users\\example-user\\/)).not.toBeInTheDocument();
     expect(screen.getByRole('region', { name: '研究流程主干' })).toHaveAttribute('data-density', 'desktop-acceptance');
     expect(screen.getByRole('heading', { name: '研究流程' })).toBeInTheDocument();
     expect(screen.getByText('Workflow Passport')).toBeInTheDocument();

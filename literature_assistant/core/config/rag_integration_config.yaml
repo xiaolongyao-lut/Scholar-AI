@@ -19,14 +19,14 @@ ragflow:
 # ─── GraphRAG 社区图谱 ──────────────────────────────────────────
 graphrag:
   enabled: false                               # 需先运行 graphrag index 生成 parquet
-  index_path: "C:/Users/xiao/Desktop/wenxianku" # 文献库路径 (待生成 parquet 后启用)
+  index_path: "./workspace_artifacts/graphrag" # 本地索引路径 (待生成 parquet 后启用)
   default_community_level: 1
 
 # ─── AutoRAG 评测 ───────────────────────────────────────────────
 autorag:
   enabled: true
-  data_path: "C:/Users/xiao/Desktop/wenxianku" # 文献库路径
-  output_dir: "./autorag_out"
+  data_path: "./workspace_artifacts/autorag/data"
+  output_dir: "./workspace_artifacts/autorag/output"
   config_path: "./config/autorag_eval.yaml"
 
 # ─── Embedding / Semantic Router ─────────────────────────────────

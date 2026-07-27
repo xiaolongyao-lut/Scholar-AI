@@ -1435,9 +1435,9 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                     "checkpoint_id": "20260622-213822-n41-goal-state-workspace-visibility",
                     "latest_checkpoint_id": "20260626-061743-n201-agent-workspace-latest-checkpoint",
                     "latest_goal_state_checkpoint_id": "20260626-061744-n201-goal-state-latest-checkpoint",
-                    "latest_checkpoint_caveat": "Rollback checkpoint for C:/Users/xiao/private N201 goal-state projection; restore only with explicit user intent.",
-                    "checkpoint_path": "C:/Users/xiao/.codex/rollback-checkpoints/private",
-                    "restore_command": "restore C:/Users/xiao/private",
+                    "latest_checkpoint_caveat": "Rollback checkpoint for C:/Users/example-user/private N201 goal-state projection; restore only with explicit user intent.",
+                    "checkpoint_path": "C:/Users/example-user/.codex/rollback-checkpoints/private",
+                    "restore_command": "restore C:/Users/example-user/private",
                 },
                 "requirements": [
                     {"id": "N39", "status": "proved"},
@@ -1445,14 +1445,14 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                     {
                         "id": "E01",
                         "status": "incomplete",
-                        "requirement": "External Computer Use package residual at C:/Users/xiao/private/app",
+                        "requirement": "External Computer Use package residual at C:/Users/example-user/private/app",
                         "residual_risk": "Keep local UIA proof separate from external package residual risk.",
                     },
                     {
                         "id": "D01",
                         "status": "out_of_scope",
                         "requirement": "import-to-wiki writes remain deferred unless reauthorized.",
-                        "residual_risk": "Future write-path safety tests need C:/Users/xiao/private/data redaction.",
+                        "residual_risk": "Future write-path safety tests need C:/Users/example-user/private/data redaction.",
                     },
                     {
                         "id": "M01",
@@ -1482,9 +1482,9 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                 "completion_claim": {
                     "this_slice": "N41 exposed bounded recovery state to Agent Workspace. "
                     + "x" * 280,
-                    "full_goal": "The full goal remains active and C:/Users/xiao/private must stay hidden.",
+                    "full_goal": "The full goal remains active and C:/Users/example-user/private must stay hidden.",
                     "can_mark_goal_complete": False,
-                    "why_not_complete": "C:/Users/xiao/private provider proof is still missing.",
+                    "why_not_complete": "C:/Users/example-user/private provider proof is still missing.",
                 },
                 "goal_lifecycle_rollup": {
                     "schema_version": "scholar_ai_goal_lifecycle_rollup_v1",
@@ -1506,10 +1506,10 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                         {
                             "id": "actual_loading_gate_live_model_proof",
                             "status": "blocked_pending_explicit_authorization",
-                            "requirement_surface": "Knowledge Runtime Pipeline at C:/Users/xiao/private",
+                            "requirement_surface": "Knowledge Runtime Pipeline at C:/Users/example-user/private",
                             "missing_evidence": "Authorized live provider/model smoke artifact with verdict=ok.",
                             "current_boundary": "Deterministic contract tests are proved only.",
-                            "evidence": "N289 projection evidence at C:/Users/xiao/private proves deterministic visibility only.",
+                            "evidence": "N289 projection evidence at C:/Users/example-user/private proves deterministic visibility only.",
                         },
                         {
                             "id": "real_ocr_provider_execution",
@@ -1521,7 +1521,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                         "git_persistence_user_signoff",
                     ],
                     "machine_readable_completion_rule": "Goal may be complete only when blockers are empty.",
-                    "why_not_complete": "All requirement rows are proved, but C:/Users/xiao/private proof gates remain.",
+                    "why_not_complete": "All requirement rows are proved, but C:/Users/example-user/private proof gates remain.",
                 },
                 "next_authorized_local_actions": [
                     "Create rollback checkpoint.",
@@ -1540,7 +1540,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                     "AGENTS.md",
                     "docs/plans/autonomous-execution-framework.md",
                     "docs/plans/autonomous-execution-planning-playbook.md",
-                    "C:/Users/xiao/private/local-only-record.md",
+                    "C:/Users/example-user/private/local-only-record.md",
                     "tests/test_ci_visibility_contract.py",
                     "agent_mcp_server/tests/test_runtime_tools.py",
                     "frontend/src/pages/AgentWorkspace.tsx",
@@ -1548,7 +1548,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                 ],
                 "mature_references_checked": [
                     {
-                        "topic": "N41 response model at C:/Users/xiao/private",
+                        "topic": "N41 response model at C:/Users/example-user/private",
                         "source": "FastAPI response-model documentation",
                         "url": "https://fastapi.tiangolo.com/tutorial/response-model/",
                         "status": "HEAD checked 200",
@@ -1592,12 +1592,12 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
                     "frontend/src/services/agentWorkspaceApi.ts",
                     "frontend/src/pages/AgentWorkspace.tsx",
                     "frontend/src/pages/AgentWorkspace.test.tsx",
-                    "C:/Users/xiao/private/local-only-output.json",
+                    "C:/Users/example-user/private/local-only-output.json",
                     "ninth-file-intentionally-omitted.py",
                 ],
                 "verification_commands": [
                     "Read AI_WORKSPACE_GUIDE.md before implementation.",
-                    "git status --short --branch -> clean at C:/Users/xiao/private",
+                    "git status --short --branch -> clean at C:/Users/example-user/private",
                     "HEAD FastAPI response-model -> 200",
                     ".\\.venv-1\\Scripts\\python.exe -m pytest tests\\test_agent_workspace_router.py -q -> passed",
                     "npm run test -- AgentWorkspace.test.tsx --run -> passed",
@@ -1727,7 +1727,7 @@ def test_goal_state_summary_is_bounded_and_path_safe(tmp_path, monkeypatch) -> N
     serialized = summary.model_dump_json()
     assert "current_objective" not in serialized
     assert "restore_command" not in serialized
-    assert "C:/Users/xiao" not in serialized
+    assert "C:/Users/example-user" not in serialized
     assert "fifth reference" not in serialized
     assert "ninth-file-intentionally-omitted" not in serialized
     assert "seventh command" not in serialized
@@ -1747,23 +1747,23 @@ def test_goal_requirement_drilldown_is_bounded_and_path_safe(tmp_path, monkeypat
                     "checkpoint_id": "20260622-213822-n41-goal-state-workspace-visibility",
                     "latest_checkpoint_id": "20260626-061743-n201-agent-workspace-latest-checkpoint",
                     "latest_goal_state_checkpoint_id": "20260626-061744-n201-goal-state-latest-checkpoint",
-                    "checkpoint_path": "C:/Users/xiao/.codex/rollback-checkpoints/private",
-                    "restore_command": "restore C:/Users/xiao/private",
+                    "checkpoint_path": "C:/Users/example-user/.codex/rollback-checkpoints/private",
+                    "restore_command": "restore C:/Users/example-user/private",
                 },
                 "requirements": [
                     {"id": "N39", "status": "proved", "requirement": "proved row"},
                     {
                         "id": "E01",
                         "status": "incomplete",
-                        "requirement": "External Computer Use package residual at C:/Users/xiao/private/app",
+                        "requirement": "External Computer Use package residual at C:/Users/example-user/private/app",
                         "residual_risk": "Keep local UIA proof separate from external package residual risk.",
                         "evidence": [
                             {
                                 "id": "router-test",
-                                "file": "C:/Users/xiao/private/evidence.json",
+                                "file": "C:/Users/example-user/private/evidence.json",
                                 "command": "pytest tests/test_agent_workspace_router.py",
                             },
-                            "manual note at C:/Users/xiao/private/note.md",
+                            "manual note at C:/Users/example-user/private/note.md",
                             {"ref_id": "mcp-contract", "status": "covered"},
                             {"ref_id": "frontend-visible", "status": "covered"},
                             {"ref_id": "desktop-visible", "status": "covered"},
@@ -1830,7 +1830,7 @@ def test_goal_requirement_drilldown_is_bounded_and_path_safe(tmp_path, monkeypat
     ]
     serialized = json.dumps(payload, ensure_ascii=False)
     assert "restore_command" not in serialized
-    assert "C:/Users/xiao" not in serialized
+    assert "C:/Users/example-user" not in serialized
     assert "ninth-evidence" not in serialized
 
 

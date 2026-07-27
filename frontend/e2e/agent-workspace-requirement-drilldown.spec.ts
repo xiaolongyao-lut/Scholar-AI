@@ -68,7 +68,7 @@ test('desktop acceptance route exposes read-only requirement drilldown evidence'
   await expect(crosslinks.getByText('Do not execute approvals from the handoff action-lifecycle recovery bundle.')).toBeVisible();
 
   await expect(page.getByText('full goal The long-running Scholar AI research workflow spine remains active, not complete.')).toBeVisible();
-  await expect(page.getByText('C:\\Users\\xiao')).toHaveCount(0);
+  await expect(page.getByText('C:\\Users\\example-user')).toHaveCount(0);
   await expect(page.getByText('C:\\Users\\Alice\\private\\desktop-acceptance.pdf')).toHaveCount(0);
   await expect(page.getByText('[redacted-local-path]').first()).toBeVisible();
 });

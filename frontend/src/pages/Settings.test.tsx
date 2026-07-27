@@ -75,7 +75,7 @@ vi.mock('axios', () => {
           device_source: 'auto_detected',
           batch_size: 32,
           loaded: false,
-          hf_cache_dir: 'C:\\Users\\xiao\\.cache\\huggingface\\hub',
+          hf_cache_dir: 'C:\\Users\\example-user\\.cache\\huggingface\\hub',
           unavailable_reason: '缺少 Python 依赖：torch, sentence-transformers。',
         },
       };
@@ -93,7 +93,7 @@ vi.mock('axios', () => {
           max_length: 512,
           batch_size: 8,
           loaded: false,
-          hf_cache_dir: 'C:\\Users\\xiao\\.cache\\huggingface\\hub',
+          hf_cache_dir: 'C:\\Users\\example-user\\.cache\\huggingface\\hub',
           unavailable_reason: '缺少 Python 依赖：torch, transformers。',
         },
       };

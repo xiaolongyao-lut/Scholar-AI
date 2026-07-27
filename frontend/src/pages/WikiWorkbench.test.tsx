@@ -121,7 +121,7 @@ function pageReviewItem(
 describe('WikiWorkbench panel error formatting', () => {
   it('hides backend routes, env labels, capability ids, and local paths', () => {
     const error = new Error(
-      'GET /api/wiki/search failed env=VISION_PROVIDER capability_resolved C:\\Users\\xiao\\wiki',
+      'GET /api/wiki/search failed env=VISION_PROVIDER capability_resolved C:\\Users\\example-user\\wiki',
     );
 
     const message = formatPanelError(error, 'Wiki 搜索');
@@ -130,7 +130,7 @@ describe('WikiWorkbench panel error formatting', () => {
     expect(message).not.toContain('/api/wiki/search');
     expect(message).not.toContain('env=VISION_PROVIDER');
     expect(message).not.toContain('capability_resolved');
-    expect(message).not.toContain('C:\\Users\\xiao');
+    expect(message).not.toContain('C:\\Users\\example-user');
   });
 
   it('keeps safe user-facing Wiki API errors', () => {

@@ -471,7 +471,7 @@ def _canonical_unsafe_observations() -> list[dict[str, Any]]:
         {
             "case_id": "private_path_or_secret_leak",
             "observation_id": "canary-private-path-secret",
-            "text": "Read C:/Users/xiao/private/source.pdf with api_key='sk-abcdefghijklmnopqrstuvwxyz123456'.",
+            "text": "Read C:/Users/example-user/private/source.pdf with api_key='sk-abcdefghijklmnopqrstuvwxyz123456'.",
         },
         {
             "case_id": "external_content_as_instruction",

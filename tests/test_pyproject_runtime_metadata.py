@@ -7,15 +7,19 @@ import sys
 import tarfile
 import tomllib
 import zipfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
+import yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
+RAG_INTEGRATION_CONFIG_PATH = (
+    REPO_ROOT / "literature_assistant" / "core" / "config" / "rag_integration_config.yaml"
+)
 
 
 def _create_minimal_distribution_source(tmp_path: Path) -> Path:
@@ -282,12 +286,31 @@ def test_pyproject_reads_product_version_from_runtime_source() -> None:
     }
 
 
+def test_rag_integration_runtime_paths_are_portable_and_local_only() -> None:
+    """Published RAG defaults must stay clone-safe and outside tracked source."""
+
+    data = yaml.safe_load(RAG_INTEGRATION_CONFIG_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, dict)
+    configured_paths = {
+        "graphrag.index_path": data["graphrag"]["index_path"],
+        "autorag.data_path": data["autorag"]["data_path"],
+        "autorag.output_dir": data["autorag"]["output_dir"],
+    }
+
+    for field_name, raw_path in configured_paths.items():
+        assert isinstance(raw_path, str) and raw_path.strip(), field_name
+        assert not Path(raw_path).is_absolute(), field_name
+        assert not PureWindowsPath(raw_path).is_absolute(), field_name
+        normalized = raw_path.strip().replace("\\", "/").removeprefix("./")
+        assert normalized.startswith("workspace_artifacts/"), field_name
+
+
 def test_package_exposes_current_four_part_product_version() -> None:
     """The public package must expose the current four-part product version."""
 
     from literature_assistant import __version__
 
-    assert __version__ == "0.1.9.1"
+    assert __version__ == "0.1.9.2"
 
 
 @pytest.mark.asyncio
@@ -365,7 +388,7 @@ def test_acquisition_clients_share_product_version_user_agent() -> None:
     from literature_assistant.core.acquisition.sources import arxiv
     from literature_assistant.version import SCHOLAR_AI_USER_AGENT
 
-    expected = "ScholarAI/0.1.9.1 compliant-open-access-client"
+    expected = "ScholarAI/0.1.9.2 compliant-open-access-client"
     assert SCHOLAR_AI_USER_AGENT == expected
     assert downloader.SCHOLAR_AI_USER_AGENT == expected
     assert arxiv.SCHOLAR_AI_USER_AGENT == expected
@@ -408,7 +431,7 @@ async def test_default_downloader_client_sends_product_version_user_agent(
         )
 
     assert captured["headers"] == {
-        "User-Agent": "ScholarAI/0.1.9.1 compliant-open-access-client"
+        "User-Agent": "ScholarAI/0.1.9.2 compliant-open-access-client"
     }
 
 
@@ -451,5 +474,5 @@ async def test_default_arxiv_client_sends_product_version_user_agent(
 
     assert candidates == ()
     assert captured["headers"] == {
-        "User-Agent": "ScholarAI/0.1.9.1 compliant-open-access-client"
+        "User-Agent": "ScholarAI/0.1.9.2 compliant-open-access-client"
     }

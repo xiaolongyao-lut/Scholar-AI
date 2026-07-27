@@ -138,7 +138,7 @@ class TestWikiExportEndpoint:
                     "material_id": "material-1",
                     "title": "Alpha Trial.pdf",
                     "summary": "Registered local material metadata.",
-                    "source_path": r"C:\Users\xiao\private\Alpha Trial.pdf",
+                    "source_path": r"C:\Users\example-user\private\Alpha Trial.pdf",
                     "full_text": "raw paper text",
                     "api_key": "sk-proj-secret",
                 }
@@ -167,7 +167,7 @@ class TestWikiExportEndpoint:
             bundle_text = "\n".join(zf.read(name).decode("utf-8") for name in names if name.endswith(".md"))
             assert "raw paper text" not in bundle_text
             assert "sk-proj-secret" not in bundle_text
-            assert r"C:\Users\xiao" not in bundle_text
+            assert r"C:\Users\example-user" not in bundle_text
             frontmatter, _body = parse_okf_frontmatter(zf.read("materials/material-1.md").decode("utf-8"))
             assert frontmatter["type"] == "scholar-ai-material"
             assert frontmatter["project_id"] == "project_abc"
@@ -189,7 +189,7 @@ class TestWikiExportEndpoint:
             project_id=project.project_id,
             title="Alpha Trial.pdf",
             summary="Registered local material metadata.",
-            metadata={"source_path": r"C:\Users\xiao\private\Alpha Trial.pdf"},
+            metadata={"source_path": r"C:\Users\example-user\private\Alpha Trial.pdf"},
         )
         draft = store.create_draft(
             project_id=project.project_id,
@@ -211,7 +211,7 @@ class TestWikiExportEndpoint:
             kind="figure",
             caption="Alpha figure",
             numbering="Figure 1",
-            asset_path=r"C:\Users\xiao\private\figure.png",
+            asset_path=r"C:\Users\example-user\private\figure.png",
             material_id=material.material_id,
             source_page=2,
             width=640,
@@ -281,7 +281,7 @@ class TestWikiExportEndpoint:
             bundle_text = "\n".join(zf.read(name).decode("utf-8") for name in sorted(names) if name.endswith(".md"))
             assert "raw answer body must not be exported" not in bundle_text
             assert "raw chunk body must not be exported" not in bundle_text
-            assert r"C:\Users\xiao" not in bundle_text
+            assert r"C:\Users\example-user" not in bundle_text
             material_frontmatter, _body = parse_okf_frontmatter(
                 zf.read(f"materials/{material.material_id}.md").decode("utf-8")
             )
@@ -325,7 +325,7 @@ class TestWikiExportEndpoint:
         class _FakeArtifact:
             artifact_type = _EnumValue("metadata")
             content = "raw runtime artifact body must not be exported"
-            metadata = {"private_path": r"C:\Users\xiao\private\artifact.md"}
+            metadata = {"private_path": r"C:\Users\example-user\private\artifact.md"}
 
         class _FakeRuntime:
             def __init__(self, job: _FakeJob):
@@ -474,7 +474,7 @@ class TestWikiExportEndpoint:
             assert "raw runtime artifact body must not be exported" not in bundle_text
             assert "raw discussion trace must not be exported" not in bundle_text
             assert "raw discussion final answer must not be exported" not in bundle_text
-            assert r"C:\Users\xiao" not in bundle_text
+            assert r"C:\Users\example-user" not in bundle_text
             chat_frontmatter, _body = parse_okf_frontmatter(
                 zf.read("answers/conversation-runtime.md").decode("utf-8")
             )
@@ -756,7 +756,7 @@ class TestWikiExportFunction:
                         "material_id": "material-1",
                         "title": "Alpha Trial.pdf",
                         "summary": "Registered local material metadata.",
-                        "source_path": r"C:\Users\xiao\private\Alpha Trial.pdf",
+                        "source_path": r"C:\Users\example-user\private\Alpha Trial.pdf",
                         "full_text": "raw full paper body must not be exported",
                         "api_key": "sk-proj-secret",
                         "tags": ["paper"],
@@ -783,7 +783,7 @@ class TestWikiExportFunction:
                         "task_id": "task-1",
                         "task_goal": "Single paper deep read",
                         "status": "active",
-                        "private_path_ref": r"C:\Users\xiao\papers\alpha.pdf",
+                        "private_path_ref": r"C:\Users\example-user\papers\alpha.pdf",
                     }
                 ],
                 "reviews": [
@@ -799,7 +799,7 @@ class TestWikiExportFunction:
                         "export_id": "export-1",
                         "filename": "alpha.docx",
                         "description": "DOCX export metadata.",
-                        "file_path": r"C:\Users\xiao\exports\alpha.docx",
+                        "file_path": r"C:\Users\example-user\exports\alpha.docx",
                     }
                 ],
             },
@@ -838,7 +838,7 @@ class TestWikiExportFunction:
             assert "chunk body must not be exported" not in bundle_text
             assert "provider internals" not in bundle_text
             assert "sk-proj-secret" not in bundle_text
-            assert r"C:\Users\xiao" not in bundle_text
+            assert r"C:\Users\example-user" not in bundle_text
 
             frontmatter, body = parse_okf_frontmatter(zf.read("materials/material-1.md").decode("utf-8"))
             assert frontmatter["type"] == "scholar-ai-material"

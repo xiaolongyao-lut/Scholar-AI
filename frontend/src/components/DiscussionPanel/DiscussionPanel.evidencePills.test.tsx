@@ -98,7 +98,7 @@ describe('discussion visible copy helpers', () => {
   });
 
   it('sanitizes live agent answers and synthesis before rendering or reuse', () => {
-    const unsafe = 'env=VISION_PROVIDER /api/discussion capability_resolved C:\\Users\\xiao\\trace.json';
+    const unsafe = 'env=VISION_PROVIDER /api/discussion capability_resolved C:\\Users\\example-user\\trace.json';
 
     expect(formatDiscussionAnswerText(unsafe)).toBe('回答内容已隐藏，避免显示内部路径或系统字段。');
     expect(formatDiscussionSynthesisText(unsafe)).toBe('综合结论已隐藏，避免显示内部路径或系统字段。');

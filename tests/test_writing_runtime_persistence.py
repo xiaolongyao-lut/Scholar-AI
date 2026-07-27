@@ -814,7 +814,7 @@ async def test_evidence_integrity_gate_blocks_unsupported_and_keeps_unresolved_v
     assert gate["enforcement"]["summary"]["unresolved_is_ready"] is False
     assert gate["enforcement"]["summary"]["blocking_action_boundary_status"] == "blocked"
     serialized = str(gate)
-    assert "C:\\Users\\xiao\\private" not in serialized
+    assert "C:\\Users\\example-user\\private" not in serialized
     assert "workspace_artifacts/private" not in serialized
 
 
@@ -950,7 +950,7 @@ async def test_evidence_integrity_gate_blocks_observation_behavior_eval_red_flag
     )
     assert behavior_recovery["linked_stage_id"] == "agent_handoff"
     assert any(probe["endpoint"] == "/runtime/behavior-eval-pack" for probe in behavior_recovery["local_read_only_probes"])
-    assert "C:\\Users\\xiao\\private" not in str(gate)
+    assert "C:\\Users\\example-user\\private" not in str(gate)
 
 
 @pytest.mark.persistence_smoke

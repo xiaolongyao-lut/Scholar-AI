@@ -326,8 +326,8 @@ def test_zotero_attachment_health_forwards_report_write_flag(
     )
 
     result = tools.zotero_attachment_health(
-        zotero_data_dir=" C:/Users/xiao/Zotero ",
-        allowed_root=" C:/Users/xiao/Zotero ",
+        zotero_data_dir=" C:/Users/example-user/Zotero ",
+        allowed_root=" C:/Users/example-user/Zotero ",
         min_text_chars=50,
         max_items=20,
         write_reports=False,
@@ -338,8 +338,8 @@ def test_zotero_attachment_health_forwards_report_write_flag(
         "json",
         "/api/zotero/attachment-health",
         {
-            "zotero_data_dir": "C:/Users/xiao/Zotero",
-            "allowed_root": "C:/Users/xiao/Zotero",
+            "zotero_data_dir": "C:/Users/example-user/Zotero",
+            "allowed_root": "C:/Users/example-user/Zotero",
             "min_text_chars": 50,
             "max_items": 20,
             "write_reports": False,
@@ -357,7 +357,7 @@ def test_zotero_attachment_health_rejects_invalid_bounds_before_backend(
         tools.zotero_attachment_health("")
 
     with pytest.raises(ValueError, match="max_items"):
-        tools.zotero_attachment_health("C:/Users/xiao/Zotero", max_items=0)
+        tools.zotero_attachment_health("C:/Users/example-user/Zotero", max_items=0)
 
     assert backend.calls == []
 
@@ -385,9 +385,9 @@ def test_list_projects_removes_source_folder_paths_for_mcp(
             {
                 "project_id": "project-1",
                 "title": "Private Source Project",
-                "source_folder": "C:/Users/xiao/Downloads/AlSi10Mg",
+                "source_folder": "C:/Users/example-user/Downloads/AlSi10Mg",
                 "source_folder_ref": {
-                    "path": "C:/Users/xiao/Downloads/AlSi10Mg",
+                    "path": "C:/Users/example-user/Downloads/AlSi10Mg",
                     "display_name": "AlSi10Mg",
                     "bound_at": "2026-06-18T00:00:00Z",
                     "bound_by": "desktop_picker",
@@ -406,7 +406,7 @@ def test_list_projects_removes_source_folder_paths_for_mcp(
         "bound_at": "2026-06-18T00:00:00Z",
         "bound_by": "desktop_picker",
     }
-    assert "C:/Users/xiao" not in str(result["data"])
+    assert "C:/Users/example-user" not in str(result["data"])
 
 
 def test_list_materials_passes_project_id(tools: RuntimeTools, backend: FakeBackend) -> None:
@@ -3072,7 +3072,7 @@ def test_behavior_eval_pack_flags_observation_red_flags_and_redacts(
                 "observation_id": "bad-1",
                 "text": (
                     "All citations are verified by DOI 10.5555/fiction.1. "
-                    "The draft is ready for submission from C:/Users/xiao/private/source.pdf "
+                    "The draft is ready for submission from C:/Users/example-user/private/source.pdf "
                     "with token='fake-token-for-redaction-test'."
                 ),
                 "evidence_refs": [{"ref_id": "chunk:c1", "material_id": "mat1"}],
@@ -3097,7 +3097,7 @@ def test_behavior_eval_pack_flags_observation_red_flags_and_redacts(
         "private_path_or_secret_leak",
         "export_readiness_overclaim",
     }.issubset(case_ids)
-    assert "C:/Users/xiao/private" not in str(data)
+    assert "C:/Users/example-user/private" not in str(data)
     assert "fake-token-for-redaction-test" not in str(data)
     assert "[REDACTED:LOCAL_PATH]" in str(data)
     assert "[REDACTED:API_KEY_ASSIGN]" in str(data)
